@@ -2,9 +2,9 @@
 // spend per station, and fuel gauges for context, tokens and dollars. register.ts registers the command and captures
 // each turn into `turns` (a module may not hook session.start or turn.complete twice).
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, On } from 'claude-code'
+import type { EngineInterface, On, RenderChildren } from 'claude-code'
 import type { Band, Status, TurnPoint } from '../types'
-import { cmdNames, parseStatus, sdlcArgv, money, kilo, spark, gauge, heat, spendPerTurn, tokenMix, stack, subway } from './shared'
+import { cmdNames, parseStatus, sdlcArgv, money, kilo, spark, gauge, heat, spendPerTurn, tokenMix, stack, subway, LOGO, LOGO_TAGLINE } from './shared'
 import { HARD_CONTEXT, budgetText, budgetColor } from './band'
 
 export const MAP_PANE = 'rig-map'
@@ -37,7 +37,14 @@ export function registerMission(on: On): void {
     const history = await read($, turns)
     const columns = Math.max(40, e.props.bodyColumns)
     const story = b?.story ?? null
-    if (!b?.flow?.length) return <Text dimColor>no map yet: run /rig:init, then start a change</Text>
+    // The wordmark beside the pane's headline: three short rows, so it costs no width the subway needs.
+    const header = (headline: RenderChildren) => (
+      <Box columnGap={2}>
+        <Box flexDirection="column">{LOGO.map(row => <Text key={row} color="cyan" bold>{row}</Text>)}</Box>
+        <Box flexDirection="column"><Text dimColor>{LOGO_TAGLINE}</Text>{headline}</Box>
+      </Box>
+    )
+    if (!b?.flow?.length) return header(<Text dimColor>no map yet: run /rig:init, then start a change</Text>)
     const line = subway(b.flow, story, columns)
     const deltas = spendPerTurn(history).slice(-SPARK_TURNS)
     const avg = deltas.length ? deltas.reduce((a, d) => a + d, 0) / deltas.length : 0
@@ -48,7 +55,7 @@ export function registerMission(on: On): void {
     const dear = Object.entries(story?.usdByNode ?? {}).sort((x, y) => y[1] - x[1])[0]
     return (
       <Box flexDirection="column">
-        <Text bold>MISSION CONTROL · {b.change ?? 'no active change'}{story ? ` · ${story.verdict}` : ''}</Text>
+        {header(<Text bold>MISSION CONTROL · {b.change ?? 'no active change'}{story ? ` · ${story.verdict}` : ''}</Text>)}
         <Text> </Text>
         <Box>{line.cells.map((c, i) => <Text key={i + c.text} color={STATE_COLOR[c.state]} bold={c.state === 'current' || c.state === 'gate'} dimColor={c.state === 'todo'}>{(i ? ' ─ ' : '') + c.text}</Text>)}</Box>
         {line.marker ? <Text color="cyan">{line.marker}</Text> : null}

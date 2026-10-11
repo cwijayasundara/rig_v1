@@ -118,3 +118,7 @@ export const COORDINATOR_DOWNSHIFT = 'claude-sonnet-5-5'
 
 // A mod command is `rig:<name>` like the skills; the hyphen spelling stays registered only if the host refuses the colon.
 export const cmdNames = (name: string): string[] => [`rig:${name}`, `rig-${name}`]
+
+// The rig wordmark, small: three rows of box-drawing glyphs (the README's banner, compact) and the loop it stands for.
+export const LOGO = ['┏━┓╻┏━╸', '┣┳┛┃┃╺┓', '╹┗╸╹┗━┛'] as const
+export const LOGO_TAGLINE = 'plan ▸ build ▸ run'

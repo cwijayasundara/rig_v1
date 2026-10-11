@@ -363,7 +363,7 @@ describe('sdlc mod', () => {
     await $.command.run(command('rig-map'))
     const ui = await $.ui.mount({ plugin: 'sdlc', surface: 'terminal', component: 'Pane', requestId: 'rig-map', props: paneProps, viewport: { columns: 120, rows: 40 } })
     const text = JSON.stringify(await ui.drawn())
-    for (const part of ['MISSION CONTROL', 'add-login', '◉ build', 'you are here', '⟲ 1/2', 'SPEND BY STATION', '$2.16 / $6.00', 'context', 'TOKEN MIX', 'hit 90%', 'this change', 'dearest build']) expect(text).toContain(part)
+    for (const part of ['┏━┓╻┏━╸', '┣┳┛┃┃╺┓', '╹┗╸╹┗━┛', 'plan ▸ build ▸ run', 'MISSION CONTROL', 'add-login', '◉ build', 'you are here', '⟲ 1/2', 'SPEND BY STATION', '$2.16 / $6.00', 'context', 'TOKEN MIX', 'hit 90%', 'this change', 'dearest build']) expect(text).toContain(part)
     await ui.unmount()
   })
 
@@ -373,6 +373,7 @@ describe('sdlc mod', () => {
     await $.command.run(command('rig-map'))
     const ui = await $.ui.mount({ plugin: 'sdlc', surface: 'terminal', component: 'Pane', requestId: 'rig-map', props: paneProps, viewport: { columns: 120, rows: 40 } })
     expect(JSON.stringify(await ui.drawn())).toContain('no map yet')
+    expect(JSON.stringify(await ui.drawn())).toContain('┏━┓╻┏━╸')
     await ui.unmount()
   })
 
