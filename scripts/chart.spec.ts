@@ -115,3 +115,14 @@ test('chart check reports every gap kind, and what changed since the approval; i
   assert.notEqual(none.code, 0)
   assert.match(none.stderr, /no PRD for sprint 9/)
 })
+
+
+test('the templates parse: PRD ids, the cases table, and an open question under the PRD heading', () => {
+  const tpl = (f: string): string => fs.readFileSync(path.join(import.meta.dirname, '..', 'templates', f), 'utf8')
+  const prd = tpl('prd-format.md')
+  assert.deepEqual(prdIds(prd), ['FR-1', 'NFR-1'])
+  assert.match(prd, /^## Open questions$/m)
+  assert.match(prd, /^## Changes since last sprint$/m)
+  assert.deepEqual(testCases(tpl('testplan-format.md')).map(c => c.id), ['TC-1'])
+  assert.match(tpl('architecture-format.md'), /^## Concerns$/m)
+})
