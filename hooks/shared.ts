@@ -122,3 +122,5 @@ export const cmdNames = (name: string): string[] => [`rig:${name}`, `rig-${name}
 // The rig wordmark, small: three rows of box-drawing glyphs (the README's banner, compact) and the loop it stands for.
 export const LOGO = ['┏━┓╻┏━╸', '┣┳┛┃┃╺┓', '╹┗╸╹┗━┛'] as const
 export const LOGO_TAGLINE = 'plan ▸ build ▸ run'
+// The band has two rows, so it carries the one-row mark; the three-row wordmark is the /rig:map pane's.
+export const BAND_MARK = 'rig ▸ '

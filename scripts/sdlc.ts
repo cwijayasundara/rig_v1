@@ -11,7 +11,7 @@ import {
   exists, read, lines, now, toPosix, out, fail, git, planPath, planName, approvalFile, frontmatter, parseArgs, optString, listChanges, defaultBase, isShipped, scopeDrift, scanSecrets, planProblems, checkSlug, SLUG_RE,
   WAIVERS, readJsonl, type Waiver, ensureGitignore, startOnboarding, clearState, PLUGIN_ROOT, IS_VENDORED, skillRef, setActive, createChange, sanctionWrites, type Args, type Approval, type Change, type GatedStage, type UsageRow,
 } from './core.ts'
-import { PATHS, isChangeType, isTier, activeSlug, loadChange, nextCommand, step, tierDrift } from './graph.ts'
+import { PATHS, isChangeType, isTier, activeSlug, awaitingMerge, loadChange, nextCommand, step, tierDrift } from './graph.ts'
 import { formatFindings, openQuestions, unresolvedConcerns, SENSOR_NAMES, type Finding } from './model.ts'
 import { readBaseline, branchDiff, turnDiff, type Snapshot } from './diffs.ts'
 import { cmdHook, readGate } from './hooks.ts'
@@ -164,10 +164,10 @@ function cmdStatus(args: Args): void {
   const budgetOf = (st: { budget: BudgetView } | null): BudgetView => st?.budget ?? safeBudgetView(loadConfig().config.budget, null)
   // Team pressure with no active change rides at the top level; with one, step.pressure (which honours full-route) wins.
   const pressureTop = (st: { pressure: Pressure } | null): Pressure => st?.pressure ?? pressureOf(budgetOf(null), loadConfig().config.budget, false)
-  const lean = json && args.opt.band ? (active ? loadChange(active) : null) : undefined
+  const shown = active ?? (json && args.opt.band ? awaitingMerge() : null), lean = json && args.opt.band ? (shown ? loadChange(shown) : null) : undefined
   if (lean !== undefined) {
-    const st = active ? step(active) : null
-    return out(JSON.stringify({ initialised: true, active, changes: lean ? [{ slug: lean.slug, next: lean.next }] : [], sensors: sensorStatus(), story: active ? story(active) : null, step: st, budget: budgetOf(st), pressure: pressureTop(st), flow: flowOf(true, lean) }))
+    const st = shown ? step(shown) : null
+    return out(JSON.stringify({ initialised: true, active: shown, changes: lean ? [{ slug: lean.slug, next: lean.next }] : [], sensors: sensorStatus(), story: shown ? story(shown) : null, step: st, budget: budgetOf(st), pressure: pressureTop(st), flow: flowOf(true, lean) }))
   }
   const changes = listChanges().map(loadChange)
   const warnings: string[] = []

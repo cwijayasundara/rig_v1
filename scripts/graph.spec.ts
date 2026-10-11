@@ -212,3 +212,19 @@ test('the build retry follows the open slice only: a failed earlier slice does n
   ratchet({ 1: sl(0, 'done'), 2: sl(1, 'open') })
   assert.deepEqual(stepOf('rt').routes.implementer, { model: 'haiku', effort: 'high' })
 })
+
+test('status --band: a finished change on its own branch shows every step done and the merge, not an empty start', () => {
+  const band = () => JSON.parse(sdlc(repo, ['status', '--json', '--band']).stdout) as { active: string | null; step: { verdict: string } | null; flow: { label: string; state: string }[] }
+  gitIn(repo, 'checkout', '-qb', 'sdlc/done-one')
+  sdlc(repo, ['new', 'done-one', '--type', 'feature', '--tier', 'M'])
+  write(repo, '.rig/changes/done-one/ship.json', '{}\n')
+  gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'shipped, not merged')
+  const b = band()
+  assert.equal(b.active, 'done-one')
+  assert.equal(b.step?.verdict, 'ready')
+  assert.ok(b.flow.every(f => f.state === 'done'), JSON.stringify(b.flow))
+  gitIn(repo, 'checkout', '-qf', 'main')
+  const after = band()
+  assert.equal(after.active, null, 'back on the trunk (after the merge) the band offers the next change')
+  assert.equal(after.flow.find(f => f.state === 'current')?.label, 'start')
+})

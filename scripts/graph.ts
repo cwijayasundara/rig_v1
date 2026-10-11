@@ -143,6 +143,14 @@ export function activeSlug(): string | null {
   return byMtime[0]?.slug ?? null
 }
 
+// A finished change is no longer active (activeSlug, and every command that acts on it), but until it merges the person is
+// usually still on its branch: the band (status --band) shows it done and waiting for the merge instead of an empty
+// "start a change". Back on the trunk (or any other branch) it is gone.
+export function awaitingMerge(): string | null {
+  const slug = /^sdlc\/(.+)$/.exec(git(['rev-parse', '--abbrev-ref', 'HEAD']) ?? '')?.[1]
+  return slug && SLUG_RE.test(slug) && exists(path.join(CHANGES, slug)) && loadChange(slug).next === null ? slug : null
+}
+
 // Legacy (one release): the tier model that vendored skills from before role routing pass to every launch. Inbox shows it too.
 // Current skills read `routes` instead: the role and tier pick model and effort (scripts/routing.ts).
 export type ModelAlias = 'haiku' | 'sonnet' | 'opus'

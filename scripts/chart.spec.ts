@@ -185,7 +185,7 @@ test('dropping sprint: or depends: from a committed intent does not get it past 
   gitIn(repo, 'commit', '-qm', 'chart')
   write(repo, '.rig/intent/gated.md', '---\nstatus: accepted\n---\n# Intent: gated\n')
   write(repo, '.rig/intent/after.md', '---\nstatus: accepted\n---\n# after\n')
-  for (const [name, slug] of [['gated', 'gated-change'], ['after', 'after-change']]) {
+  for (const [name, slug] of [['gated', 'gated-change'], ['after', 'after-change']] as const) {
     const r = startFrom(name, slug)
     assert.notEqual(r.code, 0, name)
     assert.match(r.stderr, /sprint: or depends: differs from the last commit/, name)

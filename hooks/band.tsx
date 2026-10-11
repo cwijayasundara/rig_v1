@@ -2,7 +2,7 @@
 import { atom, read, update } from 'claude-code'
 import type { On } from 'claude-code'
 import type { Band, BudgetBand, SensorBand, Story, StepInfo, FlowStep, TurnPoint } from '../types'
-import { cmdNames, mod, sdlcArgv, spark, spendPerTurn, subway, gauge, heat, tokenMix } from './shared'
+import { cmdNames, mod, sdlcArgv, spark, spendPerTurn, subway, gauge, heat, tokenMix, BAND_MARK } from './shared'
 
 export const SOFT_CONTEXT = 120_000
 export const HARD_CONTEXT = 150_000
@@ -51,6 +51,8 @@ export function storyText(s: Story | null): string {
 // The exact command to type next, slug filled in: the driver's when it has one, else the current station's (/rig:start "<what you want>").
 // None while blocked or ready: the band's ⛔ / ✓ says why.
 export function nextCommand(b: Pick<Band, 'change' | 'step' | 'flow'>): string | null {
+  // Every node done: what is left is a person merging the change's branch.
+  if (b.step?.verdict === 'ready' && b.change) return `merge sdlc/${b.change}`
   if (b.step) return b.step.verdict === 'continue' || b.step.verdict === 'human' ? b.step.command || null : null
   const here = b.flow?.find(f => f.state === 'current' || f.state === 'gate')
   return here ? here.command.replace('<slug>', b.change ?? '<slug>') : null
@@ -100,18 +102,20 @@ export function registerBand(on: On): void {
     const frac = current.contextTokens / HARD_CONTEXT
     const sensorColor = current.sensors?.blocks || current.sensors?.unresolved ? 'red' : undefined
     const story = current.story
-    const line = current.flow?.length ? subway(current.flow, story, Math.max(40, e.props.bodyColumns - 2)) : null
+    const line = current.flow?.length ? subway(current.flow, story, Math.max(40, e.props.bodyColumns - 2 - BAND_MARK.length)) : null
+    const mark = <Text color="cyan" bold>{BAND_MARK}</Text>
     const hit = Math.round(tokenMix(history).hit * 100)
     const nextCmd = nextCommand(current)
     // The fix-loop round rides on the current station, so the strip stays one row.
     const loop = (story && story.cap > 0 ? ` ⟲${story.round}/${story.cap}` : '') + (story?.verdict === 'blocked' ? ' ⛔' : story?.verdict === 'ready' ? ' ✓ ready' : '')
     return (
       <Box flexDirection="column">
-        {line ? <Box>{line.cells.map((c, i) => {
+        {line ? <Box>{mark}{line.cells.map((c, i) => {
           const here = c.state === 'current' || c.state === 'gate'
           return <Text key={c.text + i} bold={here} dimColor={c.state === 'todo'} color={here && (line.loopHot || story?.verdict === 'blocked') ? 'red' : here ? (c.state === 'gate' ? 'yellow' : 'cyan') : c.state === 'done' ? 'green' : undefined}>{`${i ? ' ─ ' : ''}${c.text}${here ? loop : ''}${c.state === 'gate' ? ' ⏸' : ''}`}</Text>
         })}</Box> : null}
         <Box>
+          {line ? null : mark}
           {nextCmd ? <Text color="cyan">next {nextCmd}</Text> : null}
           <Text dimColor>{nextCmd ? '' : current.change ?? 'no active change'}{story ? ` · ${kilo(story.tokens)} tok · ${usd(story.usd)}` : ''} · ctx </Text>
           <Text color={heat(frac)}>{gauge(frac, 8)} {kilo(current.contextTokens)}</Text>

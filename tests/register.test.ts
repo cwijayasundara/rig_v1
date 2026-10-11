@@ -308,7 +308,7 @@ describe('sdlc mod', () => {
     await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' })
     const ui = await $.ui.mount({ plugin: 'sdlc', surface: 'terminal', component: 'AbovePrompt', props: bandProps, viewport: { columns: 160, rows: 30 } })
     const text = JSON.stringify(await ui.drawn())
-    for (const part of ['build', 'build ⟲1/2', '412k tok', '$2.16', 'ctx']) expect(text).toContain(part)
+    for (const part of ['rig ▸ ', 'build', 'build ⟲1/2', '412k tok', '$2.16', 'ctx']) expect(text).toContain(part)
     await ui.unmount()
   })
 
@@ -421,6 +421,7 @@ describe('sdlc mod', () => {
     const step = (verdict: StepInfo['verdict']) => ({ slug: 'a', node: 'pr', verdict, reason: 'r', command: '/rig:pr a', round: 0 })
     expect(nextCommand({ change: 'a', step: step('continue'), flow: at('current') })).toBe('/rig:pr a')
     expect(nextCommand({ change: 'a', step: step('blocked'), flow: at('current') })).toBeNull()
+    expect(nextCommand({ change: 'a', step: step('ready'), flow: at('done') })).toBe('merge sdlc/a')
     expect(nextCommand({ change: 'a', step: null, flow: at('gate') })).toBe('/rig:pr a')
     expect(nextCommand({ change: null, step: null, flow: [{ label: 'start', command: '/rig:start "<what you want>"', why: '', state: 'current' }] })).toBe('/rig:start "<what you want>"')
     expect(nextCommand({ change: 'a', step: null, flow: at('done') })).toBeNull()
