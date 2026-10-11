@@ -50,6 +50,20 @@ test('a command that cannot run is fail, not pass', () => {
   assert.match(r.stdout, /deps\s+fail/)
 })
 
+test('a tool that cannot count on the base either (npm audit with no lockfile) is unmeasured, not a block', () => {
+  const AUDIT = 'node -e "console.log(JSON.stringify({error:{code:\'ENOLOCK\'}}));process.exit(1)"'
+  write(repo, '.rig/sensors.json', JSON.stringify({ quality: { deps: { cmd: AUDIT, count: 'json:metadata.vulnerabilities.total' } } }))
+  write(repo, 'src/a.js', 'export const a = 1\n')
+  gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'base')
+  gitIn(repo, 'checkout', '-qb', 'sdlc/tiny')
+  sdlc(repo, ['new', 'tiny', '--type', 'chore', '--tier', 'S'])
+  write(repo, 'src/b.js', 'export const b = 1\n')
+  const r = sdlc(repo, ['quality', 'tiny'])
+  assert.equal(r.code, 0, r.stdout)
+  assert.match(r.stdout, /deps\s+unmeasured \(broken on the base too/)
+  assert.doesNotMatch(r.stdout, /sensors\.json quality/, 'never tells the model to edit the harness config')
+})
+
 test('with no base, quality categories are unmeasured and do not block', () => {
   write(repo, '.rig/sensors.json', JSON.stringify({ quality: { lint: { cmd: LINT, count: 'lines' } } }))
   write(repo, 'src/a.js', '// TODO\n')

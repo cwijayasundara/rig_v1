@@ -31,6 +31,15 @@ export function markStaleMany(root: string, files: string[]): number {
   } catch { return 0 }
 }
 
+// Catches edits no hook saw (plugin not loaded, another session, committed slices): re-checks every recorded file.
+export function reconcileStale(root: string): number {
+  try {
+    if (!fs.existsSync(statePath(root))) return 0
+    const files = Object.values(loadState(root).modules).flatMap(m => Object.keys(m.fileHashes ?? {}))
+    return markStaleMany(root, files)
+  } catch { return 0 }
+}
+
 export const markStale = (root: string, file: string): boolean => markStaleMany(root, [file]) > 0
 
 export function promptContext(root: string, session: string): string {

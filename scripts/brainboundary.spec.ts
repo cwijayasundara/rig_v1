@@ -16,7 +16,7 @@ function tsFiles(dir: string): string[] {
   })
 }
 const relative = (file: string): string[] =>
-  [...fs.readFileSync(file, 'utf8').matchAll(IMPORT)].map(m => m[1]).filter(s => s.startsWith('.')).map(s => path.resolve(path.dirname(file), s))
+  [...fs.readFileSync(file, 'utf8').matchAll(IMPORT)].map(m => m[1] ?? '').filter(s => s.startsWith('.')).map(s => path.resolve(path.dirname(file), s))
 
 test('brain imports nothing from rig core: it may only reach its own files', () => {
   const escapes = tsFiles(BRAIN).flatMap(f => relative(f).filter(t => t !== BRAIN && !t.startsWith(BRAIN + path.sep)).map(t => `${path.relative(ROOT, f)} -> ${path.relative(ROOT, t)}`))

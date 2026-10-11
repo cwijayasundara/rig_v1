@@ -69,7 +69,8 @@ function itemDir(top: string, it: QualityItem): { dir: string; error?: string } 
 // The base runs once per base SHA in a throwaway worktree (basetree.ts), sparse over `sparse` when given. Counts are cached
 // in ratchet.json per key with the command, counting mode, directory and checkout (full, or sparse over which roots) they
 // were measured with; a change to any of them is measured again. Entries from before cwd/mode were kept read as root/full.
-function baseCounts(base: string, items: QualityItem[], slug: string, sparse?: string[]): Record<string, number | null> {
+// broken: keys whose command ran on the base and could not count (not a base that failed to check out).
+function baseCounts(base: string, items: QualityItem[], slug: string, sparse?: string[], broken = new Set<string>()): Record<string, number | null> {
   const r = readRatchet(slug)
   const cached = r.baseline.base === base ? r.baseline.quality ?? {} : {}
   const counts: Record<string, number | null> = {}
@@ -84,10 +85,12 @@ function baseCounts(base: string, items: QualityItem[], slug: string, sparse?: s
     const tree = withBaseTree(base, top => {
       for (const it of todo) {
         const { dir, error } = itemDir(top, it)
-        counts[it.key] = error ? null : countIn(dir, it.q.cmd, it.q.count, true).n
+        const c = error ? null : countIn(dir, it.q.cmd, it.q.count, true)
+        counts[it.key] = c?.n ?? null
+        if (c && c.n === null && (c.note === 'base run failed' || c.note?.startsWith('could not count'))) broken.add(it.key)
       }
     }, { sparse })
-    if (!tree.ok) for (const it of todo) counts[it.key] = null
+    if (!tree.ok) for (const it of todo) { counts[it.key] = null; broken.delete(it.key) }
     else if (tree.sparse === false) mode = 'full'
   }
   const store: NonNullable<typeof r.baseline.quality> = {}
@@ -121,11 +124,15 @@ export function runQuality(slug: string, baseRef: string | null = defaultBase())
   const base = baseRef
   const diffs = branchDiff(base ?? 'HEAD')
   const { items, sparse, warnings } = qualityPlan(config, diffs.map(d => d.file).filter(f => isSource(f, config)))
-  const baseN: Record<string, number | null> = base && items.length ? baseCounts(base, items, slug, sparse) : {}
+  const brokenOnBase = new Set<string>()
+  const baseN: Record<string, number | null> = base && items.length ? baseCounts(base, items, slug, sparse, brokenOnBase) : {}
   const measured: CategoryResult[] = items.map(it => {
     const { dir, error } = itemDir(ROOT, it)
     if (error) return { category: it.key, branch: null, base: null, status: 'fail', note: error }
     const b = countIn(dir, it.q.cmd, it.q.count)
+    // A tool that cannot count on the base either (npm audit with no lockfile) is broken before this change: unmeasured,
+    // never a block the change is asked to fix, since its only "fix" would weaken sensors.json on the branch.
+    if (b.n === null && b.note?.startsWith('could not count') && brokenOnBase.has(it.key)) return { category: it.key, branch: null, base: null, status: 'unmeasured', note: `broken on the base too (${b.note})` }
     if (b.n === null) return { category: it.key, branch: null, base: null, status: 'fail', note: b.note }
     if (!base) return { category: it.key, branch: b.n, base: null, status: 'unmeasured', note: 'no base' }
     const was = baseN[it.key] ?? null
@@ -138,7 +145,7 @@ export function runQuality(slug: string, baseRef: string | null = defaultBase())
   const categories = [...measured, ...undeclared].sort((a, b) => rank(a.category) - rank(b.category))
   const blocks: Finding[] = categories.filter(c => c.status === 'regressed' || c.status === 'fail').map(c => ({
     sensor: `quality.${c.category}`, severity: 'block', message: c.status === 'fail' ? `${c.category} could not run: ${c.note}` : `${c.category} rose from ${c.base} to ${c.branch}`,
-    fix: c.status === 'fail' ? 'install the tool or fix the command in .rig/sensors.json quality' : `fix the new ${c.category} findings; the base branch has ${c.base}`,
+    fix: c.status === 'fail' ? 'install the tool or add what it needs (a lockfile, a config); a change to .rig/sensors.json lands on the trunk as its own commit, never in this change' : `fix the new ${c.category} findings; the base branch has ${c.base}`,
   }))
   if (base) {
     const { before, after } = testDelta(base, diffs, config)
@@ -156,7 +163,7 @@ export function cmdQuality(args: Args): void {
   const slug = checkSlug(given)
   const { config } = loadConfig()
   const { categories, blocks, warnings } = runQuality(slug)
-  const rows = categories.map(c => `${c.category.padEnd(11)} ${c.status === 'unmeasured' ? `unmeasured${c.note === 'no base' ? ' (no base)' : ''}` : c.status === 'fail' ? `fail (${c.note})` : `base ${c.base} → branch ${c.branch}  ${c.status}`}`)
+  const rows = categories.map(c => `${c.category.padEnd(11)} ${c.status === 'unmeasured' ? `unmeasured${c.note === 'no base' ? ' (no base)' : c.note?.startsWith('broken') ? ` (${c.note})` : ''}` : c.status === 'fail' ? `fail (${c.note})` : `base ${c.base} → branch ${c.branch}  ${c.status}`}`)
   const v = recordRound(slug, 'sensors', blocks.map(b => ({ severity: 'high', category: b.sensor, text: `${b.file ?? ''} ${b.message}` })), { cap: config.ratchet.rounds.sensors })
   if (v.verdict === 'done') {
     const r = readRatchet(slug)

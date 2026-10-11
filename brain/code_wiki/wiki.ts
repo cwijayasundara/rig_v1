@@ -8,7 +8,7 @@ import { planRefresh } from './planner.ts'
 import { applyWiki } from './apply.ts'
 import { ensureIgnore, loadState } from './state.ts'
 import { findIn } from './find.ts'
-import { markStaleMany, promptContext } from './mark.ts'
+import { markStaleMany, reconcileStale, promptContext } from './mark.ts'
 import { checkRig, MIN_RIG } from '../shared/rigcontract.ts'
 import { repoRoot } from '../shared/git.ts'
 
@@ -28,7 +28,9 @@ function hook(event: string): void {
   else if (event === 'stop') {
     const d = spawnSync('git', ['diff', '--name-only', 'HEAD'], { cwd: r, encoding: 'utf8', timeout: 10_000 })
     if (d.status === 0) markStaleMany(r, d.stdout.split('\n').filter(Boolean).map(f => path.join(r, f)))
+    reconcileStale(r)
   } else if (event === 'session-start') {
+    reconcileStale(r)
     if (fs.existsSync(path.join(r, WIKI_DIR, 'INDEX.md'))) console.log('A code wiki exists: read .rig/wiki/INDEX.md first to locate files and features, then verify in code.')
   } else if (event === 'prompt-submit') {
     const ctx = promptContext(r, String(input.session_id ?? 'default'))
@@ -48,9 +50,11 @@ try {
     console.log(`written: ${r.written.length}, kept: ${r.kept.length}, pending: ${r.pending.length}`)
     for (const [m, ps] of Object.entries(r.problems)) console.log(`problem ${m}: ${ps.join('; ')}`)
   } else if (cmd === 'find') {
+    reconcileStale(root)
     const idx = buildIndex(root, cfg)
     for (const h of findIn(idx, loadState(root), rest.join(' '))) console.log(`${h.kind} ${h.name} ${h.file} ${h.page}${h.stale ? ' (stale)' : ''}`)
   } else if (cmd === 'status') {
+    reconcileStale(root)
     const s = loadState(root)
     const vals = Object.values(s.modules)
     console.log(`fresh: ${vals.filter(m => m.status === 'fresh').length}\nstale: ${vals.filter(m => m.status === 'stale').length}`)

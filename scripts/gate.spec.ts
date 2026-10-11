@@ -277,6 +277,31 @@ test('Stop sends a change with a node left on to it once, and never loops on a n
   assert.equal(stop().stdout, '', 'the same node is offered once: a turn that moved nothing ends')
 })
 
+test('a turn that only warned and is also continued prints one JSON object carrying both', () => {
+  sdlc(repo, ['new', 'tiny', '--type', 'chore', '--tier', 'S'])
+  write(repo, '.rig/sensors.json', JSON.stringify({ limits: { diffLines: 500 } }))
+  gitIn(repo, 'add', '.')
+  gitIn(repo, 'commit', '-qm', 'cfg')
+  hook(repo, 'prompt-submit', {})
+  buildDone(repo, 'tiny')
+  write(repo, '.rig/sensors.json', JSON.stringify({ limits: { diffLines: 950 } }))
+  hook(repo, 'post-edit', { tool_input: { file_path: path.join(repo, '.rig/sensors.json') } })
+  const out = JSON.parse(stop().stdout) as { decision?: string; reason?: string; systemMessage?: string }
+  assert.match(out.systemMessage ?? '', /warning.*harness-tamper/)
+  assert.equal(out.decision, 'block')
+  assert.match(out.reason ?? '', /skill test tiny/)
+})
+
+test('Stop does not continue a node while one of its subagents is still running', () => {
+  sdlc(repo, ['new', 'tiny', '--type', 'chore', '--tier', 'S'])
+  hook(repo, 'prompt-submit', {})
+  buildDone(repo, 'tiny')
+  hook(repo, 'subagent-start', { agent_id: 'lane-1', agent_type: 'rig:implementer' })
+  assert.equal(stop().stdout, '', 'a backgrounded implementer means the node is mid-way')
+  hook(repo, 'subagent-stop', { agent_id: 'lane-1', agent_type: 'rig:implementer' })
+  assert.match(JSON.parse(stop().stdout).reason, /skill test tiny/)
+})
+
 test('Stop does not continue a change that waits at a human gate or has no active change', () => {
   assert.equal(stop().stdout, '')
   sdlc(repo, ['new', 'gated', '--type', 'feature', '--tier', 'M'])

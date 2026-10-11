@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { markStale, promptContext } from './mark.ts'
+import { markStale, reconcileStale, promptContext } from './mark.ts'
 import { applyWiki } from './apply.ts'
 import { buildIndex } from './indexer.ts'
 import { loadConfig } from './config.ts'
@@ -70,4 +70,22 @@ test('markStale accepts a file path that reaches the repo through a symlink', ()
   fs.symlinkSync(dir, link)
   assert.equal(markStale(fs.realpathSync(dir), path.join(link, 'src/a/x.ts')), true)
   assert.equal(loadState(dir).modules.a.status, 'stale')
+})
+
+test('status and find reconcile edits no hook saw; unchanged modules stay fresh', () => {
+  const dir = makeRepo({ 'src/a/x.ts': 'export const x = 1\n', 'src/b/y.ts': 'export const y = 1\n' })
+  const cfg = loadConfig(dir)
+  for (const m of ['a', 'b']) {
+    const f = path.join(dir, `.rig/wiki/.cache/prose/${m}.json`)
+    fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, JSON.stringify({ purpose: `Does ${m}.`, how: 'H' }))
+  }
+  applyWiki(dir, cfg, buildIndex(dir, cfg))
+  assert.match(run(dir, ['status']).stdout, /stale: 0/)
+  fs.writeFileSync(path.join(dir, 'src/a/x.ts'), 'export const x = 2\n') // no hook runs
+  assert.match(run(dir, ['status']).stdout, /fresh: 1\nstale: 1/)
+  const s = loadState(dir)
+  assert.equal(s.modules.a.status, 'stale')
+  assert.equal(s.modules.b.status, 'fresh')
+  assert.equal(reconcileStale(dir), 1)
+  assert.equal(reconcileStale(makeRepo({}, { git: false })), 0)
 })

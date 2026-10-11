@@ -204,16 +204,18 @@ function hookPromptSubmit(input: HookInput = {}): void {
 
 // The end-of-turn gate: every built-in sensor on this turn's diff, then the fast commands. Work with no active change is
 // adopted as an ad-hoc change and judged the same way.
-function hookStop(): boolean {
-  if (!exists(SDLC)) return false
+// halt: the gate printed a block (or gave up) and the turn is not continued. warn: a systemMessage the caller prints, so
+// a turn that only warned and is also continued emits one JSON object, not two.
+function hookStop(): { halt: boolean; warn?: string } {
+  if (!exists(SDLC)) return { halt: false }
   const snap = readBaseline()
-  if (!snap) return false
+  if (!snap) return { halt: false }
   const { config, rules, errors } = loadConfig()
   const gate = readGate()
   const diffs = turnDiff(snap).filter(d => isSource(d.file, config) || isProtected(d.file))
-  if (!diffs.length) return false
+  if (!diffs.length) return { halt: false }
   const hash = diffHash(diffs) + sha(read(path.join(SDLC, 'sensors.json')) + read(path.join(SDLC, 'rules.json')))
-  if (gate.passed.main === hash) return false
+  if (gate.passed.main === hash) return { halt: false }
   let slug = activeSlug()
   // A turn that shipped (its commits add a change's ship.json) is recorded already; any other commit is still ad hoc.
   const shipped = (git(['diff', '--name-only', snap.sha, 'HEAD']) ?? '').split('\n').some(f => /^\.rig\/changes\/[^/]+\/ship\.json$/.test(f))
@@ -239,20 +241,19 @@ function hookStop(): boolean {
     save()
     if (exists(UNRESOLVED)) fs.rmSync(UNRESOLVED)
     const warns = gate.last?.warnRows ?? []
-    if (warns.length) out(JSON.stringify({ systemMessage: `rig: ${gate.last?.warns} warning(s), not blocking: ${[...warns, ...more(gate.last)].join(' | ')}` }))
-    return false
+    return warns.length ? { halt: false, warn: `rig: ${gate.last?.warns} warning(s), not blocking: ${[...warns, ...more(gate.last)].join(' | ')}` } : { halt: false }
   }
   fs.writeFileSync(UNRESOLVED, JSON.stringify({ at: now(), slug, findings: blocks }, null, 2) + '\n')
   const attempt = (gate.blocks.main ?? 0) + 1
   if (attempt > MAX_BLOCKS) {
     save()
     out(JSON.stringify({ systemMessage: `sdlc quality gate: ${blocks.length} problem(s) unresolved after ${MAX_BLOCKS} attempts (.rig/unresolved.json). Ship and CI will refuse until they are fixed or the person waives them.` }))
-    return true
+    return { halt: true }
   }
   gate.blocks.main = attempt
   save()
   out(JSON.stringify({ decision: 'block', reason: `sdlc quality gate (attempt ${attempt}/${MAX_BLOCKS}): fix these before you finish.\n${formatFindings(findings)}` }))
-  return true
+  return { halt: true }
 }
 
 // After approval the rest of the lifecycle is automatic: a turn that ends with a node still to run (build, test, sensors, pr)
@@ -270,16 +271,18 @@ function stepKeyNow(): { key: string; s: ReturnType<typeof step> } | null {
 
 // Only a turn that moved the change (its step differs from the one the turn started on) is continued: a question asked
 // mid-change, or an approval turn that has not begun a node, is left alone.
-function continueChange(): void {
+function continueChange(): { decision: 'block'; reason: string } | null {
   const now_ = stepKeyNow()
-  if (!now_) return
+  if (!now_) return null
   const { key, s } = now_
   const slug = s.slug
-  if (s.verdict !== 'continue' || !s.node || !AUTO_NODES.has(s.node)) return
+  if (s.verdict !== 'continue' || !s.node || !AUTO_NODES.has(s.node)) return null
   const gate = readGate()
-  if (gate.turnStep === undefined || gate.turnStep === key || gate.cont === key) return
+  if (gate.turnStep === undefined || gate.turnStep === key || gate.cont === key) return null
+  // A turn that ended with subagents still running (backgrounded lanes) is mid-node: offering the node again would restart it.
+  if (openLanes(slug)) return null
   updateGate(g => { g.cont = key })
-  out(JSON.stringify({ decision: 'block', reason: `rig: the design is approved, so ${s.node} runs next without waiting for the person. Run \`node --disable-warning=ExperimentalWarning ${process.argv[1]} skill ${s.node} ${slug}\` and follow the printed steps for this node, then stop (the next node is offered when you do).` }))
+  return { decision: 'block', reason: `rig: the design is approved, so ${s.node} runs next without waiting for the person. Run \`node --disable-warning=ExperimentalWarning ${process.argv[1]} skill ${s.node} ${slug}\` and follow the printed steps for this node, then stop (the next node is offered when you do).` }
 }
 
 // Subagent lanes, for the work/span/idle numbers. Observational only: they never block and write nothing without an active change.
@@ -296,12 +299,39 @@ function laneEvent(input: HookInput, phase: 'start' | 'stop'): void {
   } catch { /* observational: a failure must never wedge a session */ }
 }
 
+// A subagent that started and has not stopped. A start older than LANE_STALE_MS is a lost stop event (a crashed
+// session), so it never holds the continuation back for good.
+const LANE_STALE_MS = 30 * 60_000
+// SubagentStop is async, so a foreground subagent that just finished may not have written its stop yet: wait up to
+// LANE_SETTLE_MS for it. One still open after that is backgrounded; its completion starts a turn whose Stop continues.
+const LANE_SETTLE_MS = 3_000
+function openLanes(slug: string): boolean {
+  const open = (): boolean => {
+    try {
+      const lanes = readEvents(slug).filter(e => e.kind === 'lane')
+      const stopped = new Set(lanes.filter(e => e.verdict === 'stop').map(e => e.id))
+      return lanes.some(e => e.verdict === 'start' && !stopped.has(e.id) && Date.now() - Date.parse(e.at) < LANE_STALE_MS)
+    } catch { return false }
+  }
+  const until = Date.now() + LANE_SETTLE_MS
+  while (open()) {
+    if (Date.now() >= until) return true
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200)
+  }
+  return false
+}
+
 const HOOKS: Record<string, (input: HookInput) => void> = {
   'session-start': hookSessionStart,
   'post-edit': hookPostEdit,
   'skill-failed': hookSkillFailed,
   'prompt-submit': i => hookPromptSubmit(i),
-  stop: () => { if (!hookStop()) continueChange() },
+  stop: () => {
+    const r = hookStop()
+    if (r.halt) return
+    const cont = continueChange()
+    if (r.warn || cont) out(JSON.stringify({ ...(r.warn ? { systemMessage: r.warn } : {}), ...cont }))
+  },
   'subagent-start': i => laneEvent(i, 'start'),
   'subagent-stop': i => laneEvent(i, 'stop'),
 }
