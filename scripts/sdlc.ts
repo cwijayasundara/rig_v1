@@ -19,7 +19,8 @@ import { cmdCheck, cmdCheckFile, cmdImpactStatus, loadConfig } from './check.ts'
 import { runCommand, recordRun } from './runs.ts'
 import { cmdMetrics } from './metrics.ts'
 import { cmdEvals, lastRun } from './evals.ts'
-import { cmdInbox, pendingIntents } from './inbox.ts'
+import { cmdInbox, pendingIntents, startRefusal } from './inbox.ts'
+import { cmdChart } from './chartcheck.ts'
 import { CHART_RE, prdPath, chartManifest, chartDigest, chartRows, type ChartApproval } from './chart.ts'
 import { cmdWatch, watchWarnings } from './watch.ts'
 import { cmdPoints, parsePoints, pointsOf } from './points.ts'
@@ -116,6 +117,9 @@ function cmdNew(args: Args): void {
   // An inbox file only: a plain kebab .md name under .rig/intent/ that exists (no `..`, no other directory).
   const source = optString(args, 'source')
   if (source !== undefined && (!/^\.rig\/intent\/[a-z0-9][a-z0-9-]{0,60}\.md$/.test(source) || !exists(path.join(ROOT, source)))) fail(`--source must name an existing .rig/intent/<kebab-name>.md file, not "${source}"`)
+  // A sprint intent waits for its chart approval, and any intent for the intents it depends on (inbox.ts).
+  const refusal = source === undefined ? null : startRefusal(path.basename(source))
+  if (refusal) fail(`not starting ${source}: ${refusal}`)
   const dir = path.join(CHANGES, slug)
   if (exists(dir)) fail(`change ${slug} already exists`)
   if (!exists(SDLC)) {
@@ -477,6 +481,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   metrics: cmdMetrics,
   evals: cmdEvals,
   inbox: cmdInbox,
+  chart: cmdChart,
   watch: cmdWatch,
   scorecard: cmdScorecard,
   spend: args => cmdSpend(args, () => {

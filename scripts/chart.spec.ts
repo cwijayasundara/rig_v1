@@ -73,3 +73,45 @@ test('the digest covers the PRD, architecture, ADRs, test plan and sprint-N inte
   fs.rmSync(path.join(repo, '.rig/intent/b.md'))
   assert.match(approve(1).stdout, /approved chart-1 by/, 'a removed sprint intent changes the digest')
 })
+
+test('new --source refuses a blocked or unapproved intent and names why; a ready one starts; a later stale chart leaves it alone', () => {
+  write(repo, '.rig/product/prd/sprint-1.md', PRD)
+  write(repo, '.rig/intent/a.md', '---\nstatus: draft\nsprint: 1\n---\n# Intent: a\n')
+  write(repo, '.rig/intent/b.md', '---\nstatus: accepted\ndepends: [a]\n---\n# Intent: b\n')
+  const start = (f: string, slug: string) => sdlc(repo, ['new', slug, '--type', 'feature', '--tier', 'M', '--source', `.rig/intent/${f}`])
+  let r = start('a.md', 'a-change')
+  assert.notEqual(r.code, 0)
+  assert.match(r.stderr, /chart-1 is not approved/)
+  r = start('b.md', 'b-change')
+  assert.notEqual(r.code, 0)
+  assert.match(r.stderr, /blocked by: a/)
+  assert.equal(fs.existsSync(path.join(repo, '.rig/changes/b-change')), false)
+  assert.equal(approve(1).code, 0)
+  write(repo, '.rig/product/prd/sprint-1.md', PRD.replace('Checkout', 'Pay'))
+  assert.match(start('a.md', 'a-change').stderr, /chart-1 is stale: .*\.rig\/product\/prd\/sprint-1\.md/)
+  assert.equal(approve(1).code, 0)
+  r = start('a.md', 'a-change')
+  assert.equal(r.code, 0, r.stderr)
+  write(repo, '.rig/product/prd/sprint-1.md', PRD)
+  const next = JSON.parse(sdlc(repo, ['next', 'a-change', '--json']).stdout) as { verdict: string; reason: string }
+  assert.doesNotMatch(next.reason ?? '', /chart/)
+})
+
+test('chart check reports every gap kind, and what changed since the approval; it never fails on gaps', () => {
+  write(repo, '.rig/product/prd/sprint-1.md', PRD)
+  write(repo, '.rig/intent/cart.md', '---\nstatus: draft\nsprint: 1\nprd: [FR-1, FR-7]\ndepends: [ghost]\n---\n# Intent: cart\n')
+  write(repo, '.rig/intent/bare.md', '---\nstatus: draft\nsprint: 1\n---\n# Intent: bare\n')
+  write(repo, '.rig/product/testplan/cases.md', '| ID | Requirement | Intent | Level | Data | Expected |\n|---|---|---|---|---|---|\n| TC-1 | FR-1 | cart | acceptance | data/cart.json | added |\n| TC-2 | NFR-1 | gone | perf | - | p95 under 300 ms |\n')
+  assert.equal(approve(1).code, 0)
+  write(repo, '.rig/intent/bare.md', '---\nstatus: draft\nsprint: 1\n---\n# Intent: bare, edited\n')
+  const r = sdlc(repo, ['chart', 'check', '1', '--json'])
+  assert.equal(r.code, 0, r.stderr)
+  assert.deepEqual(JSON.parse(r.stdout), {
+    sprint: 1, approval: 'stale', uncovered: ['FR-2', 'NFR-1'], untested: ['FR-2'], unreferenced: ['bare.md'], unknownIds: ['FR-7'],
+    orphanCases: ['TC-2 → gone'], missingData: ['TC-1 → data/cart.json'], deps: ['cart.md: missing:ghost'], changedSinceApproval: ['.rig/intent/bare.md'],
+  })
+  assert.match(sdlc(repo, ['chart', 'check', '1']).stdout, /^chart-1: stale$/m)
+  const none = sdlc(repo, ['chart', 'check', '9'])
+  assert.notEqual(none.code, 0)
+  assert.match(none.stderr, /no PRD for sprint 9/)
+})
