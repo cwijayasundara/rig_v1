@@ -20,6 +20,7 @@ import { runCommand, recordRun } from './runs.ts'
 import { cmdMetrics } from './metrics.ts'
 import { cmdEvals, lastRun } from './evals.ts'
 import { cmdInbox, pendingIntents } from './inbox.ts'
+import { CHART_RE, prdPath, chartManifest, chartDigest, chartRows, type ChartApproval } from './chart.ts'
 import { cmdWatch, watchWarnings } from './watch.ts'
 import { cmdPoints, parsePoints, pointsOf } from './points.ts'
 import { cmdScorecard, story } from './scorecard.ts'
@@ -211,9 +212,32 @@ const words = (args: Args): string[] => (args.pos.length === 1 ? (args.pos[0] ??
 // What the person can type when their /rig-<cmd> slash command is not listed (a session started before the harness was vendored).
 const humanFallback = (cmd: string, usage: string): string => `! SDLC_HUMAN=1 node --disable-warning=ExperimentalWarning ${path.relative(process.cwd(), process.argv[1] ?? 'sdlc.ts')} ${cmd} ${usage}`
 
+// One approval per sprint covers its PRD, architecture, ADRs, test plan and intents (chart.ts). Recorded with the file
+// hashes, so a re-review after an edit can read only what changed. No change folder exists, so it never reaches checkSlug.
+function approveChart(n: number, stage: string | undefined, args: Args): void {
+  if (stage !== undefined && stage !== 'chart') fail(`usage: approve chart-${n}`)
+  if (!exists(prdPath(n))) fail(`nothing to approve: .rig/product/prd/sprint-${n}.md does not exist`)
+  const files = chartManifest(n)
+  const text = (p: string): string => read(path.join(ROOT, p))
+  const md = files.map(f => f.path).filter(p => p.endsWith('.md'))
+  const asked = md.filter(p => p.startsWith('.rig/product/prd/') || p === '.rig/product/architecture.md' || p.startsWith('.rig/product/adr/'))
+  const open = asked.flatMap(p => openQuestions(text(p)).map(q => `${p}: ${q}`))
+  if (open.length) fail(`resolve the open question(s) before approving chart-${n}: answer each, or record the default under ## Decisions, and leave "## Open questions" as none:\n${open.map(q => `  - ${q}`).join('\n')}`)
+  const concerns = md.flatMap(p => unresolvedConcerns(text(p)).map(c => `${p}: ${c}`))
+  if (concerns.length) fail(`resolve the concern(s) with their owners before approving chart-${n}: add " → resolved: <decision> (<owner>)" to each:\n${concerns.map(c => `  - ${c}`).join('\n')}`)
+  const digest = chartDigest(n)
+  if (chartRows(n).at(-1)?.digest === digest) return out(`chart-${n} is already approved (digest ${digest})`)
+  const by = optString(args, 'by') || whoami() || 'unknown'
+  const row: ChartApproval = { slug: `chart-${n}`, stage: 'chart', by, at: now(), digest, files }
+  fs.appendFileSync(APPROVALS, JSON.stringify(row) + '\n')
+  out(`approved chart-${n} by ${by} (digest ${digest}, ${files.length} files). Next: engineers pick from sdlc.ts inbox --ready --sprint ${n}`)
+}
+
 function cmdApprove(args: Args): void {
   if (process.env.SDLC_HUMAN !== '1') fail(`approvals are human-only: the person runs /rig:approve <slug> <stage>. If that command is not listed, restart Claude Code, or the person types: ${humanFallback('approve', '<slug> <stage>')}`, 3)
   const [slug, stage] = words(args)
+  const chart = CHART_RE.exec(slug ?? '')
+  if (chart) return approveChart(Number(chart[1]), stage, args)
   if (!slug || !stage) fail('usage: approve <slug> <stage>')
   checkSlug(slug)
   if (stage === 'budget') {
