@@ -213,6 +213,20 @@ test('harnessTamper: Bash-made edits block at Stop, weakening blocks at ship, pl
   assert.deepEqual(harnessTamper([fd('src/a.ts', ['x'])], { point: 'stop', toolEdited: new Set(), before, after: before }), [])
 })
 
+test('harnessTamper: the commit that adopts rig (no sensors.json or rules.json on the base) warns at local ship; CI still blocks', () => {
+  const levels = () => J({ levels: { unit: 'npm test', acceptance: 'npm test' }, limits: { diffLines: 900 } })
+  const rules = () => J([{ id: 'a', action: 'downgrade-me', pattern: 'x', message: 'm', why: 'w' }])
+  const cfg = harnessTamper([fd('.rig/sensors.json', ['x'], [], 'A')], { point: 'ship', before: () => '', after: levels })
+  assert.deepEqual(cfg.map(f => f.severity), ['warn'])
+  assert.equal(harnessTamper([fd('.rig/rules.json', ['x'], [], 'A')], { point: 'ship', before: () => '', after: rules })[0]?.severity, 'warn')
+  const ci = harnessTamper([fd('.rig/sensors.json', ['x'], [], 'A')], { point: 'ci', before: () => '', after: levels })
+  assert.equal(ci[0]?.severity, 'block', 'a PR adding a config from scratch is still judged in CI')
+  const edited = harnessTamper([fd('.rig/sensors.json', ['x'], ['y'])], { point: 'ship', before: () => J({}), after: levels })
+  assert.equal(edited[0]?.severity, 'block', 'adding a level to an existing config still blocks')
+  const atStop = harnessTamper([fd('.rig/sensors.json', ['x'], [], 'A')], { point: 'stop', toolEdited: new Set(['.rig/sensors.json']), before: () => '', after: levels })
+  assert.match(atStop[0]?.message ?? '', /limits\.diffLines raised/, 'at Stop a new config is still compared with the defaults')
+})
+
 test('weakensRules names removed and downgraded rules only', () => {
   const rule = (id: string, action: string) => ({ id, action, pattern: 'x', message: 'm', why: 'w' })
   const before = J([rule('a', 'block'), rule('b', 'block'), rule('c', 'warn')])

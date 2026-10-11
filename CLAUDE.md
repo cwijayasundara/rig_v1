@@ -41,3 +41,11 @@ Never paste the plan or the conversation into it.
 `brain/` is the optional `rig-brain` plugin (wiki + memory). It has its own `package.json`, tests (`npm run test:brain`) and
 manifest. Core must not import it and it must not import core (`scripts/brainboundary.spec.ts`). Never register either plugin
 at user scope: always `--scope project`.
+
+## Fix the harness, not what it generated
+
+Fix the harness that created code, not the created code itself. When rig produces wrong output in a target repo
+(`shop-app` or any test repo: a stray change, a wrong README block, a bad `sensors.json`, a blocked push), find and fix
+the cause in this repo (skill text, script, template), add a spec that fails without the fix, then regenerate the target
+by re-running rig there. Never hand-edit the generated files in the target to make them look right, and never bypass a
+rig hook (`--no-verify`) to get past one.

@@ -333,7 +333,12 @@ export function onlyKnownRedRemoved(beforeText: string, afterText: string): bool
 export function harnessTamper(diffs: FileDiff[], o: { point: 'stop' | 'ship' | 'ci'; toolEdited?: Set<string>; before: (f: string) => string; after: (f: string) => string }): Finding[] {
   const findings: Finding[] = []
   for (const d of diffs.filter(f => isProtected(f.file))) {
-    const weaker = d.file === SENSORS ? weakensConfig(o.before(d.file), o.after(d.file)) : d.file === RULES ? weakensRules(o.before(d.file), o.after(d.file)) : []
+    // At local ship (pre-push), a config the base never had is the commit that adopts rig: the person pushing it declares the
+    // harness on their trunk, so it gets the plain review warning, or that first push could never pass. CI still compares it,
+    // since a PR adding a config from scratch could declare no-op levels. Stop compares it as advice.
+    const adopting = o.point === 'ship' && d.status === 'A' && !o.before(d.file).trim()
+    const compare = (d.file === SENSORS || d.file === RULES) && !adopting
+    const weaker = !compare ? [] : d.file === SENSORS ? weakensConfig(o.before(d.file), o.after(d.file)) : weakensRules(o.before(d.file), o.after(d.file))
     const reasons = d.status === 'D' ? [`${d.file} deleted`, ...weaker] : weaker
     if (o.point === 'stop') {
       if (o.toolEdited && !o.toolEdited.has(d.file)) {
