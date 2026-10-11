@@ -200,3 +200,11 @@ test("chart check: earlier sprints' cases are not unknown ids of this sprint", (
   const j = JSON.parse(sdlc(repo, ['chart', 'check', '2', '--json']).stdout) as { unknownIds: string[] }
   assert.deepEqual(j.unknownIds, ['FR-99'])
 })
+
+test('the chart skill hands concerns to their owners and opens the PR without probing for gh', () => {
+  const skill = fs.readFileSync(path.join(import.meta.dirname, '..', 'skills', 'chart', 'SKILL.md'), 'utf8')
+  assert.match(skill, /Never resolve one yourself/)
+  assert.match(skill, /Concerns to resolve before approval/)
+  assert.match(skill, /Do not probe for `gh`/)
+  assert.doesNotMatch(skill, /With a remote and `gh`/)
+})

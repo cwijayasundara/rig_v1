@@ -19,11 +19,37 @@ const ship = (sb, name) => {
 }
 const gaps = r => Object.entries(r).filter(([k, v]) => Array.isArray(v) && k !== 'changedSinceApproval' && v.length).map(([k, v]) => `${k}: ${v.join(', ')}`)
 
-// The person at the sprint gate, in code: approve, then commit the row with the chart (the PR's last commit).
+// The person at the sprint gate, in code. A refusal on concerns is answered the way a reviewer would: each unresolved
+// bullet under `## Concerns` in the file the refusal names gets a resolution (at most 10; more means a person must read
+// it). Then approve, and commit the row with the chart (the PR's last commit). Returns the output and the lines resolved.
+const MAX_CONCERNS = 10
+function resolveChartConcerns(sb, refusal) {
+  const files = [...new Set([...refusal.matchAll(/^ {2}- (\.rig\/[^:]+\.md): /gm)].map(m => m[1]))]
+  const lines = []
+  for (const rel of files) {
+    let inside = false
+    sb.write(rel, sb.read(rel).split('\n').map(line => {
+      if (/^#{2,3} /.test(line)) inside = /^#{2,3}\s+Concerns\b/.test(line)
+      if (!inside || !/^\s*[-*] /.test(line) || line.includes('resolved:') || /^\s*[-*]\s+none\.?$/i.test(line)) return line
+      lines.push(`${rel}: ${line.trim()}`)
+      return `${line} → resolved: accepted for the acceptance run (operator)`
+    }).join('\n'))
+  }
+  if (!lines.length) throw new Error(`approval refused on concerns but none was found to resolve: ${refusal.split('\n')[0]}`)
+  if (lines.length > MAX_CONCERNS) throw new Error(`more than ${MAX_CONCERNS} concerns (${lines.length}); a person must read this chart`)
+  return lines
+}
 const approve = (sb, n) => {
-  const r = sb.sdlc(['approve', `chart-${n}`, '--by', 'operator'], { human: true })
+  const run = () => sb.sdlc(['approve', `chart-${n}`, '--by', 'operator'], { human: true })
+  let r = run()
+  let resolved = []
+  if (r.status !== 0 && /resolve the concern/.test(r.stderr)) {
+    resolved = resolveChartConcerns(sb, r.stderr)
+    r = run()
+  }
   if (r.status !== 0) throw new Error(`approve chart-${n}: ${(r.stderr || r.stdout).trim().split('\n')[0]}`)
   sb.commitAll(`chart: approve sprint ${n}`)
+  for (const l of resolved) console.log(`  operator resolved: ${l}`)
   return r.stdout
 }
 

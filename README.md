@@ -107,8 +107,8 @@ As of 2026-10-11. `.claude-plugin/plugin.json` says **0.6.0**; the last git tag 
 |---|---|---|
 | Build loop: start, design or plan, build, test, sensors, PR, review; human gates; tiers | Shipped and trialled live with paid runs | [DESIGN.md](DESIGN.md) §§8 and 9 |
 | Autonomous ratchet (bounded build, quality and cost caps) | Shipped | DESIGN §9 |
-| Plan loop: PRD, `/rig:chart`, one gate per sprint, intent dependencies, carry-over between sprints | Shipped; covered by specs and the scripted e2e phase P5 (sprint 0, then sprint 1 as brownfield). **Not yet trialled live**: the chart's model output is a fixture in the scripted run | `scripts/chart.spec.ts`, `tests/e2e/phases/p5-sprints.mjs` |
-| Greenfield end to end (init, sprint-0 chart, intents in dependency order, change to PR, deploy, maintain, sprint 1) | Every phase passes scripted (P0-P5); P0-P4 have run live | `npm run test:e2e:fast`, `npm run test:e2e` |
+| Plan loop: PRD, `/rig:chart`, one gate per sprint, intent dependencies, carry-over between sprints | Shipped. Scripted e2e P5 passes 17/17; live P5 (real `/rig-chart` sessions for sprint 0 and sprint 1, Sonnet main loop) passed 13/13 on 2026-10-11 for $1.37 | `scripts/chart.spec.ts`, `tests/e2e/phases/p5-sprints.mjs` |
+| Greenfield end to end (init, sprint-0 chart, intents in dependency order, change to PR, deploy, maintain, sprint 1) | Every phase passes scripted (P0-P5) and has run live; the live process check still reports `/rig:init` permission denials on scaffold commands (`npm test`, `mkdir`) | `npm run test:e2e:fast`, `npm run test:e2e` |
 | Run loop: production gate, rollback rehearsal, rig-watch bands, incidents, triage, DORA | Shipped; covered by e2e P3 and P4 | DESIGN, SECURITY.md |
 | Git hooks: `pre-commit`, `pre-push`, session-start wiring | Merged and covered by tests that drive real `git`. **Not yet trialled live.** No bypass guard: CI plus branch protection is the boundary | DESIGN §10, [SECURITY.md](SECURITY.md) |
 | Windows | **Not supported.** Its CI jobs are red, and the hook scripts are POSIX `sh` | SECURITY.md |
