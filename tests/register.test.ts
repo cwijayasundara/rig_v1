@@ -1,7 +1,7 @@
 // Tests for the sdlc mod (hooks/register.ts). Run with: claude plugin test .
 import { describe, expect, test, mock } from 'claude-code/testing'
 import type { On } from 'claude-code'
-import { storyText, storyPaneText, budgetText } from '../hooks/band'
+import { storyText, storyPaneText, budgetText, nextCommand } from '../hooks/band'
 import type { Story, StepInfo, TurnPoint, FlowStep } from '../types'
 import { subway, spark, gauge, spendPerTurn, tokenMix, stack, stateChange } from '../hooks/shared'
 
@@ -388,6 +388,10 @@ describe('sdlc mod', () => {
     expect(subway(flow, null, 200).loop).toBe('')
     expect(subway(flow, story, 20).cells.map(c => c.text)).toEqual(['●', '●', '◉ build', '○', '○', '○'])
     expect(subway(flow.map(f => ({ ...f, state: f.label === 'build' ? 'gate' : f.state })), null, 200).marker).toContain('waiting for you')
+    const cmds = flow.map(f => ({ ...f, command: `/rig:${f.label} <slug>` }))
+    expect(subway(cmds, null, 200).cells.map(c => c.text)).toEqual(['● /rig:init', '● /rig:start', '◉ /rig:build', '○ /rig:test', '○ /rig:sensors', '○ /rig:pr'])
+    expect(subway(cmds, null, 60).cells.map(c => c.text)).toEqual(['● init', '● start', '◉ build', '○ test', '○ sensors', '○ pr'])
+    expect(subway(cmds, null, 20).cells.map(c => c.text)).toEqual(['●', '●', '◉ /rig:build', '○', '○', '○'])
     expect(spark([0, 1, 2, 4])).toBe('▁▂▄█')
     expect(spark([])).toBe('')
     expect(gauge(0.5, 4)).toBe('▕██░░▏')
@@ -409,6 +413,16 @@ describe('sdlc mod', () => {
     const ui = await $.ui.mount({ plugin: 'sdlc', surface: 'terminal', component: 'Pane', requestId: 'rig-metrics', props: paneProps, viewport: { columns: 120, rows: 30 } })
     expect(JSON.stringify(await ui.drawn())).toContain('value/cost 9.5x')
     await ui.unmount()
+  })
+
+  test('nextCommand is the exact command to type: the driver one, else the current station one with the slug filled in', () => {
+    const at = (state: FlowStep['state']): FlowStep[] => [{ label: 'init', command: '/rig:init', why: '', state: 'done' }, { label: 'pr', command: '/rig:pr <slug>', why: '', state }]
+    const step = (verdict: StepInfo['verdict']) => ({ slug: 'a', node: 'pr', verdict, reason: 'r', command: '/rig:pr a', round: 0 })
+    expect(nextCommand({ change: 'a', step: step('continue'), flow: at('current') })).toBe('/rig:pr a')
+    expect(nextCommand({ change: 'a', step: step('blocked'), flow: at('current') })).toBeNull()
+    expect(nextCommand({ change: 'a', step: null, flow: at('gate') })).toBe('/rig:pr a')
+    expect(nextCommand({ change: null, step: null, flow: [{ label: 'start', command: '/rig:start "<what you want>"', why: '', state: 'current' }] })).toBe('/rig:start "<what you want>"')
+    expect(nextCommand({ change: 'a', step: null, flow: at('done') })).toBeNull()
   })
 
   test('storyText and storyPaneText are pure and carry no value estimate', () => {

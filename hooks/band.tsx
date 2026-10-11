@@ -48,6 +48,14 @@ export function storyText(s: Story | null): string {
   return ` · ${s.node ?? 'done'}${loop}${state} · ${kilo(s.tokens)} tok · ${usd(s.usd)}`
 }
 
+// The exact command to type next, slug filled in: the driver's when it has one, else the current station's (/rig:start "<what you want>").
+// None while blocked or ready: the band's ⛔ / ✓ says why.
+export function nextCommand(b: Pick<Band, 'change' | 'step' | 'flow'>): string | null {
+  if (b.step) return b.step.verdict === 'continue' || b.step.verdict === 'human' ? b.step.command || null : null
+  const here = b.flow?.find(f => f.state === 'current' || f.state === 'gate')
+  return here ? here.command.replace('<slug>', b.change ?? '<slug>') : null
+}
+
 const MARK = { done: '✓', gate: '⏸', current: '▶', todo: ' ' } as const
 export const flowGuide = (flow: FlowStep[] | undefined): string[] =>
   flow?.length ? ['where you are', ...flow.map(f => `  ${MARK[f.state]} ${f.command.padEnd(34)} ${f.why}`), ''] : []
@@ -94,6 +102,7 @@ export function registerBand(on: On): void {
     const story = current.story
     const line = current.flow?.length ? subway(current.flow, story, Math.max(40, e.props.bodyColumns - 2)) : null
     const hit = Math.round(tokenMix(history).hit * 100)
+    const nextCmd = nextCommand(current)
     // The fix-loop round rides on the current station, so the strip stays one row.
     const loop = (story && story.cap > 0 ? ` ⟲${story.round}/${story.cap}` : '') + (story?.verdict === 'blocked' ? ' ⛔' : story?.verdict === 'ready' ? ' ✓ ready' : '')
     return (
@@ -103,7 +112,8 @@ export function registerBand(on: On): void {
           return <Text key={c.text + i} bold={here} dimColor={c.state === 'todo'} color={here && (line.loopHot || story?.verdict === 'blocked') ? 'red' : here ? (c.state === 'gate' ? 'yellow' : 'cyan') : c.state === 'done' ? 'green' : undefined}>{`${i ? ' ─ ' : ''}${c.text}${here ? loop : ''}${c.state === 'gate' ? ' ⏸' : ''}`}</Text>
         })}</Box> : null}
         <Box>
-          <Text dimColor>{current.change ?? 'no active change'}{story ? ` · ${kilo(story.tokens)} tok · ${usd(story.usd)}` : ''} · ctx </Text>
+          {nextCmd ? <Text color="cyan">next {nextCmd}</Text> : null}
+          <Text dimColor>{nextCmd ? '' : current.change ?? 'no active change'}{story ? ` · ${kilo(story.tokens)} tok · ${usd(story.usd)}` : ''} · ctx </Text>
           <Text color={heat(frac)}>{gauge(frac, 8)} {kilo(current.contextTokens)}</Text>
           <Text dimColor> · {usd(current.sessionUsd)}{trail ? ` ${trail}` : ''}{history.length ? ` · cache ${hit}%` : ''}{current.contextTokens >= HARD_CONTEXT ? ' · run /compact' : ''}</Text>
           <Text color={sensorColor} dimColor={!sensorColor}>{sensorText(current.sensors)} </Text>

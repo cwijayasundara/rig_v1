@@ -79,12 +79,16 @@ const SEP = ' ─ '
 const GLYPH = { done: '●', current: '◉', gate: '◈', todo: '○' } as const
 const LOOP_NODES = new Set(['test', 'sensors', 'diagnose'])
 
-// The SDLC drawn as a line of stations. Wider than `columns`: only the current station keeps its name.
+// The SDLC drawn as a line of stations, each named by the command that runs it (/rig:build). Wider than `columns`: the
+// plain stage names; wider still, only the current station keeps its command.
 // The fix loop is an arc under build..sensors labelled with its round; `marker` points at the current station.
 export function subway(flow: FlowStep[], story: Story | null | undefined, columns: number): Subway {
-  const full = flow.map(f => `${GLYPH[f.state]} ${f.label}`)
-  const width = full.reduce((a, c) => a + c.length, 0) + SEP.length * Math.max(0, flow.length - 1)
-  const texts = flow.map((f, i) => (width <= columns || f.state === 'current' || f.state === 'gate' ? full[i] ?? '' : GLYPH[f.state]))
+  const named = (name: (f: FlowStep) => string): string[] => flow.map(f => `${GLYPH[f.state]} ${name(f)}`)
+  const fits = (t: string[]): boolean => t.reduce((a, c) => a + c.length, 0) + SEP.length * Math.max(0, flow.length - 1) <= columns
+  const commands = named(f => f.command.split(' ')[0] || f.label)
+  const labels = named(f => f.label)
+  const texts = fits(commands) ? commands : fits(labels) ? labels
+    : flow.map((f, i) => (f.state === 'current' || f.state === 'gate' ? commands[i] ?? '' : GLYPH[f.state]))
   const starts: number[] = []
   let at = 0
   for (const t of texts) { starts.push(at); at += t.length + SEP.length }

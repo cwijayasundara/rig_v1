@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **The band names each step by its command and shows the exact next one.** The subway strip reads `/rig:init ─ /rig:start ─ … ─ /rig:pr`, falling back to plain stage names, then to glyphs, as the terminal narrows (the current station keeps its command). The second row starts with `next /rig:pr <slug>` (the driver's command, slug filled in; `/rig:start "<what you want>"` with no change; nothing while blocked or ready). Files: `hooks/shared.ts` (`subway`), `hooks/band.tsx` (`nextCommand`).
 - **BREAKING: the state directory is `.rig/`, not `.sdlc/`.** Every path (`.rig/bin`, `.rig/mod`, `.rig/wiki`, `.rig/memory`, `.rig/sensors.json`, settings deny and ask rules, git hooks, templates, skills) moves with it. There is no fallback: re-run `/rig:init` in a repo that has `.sdlc/` (move or delete the old folder first), and update `.claude/settings.json` and `.claude-plugin/marketplace.json` from the new templates. The `sdlc.ts` script name, `SDLC_*` env vars and `rig-*` skill names are unchanged.
 - **rig-brain's wiki no longer indexes harness directories** (`.rig/`, `.sdlc/`, `.claude/`). Before, a repo that vendored rig got a 37 KB wiki page and a haiku agent run for rig's own scripts.
 - **`/rig:init` warns when the main model is Opus** and offers to continue on Sonnet; the Sonnet pin in `templates/settings.json` only applies to later sessions.
