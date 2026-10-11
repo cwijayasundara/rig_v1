@@ -71,3 +71,14 @@ test('init skill: never tells the model to write `/rig-start`, and shows the pre
   assert.doesNotMatch(skill, /names its skills `rig-\*`|`\/rig-` for a standalone/)
   assert.match(skill, /"valueRate": 100/)
 })
+
+test('init skill: --quick is the no-question fast lane that turns on rig-brain, registration and workflows', () => {
+  assert.match(skill, /argument-hint: '\[--quick \| --defaults\]/)
+  const mode = /## `--quick` mode\n([\s\S]*?)\n## /.exec(skill)?.[1] ?? ''
+  assert.match(mode, /no AskUserQuestion at all/)
+  assert.match(mode, /sdlc\.ts brain-source/)
+  assert.match(mode, /rig-brain@<marketplace>/)
+  assert.match(mode, /marketplace add <repo-root> --scope project/)
+  assert.match(mode, /`--workflows`[^\n]*only when `git remote get-url origin` succeeds/)
+  assert.doesNotMatch(mode, /claude plugin install|~\/\.claude\/settings/)
+})
