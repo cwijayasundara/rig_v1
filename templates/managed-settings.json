@@ -8,7 +8,7 @@
     "ask": [
       "Edit(./.rig/sensors.json)", "Edit(./.rig/rules.json)", "Edit(./.rig/evals/*.json)", "Edit(./.claude/settings.json)",
       "Edit(./.rig/bin/**)", "Edit(./.rig/githooks/**)", "Edit(./.rig/mod/**)", "Edit(./.rig/guides/**)",
-      "Edit(./.github/workflows/rig-check.yml)", "Edit(./CODEOWNERS)", "Edit(./.github/CODEOWNERS)",
+      "Edit(./.github/workflows/rig-*.yml)", "Edit(./CODEOWNERS)", "Edit(./.github/CODEOWNERS)",
       "Edit(./migrations/**)", "Edit(./infra/**)",
       "Bash(node --disable-warning=ExperimentalWarning .rig/bin/sdlc.ts evals*)"
     ],

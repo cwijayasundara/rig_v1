@@ -19,7 +19,7 @@
       "Edit(/.rig/githooks/**)",
       "Edit(/.rig/mod/**)",
       "Edit(/.rig/guides/**)",
-      "Edit(/.github/workflows/rig-check.yml)",
+      "Edit(/.github/workflows/rig-*.yml)",
       "Edit(/CODEOWNERS)",
       "Edit(/.github/CODEOWNERS)",
       "Edit(/migrations/**)",

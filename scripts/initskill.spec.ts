@@ -53,11 +53,21 @@ test('init skill: writes rig docs into README.md between markers, brownfield in 
   assert.match(tpl.trimEnd(), /<!-- rig:end -->$/)
   assert.match(tpl, /### Architecture/)
   assert.match(tpl, /### User guide/)
-  assert.match(tpl, /\{\{P\}\}/)
+  assert.doesNotMatch(tpl, /\{\{P\}\}|\/rig-(start|next|approve|waive|status)\b/, 'skills are /rig:x in every install mode')
   assert.match(tpl, /\{\{BRAIN\}\}/)
 })
 
 test('init skill: warns when the main model is Opus, without blocking', () => {
   assert.match(skill, /\*\*Model check:\*\*[^\n]*Opus/)
   assert.match(skill, /Never stop on it/)
+})
+
+test('init skill: the baseline runs through `sdlc.ts baseline`, never `run` or `quality` (both need a change, and init has none)', () => {
+  assert.match(skill, /sdlc\.ts baseline/)
+  assert.doesNotMatch(skill, /through `sdlc\.ts run`|sdlc\.ts quality <first-change-slug>/)
+})
+
+test('init skill: never tells the model to write `/rig-start`, and shows the preflight answer keys', () => {
+  assert.doesNotMatch(skill, /names its skills `rig-\*`|`\/rig-` for a standalone/)
+  assert.match(skill, /"valueRate": 100/)
 })

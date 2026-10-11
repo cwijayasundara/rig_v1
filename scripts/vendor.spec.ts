@@ -198,7 +198,7 @@ test('the settings template protects evidence with deny rules and the harness co
   assert.deepEqual(settings.permissions.ask, [
     'Edit(/.rig/sensors.json)', 'Edit(/.rig/rules.json)', 'Edit(/.rig/evals/*.json)', 'Edit(/.claude/settings.json)',
     'Edit(/.rig/bin/**)', 'Edit(/.rig/githooks/**)', 'Edit(/.rig/mod/**)', 'Edit(/.rig/guides/**)',
-    'Edit(/.github/workflows/rig-check.yml)', 'Edit(/CODEOWNERS)', 'Edit(/.github/CODEOWNERS)', 'Edit(/migrations/**)', 'Edit(/infra/**)',
+    'Edit(/.github/workflows/rig-*.yml)', 'Edit(/CODEOWNERS)', 'Edit(/.github/CODEOWNERS)', 'Edit(/migrations/**)', 'Edit(/infra/**)',
     'Bash(node --disable-warning=ExperimentalWarning .rig/bin/sdlc.ts evals*)',
   ])
   assert.ok(settings.permissions.ask.includes('Edit(/.rig/bin/**)'), 'a model edit to the vendored checker (.rig/bin/sensors.ts) asks the person')

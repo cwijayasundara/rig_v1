@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import {
   ROOT, SDLC, CHANGES, git, STATE, USAGE, PLUGIN_ROOT, IS_VENDORED, skillRef, agentRef, now, exists, read, out, fail, frontmatter, toPosix,
-  managedSettings, scanSecrets, planProblems, relPosix, sha, withLock, writeAtomic, type Args, type HookInput,
+  managedSettings, scanSecrets, planProblems, relPosix, sha, withLock, writeAtomic, onboarding, type Args, type HookInput,
 } from './core.ts'
 import { activeSlug, loadChange, nextCommand, createAdhoc, step } from './graph.ts'
 import { snapshot, writeBaseline, readBaseline, turnDiff, showAt, diffHash } from './diffs.ts'
@@ -219,8 +219,8 @@ function hookStop(): { halt: boolean; warn?: string } {
   let slug = activeSlug()
   // A turn that shipped (its commits add a change's ship.json) is recorded already; any other commit is still ad hoc.
   const shipped = (git(['diff', '--name-only', snap.sha, 'HEAD']) ?? '').split('\n').some(f => /^\.rig\/changes\/[^/]+\/ship\.json$/.test(f))
-  // Harness files alone (onboarding writes CI workflows and settings) are not ad-hoc work.
-  if (!slug && !shipped && diffs.some(d => isSource(d.file, config) && !isProtected(d.file))) slug = createAdhoc(tierFromDiff(diffs, config))
+  // Harness files alone (onboarding writes CI workflows and settings) are not ad-hoc work, nor is anything written while /rig:init runs.
+  if (!slug && !shipped && !onboarding() && diffs.some(d => isSource(d.file, config) && !isProtected(d.file))) slug = createAdhoc(tierFromDiff(diffs, config))
   // The fast commands are keyed by the whole tree, not this turn's diff: a tree that already passed them (an edit undone, a
   // file touched and restored, the same state reached from another turn) skips them, and only the sensors judge the diff.
   const stamp = treeStamp()

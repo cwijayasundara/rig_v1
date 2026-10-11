@@ -9,7 +9,7 @@ import path from 'node:path'
 import {
   ROOT, SDLC, CHANGES, APPROVALS, STATE, USAGE, LIMITS, SOFT_HOOK_FAILURE, APPROVAL_ARTIFACTS, approvalDigest,
   exists, read, lines, now, toPosix, out, fail, git, planPath, planName, approvalFile, frontmatter, parseArgs, optString, listChanges, defaultBase, isShipped, scopeDrift, scanSecrets, planProblems, checkSlug, SLUG_RE,
-  WAIVERS, readJsonl, type Waiver, ensureGitignore, clearState, PLUGIN_ROOT, IS_VENDORED, skillRef, setActive, createChange, sanctionWrites, type Args, type Approval, type Change, type GatedStage, type UsageRow,
+  WAIVERS, readJsonl, type Waiver, ensureGitignore, startOnboarding, clearState, PLUGIN_ROOT, IS_VENDORED, skillRef, setActive, createChange, sanctionWrites, type Args, type Approval, type Change, type GatedStage, type UsageRow,
 } from './core.ts'
 import { PATHS, isChangeType, isTier, activeSlug, loadChange, nextCommand, step, tierDrift } from './graph.ts'
 import { formatFindings, openQuestions, unresolvedConcerns, SENSOR_NAMES, type Finding } from './model.ts'
@@ -25,6 +25,7 @@ import { cmdPoints, parsePoints, pointsOf } from './points.ts'
 import { cmdScorecard, story } from './scorecard.ts'
 import { flowOf, flowLine } from './flow.ts'
 import { cmdVendor, installStandalone } from './vendor.ts'
+import { cmdBaseline } from './initbaseline.ts'
 import { cmdVerify, cmdVerifyReport } from './verify.ts'
 import { cmdHooks, cmdCheckPush } from './githooks.ts'
 import { safeBudgetView, pressureOf, cmdSpend, publishQuietly, type BudgetView, type Pressure } from './spend.ts'
@@ -427,7 +428,8 @@ function scaffoldPolicy(): string {
 
 const COMMANDS: Record<string, (args: Args) => void> = {
   stamp: () => out(treeStamp() ?? 'none'),
-  init: args => { cmdInit(args); if (args.opt.full) { const note = scaffoldPolicy(); if (note) out(note) } },
+  // /rig:init passes --onboarding: its own writes over the next turns open no ad-hoc change (core.ts onboarding()).
+  init: args => { cmdInit(args); if (args.opt.onboarding) startOnboarding(); if (args.opt.full) { const note = scaffoldPolicy(); if (note) out(note) } },
   new: cmdNew,
   points: cmdPoints,
   activate: cmdActivate,
@@ -459,6 +461,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   quality: cmdQuality,
   shards: cmdShards,
   preflight: cmdPreflight,
+  baseline: () => cmdBaseline(),
   check: args => (args.opt.at === 'push' ? (cmdCheckPush(args), process.exitCode ? undefined : publishQuietly()) : cmdCheck(args)),
   'check-file': cmdCheckFile,
   vendor: cmdVendor,

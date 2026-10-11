@@ -27,7 +27,7 @@ export function countFindings(output: string, exit: number, how: string): number
   } catch { return null }
 }
 
-function countIn(dir: string, cmd: string, how: string, onBase = false): { n: number | null; note?: string } {
+export function countIn(dir: string, cmd: string, how: string, onBase = false): { n: number | null; note?: string } {
   const row = runCommand(cmd, { cwd: dir, timeoutMs: QUALITY_TIMEOUT_MS })
   if (row.exit === MISSING || row.timedOut) return { n: null, note: row.timedOut ? 'timed out' : 'command not found' }
   // On the base a failing run whose output does not parse is a broken tool, not a count of its exit status.

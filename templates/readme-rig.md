@@ -1,12 +1,12 @@
 <!-- rig:begin (written by /rig:init; edit outside these markers, a re-run replaces only this block) -->
 ## Development with rig
 
-This repo uses **rig**, a thin SDLC harness for Claude Code. rig routes every change through a short, gated lifecycle and checks it with deterministic scripts, locally and in CI. Commands below use the `{{P}}` prefix.
+This repo uses **rig**, a thin SDLC harness for Claude Code. rig routes every change through a short, gated lifecycle and checks it with deterministic scripts, locally and in CI.
 
 ### Architecture
 
 ```
- YOU        {{P}}start  {{P}}next  {{P}}approve  {{P}}waive        intent and approval
+ YOU        /rig:start  /rig:next  /rig:approve  /rig:waive        intent and approval
  SKILLS     start design plan diagnose build test sensors pr …   the stages
  AGENTS     scout·haiku  implementer·sonnet  reviewer·opus       model by role and tier
  HOOKS      session-start · prompt-submit · post-edit · stop     guardrails, zero tokens
@@ -25,17 +25,17 @@ This repo uses **rig**, a thin SDLC harness for Claude Code. rig routes every ch
 
 | You want to | Run |
 |---|---|
-| Start a change | `{{P}}start "<what you want>"` (the type and tier are chosen for you) |
-| Move to the next stage | `{{P}}next` (chains build, test, sensors and PR; fix rounds are capped) |
-| Approve a gate | `{{P}}approve <slug> design` (also `spec`, `plan`); only a person can |
-| Waive a failing sensor with a reason | `{{P}}waive <slug> <sensor> "<reason>"` |
-| See where a change stands | `{{P}}status` |
+| Start a change | `/rig:start "<what you want>"` (the type and tier are chosen for you) |
+| Move to the next stage | `/rig:next` (chains build, test, sensors and PR; fix rounds are capped) |
+| Approve a gate | `/rig:approve <slug> design` (also `spec`, `plan`); only a person can |
+| Waive a failing sensor with a reason | `/rig:waive <slug> <sensor> "<reason>"` |
+| See where a change stands | `/rig:status` |
 
 Typical flow:
 
-1. `{{P}}start "add user signup"`. Read the design or plan it writes in `.rig/changes/<slug>/`.
-2. Approve the gate with `{{P}}approve <slug> design`.
-3. `{{P}}next` until the PR node writes `pr.md`. Review it, then merge as usual.
+1. `/rig:start "add user signup"`. Read the design or plan it writes in `.rig/changes/<slug>/`.
+2. Approve the gate with `/rig:approve <slug> design`.
+3. `/rig:next` until the PR node writes `pr.md`. Review it, then merge as usual.
 4. Commit `.rig/`, `.claude/`, `.claude-plugin/` and `CLAUDE.md`; they are the evidence CI reads.
 
 Good to know:
