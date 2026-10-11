@@ -97,8 +97,9 @@ export function cmdMetrics(args: Args): void {
   const decided = changes.filter(c => !c.next || c.stages.indexOf(c.next.stage) !== 0)
   m.intent_survival = share(decided.filter(c => exists(path.join(c.dir, 'plan.md')) || exists(path.join(c.dir, 'design.md')) || exists(path.join(c.dir, 'spec.md')) || c.type === 'bugfix').length, decided.length)
   // intent_survival counts changes that got past intent; inbox_survival counts inbox ideas the product owner accepted
-  // (accepted or shipped) out of every decided one (closed included); drafts and unknown statuses are undecided.
-  const decidedInbox = inboxEntries().filter(e => e.status !== 'draft' && e.status !== 'unknown')
+  // (accepted or shipped) out of every decided one (closed included); drafts and unknown statuses are undecided; a sprint intent counts as decided once its chart is approved.
+  // A sprint intent stays `draft` in its file; its chart approval is the decision.
+  const decidedInbox = inboxEntries().filter(e => e.accepted || (e.status !== 'draft' && e.status !== 'unknown'))
   m.inbox_survival = share(decidedInbox.filter(e => e.status !== 'closed').length, decidedInbox.length)
   // Maintain (p.51): rig-watch's breach intents (.rig/intent/breach-<band>-<date>.md) a person decided: how many shipped as a fix,
   // and how many were dismissed (closed), overall and per band. Dismissals also widen the band (watch.ts).

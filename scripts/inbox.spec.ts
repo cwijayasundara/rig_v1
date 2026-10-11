@@ -129,3 +129,82 @@ test('status text names a waiting intent in a repo with no changes yet', () => {
   assert.match(out, /no changes yet/)
   assert.match(out, /warn: intent one\.md is accepted and has no change/)
 })
+
+const PRD1 = '---\nsprint: 1\n---\n# PRD\n\n### FR-1: Add to cart\n\n## Open questions\nnone\n'
+const approveChart = (n: number) => sdlc(repo, ['approve', `chart-${n}`], { env: { SDLC_HUMAN: '1' } })
+type Row = Entry & { sprint: number | null; depends: string[]; owner: string | null; blockedBy: string[]; accepted: boolean; ready: boolean }
+const rows = (...args: string[]): Row[] => JSON.parse(sdlc(repo, ['inbox', '--json', ...args]).stdout) as Row[]
+const ship = (file: string, slug: string): void => {
+  const r = sdlc(repo, ['new', slug, '--type', 'chore', '--tier', 'S', '--source', `.rig/intent/${file}`])
+  assert.equal(r.code, 0, r.stderr)
+  write(repo, `.rig/changes/${slug}/ship.json`, '{}')
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', `ship ${slug}`)
+}
+
+test('a sprint intent is accepted only while its chart approval is fresh; closed drops it; a bad sprint is no sprint', () => {
+  write(repo, '.rig/product/prd/sprint-1.md', PRD1)
+  intent('a.md', 'status: draft\nsprint: 1')
+  intent('b.md', 'status: closed\nsprint: 1')
+  intent('c.md', 'status: accepted\nsprint: 1a')
+  assert.deepEqual(rows().map(e => [e.file, e.sprint, e.accepted]), [['a.md', 1, false], ['b.md', 1, false], ['c.md', null, true]])
+  assert.equal(approveChart(1).code, 0)
+  assert.deepEqual(rows().map(e => [e.file, e.accepted, e.ready]), [['a.md', true, true], ['b.md', false, false], ['c.md', true, true]])
+  write(repo, '.rig/product/prd/sprint-1.md', PRD1.replace('Add to cart', 'Add items to cart'))
+  assert.deepEqual(rows().map(e => e.accepted), [false, false, true])
+})
+
+test('depends blocks until the dependency ships on HEAD; a missing target and a cycle block too', () => {
+  intent('base.md', 'status: accepted')
+  intent('next.md', 'status: accepted\ndepends: [base]')
+  intent('lost.md', 'status: accepted\ndepends: [nowhere]')
+  intent('x.md', 'status: accepted\ndepends: [y]')
+  intent('y.md', 'status: accepted\ndepends: [x]')
+  intent('block.md', 'status: accepted\ndepends:\n  - base')
+  const by = (): Record<string, string[]> => Object.fromEntries(rows().map(e => [e.file, e.blockedBy]))
+  let b = by()
+  assert.deepEqual(b['next.md'], ['base'])
+  assert.deepEqual(b['lost.md'], ['missing:nowhere'])
+  assert.deepEqual(b['x.md'], ['y', 'cycle:x→y→x'])
+  assert.deepEqual(b['y.md'], ['x', 'cycle:x→y→x'])
+  assert.deepEqual(b['block.md'], [], 'a block-list line is not parsed into an invented dependency')
+  ship('base.md', 'base-change')
+  b = by()
+  assert.deepEqual(b['next.md'], [])
+  assert.equal(rows().find(e => e.file === 'next.md')?.ready, true)
+})
+
+test('--ready, --sprint and --owner filter; plain output names blockers and each sprint chart state', () => {
+  write(repo, '.rig/product/prd/sprint-1.md', PRD1)
+  intent('a.md', 'status: draft\nsprint: 1\nowner: ana')
+  intent('b.md', 'status: draft\nsprint: 1\nowner: bo\ndepends: [a]')
+  intent('c.md', 'status: accepted')
+  assert.equal(approveChart(1).code, 0)
+  assert.deepEqual(rows('--ready').map(e => e.file), ['a.md', 'c.md'])
+  assert.deepEqual(rows('--sprint', '1').map(e => e.file), ['a.md', 'b.md'])
+  assert.deepEqual(rows('--owner', 'bo').map(e => e.file), ['b.md'])
+  const text = sdlc(repo, ['inbox']).stdout
+  assert.match(text, /^chart-1: approved$/m)
+  assert.match(text, /b\.md\s+blocked by a$/m)
+})
+
+test('--pending and the status warning skip blocked and unapproved intents', () => {
+  write(repo, '.rig/product/prd/sprint-1.md', PRD1)
+  intent('s.md', 'status: draft\nsprint: 1')
+  intent('d.md', 'status: accepted\ndepends: [s]')
+  intent('ok.md', 'status: accepted')
+  assert.deepEqual(rows('--pending').map(e => e.file), ['ok.md'])
+  sdlc(repo, ['new', 'other', '--type', 'chore', '--tier', 'S'])
+  const status = sdlc(repo, ['status']).stdout
+  assert.match(status, /intent ok\.md is accepted/)
+  assert.doesNotMatch(status, /intent (s|d)\.md is accepted/)
+})
+
+test('metrics: a sprint intent accepted by its chart counts as decided', () => {
+  write(repo, '.rig/product/prd/sprint-1.md', PRD1)
+  for (const f of ['a.md', 'b.md', 'c.md', 'd.md']) intent(f, 'status: draft\nsprint: 1')
+  intent('e.md', 'status: closed')
+  assert.equal(approveChart(1).code, 0)
+  const m = JSON.parse(sdlc(repo, ['metrics', '--json']).stdout).metrics
+  assert.deepEqual({ value: m.inbox_survival.value, n: m.inbox_survival.n }, { value: 0.8, n: 5 })
+})
