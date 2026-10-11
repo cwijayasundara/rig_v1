@@ -1,5 +1,20 @@
 # rig: an AI-native SDLC harness for Claude Code
 
+```
+              ██████╗ ██╗ ██████╗
+              ██╔══██╗██║██╔════╝
+              ██████╔╝██║██║  ███╗
+              ██╔══██╗██║██║   ██║
+              ██║  ██║██║╚██████╔╝
+              ╚═╝  ╚═╝╚═╝ ╚═════╝
+
+        plan ─────► build ─────► run
+          ▲                       │
+          └─────── intent ◄───────┘
+
+    an AI-native SDLC harness for Claude Code
+```
+
 rig turns Claude Code into a disciplined engineering team member. It covers the whole life of a product: a product owner's PRD, the sprint's architecture, intents and test plan, each intent built, reviewed and merged, the deploy, and the watch that feeds production problems back in as new intents. It follows [the AI-native SDLC playbook](https://claude.com/blog/the-ai-native-sdlc-playbook), keeps every decision in files committed to the repo, and leaves every approval to a person. It adds very little of its own and relies on what Claude Code already provides. [DESIGN.md](DESIGN.md) gives the evidence and reasoning behind each choice.
 
 ## The big picture: one product, three loops
