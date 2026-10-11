@@ -3,7 +3,7 @@ import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { makeRepo, sdlc, write } from './testkit.ts'
+import { makeRepo, sdlc, write, gitIn } from './testkit.ts'
 import { listField, prdIds, testCases } from './chart.ts'
 
 let repo: string
@@ -131,4 +131,72 @@ test('chart routes: architecture and intents on the architect tier L route, the 
   assert.deepEqual(JSON.parse(sdlc(repo, ['chart', 'routes', '--json']).stdout), { architect: { model: 'opus', effort: 'high' }, testplan: { model: 'sonnet', effort: 'medium' } })
   write(repo, '.rig/sensors.json', JSON.stringify({ routing: { implementer: { M: 'opus:high' } } }))
   assert.deepEqual(JSON.parse(sdlc(repo, ['chart', 'routes', '--json']).stdout).testplan, { model: 'opus', effort: 'high' })
+})
+
+const prd = (n: number, ids: string): string => `---\nsprint: ${n}\n---\n# PRD\n\n${ids}\n\n## Open questions\nnone\n`
+const sprintIntent = (name: string, n: number, extra = ''): void => write(repo, `.rig/intent/${name}.md`, `---\nstatus: draft\nsprint: ${n}\n${extra}---\n# Intent: ${name}\n`)
+const startFrom = (name: string, slug: string) => sdlc(repo, ['new', slug, '--type', 'feature', '--tier', 'M', '--source', `.rig/intent/${name}.md`])
+
+test('charting the next sprint edits the shared files: earlier unstarted intents wait for that chart, then start again', () => {
+  write(repo, '.rig/product/prd/sprint-0.md', prd(0, '### FR-1: View'))
+  write(repo, '.rig/product/architecture.md', '---\nsprint: 0\n---\n# Architecture\n')
+  sprintIntent('old', 0)
+  assert.equal(approve(0).code, 0)
+  write(repo, '.rig/product/prd/sprint-1.md', prd(1, '### FR-2: Remove'))
+  write(repo, '.rig/product/architecture.md', '---\nsprint: 1\n---\n# Architecture, sprint 1\n')
+  sprintIntent('new', 1)
+  const r = startFrom('old', 'old-change')
+  assert.notEqual(r.code, 0)
+  assert.match(r.stderr, /chart-0 is stale: .*\.rig\/product\/architecture\.md/)
+  assert.doesNotMatch(r.stderr, /intent\/new\.md/, "the next sprint's intents are not chart-0's")
+  assert.equal(approve(1).code, 0)
+  assert.equal(startFrom('old', 'old-change').code, 0, 'chart-1 covers the shared files now')
+  sprintIntent('old', 0, 'owner: someone\n')
+  assert.equal(sdlc(repo, ['chart', 'check', '0', '--json']).stdout.includes('"approval":"stale"'), true, "an edit to sprint 0's own file still needs chart-0")
+})
+
+test('machine-local files in the chart folders do not change the digest', () => {
+  write(repo, '.rig/product/prd/sprint-1.md', PRD)
+  assert.equal(approve(1).code, 0)
+  write(repo, '.rig/product/testplan/.DS_Store', 'x')
+  write(repo, '.rig/product/adr/0001-x.md~', 'x')
+  write(repo, '.rig/intent/.draft.md', '---\nsprint: 1\n---\n')
+  assert.match(approve(1).stdout, /already approved/)
+})
+
+test('depends may name an intent with or without .md', () => {
+  write(repo, '.rig/intent/a.md', '---\nstatus: accepted\n---\n# a\n')
+  write(repo, '.rig/intent/b.md', '---\nstatus: accepted\ndepends: [a.md]\n---\n# b\n')
+  const rows = JSON.parse(sdlc(repo, ['inbox', '--json']).stdout) as { file: string; blockedBy: string[] }[]
+  assert.deepEqual(rows.find(e => e.file === 'b.md')?.blockedBy, ['a'])
+})
+
+test('a change cannot take the sprint gate name chart-N', () => {
+  const r = sdlc(repo, ['new', 'chart-2', '--type', 'chore', '--tier', 'S'])
+  assert.notEqual(r.code, 0)
+  assert.equal(fs.existsSync(path.join(repo, '.rig/changes/chart-2')), false)
+})
+
+test('dropping sprint: or depends: from a committed intent does not get it past the gate', () => {
+  write(repo, '.rig/product/prd/sprint-1.md', PRD)
+  sprintIntent('gated', 1)
+  write(repo, '.rig/intent/after.md', '---\nstatus: accepted\ndepends: [gated]\n---\n# after\n')
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', 'chart')
+  write(repo, '.rig/intent/gated.md', '---\nstatus: accepted\n---\n# Intent: gated\n')
+  write(repo, '.rig/intent/after.md', '---\nstatus: accepted\n---\n# after\n')
+  for (const [name, slug] of [['gated', 'gated-change'], ['after', 'after-change']]) {
+    const r = startFrom(name, slug)
+    assert.notEqual(r.code, 0, name)
+    assert.match(r.stderr, /sprint: or depends: differs from the last commit/, name)
+  }
+})
+
+test("chart check: earlier sprints' cases are not unknown ids of this sprint", () => {
+  write(repo, '.rig/product/prd/sprint-2.md', prd(2, '### FR-5: Wishlist'))
+  sprintIntent('wish', 2, 'prd: [FR-5]\n')
+  write(repo, '.rig/intent/old.md', '---\nstatus: draft\nsprint: 1\nprd: [FR-1]\n---\n# old\n')
+  write(repo, '.rig/product/testplan/cases.md', '| ID | Requirement | Intent | Level | Data | Expected |\n|---|---|---|---|---|---|\n| TC-1 | FR-1 | old | unit | - | ok |\n| TC-9 | FR-5, FR-99 | wish | unit | - | ok |\n')
+  const j = JSON.parse(sdlc(repo, ['chart', 'check', '2', '--json']).stdout) as { unknownIds: string[] }
+  assert.deepEqual(j.unknownIds, ['FR-99'])
 })

@@ -3,7 +3,7 @@ name: decompose
 description: Break a sprint's PRD into intents in .rig/intent/ with sprint, cluster, owner, depends and prd fields, so engineers can pick a cluster and /rig:start each intent. For the BA and architect; /rig:chart runs it for you. Not for a single idea (that is /rig:intent).
 argument-hint: <.rig/product/prd/sprint-N.md>
 effort: medium
-allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Bash(git *), Read, Glob, Agent
+allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Bash(git *), Read, Edit, Write, Glob, Agent
 ---
 # Decompose $0 into intents
 

@@ -480,7 +480,7 @@ npm run test:brain                           # rig-brain: installs brain/ deps, 
 
 ### End-to-end acceptance test
 
-`tests/e2e/` scaffolds a throwaway project, installs the harness into it, and drives the lifecycle with the human gates approved in code (the operator): P0 install, P1 greenfield cart to a PR, P2 a small change to the built app, P3 deploy (production gate, rollback rehearsal, workflow lint; local only) and P4 maintain (band breach, incident, fix, eval, metrics). Spec: `docs/superpowers/specs/2026-10-09-e2e-acceptance-test-design.md`.
+`tests/e2e/` scaffolds a throwaway project, installs the harness into it, and drives the lifecycle with the human gates approved in code (the operator): P0 install, P1 greenfield cart to a PR, P2 a small change to the built app, P3 deploy (production gate, rollback rehearsal, workflow lint; local only) P4 maintain (band breach, incident, fix, eval, metrics) and P5 sprints (chart sprint 0, one approval, intents start in dependency order; chart sprint 1, carry-over under the new chart). Spec: `docs/superpowers/specs/2026-10-09-e2e-acceptance-test-design.md`.
 
 ```bash
 npm run test:e2e         # the acceptance test: real Claude Code (claude -p, Sonnet), costs money, --cap USD (default 6)

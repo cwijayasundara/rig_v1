@@ -25,6 +25,9 @@ export function chartCheck(n: number): ChartReport {
   const testplan = path.join(PRODUCT, 'testplan')
   const cases = testCases(read(path.join(testplan, 'cases.md')))
   const tested = new Set(cases.flatMap(c => c.reqs))
+  // Earlier sprints' cases stay in cases.md and cite ids this PRD does not list: only this sprint's cases can be unknown.
+  const mine = new Set(sprint.map(e => e.file.replace(/\.md$/, '')))
+  const sprintCited = cases.filter(c => mine.has(c.intent)).flatMap(c => c.reqs)
   const names = new Set(entries.map(e => e.file.replace(/\.md$/, '')))
   return {
     sprint: n,
@@ -32,7 +35,7 @@ export function chartCheck(n: number): ChartReport {
     uncovered: ids.filter(i => !cited.has(i)),
     untested: ids.filter(i => !tested.has(i)),
     unreferenced: sprint.filter(e => !e.prd.length).map(e => e.file),
-    unknownIds: [...new Set([...cited, ...tested])].filter(i => !known.has(i)).sort(),
+    unknownIds: [...new Set([...cited, ...sprintCited])].filter(i => !known.has(i)).sort(),
     orphanCases: cases.filter(c => !names.has(c.intent)).map(c => `${c.id} → ${c.intent || '(none)'}`),
     missingData: cases.filter(c => c.data !== '-' && !exists(path.join(testplan, c.data))).map(c => `${c.id} → ${c.data}`),
     deps: sprint.flatMap(e => e.blockedBy.filter(b => /^(missing|cycle):/.test(b)).map(b => `${e.file}: ${b}`)),

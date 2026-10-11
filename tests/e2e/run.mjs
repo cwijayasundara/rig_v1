@@ -1,4 +1,4 @@
-// node tests/e2e/run.mjs [--driver scripted|live] [--phase P0|P1|P2|P3|P4] [--keep] [--out DIR]
+// node tests/e2e/run.mjs [--driver scripted|live] [--phase P0|P1|P2|P3|P4|P5] [--keep] [--out DIR]
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -11,6 +11,7 @@ import { PHASE as P2 } from './phases/p2-change.mjs'
 import { runDeploy } from './phases/p3-deploy.mjs'
 import { runMaintain, PHASE as P4 } from './phases/p4-maintain.mjs'
 import { mergeToMain } from './lib/merge.mjs'
+import { runSprints } from './phases/p5-sprints.mjs'
 import { runNegatives, runStaleTwin, runDeployNegatives, runMaintainNegatives, runWatchSpikeTwin } from './negative.mjs'
 import { createSessions, liveDriver } from './driver/live.mjs'
 import { assertOnboarding } from '../integration/assert/onboarding.mjs'
@@ -35,7 +36,7 @@ const ensureMain = () => {
 }
 const want = id => !only || only === id || (NEEDS[only] ?? []).includes(id)
 // A group that ran fewer checks than this lost coverage silently (an assertion call deleted or skipped): fail the scripted run.
-const FLOOR = { 'P0 install': 16, 'P1 ': 27, 'P2 ': 27, 'P3 deploy': 19, 'P4 maintain: watch': 4, 'P4 maintain: incident fix': 24, 'P4 maintain: metrics': 2 }
+const FLOOR = { 'P0 install': 16, 'P1 ': 27, 'P2 ': 27, 'P3 deploy': 19, 'P4 maintain: watch': 4, 'P4 maintain: incident fix': 24, 'P4 maintain: metrics': 2, 'P5 sprints': 17 }
 const lostCoverage = () => (live || only ? [] : Object.entries(FLOOR).filter(([k, n]) => {
   const g = results.find(c => c.title.startsWith(k))
   return !g || g.results.length < n
@@ -103,6 +104,10 @@ try {
       for (const b of bad) console.error(`twin surprise: ${b}`)
       if (bad.length) process.exitCode = 1
     }
+  }
+  if (want('P5')) {
+    ensureMain()
+    results.push(await runSprints(sb, { sessions: live ? sessions : null }))
   }
   if (live) {
     const pc = new Checks('process (all live sessions)')

@@ -3,7 +3,7 @@ name: chart
 description: Chart a sprint from its PRD in one turn - the architecture and ADRs, the sprint's intents with dependencies, and the test plan, cases and data - then stop at the one human gate (/rig:approve chart-<N>). For whoever starts a sprint; not for a single change (that is /rig:start).
 argument-hint: <.rig/product/prd/sprint-N.md>
 effort: medium
-allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Bash(git *), Bash(gh pr create *), Read, Glob, Agent, AskUserQuestion
+allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Bash(git *), Bash(gh pr create *), Read, Edit, Write, Glob, Agent, AskUserQuestion
 ---
 # Chart the sprint in $0
 

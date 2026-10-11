@@ -109,7 +109,7 @@ function cmdInit(args: Args): void {
 
 function cmdNew(args: Args): void {
   const slug = args.pos[0]
-  if (!slug || !SLUG_RE.test(slug)) fail('usage: new <kebab-slug> --type <type> --tier S|M|L [--title "..."] [--points N] [--source .rig/intent/<file>.md]')
+  if (!slug || !SLUG_RE.test(slug) || CHART_RE.test(slug)) fail('usage: new <kebab-slug, not chart-N> --type <type> --tier S|M|L [--title "..."] [--points N] [--source .rig/intent/<file>.md]')
   const type = optString(args, 'type') ?? 'feature'
   const tier = optString(args, 'tier') ?? 'M'
   if (!isChangeType(type)) fail(`unknown type "${type}"; one of ${Object.keys(PATHS).join(', ')}`)

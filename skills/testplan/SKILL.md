@@ -3,7 +3,7 @@ name: testplan
 description: Write the sprint's test plan, test cases and test data (.rig/product/testplan/) from its PRD and intents, each case traced to a requirement and an intent. For the test lead; /rig:chart runs it for you.
 argument-hint: <.rig/product/prd/sprint-N.md>
 effort: medium
-allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Bash(git *), Read, Glob, Agent
+allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Bash(git *), Read, Edit, Write, Glob, Agent
 ---
 # Test plan for $0
 

@@ -4,7 +4,7 @@
 // status; `depends:` names other intents that must ship first (chart.ts holds the chart, this file the dependencies).
 import fs from 'node:fs'
 import path from 'node:path'
-import { SDLC, CHANGES, exists, read, out, frontmatter, listChanges, isShipped, git, optString, type Args, type ChangeType, type Tier } from './core.ts'
+import { ROOT, SDLC, CHANGES, toPosix, exists, read, out, frontmatter, listChanges, isShipped, git, optString, defaultBase, type Args, type ChangeType, type Tier } from './core.ts'
 import { modelFor, isChangeType, isTier, type ModelAlias } from './graph.ts'
 import { chartApproval, changedSinceApproval, listField, sprintOf, type ChartState } from './chart.ts'
 
@@ -78,6 +78,12 @@ export function inboxEntries(): InboxEntry[] {
 export function startRefusal(file: string): string | null {
   const e = inboxEntries().find(x => x.file === file)
   if (!e) return null
+  // `sprint:` and `depends:` are what the chart approved: an uncommitted or branch-only edit to them (dropping `sprint:` to
+  // skip the gate) is refused until it merges to the trunk through review.
+  const ref = defaultBase() ?? 'HEAD'
+  const was = frontmatter(git(['show', `${ref}:${toPosix(path.relative(ROOT, path.join(INBOX, file)))}`]) ?? '').data
+  const now = frontmatter(read(path.join(INBOX, file))).data
+  if (Object.keys(was).length && (sprintOf(was.sprint) !== sprintOf(now.sprint) || listField(was.depends).join() !== listField(now.depends).join())) return `its sprint: or depends: differs from ${ref === 'HEAD' ? 'the last commit' : 'the trunk'}; merge that edit through review first`
   if (e.blockedBy.length) return `blocked by: ${e.blockedBy.join(', ')} (each must ship first: its change's ship.json committed here)`
   if (e.sprint === null) return null
   if (e.status === 'closed') return `${file} is closed`

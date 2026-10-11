@@ -3,7 +3,7 @@ name: architecture
 description: Refresh the product's living architecture (.rig/product/architecture.md and ADRs) from a sprint's PRD. For the architect at the start of a sprint; /rig:chart runs it for you.
 argument-hint: <.rig/product/prd/sprint-N.md>
 effort: medium
-allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Bash(git *), Read, Glob, Agent, AskUserQuestion
+allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Bash(git *), Read, Edit, Write, Glob, Agent, AskUserQuestion
 ---
 # Architecture for $0
 
