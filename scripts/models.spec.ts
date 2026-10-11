@@ -26,10 +26,14 @@ test('the scout runs on Haiku 5.5 by full ID, like the other agents', () => {
 
 const MODELS = '**Models:** read `routes` from `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts next $0 --json` and pass that role\'s `model` and `effort` on every launch: `rig:architect` (architect), `rig:implementer` (implementer), `rig:reviewer` (`slice-review` in build, `reviewer` elsewhere). A `main` route means draft it in this thread. After a failed round, run that command again before the fix launch: the implementer route can rise.'
 
+// Chart skills work on no change, so their routes come from `chart routes` (chartcheck.ts), not `next <slug>`.
+const CHART = ['chart', 'architecture', 'decompose', 'testplan']
+const CHART_MODELS = '**Models:** read `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts chart routes --json` and pass its `architect` route (`model` and `effort`) to the architecture and intents launch and its `testplan` route to the test plan launch, `rig:architect` in both. A `main` route means draft it in this thread.'
+
 test('every skill that launches architect, implementer or reviewer passes its role route, and none hardcodes one', () => {
   for (const name of fs.readdirSync(path.join(ROOT, 'skills'))) {
     const text = read(`skills/${name}/SKILL.md`)
-    if (/rig:(architect|implementer|reviewer)/.test(text)) assert.ok(text.includes(MODELS), `${name} lacks the Models line`)
+    if (/rig:(architect|implementer|reviewer)/.test(text)) assert.ok(text.includes(CHART.includes(name) ? CHART_MODELS : MODELS), `${name} lacks the Models line`)
     assert.doesNotMatch(text, /model: (sonnet|opus|haiku)\b/, `${name} hardcodes a model`)
   }
 })

@@ -3,14 +3,16 @@ name: architecture
 description: Refresh the product's living architecture (.rig/product/architecture.md and ADRs) from a sprint's PRD. For the architect at the start of a sprint; /rig:chart runs it for you.
 argument-hint: <.rig/product/prd/sprint-N.md>
 effort: medium
-allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Bash(git *), Read, Glob, Agent
+allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Bash(git *), Read, Glob, Agent, AskUserQuestion
 ---
 # Architecture for $0
 
 Run each sdlc.ts command as its own Bash call (no `cd`, pipes, redirects, `&&` or variables); read files with Read; one-line commit messages.
 
+**Models:** read `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts chart routes --json` and pass its `architect` route (`model` and `effort`) to the architecture and intents launch and its `testplan` route to the test plan launch, `rig:architect` in both. A `main` route means draft it in this thread.
+
 1. Read `$0`; its frontmatter `sprint:` is N. Without a whole-number `sprint:`, stop and say so.
-2. Launch one `rig:architect` agent in the foreground, model `opus`, effort `high`, with the `## Brief` below ($0 filled in).
+2. Launch one `rig:architect` agent in the foreground with the `architect` route, with the `## Brief` below ($0 filled in).
 3. Relay its open questions with its recommended answers; record the person's answers in `architecture.md` under `## Decisions` (or the ADR) and leave `## Open questions` as `none`.
 4. Run `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts chart check N` and show it.
 5. Commit `.rig/product/` on branch `rig/chart-N` (create it from the trunk if needed): `chart: architecture for sprint N`.

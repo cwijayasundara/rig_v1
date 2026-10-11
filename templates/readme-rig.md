@@ -26,6 +26,8 @@ This repo uses **rig**, a thin SDLC harness for Claude Code. rig routes every ch
 | You want to | Run |
 |---|---|
 | Start a change | `/rig:start "<what you want>"` (the type and tier are chosen for you) |
+| Chart a sprint from its PRD | `/rig:chart .rig/product/prd/sprint-N.md`, then a person runs `/rig:approve chart-N` |
+| See what can be started | `node .rig/bin/sdlc.ts inbox --ready` (`--sprint N`, `--owner <name>`) |
 | Move to the next stage | `/rig:next` (chains build, test, sensors and PR; fix rounds are capped) |
 | Approve a gate | `/rig:approve <slug> design` (also `spec`, `plan`); only a person can |
 | Waive a failing sensor with a reason | `/rig:waive <slug> <sensor> "<reason>"` |

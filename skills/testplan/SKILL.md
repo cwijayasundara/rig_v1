@@ -9,8 +9,10 @@ allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_R
 
 Run each sdlc.ts command as its own Bash call (no `cd`, pipes, redirects, `&&` or variables); read files with Read; one-line commit messages.
 
+**Models:** read `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts chart routes --json` and pass its `architect` route (`model` and `effort`) to the architecture and intents launch and its `testplan` route to the test plan launch, `rig:architect` in both. A `main` route means draft it in this thread.
+
 1. Read `$0`; its frontmatter `sprint:` is N. Without a whole-number `sprint:`, stop and say so.
-2. Launch one `rig:architect` agent in the foreground, model `sonnet`, effort `medium`, with the `## Brief` below ($0 filled in).
+2. Launch one `rig:architect` agent in the foreground with the `testplan` route, with the `## Brief` below ($0 filled in).
 3. Run `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts chart check N`. If `untested`, `orphanCases` or `missingData` is not empty, launch the agent once more with the Brief plus that list; then check again and show the result.
 4. Commit `.rig/product/testplan/` on branch `rig/chart-N`: `chart: test plan for sprint N`.
 

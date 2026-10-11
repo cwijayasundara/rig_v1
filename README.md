@@ -160,6 +160,7 @@ Without the mod, run `/rig:next` after approving: it chains the same nodes in on
 |---|---|---|
 | `/rig:init` | First time in a repo. Writes CLAUDE.md, `.rig/`, and vendors the harness. | tokens, once |
 | `/rig:intent "<idea>"` | Anyone with an idea, in Claude Code or on claude.ai. Asks for the author and writes a draft `.rig/intent/<name>.md` for a product owner to accept (without a file system it shows the file to commit). | tokens |
+| `/rig:chart <prd>` | Start of a sprint: from `.rig/product/prd/sprint-N.md`, writes the architecture and ADRs, the sprint's intents with `depends:`, and the test plan, cases and data in one turn, then one gate: `/rig:approve chart-N`. `/rig:architecture`, `/rig:decompose` and `/rig:testplan` run one part each. | Opus once, Sonnet once |
 | `/rig:start "<task>"` | Any new task, or to resume one by slug, or an inbox file (`.rig/intent/<name>.md`); `--plan-only` stops before any build. Classifies type and tier, writes `intent.md`; tier S is built in the same turn. | tokens |
 | `/rig:next` | You are not sure what is next. Runs the next node, stops at a human gate. | tokens |
 | `/rig:design` · `/rig:plan` · `/rig:spec` | Writing the design (feature, greenfield), plan (refactor, migration, L bugfix) or spec. | Opus architect at tier L |
@@ -350,7 +351,20 @@ rig is the harness. **rig-brain** (in [`brain/`](brain/), the same repo and mark
 5. **Pick the first change by type:** a bug is `/rig:start "fix: ..."` (diagnose, failing test first); a cleanup is a refactor (plan); a one-liner is a chore. `/rig:next` takes it from there.
 6. **Memory keeps learning:** lessons from failed commands and your corrections accumulate in `.rig/memory/` beside the seeded entries.
 
-### What rig-brain does afterwards (both paths)
+### Path C: a team, sprint by sprint
+
+```
+ PRD for sprint N ──► /rig:chart .rig/product/prd/sprint-N.md ──► {{ /rig:approve chart-N }} ──► inbox --ready
+ (product owner, BA)   architecture + intents + test plan          (PO, architect, test lead)     engineers: /rig:start .rig/intent/<x>.md
+```
+
+1. **Sprint 0 is greenfield.** `/rig:init greenfield "<stack and goal>"`, then write `.rig/product/prd/sprint-0.md` from `templates/prd-format.md`.
+2. **Chart it.** `/rig:chart .rig/product/prd/sprint-0.md` writes `.rig/product/architecture.md` and ADRs, intents in `.rig/intent/` (`sprint`, `cluster`, `owner`, `depends`, `prd`), and `.rig/product/testplan/`, then opens a `chart: sprint 0` PR with the trace report (`sdlc.ts chart check 0`).
+3. **One gate.** The product owner, architect and test lead review the PR; one of them runs `/rig:approve chart-0`. Editing any chart file afterwards makes the approval stale: new starts wait until it is re-approved, changes already running continue.
+4. **Assign and build.** Set `owner:` per cluster; each engineer runs `sdlc.ts inbox --ready --owner <me>` and `/rig:start .rig/intent/<x>.md`. An intent whose `depends:` have not shipped is refused. Each change still meets its own design gate.
+5. **Sprint 1 onwards is brownfield.** Write `sprint-1.md` with `## Changes since last sprint`; `/rig:chart` refreshes the architecture against the as-built wiki and adds only the new intents and cases.
+
+### What rig-brain does afterwards (every path)
 
 | When | What happens | Cost |
 |---|---|---|

@@ -63,6 +63,8 @@ guides/      contracts, engineering, testing: injected on first touch of a match
 | chore | start → build → … |
 | spike | read-only answer in `notes.md`; no gates |
 
+**The sprint chart (outer workflow).** A team's sprint starts from a PRD (`.rig/product/prd/sprint-N.md`). `/rig:chart` writes the intended architecture and ADRs, the sprint's intents and the test plan with no stop, then one human gate covers all of them: `/rig:approve chart-N` hashes every chart file (`scripts/chart.ts`), so any later edit makes it stale and blocks new starts until re-approved. Scripts enforce only what they can compute: dependencies (`depends:` must have shipped, no cycles) and the gate. Traceability (`sdlc.ts chart check N`) is reported, never blocking, because a gap may be a deliberate scope call the reviewers make. One gate per sprint instead of one per artifact: the three documents are derived from the same PRD and reviewed together; each change keeps its own design gate, which decides *how*.
+
 | Tier | Rule of thumb | Human gates |
 |---|---|---|
 | S | ≤ 3 files, no contract or data change | none |

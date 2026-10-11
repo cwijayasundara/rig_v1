@@ -126,3 +126,9 @@ test('the templates parse: PRD ids, the cases table, and an open question under 
   assert.deepEqual(testCases(tpl('testplan-format.md')).map(c => c.id), ['TC-1'])
   assert.match(tpl('architecture-format.md'), /^## Concerns$/m)
 })
+
+test('chart routes: architecture and intents on the architect tier L route, the test plan on the implementer tier M route; sensors.json overrides apply', () => {
+  assert.deepEqual(JSON.parse(sdlc(repo, ['chart', 'routes', '--json']).stdout), { architect: { model: 'opus', effort: 'high' }, testplan: { model: 'sonnet', effort: 'medium' } })
+  write(repo, '.rig/sensors.json', JSON.stringify({ routing: { implementer: { M: 'opus:high' } } }))
+  assert.deepEqual(JSON.parse(sdlc(repo, ['chart', 'routes', '--json']).stdout).testplan, { model: 'opus', effort: 'high' })
+})
