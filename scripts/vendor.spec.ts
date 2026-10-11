@@ -28,6 +28,7 @@ test('vendor --cloud writes project skills, agents and hooks with no plugin refe
   const skills = walk(path.join(repo, '.claude/skills')).filter(f => f.endsWith('SKILL.md'))
   const agents = walk(path.join(repo, '.claude/agents'))
   assert.ok(skills.some(f => f.endsWith('rig-next/SKILL.md')) && skills.length >= 10, `${skills.length} skills`)
+  for (const s of ['chart', 'architecture', 'decompose', 'testplan']) assert.ok(skills.some(f => f.endsWith(`rig-${s}/SKILL.md`)), `rig-${s} is vendored`)
   assert.ok(agents.some(f => f.endsWith('rig-scout.md')), 'scout agent')
   for (const f of [...skills, ...agents]) {
     const text = fs.readFileSync(f, 'utf8')
