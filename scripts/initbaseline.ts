@@ -23,6 +23,8 @@ export function cmdBaseline(): void {
   for (const { key, cmd, dir, error } of resolveCommands('fast', config, 'all', BUDGET_MS).commands) {
     if (error) { rows.push(`${key}: not run (${error})`); continue }
     const r = runCommand(cmd, { cwd: dir, timeoutMs: BUDGET_MS })
+    // A timed-out command blocks even when known red (check.ts), so listing it there would hide nothing: report it instead.
+    if (r.timedOut) { rows.push(`${key}: timed out after ${r.ms} ms: make it faster; knownRed cannot cover a timeout`); continue }
     if (r.exit !== 0) red.push(key)
     rows.push(`${key}: ${r.exit === 0 ? 'pass' : `fail (exit ${r.exit}) → knownRed`} in ${r.ms} ms`)
   }
@@ -31,12 +33,14 @@ export function cmdBaseline(): void {
   for (const [level, cmd] of Object.entries(config.levels)) if (cmd) byCmd.set(cmd, [...(byCmd.get(cmd) ?? []), level])
   for (const [cmd, levels] of byCmd) {
     const r = runCommand(cmd, { timeoutMs: BUDGET_MS })
-    rows.push(`levels ${levels.join(', ')}: ${r.exit === 0 ? 'pass' : `FAIL (exit ${r.exit}): verification blocks on ${levels.length > 1 ? 'these levels' : 'this level'} until it passes`}`)
+    const which = levels.length > 1 ? 'these levels' : 'this level'
+    rows.push(`levels ${levels.join(', ')}: ${r.exit === 0 ? 'pass' : `FAIL (exit ${r.exit}): verification blocks on ${which} until it passes`}`)
   }
   for (const [category, q] of Object.entries(config.quality)) {
     if (!q) continue
     const c = countIn(ROOT, q.cmd, q.count)
-    rows.push(`quality ${category}: ${c.n === null ? `cannot count (${c.note}): remove it from sensors.json or install what it needs` : `${c.n} finding(s) now`}`)
+    const why = `cannot count (${c.note}): remove it from sensors.json or install what it needs`
+    rows.push(`quality ${category}: ${c.n === null ? why : `${c.n} finding(s) now`}`)
   }
   if (!rows.length) return out('nothing declared to measure in .rig/sensors.json')
   const known = new Set(config.knownRed)

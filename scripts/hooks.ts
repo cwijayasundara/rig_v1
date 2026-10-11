@@ -208,6 +208,8 @@ function hookPromptSubmit(input: HookInput = {}): void {
 // a turn that only warned and is also continued emits one JSON object, not two.
 function hookStop(): { halt: boolean; warn?: string } {
   if (!exists(SDLC)) return { halt: false }
+  // Before any early return, so the Stop after preflight closes the window even on a turn with no source diff.
+  const initRunning = onboarding()
   const snap = readBaseline()
   if (!snap) return { halt: false }
   const { config, rules, errors } = loadConfig()
@@ -220,7 +222,7 @@ function hookStop(): { halt: boolean; warn?: string } {
   // A turn that shipped (its commits add a change's ship.json) is recorded already; any other commit is still ad hoc.
   const shipped = (git(['diff', '--name-only', snap.sha, 'HEAD']) ?? '').split('\n').some(f => /^\.rig\/changes\/[^/]+\/ship\.json$/.test(f))
   // Harness files alone (onboarding writes CI workflows and settings) are not ad-hoc work, nor is anything written while /rig:init runs.
-  if (!slug && !shipped && !onboarding() && diffs.some(d => isSource(d.file, config) && !isProtected(d.file))) slug = createAdhoc(tierFromDiff(diffs, config))
+  if (!slug && !shipped && !initRunning && diffs.some(d => isSource(d.file, config) && !isProtected(d.file))) slug = createAdhoc(tierFromDiff(diffs, config))
   // The fast commands are keyed by the whole tree, not this turn's diff: a tree that already passed them (an edit undone, a
   // file touched and restored, the same state reached from another turn) skips them, and only the sensors judge the diff.
   const stamp = treeStamp()

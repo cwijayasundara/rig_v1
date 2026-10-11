@@ -376,7 +376,9 @@ const deepMerge = (a: Record<string, unknown>, b: Record<string, unknown>): Reco
 export const managedSettings = (dir = MANAGED_DIR): Record<string, unknown> =>
   managedFiles(dir).reduce<Record<string, unknown>>((acc, f) => { const v: unknown = JSON.parse(fs.readFileSync(f, 'utf8')); return isObj(v) ? deepMerge(acc, v) : acc }, {})
 
-const GITIGNORED = ['usage.jsonl', '.baseline', '.gate', 'unresolved.json', 'gates.jsonl', 'spend-cache.json', 'spend-fetched', 'budget-seen.json', '.onboarding']
+const GITIGNORED = [
+  'usage.jsonl', '.baseline', '.gate', 'unresolved.json', 'gates.jsonl', 'spend-cache.json', 'spend-fetched', 'budget-seen.json', '.onboarding',
+]
 
 // /rig:init runs over several turns and writes source (a greenfield skeleton, CI workflows): while it runs, the Stop gate
 // judges those writes but adopts no ad-hoc change. `sdlc.ts init --onboarding` opens the window; the Stop after the
