@@ -72,7 +72,7 @@ test('tier L plan needs approval; approval is human-only and goes stale on edit'
 test('new writes .rig/.gitignore even when .rig already exists', () => {
   fs.mkdirSync(path.join(repo, '.rig'))
   run(['new', 'x-change', '--type', 'chore', '--tier', 'S'])
-  assert.equal(fs.readFileSync(path.join(repo, '.rig/.gitignore'), 'utf8'), 'usage.jsonl\n.baseline\n.gate\nunresolved.json\ngates.jsonl\nspend-cache.json\nspend-fetched\nbudget-seen.json\n.onboarding\n')
+  assert.equal(fs.readFileSync(path.join(repo, '.rig/.gitignore'), 'utf8'), 'usage.jsonl\n.baseline\n.gate\nunresolved.json\ngates.jsonl\nspend-cache.json\nspend-fetched\nbudget-seen.json\n.onboarding\nchanges/*/prototype/\n')
 })
 
 test('tier S chore has no gates and skips spec and plan', () => {

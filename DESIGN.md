@@ -36,7 +36,7 @@ The biggest lever is **bounded context**. Everything below follows from that.
 
 ```
 skills/      the stages, /rig:* (start intent design spec plan diagnose build test sensors pr pr-review
-             incident next init rule metrics), prompts only
+             incident next init rule metrics prototype codebase-design), prompts only
 agents/      scout (haiku, read-only) · researcher (haiku, docs; WebFetch and WebSearch only) · architect (opus) · implementer (sonnet) · reviewer (opus)
              Each launch overrides the agent file's model and effort with its route.
 hooks/       hooks.json = five settings hooks plus two async lane hooks (`SubagentStart`, `SubagentStop`, observational), none on Bash (work in -p and CI) · register.ts = the optional mod
@@ -61,7 +61,7 @@ guides/      contracts, engineering, testing: injected on first touch of a match
 | refactor, migration | start → plan → build → … |
 | bugfix, incident | start → diagnose (failing test first; plan gate at L) → test → … |
 | chore | start → build → … |
-| spike | read-only answer in `notes.md`; no gates |
+| spike | answer in `notes.md`; `/rig:prototype` when the question needs a runnable answer (throwaway code only, gitignored); no gates |
 
 **The sprint chart (outer workflow).** A team's sprint starts from a PRD (`.rig/product/prd/sprint-N.md`). `/rig:chart` writes the intended architecture and ADRs, the sprint's intents and the test plan with no stop, then one human gate covers all of them: `/rig:approve chart-N` hashes every chart file (`scripts/chart.ts`), so any later edit makes it stale and blocks new starts until re-approved. Scripts enforce only what they can compute: dependencies (`depends:` must have shipped, no cycles) and the gate. Traceability (`sdlc.ts chart check N`) is reported, never blocking, because a gap may be a deliberate scope call the reviewers make. One gate per sprint instead of one per artifact: the three documents are derived from the same PRD and reviewed together; each change keeps its own design gate, which decides *how*.
 

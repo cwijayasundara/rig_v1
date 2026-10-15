@@ -193,7 +193,7 @@ Dependencies point downward and evidence flows upward. Skills never decide anyth
      ├── bugfix · incident ──► /rig:diagnose ─────────────────────────┐   │
      │   (plan gate at L)      failing test, root cause, fix          │   │
      │                                                                ▼   ▼
-     └── spike ──► notes.md (read-only; no code, no gates)         /rig:test
+     └── spike ──► notes.md (throwaway prototype code only under prototype/, no production code, no gates)  /rig:test
                                                           unit → integration → acceptance → api
                                                                        │
                                                                        ▼
@@ -236,7 +236,7 @@ migration   ●start ─ ●plan ───◆─ ●build ─ ●test ─ ●sen
 bugfix      ●start ─ (●plan ◆ at L) ─ ●diagnose ─ ●test ─ ●sensors ─ ●pr ─ ●pr-review
 incident    ●start ─ (●plan ◆ at L) ─ ●diagnose ─ ●test ─ ●sensors ─ ●pr ─ ●pr-review
 chore       ●start ─────────────────── ●build ─ ●test ─ ●sensors ─ ●pr ─ ●pr-review
-spike       ●start ─ ●notes                                      (no code, no gates)
+spike       ●start ─ ●notes (●prototype when a runnable answer is needed)   (no production code, no gates)
 ```
 
 For tier S and M the `pr-review` stop is dropped when the `rig-review` workflow is installed, because CI performs it. `/rig:incident` joins the map from the side: it records what broke and opens an `incident` change on the bugfix line.
@@ -282,7 +282,9 @@ Without the mod, run `/rig:next` after approving: it chains the same nodes in on
 | `/rig:start "<task>"` | Any new task, or to resume one by slug, or an inbox file (`.rig/intent/<name>.md`); `--plan-only` stops before any build. Classifies type and tier, writes `intent.md`; tier S is built in the same turn. | tokens |
 | `/rig:next` | You are not sure what is next. Runs the next node, stops at a human gate. | tokens |
 | `/rig:design` · `/rig:plan` · `/rig:spec` | Writing the design (feature, greenfield), plan (refactor, migration, L bugfix) or spec. | Opus architect at tier L |
-| `/rig:diagnose` | Bugfix or incident: reproduce with a failing test, then the smallest fix. | tokens |
+| `/rig:diagnose` | Bugfix or incident: build a tight feedback loop that goes red first, then isolate and apply the smallest fix with a regression test. | tokens |
+| `/rig:prototype <slug>` | A spike whose question needs a runnable answer: throwaway logic or UI prototype under the change folder; only the verdict in `notes.md` survives. | tokens |
+| `/rig:codebase-design` | Reference vocabulary (module, interface, depth, seam, adapter, leverage, locality) for design, architecture and review; no stage or gate of its own. | tokens |
 | `/rig:build` | Approved design or plan: slice by slice, bounded review loop. | Sonnet; tier L slice review Sonnet high |
 | `/rig:test` · `/rig:sensors` | After build: run every test level, then the quality sensors against base. | mostly zero-token |
 | `/rig:pr` · `/rig:pr-review` | Ship: commit, push, open the PR, then review it, fix once and sweep review comments and failing checks to green (at most 3 rounds per run; pending checks end the run, rerun it later). | tokens |
