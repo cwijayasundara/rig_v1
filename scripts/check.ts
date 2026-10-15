@@ -9,7 +9,7 @@ import {
 import { parseConfig, parseRules, formatFindings, warnLines, matchesAny, isTest, isSource, type FileDiff, type Finding, type Rule, type SensorConfig } from './model.ts'
 import { withoutFixtures, testTamper, suppressions, layering, size, secretsInDiff, rulesSensor, retiredIdentifiers, contractsFromPlan, harnessTamper, behaviourIds, behaviourText, missingBehaviours, tierFromDiff } from './sensors.ts'
 import { readBaseline, snapshot, turnDiff, fileDiff, branchDiff, showAt, fileLines, stagedDiff, showStaged } from './diffs.ts'
-import { runCommand, recordRun } from './runs.ts'
+import { runCommand, recordRun, normCmd } from './runs.ts'
 import { selectScopes, resolveCommands } from './scopes.ts'
 import { withBaseTree } from './basetree.ts'
 import { loadChange, activeSlug } from './graph.ts'
@@ -111,11 +111,11 @@ function ciScope(slug: string, base: string | null | undefined): ((file: string 
   return file => Boolean(file) && (String(file).startsWith(folder) || patterns.some(p => isPlanned(String(file), [p]) && !String(file).startsWith('.rig/')))
 }
 
-// The PR supplies its own waivers.jsonl rows, so at CI a harness-tamper finding is never waivable: harness changes land on the trunk first.
+// The PR supplies its own waivers.jsonl rows, so at CI harness-tamper and behavioral findings are never waivable: harness changes land on the trunk first, and the behavioural gate stays independent.
 function applyWaivers(findings: Finding[], slugs: string[], ci?: { base: string | null | undefined }): CheckResult {
   const scopes = new Map(slugs.map(s => [s, ci ? ciScope(s, ci.base) : () => true] as const))
   const waivers = readJsonl<Waiver>(WAIVERS).filter(w => slugs.includes(w.slug) && scopes.get(w.slug) !== null)
-  const waived = (f: Finding): boolean => waivers.some(w => w.sensor === f.sensor && (w.file === '*' || w.file === f.file) && !(ci && f.sensor === 'harness-tamper') && (scopes.get(w.slug) as (file: string | undefined) => boolean)(f.file))
+  const waived = (f: Finding): boolean => waivers.some(w => w.sensor === f.sensor && (w.file === '*' || w.file === f.file) && !(ci && (f.sensor === 'harness-tamper' || f.sensor === 'behavioral')) && (scopes.get(w.slug) as (file: string | undefined) => boolean)(f.file))
   const kept = findings.filter(f => !waived(f))
   return { findings: kept, blocks: kept.filter(f => f.severity === 'block'), warns: kept.filter(f => f.severity === 'warn'), waived: findings.length - kept.length }
 }
@@ -313,7 +313,17 @@ export function runChecks(i: CheckInput): CheckResult {
     const unscoped = selectScopes(diffs.filter(d => isSource(d.file, config)).map(d => d.file), config).unscoped
     if (unscoped.length) findings.push({ sensor: 'unscoped', severity: 'warn', message: `${unscoped.length} changed file(s) match no scope, so the top-level commands run for them: ${unscoped.slice(0, 5).join(', ')}`, fix: 'add a scope glob that covers them in .rig/sensors.json scopes' })
   }
-  if (i.commands !== 'none') findings.push(...runDeclared(i.commands, config, i.point === 'ci' ? null : i.slugs[0] ?? null, i.budgetMs, Boolean(i.ratchet) && i.point !== 'ci', i.point === 'ci' && config.ci.scope === 'all' ? 'all' : diffs.map(d => d.file).filter(f => isSource(f, config))))
+  // Behavioural commands re-run at ship/CI from this (base) config: validate gates run, verdicts from exit codes.
+  if ((i.point === 'ship' || i.point === 'ci') && config.behavioral) {
+    const b = config.behavioral
+    const v = b.validate ? runCommand(b.validate, { timeoutMs: i.budgetMs }) : null
+    if (v && v.exit !== 0) findings.push({ sensor: 'behavioral', severity: 'block', message: `examples do not match the specs (validate exited ${v.exit})`, fix: 'fix the examples or the specs; a specs change needs a person to re-approve the design' })
+    else if (b.run) {
+      const r = runCommand(b.run, { timeoutMs: i.budgetMs })
+      if (r.exit !== 0) findings.push({ sensor: 'behavioral', severity: 'block', message: `the behavioural suite failed (exited ${r.exit})`, fix: 'fix the implementation or the execution setup, never the examples or specs' })
+    }
+  }
+  if (i.commands !== 'none') findings.push(...runDeclared(i.commands, config, i.point === 'ci' ? null : i.slugs[0] ?? null, i.budgetMs, Boolean(i.ratchet) && i.point !== 'ci', i.point === 'ci' && config.ci.scope === 'all' ? 'all' : diffs.map(d => d.file).filter(f => isSource(f, config)), config.behavioral ? new Set([config.behavioral.validate ?? '', config.behavioral.run ?? ''].filter(Boolean).map(normCmd)) : undefined))
   const result = applyWaivers(findings, i.slugs, i.point === 'ci' ? { base: i.base } : undefined)
   logRuleFires(result.findings, i.point)
   return result

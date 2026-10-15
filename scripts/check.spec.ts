@@ -531,6 +531,33 @@ test('CI judges a PR by the base branch config, so loosening limits does not hel
   assert.match(r.stdout, /\[harness-tamper\][\s\S]*diffLines raised 500 → 5000/)
 })
 
+test('CI re-runs the behavioral commands from the base config and blocks on a failing run', () => {
+  sensors({ behavioral: { run: 'node -e "process.exit(3)"' } })
+  gitIn(repo, 'add', '.')
+  gitIn(repo, 'commit', '-qm', 'cfg')
+  gitIn(repo, 'checkout', '-qb', 'pr')
+  write(repo, 'src/app.js', 'export const a = 2\n')
+  gitIn(repo, 'add', '.')
+  gitIn(repo, 'commit', '-qm', 'change')
+  const r = check('--at', 'ci', '--base', 'main', '--config-from', 'main')
+  assert.equal(r.code, 1, r.stdout)
+  assert.match(r.stdout, /\[behavioral\]/)
+})
+
+test('CI runs a behavioral command that is also a full command once, not twice', () => {
+  const marker = path.join(os.tmpdir(), `rig-ci-once-${process.pid}-${Math.random().toString(36).slice(2)}.txt`)
+  const bump = `node -e "require('fs').appendFileSync('${marker}','x')"`
+  sensors({ full: { test: bump }, behavioral: { run: bump } })
+  gitIn(repo, 'add', '.')
+  gitIn(repo, 'commit', '-qm', 'cfg')
+  gitIn(repo, 'checkout', '-qb', 'pr')
+  write(repo, 'src/app.js', 'export const a = 2\n')
+  gitIn(repo, 'add', '.')
+  gitIn(repo, 'commit', '-qm', 'change')
+  check('--at', 'ci', '--base', 'main', '--config-from', 'main')
+  assert.equal(fs.readFileSync(marker, 'utf8').length, 1)
+})
+
 test('I1: CI blocks a tier M PR that carries no committed change record; a tier S one passes', () => {
   gitIn(repo, 'checkout', '-qb', 'vibe')
   write(repo, 'src/one.js', 'export const one = 1\n')

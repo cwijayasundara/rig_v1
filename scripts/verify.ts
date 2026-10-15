@@ -16,7 +16,7 @@ import { recordRound, readRatchet, unblock, block } from './ratchet.ts'
 // approved it (the approval is bound to its digest), so its ## Verification counts only then.
 export function declaredCommandSet(slug: string | null): Set<string> {
   const { config } = loadConfig()
-  const cmds = [...Object.values(config.fast), ...Object.values(config.full), ...Object.values(config.levels), ...Object.values(config.quality).map(q => q.cmd), ...(slug && planApproved(slug) ? planVerification(slug) : [])]
+  const cmds = [...Object.values(config.fast), ...Object.values(config.full), ...Object.values(config.levels), ...Object.values(config.quality).map(q => q.cmd), config.behavioral?.validate ?? '', config.behavioral?.run ?? '', ...(slug && planApproved(slug) ? planVerification(slug) : [])]
   return new Set(cmds.filter((c): c is string => Boolean(c)).map(normCmd))
 }
 
@@ -41,7 +41,14 @@ function writeReport(slug: string, full: 'pass' | 'fail' | 'none' = 'none', befo
   // Plan commands stand in for an undeclared unit level; with no plan list, any explicit green run does (the no-plan fallback).
   const planned = plan.commands.map(normCmd)
   const planPassed = planned.length ? planned.every(c => latest.get(c) === 0) : latest.size > 0 && [...latest.values()].every(e => e === 0)
-  const levels = levelResults(slug, required, config, planPassed)
+  const levels: { level: string; cmd: string | null; status: string }[] = levelResults(slug, required, config, planPassed)
+  // Behavioural row from the latest recorded exits: validate gates run, and no recorded run is not a pass.
+  if (config.behavioral) {
+    const exitOf = (cmd?: string): number | undefined => (cmd ? latest.get(normCmd(cmd)) : undefined)
+    const v = exitOf(config.behavioral.validate), r = exitOf(config.behavioral.run)
+    const status = v !== undefined && v !== 0 ? 'fail' : config.behavioral.run ? (r === undefined ? 'not-run' : r === 0 ? 'pass' : 'fail') : v === 0 ? 'pass' : 'not-run'
+    levels.push({ level: 'behavioral', cmd: config.behavioral.run ?? config.behavioral.validate ?? null, status })
+  }
   const after = treeStamp()
   const tree = before === undefined || before === after ? after : null
   const { text, result } = renderVerification(rows, runsDigest(slug, rows.length), plan.commands, plan.ignored, levels, { tree, full: full === 'pass' && !tree ? 'none' : full })
@@ -77,15 +84,33 @@ export function cmdVerify(args: Args): void {
   const seen = new Set<string>()
   const skipped: string[] = []
   const ran = new Set<string>()
+  // Behavioural: validate first (the guide/sensor sync step); a failed validate means run never executes.
+  let behavioralOk = true
+  if (config.behavioral?.validate) {
+    const row = runCommand(config.behavioral.validate)
+    recordRun(slug, row)
+    ran.add(normCmd(config.behavioral.validate))
+    seen.add(normCmd(config.behavioral.validate))
+    out(`exit ${row.exit}${row.timedOut ? ' (timed out)' : ''} in ${row.ms} ms: ${config.behavioral.validate}`)
+    if (row.exit !== 0) { behavioralOk = false; out('[behavioral] examples do not match the specs: fix the examples or the specs — a person re-approves if the specs change') }
+  }
   for (const cmd of wanted) {
     const key = normCmd(cmd)
     if (seen.has(key)) continue
     seen.add(key)
+    if (!behavioralOk && config.behavioral?.run && key === normCmd(config.behavioral.run)) continue
     if (!trusted.has(key)) { skipped.push(cmd); continue }
     const row = runCommand(cmd)
     recordRun(slug, row)
     ran.add(key)
     out(`exit ${row.exit}${row.timedOut ? ' (timed out)' : ''} in ${row.ms} ms: ${cmd}`)
+  }
+  if (config.behavioral?.run && behavioralOk && !ran.has(normCmd(config.behavioral.run))) {
+    const row = runCommand(config.behavioral.run)
+    recordRun(slug, row)
+    ran.add(normCmd(config.behavioral.run))
+    out(`exit ${row.exit}${row.timedOut ? ' (timed out)' : ''} in ${row.ms} ms: ${config.behavioral.run}`)
+    if (row.exit !== 0) out('[behavioral] the behavioural suite failed: fix the implementation or the execution setup, never the examples or specs')
   }
   if (skipped.length) out(`not run (not declared in sensors.json and the plan is not approved): ${skipped.map(c => `\`${c}\``).join(', ')}. Run each with \`sdlc.ts run --slug ${slug} -- "<command>"\`, which asks the person, then \`verify-report ${slug}\`.`)
   // One authoritative run: the declared full commands run here too, so ship and push can check the stamp instead.

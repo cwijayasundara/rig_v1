@@ -82,7 +82,7 @@ Gates are configured in `gates` in `.rig/sensors.json`. A `tier` sensor blocks a
 │                    verification.md (generated)  review*.md  runs.jsonl  ratchet.json  events.jsonl
 │                    pr.md  ship.json  approvals/waivers rows
 ├── PREFLIGHT.md     advisory readiness report, written only by `sdlc.ts preflight` (per host; consider gitignoring)
-├── sensors.json     fast/full commands, tests, gates, levels, quality, limits, layers, contracts, ratchet, value, scopes, points
+├── sensors.json     fast/full commands, tests, gates, levels, quality, limits, layers, contracts, ratchet, value, scopes, points, behavioral (opt-in)
 ├── rules.json       regex rules          guides/   bin/ (vendored checker)   STATE.md
 └── (gitignored)     .gate  .baseline  usage.jsonl  unresolved.json
 ```

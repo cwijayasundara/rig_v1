@@ -193,6 +193,13 @@ test('weakensConfig flags raising or removing a budget, raising warnAt and turni
   assert.deepEqual(weakensConfig(cfg(base), cfg({ ...base, teamMonthlyUsd: 300, changeUsd: { M: 10, S: 3 }, warnAt: [40, 70, 90] })), [])
 })
 
+test('weakensConfig flags removing or changing the behavioral block', () => {
+  const before = J({ behavioral: { run: 'npm run contract', validate: 'npm run ex:validate', files: ['.rig/contracts/**'], cadence: 'final' } })
+  assert.match(weakensConfig(before, J({})).join('\n'), /behavioral removed/)
+  assert.match(weakensConfig(before, J({ behavioral: { run: 'true', validate: 'npm run ex:validate', files: ['.rig/contracts/**'], cadence: 'final' } })).join('\n'), /behavioral\.run changed/)
+  assert.deepEqual(weakensConfig(before, before), [])
+})
+
 test('onlyKnownRedRemoved accepts the ratchet and nothing more', () => {
   const before = J({ fast: { lint: 'x' }, knownRed: ['fast.lint'] })
   assert.ok(onlyKnownRedRemoved(before, J({ fast: { lint: 'x' }, knownRed: [] })))

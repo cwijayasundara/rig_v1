@@ -294,6 +294,12 @@ export function weakensConfig(beforeText: string, afterText: string): string[] {
     if (x !== undefined && y === undefined) reasons.push(`budget.changeUsd.${t} removed`)
     else if (x !== undefined && y !== undefined && y > x) reasons.push(`budget.changeUsd.${t} raised ${x} → ${y}`)
   }
+  if (b.behavioral && !a.behavioral) reasons.push('behavioral removed')
+  if (b.behavioral && a.behavioral) {
+    for (const k of ['validate', 'run'] as const) if (b.behavioral[k] !== a.behavioral[k]) reasons.push(`behavioral.${k} changed`)
+    for (const g of removedFrom(b.behavioral.files, a.behavioral.files)) reasons.push(`behavioral.files removed ${g}`)
+    if (b.behavioral.cadence === 'continuous' && a.behavioral.cadence === 'final') reasons.push('behavioral.cadence changed from "continuous" to "final"')
+  }
   if (a.budget.warnAt.some((v, i) => v > (b.budget.warnAt[i] ?? v))) reasons.push(`budget.warnAt raised ${b.budget.warnAt.join('/')} → ${a.budget.warnAt.join('/')}`)
   if (b.budget.downshift && !a.budget.downshift) reasons.push('budget.downshift turned off')
   for (const l of removedFrom(Object.keys(b.levels), Object.keys(a.levels))) reasons.push(`levels.${l} removed`)

@@ -21,6 +21,22 @@ test('feature L walks intent → design → build → test → sensors → pr �
   assert.equal(nextOf('big')?.kind, 'approve', 'one approval covers intent.md too, so editing it makes the approval stale')
 })
 
+test('behavioral files are frozen by the design approval: editing or adding one makes it stale', () => {
+  write(repo, '.rig/sensors.json', JSON.stringify({ behavioral: { run: 'node -e "process.exit(0)"' } }))
+  write(repo, '.rig/contracts/api.json', '{"v":1}\n')
+  sdlc(repo, ['new', 'feat', '--type', 'feature', '--tier', 'M'])
+  write(repo, '.rig/changes/feat/design.md', '## Files\n- src/a.js\n## Verification\n- `npm test`\n## Open questions\nnone\n')
+  sdlc(repo, ['approve', 'feat', 'design'], { env: { SDLC_HUMAN: '1' } })
+  assert.deepEqual(nextOf('feat'), { stage: 'build', kind: 'work' })
+  write(repo, 'src/a.js', 'export const a = 1\n')
+  assert.deepEqual(nextOf('feat'), { stage: 'build', kind: 'work' }, 'an unrelated file does not stale the approval')
+  write(repo, '.rig/contracts/api.json', '{"v":2}\n')
+  assert.equal(nextOf('feat')?.kind, 'approve', 'editing a contract stales the approval')
+  sdlc(repo, ['approve', 'feat', 'design'], { env: { SDLC_HUMAN: '1' } })
+  write(repo, '.rig/changes/feat/behavioral/case.json', '{}\n')
+  assert.equal(nextOf('feat')?.kind, 'approve', 'adding a change-local behavioural file stales the approval')
+})
+
 test('gates come from sensors.json: tier M is gated on design by default and on nothing when configured so', () => {
   sdlc(repo, ['new', 'mid', '--type', 'feature', '--tier', 'M'])
   write(repo, '.rig/changes/mid/design.md', '## Files\n- src/a.js\n## Verification\n- `npm test`\n')

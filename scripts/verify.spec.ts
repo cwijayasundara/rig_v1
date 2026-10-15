@@ -37,6 +37,34 @@ test('verify reports a failing command with a non-zero exit and a failing report
   assert.deepEqual(rows(repo).map(x => x.exit), [0, 3])
 })
 
+test('behavioral: validate runs before run, and a validate failure means run never executes', () => {
+  const marker = path.join(os.tmpdir(), `rig-beh-${process.pid}-${Math.random().toString(36).slice(2)}.txt`)
+  const run = `node -e "require('fs').writeFileSync('${marker}','x')"`
+  const repo = change({ fast: { test: OK }, behavioral: { validate: BAD, run } }, `- \`${OK}\`\n`)
+  const r = sdlc(repo, ['verify', 'tiny'])
+  assert.equal(r.code, 1)
+  assert.equal(fs.existsSync(marker), false, 'run must not execute when validate fails')
+  assert.match(report(repo), /behavioral: fail/)
+  assert.match(report(repo), /result: fail/)
+})
+
+test('behavioral: a failing run fails verification and a passing one passes', () => {
+  const bad = change({ fast: { test: OK }, behavioral: { validate: OK, run: BAD } }, `- \`${OK}\`\n`)
+  assert.equal(sdlc(bad, ['verify', 'tiny']).code, 1)
+  assert.match(report(bad), /behavioral: fail/)
+  const good = change({ fast: { test: OK }, behavioral: { validate: OK, run: OK } }, `- \`${OK}\`\n`)
+  assert.equal(sdlc(good, ['verify', 'tiny']).code, 0)
+  assert.match(report(good), /behavioral: pass/)
+})
+
+test('behavioral: a validate command also listed in the plan runs once, not twice', () => {
+  const marker = path.join(os.tmpdir(), `rig-beh-once-${process.pid}-${Math.random().toString(36).slice(2)}.txt`)
+  const bump = `node -e "require('fs').appendFileSync('${marker}','x')"`
+  const repo = change({ fast: { test: OK }, behavioral: { validate: bump, run: OK } }, `- \`${bump}\`\n- \`${OK}\`\n`)
+  assert.equal(sdlc(repo, ['verify', 'tiny']).code, 0)
+  assert.equal(fs.readFileSync(marker, 'utf8').length, 1)
+})
+
 test('verify never runs a plan command that no config declares and no person approved', () => {
   const repo = change({ fast: { test: OK } }, `- \`${OK}\`\n- \`touch pwned\`\n`)
   const r = sdlc(repo, ['verify', 'tiny'])

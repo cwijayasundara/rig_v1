@@ -56,6 +56,22 @@ test('config: defaults, merging and validation errors', () => {
   assert.match(parseConfig(JSON.stringify({ limits: { fileLines: -1 } })).errors[0] ?? '', /positive/)
 })
 
+test('config: behavioral block parses with defaults and rejects bad shapes', () => {
+  const ok = parseConfig(JSON.stringify({ behavioral: { validate: 'v', run: 'r' } }))
+  assert.deepEqual(ok.errors, [])
+  assert.deepEqual(ok.config.behavioral, { validate: 'v', run: 'r', files: ['.rig/contracts/**'], cadence: 'final' })
+  const partial = parseConfig(JSON.stringify({ behavioral: { run: 'r', files: ['spec/**'], cadence: 'continuous' } }))
+  assert.deepEqual(partial.config.behavioral, { run: 'r', files: ['spec/**'], cadence: 'continuous' })
+  assert.equal(parseConfig('').config.behavioral, null)
+  assert.match(parseConfig(JSON.stringify({ behavioral: {} })).errors[0] ?? '', /behavioral needs at least one of validate or run/)
+  assert.match(parseConfig(JSON.stringify({ behavioral: { run: 'r', cadence: 'often' } })).errors[0] ?? '', /behavioral\.cadence/)
+  assert.match(parseConfig(JSON.stringify({ behavioral: { run: 3 } })).errors[0] ?? '', /behavioral\.run/)
+  assert.match(parseConfig(JSON.stringify({ behavioral: { run: 'r', files: 'x' } })).errors[0] ?? '', /behavioral\.files/)
+  const mixed = parseConfig(JSON.stringify({ limits: { fileLines: -1 }, behavioral: { run: 'r' } }))
+  assert.match(mixed.errors[0] ?? '', /limits/)
+  assert.deepEqual(mixed.config.behavioral, { run: 'r', files: ['.rig/contracts/**'], cadence: 'final' }, 'an unrelated config error must not silently drop the behavioral block')
+})
+
 test('rules: why is required and patterns must compile', () => {
   const good = parseRules(JSON.stringify([{ id: 'no-print', pattern: 'print\\(', message: 'use the logger', why: 'stdout is the protocol', action: 'block' }]))
   assert.deepEqual([good.errors, good.rules.length], [[], 1])

@@ -13,6 +13,7 @@ why: a contract rename that passes locally can silently break consumers in other
 5. **Say whether a data migration is reversible**, in `## Risks & rollback`, with the backfill plan.
 6. **Update every consumer in the same change.** Consumer files go in plan `## Files` as `../<repo>/...`; each consumer's tests run at verify and ship.
 7. **Document the contract where it lives.** Schema comments, OpenAPI descriptions and the changelog change with it.
+8. **Specs and examples are guide and sensor.** When `behavioral` is declared, keep the specs and examples it names in sync (`validate` checks them), and treat a red `run` as a bug in the code until a person says otherwise; those files are frozen by the design approval.
 
 ## Rationalizations
 | Thought | Reality |

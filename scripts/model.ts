@@ -8,7 +8,7 @@ export type Severity = 'block' | 'warn'
 // Every sensor name a Finding can carry; /rig:waive accepts exactly these (a test keeps this in step with the sources).
 export const SENSOR_NAMES = [
   'test-tamper', 'suppression', 'layering', 'size', 'secrets', 'rules', 'contract-impact', 'harness-tamper',
-  'traceability', 'red-proof', 'unscanned', 'adhoc', 'commands', 'config', 'tier', 'unscoped',
+  'traceability', 'red-proof', 'unscanned', 'adhoc', 'commands', 'config', 'tier', 'unscoped', 'behavioral',
 ]
 
 export type Finding = { sensor: string; severity: Severity; file?: string; line?: number; message: string; fix: string; labels?: string[] }
@@ -27,6 +27,8 @@ export const QUALITY_CATEGORIES: QualityCategory[] = ['lint', 'types', 'deps', '
 export const RATCHET_NODES: RatchetNode[] = ['build', 'test', 'sensors', 'pr-review']
 // Soft budgets (spend governance spec §5). No budget set: spend shows, nothing warns or downshifts.
 export type BudgetConfig = { teamMonthlyUsd: number | null; changeUsd: Partial<Record<'S' | 'M' | 'L', number>>; warnAt: [number, number, number]; downshift: boolean }
+// Opt-in behavioural harness (lite spec 2026-10-15): the repo declares its own contract commands; rig runs and freezes them.
+export type BehavioralConfig = { validate?: string; run?: string; files: string[]; cadence: 'final' | 'continuous' }
 export const DEFAULT_BUDGET: BudgetConfig = { teamMonthlyUsd: null, changeUsd: {}, warnAt: [50, 80, 100], downshift: true }
 export type SensorConfig = {
   fast: Record<string, string>
@@ -55,6 +57,7 @@ export type SensorConfig = {
   scopes: Record<string, Scope>
   scopeLimit: number
   ci: { scope: 'affected' | 'all' }
+  behavioral: BehavioralConfig | null
   affected: string
   sparseBase: boolean
   budget: BudgetConfig
@@ -87,6 +90,7 @@ export const DEFAULT_CONFIG: SensorConfig = {
   scopes: {},
   scopeLimit: 3,
   ci: { scope: 'affected' },
+  behavioral: null,
   affected: '',
   sparseBase: false,
   budget: structuredClone(DEFAULT_BUDGET),
@@ -343,6 +347,30 @@ export function parseConfig(text: string): { config: SensorConfig; errors: strin
         else errors.push('githooks.budgetMs must be a positive number')
       }
       for (const k of Object.keys(g)) if (k !== 'prePush' && k !== 'budgetMs') errors.push(`githooks: unknown key "${k}"`)
+    }
+  }
+  if ('behavioral' in value) {
+    const b = isObject(value.behavioral) ? value.behavioral : null
+    if (!b) errors.push('behavioral must be { validate?: string, run?: string, files?: [globs], cadence?: "final" | "continuous" }')
+    else {
+      const before = errors.length
+      const out: BehavioralConfig = { files: ['.rig/contracts/**'], cadence: 'final' }
+      for (const k of ['validate', 'run'] as const) {
+        if (!(k in b)) continue
+        if (typeof b[k] === 'string' && b[k].trim()) out[k] = b[k]
+        else errors.push(`behavioral.${k} must be a non-empty command string`)
+      }
+      if ('files' in b) {
+        if (isStringList(b.files) && b.files.length) out.files = b.files
+        else errors.push('behavioral.files must be a non-empty list of globs')
+      }
+      if ('cadence' in b) {
+        if (b.cadence === 'final' || b.cadence === 'continuous') out.cadence = b.cadence
+        else errors.push('behavioral.cadence must be "final" or "continuous"')
+      }
+      for (const k of Object.keys(b)) if (!['validate', 'run', 'files', 'cadence'].includes(k)) errors.push(`behavioral: unknown key "${k}"`)
+      if (!out.validate && !out.run && errors.length === before) errors.push('behavioral needs at least one of validate or run')
+      if (errors.length === before) config.behavioral = out
     }
   }
   parseV4(value, config, errors)

@@ -60,6 +60,31 @@ test('a blocking sensor refuses even with a green run', () => {
   assert.match(record().stderr, /sensors block: secrets/)
 })
 
+test('continuous cadence: a contract-touching slice with a failing behavioral run refuses; final does not run it', () => {
+  change('M')
+  write(repo, '.rig/sensors.json', JSON.stringify({ fast: { test: GREEN }, behavioral: { run: 'node -e "process.exit(3)"', cadence: 'continuous', files: ['src/**'] } }))
+  run()
+  assert.match(record().stderr, /behavioral/)
+  write(repo, '.rig/sensors.json', JSON.stringify({ fast: { test: GREEN }, behavioral: { run: 'node -e "process.exit(3)"', cadence: 'final', files: ['src/**'] } }))
+  run()
+  assert.equal(record().code, 0)
+})
+
+test('continuous cadence: a slice touching no contract or behavioral file does not run the suite', () => {
+  change('M')
+  write(repo, '.rig/sensors.json', JSON.stringify({ fast: { test: GREEN }, behavioral: { run: 'node -e "process.exit(3)"', cadence: 'continuous', files: ['api/**'] } }))
+  run()
+  assert.equal(record().code, 0)
+})
+
+test('continuous cadence: a slice touching only a change-local behavioral file runs the suite', () => {
+  change('M')
+  write(repo, '.rig/sensors.json', JSON.stringify({ fast: { test: GREEN }, behavioral: { run: 'node -e "process.exit(3)"', cadence: 'continuous', files: ['api/**'] } }))
+  write(repo, '.rig/changes/feat/behavioral/case.json', '{}\n')
+  run()
+  assert.match(record().stderr, /behavioral/)
+})
+
 test('tier L slices need a reviewer verdict, not --checks', () => {
   change('L')
   run()

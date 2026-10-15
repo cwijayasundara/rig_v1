@@ -187,15 +187,23 @@ export const optString = (args: Args, key: string): string | undefined => {
 }
 // ---------- changes ----------
 
+// Behavioural files frozen by an approval: `behavioral.files` matches plus `.rig/changes/<slug>/behavioral/**` (read raw here, no import cycle).
+export function behavioralFiles(slug: string): string[] {
+  let globs: string[] = []
+  try { const b = (JSON.parse(read(path.join(SDLC, 'sensors.json'))) as { behavioral?: { files?: unknown } }).behavioral; if (b) globs = Array.isArray(b.files) && b.files.every(f => typeof f === 'string') ? b.files as string[] : ['.rig/contracts/**'] } catch { /* an unparseable config is the config sensor's finding */ }
+  if (!globs.length && !exists(path.join(CHANGES, slug, 'behavioral'))) return [] // no block and no local folder: nothing frozen, and no git call on the common path
+  return (git(['ls-files', '--cached', '--others', '--exclude-standard'])?.split('\n').filter(Boolean) ?? []).filter(f => f.startsWith(`.rig/changes/${slug}/behavioral/`) || globs.some(g => globToRegex(g).test(f))).sort()
+}
+
 // The impact approval covers plan.md and impact.json, so a re-run of the plan point with new hits makes it stale.
 export function approvalDigest(slug: string, gate: GatedStage): string {
-  const dir = path.join(CHANGES, slug)
+  const suffix = (frozen => (frozen.length ? `\n${sha(frozen.map(f => `${f}\n${read(path.join(ROOT, f))}`).join('\n'))}` : ''))(['spec', 'plan', 'design'].includes(gate) ? behavioralFiles(slug) : [])
   // One approval covers the problem and the design, so a change to either makes it stale.
-  if (gate === 'design') return sha(`${read(path.join(dir, 'intent.md'))}\n${read(path.join(dir, 'design.md'))}`)
+  if (gate === 'design') return sha(`${read(path.join(CHANGES, slug, 'intent.md'))}\n${read(path.join(CHANGES, slug, 'design.md'))}${suffix}`)
   const artifact = read(approvalFile(slug, gate))
-  if (gate !== 'impact') return sha(artifact)
+  if (gate !== 'impact') return sha(artifact + suffix)
   // The timestamp is left out so a re-run with identical results keeps the approval.
-  const raw = read(path.join(dir, 'impact.json'))
+  const raw = read(path.join(CHANGES, slug, 'impact.json'))
   let content = raw
   try {
     const { ids, hits, missing } = JSON.parse(raw) as Impact
