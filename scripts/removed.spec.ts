@@ -93,3 +93,10 @@ test('4a: the review workflow, the rig-spec CI template and the five non-lifecyc
   const kept = fs.readdirSync(path.join(ROOT, 'skills')).sort()
   assert.deepEqual(kept, ['approve', 'build', 'design', 'diagnose', 'incident', 'init', 'intent', 'next', 'plan', 'pr', 'pr-review', 'rule', 'spec', 'start', 'test', 'waive'])
 })
+
+test('4a: the scripted e2e suite is out of npm test until step 5 rewrites it; the e2e unit tests stay', () => {
+  const t = (JSON.parse(read('package.json')) as { scripts: Record<string, string> }).scripts.test ?? ''
+  assert.doesNotMatch(t, /test:e2e:fast/)
+  assert.match(t, /test:e2e:unit/)
+  assert.doesNotMatch(read('.github/workflows/ci.yml'), /test:e2e:fast/)
+})

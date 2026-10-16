@@ -22,32 +22,31 @@ The biggest lever is **bounded context**. Everything below follows from that.
 
 ## 2. Principles
 
-1. **Thin layer, built-ins first.** Own five things: the artifact chain, human gates, guardrails, routing and budgets, measurement. Plan mode, `/code-review`, `/security-review`, `/goal` and worktrees are Claude Code's.
+1. **Thin layer, built-ins first.** Own four things: the artifact chain, human gates, guardrails, routing and budgets. Plan mode, `/code-review`, `/security-review`, `/goal` and worktrees are Claude Code's.
 2. **Ceremony scales with risk.** Routing is type × tier; gates come from risk, not size.
 3. **State lives in files, not chat.** `.rig/changes/<slug>/` is the memory; status is derived from which files exist.
 4. **Humans gate; models never self-approve.** Approval and waiver are human-only skills; approvals go stale when the artifact changes.
 5. **Deterministic checks decide; models advise.** Sensors, red-proof, scope and secrets are scripts at zero tokens; one inferential review per change.
 6. **Local equals CI.** One `check` entry point serves Stop, plan, ship, git hooks and CI. CI judges a PR with the base branch's checker and config, so a PR cannot weaken its own judge.
-7. **Right model for the job, pinned.** Sonnet main thread; the role and the tier pick each subagent's model and effort (`scripts/routing.ts`): Haiku reads (scout, researcher, triage), Sonnet writes code (Haiku at tier S), Opus plans and reviews tier L, and reviews never run on Haiku. Skills pass `routes` from `next --json`; a per-role floor clamps every override and retry. No skill sets `model:` (a switch re-reads the context uncached). The one sanctioned mid-session switch is budget downshift: an Opus main loop moves to pinned Sonnet once under pressure and stays (spend governance spec §7).
+7. **Right model for the job, pinned.** Sonnet main thread; the role and the tier pick each subagent's model and effort (`scripts/routing.ts`): Haiku reads (scout, researcher), Sonnet writes code (Haiku at tier S), Opus plans and reviews tier L, and reviews never run on Haiku. Skills pass `routes` from `next --json`; a per-role floor clamps every override and retry. No skill sets `model:` (a switch re-reads the context uncached). The one sanctioned mid-session switch is budget downshift: an Opus main loop moves to pinned Sonnet once under pressure and stays (spend governance spec §7).
 8. **Bounded loops.** Review rounds, Stop blocks and spend are capped; past a cap the finding goes to `unresolved.json` and ship refuses it.
 9. **Every step ends with the next command.**
 
 ## 3. Architecture
 
 ```
-skills/      the stages, /rig:* (start intent design spec plan diagnose build test sensors pr pr-review
-             incident next init rule metrics prototype codebase-design), prompts only
+skills/      the stages, /rig:* (start intent design spec plan diagnose build test pr pr-review
+             incident next init rule), prompts only
 agents/      scout (haiku, read-only) · researcher (haiku, docs; WebFetch and WebSearch only) · architect (opus) · implementer (sonnet) · reviewer (opus)
              Each launch overrides the agent file's model and effort with its route.
-hooks/       hooks.json = five settings hooks plus two async lane hooks (`SubagentStart`, `SubagentStop`, observational), none on Bash (work in -p and CI) · register.ts = the optional mod
+hooks/       hooks.json = four settings hooks, none on Bash (work in -p and CI)
 scripts/     zero-dependency Node, no build step; sdlc.ts is the CLI; check.ts is the one checker
-templates/   CI workflows (rig-check, rig-review), settings.json, stacks.json, REVIEW.md
+templates/   CI workflow (rig-check), settings.json, stacks.json, REVIEW.md
 guides/      contracts, engineering, testing: injected on first touch of a matching path
 .rig/       the consumer repo's committed evidence (see §5)
 ```
 
 - **Skills, not commands; agents for model routing.** Plugin agents ignore `hooks`, `mcpServers` and `permissionMode`, so an agent's limits are its `tools:` list; there are no per-agent gates.
-- **Settings hooks vs the mod.** Settings hooks are portable and run in `-p` and CI, so every essential gate is one. The mod (band, panes, impact dialog, cost capture) is in-process and optional; nothing essential depends on it.
 - **Standalone by default.** `vendor --standalone` copies skills, agents, hooks and scripts into the repo (`.claude/skills/rig-*`, `.claude/agents/rig-*`, `.rig/bin`), so a repo never depends on the plugin and a cloud session runs it as is. `/rig-approve` and `/rig-waive` are vendored skills with `disable-model-invocation` and a pinned `!` command; `$ARGUMENTS` is single-quoted because it is substituted raw.
 - **Artifacts live in `.rig/`, not `.claude/`.** Claude Code protects `.claude/`: writes there prompt, or are denied in `-p`, and allow rules cannot change that.
 
@@ -61,9 +60,7 @@ guides/      contracts, engineering, testing: injected on first touch of a match
 | refactor, migration | start → plan → build → … |
 | bugfix, incident | start → diagnose (failing test first; plan gate at L) → test → … |
 | chore | start → build → … |
-| spike | answer in `notes.md`; `/rig:prototype` when the question needs a runnable answer (throwaway code only, gitignored); no gates |
-
-**The sprint chart (outer workflow).** A team's sprint starts from a PRD (`.rig/product/prd/sprint-N.md`). `/rig:chart` writes the intended architecture and ADRs, the sprint's intents and the test plan with no stop, then one human gate covers all of them: `/rig:approve chart-N` hashes every chart file (`scripts/chart.ts`), so any later edit makes it stale and blocks new starts until re-approved. Scripts enforce only what they can compute: dependencies (`depends:` must have shipped, no cycles) and the gate. Traceability (`sdlc.ts chart check N`) is reported, never blocking, because a gap may be a deliberate scope call the reviewers make. One gate per sprint instead of one per artifact: the three documents are derived from the same PRD and reviewed together; each change keeps its own design gate, which decides *how*.
+| spike | answer in `notes.md`; no gates |
 
 | Tier | Rule of thumb | Human gates |
 |---|---|---|
@@ -71,7 +68,7 @@ guides/      contracts, engineering, testing: injected on first touch of a match
 | M | ≤ 15 files or touches a contract | design (once, with the intent) |
 | L | auth, payments, data, security, public API, > 15 files | spec, plan, design |
 
-Gates are configured in `gates` in `.rig/sensors.json`. A `tier` sensor blocks an S or M change whose diff reaches contracts or auth, security, payments, billing or migration paths until it is re-tiered. The recorded tier and type are a floor: `intent.md` is model-writable, so the stricter of the two wins and only `/rig-approve <slug> tier` lowers it. For S and M the PR review runs in CI (`rig-review`) rather than in session.
+Gates are configured in `gates` in `.rig/sensors.json`. A `tier` sensor blocks an S or M change whose diff reaches contracts or auth, security, payments, billing or migration paths until it is re-tiered. The recorded tier and type are a floor: `intent.md` is model-writable, so the stricter of the two wins and only `/rig-approve <slug> tier` lowers it.
 
 ## 5. Artifacts
 
@@ -82,7 +79,7 @@ Gates are configured in `gates` in `.rig/sensors.json`. A `tier` sensor blocks a
 │                    verification.md (generated)  review*.md  runs.jsonl  ratchet.json  events.jsonl
 │                    pr.md  ship.json  approvals/waivers rows
 ├── PREFLIGHT.md     advisory readiness report, written only by `sdlc.ts preflight` (per host; consider gitignoring)
-├── sensors.json     fast/full commands, tests, gates, levels, quality, limits, layers, contracts, ratchet, value, scopes, points, behavioral (opt-in)
+├── sensors.json     fast/full commands, tests, gates, levels, quality, limits, layers, contracts, ratchet, scopes, behavioral (opt-in)
 ├── rules.json       regex rules          guides/   bin/ (vendored checker)   STATE.md
 └── (gitignored)     .gate  .baseline  usage.jsonl  unresolved.json
 ```
@@ -94,14 +91,13 @@ Evidence files (approvals, waivers, `runs.jsonl`, `verification.md`, `ratchet.js
 | Lever | Mechanism |
 |---|---|
 | Bounded context | Small fresh contexts per subagent (`omitClaudeMd` on scout; briefs of ≤ 60 lines); `/compact` rather than a handoff skill |
-| Context sensor: a session whose first call is over 25k tokens, or a turn over 150k, gets a toast naming the cause (`scripts/context.ts`); `metrics` counts heavy starts and the background model sessions plugins spawn | Live guard for the 50% finding above, not a retrospective; two review systems per turn is the single biggest waste found (proposal 2026-10-08) |
+| Context sensor: a session whose first call is over 25k tokens, or a turn over 150k, gets a toast naming the cause (`scripts/context.ts`) | Live guard for the 50% finding above, not a retrospective; two review systems per turn is the single biggest waste found (proposal 2026-10-08) |
 | Sonnet main thread, Opus advisor **off** | Template sets `CLAUDE_CODE_DISABLE_ADVISOR_TOOL` (the advisor was a third of each run's cost; a user-level `advisorModel` otherwise still applies) |
 | Cheap subagents | routed by role and tier: tier L code on Sonnet, not Opus; Opus only for tier L plans and reviews; Haiku for reading |
 | One review per change | Findings below confidence 80 dropped; bounded fix rounds |
-| No "continue" prompting | `build` ends with a ready `/goal` line; `/rig-run` drives one node per turn |
+| No "continue" prompting | `build` ends with a ready `/goal` line |
 | Stamp, don't re-run | `verify` runs the plan's commands and the declared `full` commands once against the current tree and stamps `verification.md` with a tree stamp; ship and pre-push compare the stamp instead of re-running, and a stale stamp re-runs as before. CI reads no stamp |
 | Scopes | With `scopes`, a diff runs only the touched scopes and their declared `deps` dependents, each in its root; the same command text in the same resolved directory runs once; shards group by scope; more than `scopeLimit` scopes re-tiers to L |
-| Story points | S 5, M 7, L 11 (or an explicit number) kept in `ratchet.json`; `metrics` reports velocity per week and cost per point, unmeasured below five shipped changes |
 | Lean plans | No code in plans; `status` warns past 120 lines |
 | Plugin diet | Project `enabledPlugins` turns off unrelated plugins |
 | Cloud for long builds | A cloud session keeps running while the laptop sleeps |
@@ -116,7 +112,7 @@ Evidence files (approvals, waivers, `runs.jsonl`, `verification.md`, `ratchet.js
 
 ## 7. Measurement
 
-`metrics` reports the playbook's 12 leading and lagging metrics (from git, `gh`, approvals and incidents; `unmeasured` when n < 5) plus cost per change, stage and agent. Dollars come from the delta of the session cost ledger, which includes advisor and classifier calls; the scorecard adds spend against budget and an estimated value (`value` hours × rate). Cost capture needs the mod: headless `-p` runs record usd 0. Evals (`sdlc.ts evals`) are run by a person, never by CI: `eval_pass_rate` is the last run's pass share, and `incident_to_eval_hours` is how long an incident takes to become an eval. `inbox_survival` is the share of decided inbox ideas that were accepted or shipped (beside `intent_survival`, which counts changes past intent), and `intent_churn_after_design` is the median number of intent.md commits after the first design or spec commit. Eval definitions (`.rig/evals/*.json`) are protected harness files, since one can grant `claude -p` tools and run shell checks; `--seed` sanctions its own writes, and `/rig:diagnose` writes an incident eval with the person's approval. `repeat_findings` is the share of changes with findings whose category appeared on an earlier change: the "twice" rule's signal.
+Evals (`sdlc.ts evals`) are run by a person, never by CI. Eval definitions (`.rig/evals/*.json`) are protected harness files, since one can grant `claude -p` tools and run shell checks; `--seed` sanctions its own writes, and `/rig:diagnose` writes an incident eval with the person's approval.
 
 ### Spend governance
 
@@ -129,7 +125,7 @@ Live, paid, one run per arm: treat as directional.
 - **Cost.** About 4-7x plain Claude Code at the start, about 2x on small work after thinning (tier S: $0.31 vs $0.16), $2.50-2.87 vs $0.31-0.41 at tier L.
 - **Value is assurance, not correctness.** Plain Claude Code passed most hidden tests but shipped an empty-key auth bypass in three of four tier L runs; the harness's Opus review caught it every time, and left a scoped commit, a gated spec and plan, and an audit trail.
 - **Where savings should appear** is the long, large change (context bloat, Opus orchestration, fix waves). That is still unmeasured; the next trial is a Prism-sized milestone.
-- **Defects the trials found, all fixed with tests:** verdicts must come from captured exit codes, not model claims; ship done means `ship.json` is committed; a path-scoped write permission must be an `Edit(...)` rule (`rig-review` had never worked before the first live PR); plans must not carry unresolved gating questions; `-p` skill chaining can silently drift, so a hook hands the model `sdlc.ts skill <name>`; headless sessions end while a background scout runs, so subagents run in the foreground.
+- **Defects the trials found, all fixed with tests:** verdicts must come from captured exit codes, not model claims; ship done means `ship.json` is committed; a path-scoped write permission must be an `Edit(...)` rule; plans must not carry unresolved gating questions; headless sessions end while a background scout runs, so subagents run in the foreground.
 - **Integration and scenarios.** Onboarding plus one change passes 8/8 and 8/8 ($0.74); greenfield, tier L bugfix and tier M refactor scenarios pass 12/12, 11/11 and 11/11 ($0.43-2.16). Onboarding the real Prism repo cost $1.28 in 233 s.
 - **Autonomous ratchet trial (2026-10-04).** 14 headless runs, $3.64. 7 permission denials after plan approval (target 0, missed), then a fix wave; a re-run to confirm is pending.
 
@@ -139,7 +135,7 @@ Since v0.5.0 declared commands prompt unless Claude Code runs in auto mode or th
 
 `graph.ts` holds the per-type paths, per-tier gates and `step()`, which says continue, stop for a human, or block, and why. State is `ratchet.json` plus `events.jsonl` per change (evidence, sdlc-written). Build runs slice by slice with a bounded review loop; `levels` (unit, integration, acceptance, api) and `quality` commands (lint and similar, run on the branch and a base worktree, only a worsening blocks, else `unmeasured`) feed the test and sensors nodes; `/rig:pr` commits, pushes and opens the PR; `/rig:pr-review` reads it fail-closed. `/rig-approve <slug> budget` is the only way to raise a cap.
 
-**No auto-approval and no Bash hook.** The guard layer (the `PreToolUse` hooks for Bash and Edit, the `SubagentStart` and `SubagentStop` gates, auto-approval and the read-only Bash allowlist) was removed in v0.5.0. `permissions` deny rules in `templates/settings.json` keep the Edit and Write tools off pure evidence; `ask` rules make a person confirm edits to `sensors.json`, `rules.json`, `.claude/settings.json`, `.rig/bin`, the git hooks, the mod, the guides, the `rig-check` workflow and CODEOWNERS. `CLAUDE.md` is deliberately not on the list (`init` writes it with the Write tool). Rules are evaluated deny, then ask, then allow, so the template's `allow: Edit(.rig/**)` is overridden by the more specific `ask` and `deny` rules; case-folded paths on case-insensitive file systems are not covered. The model can still run `SDLC_HUMAN=1 ... approve` through Bash; CI refuses approval rows a PR adds unless an independent reviewer approves the head commit. **Never self-approved:** approvals, waivers, budget raises.
+**No auto-approval and no Bash hook.** The guard layer (the `PreToolUse` hooks for Bash and Edit, auto-approval and the read-only Bash allowlist) was removed in v0.5.0. `permissions` deny rules in `templates/settings.json` keep the Edit and Write tools off pure evidence; `ask` rules make a person confirm edits to `sensors.json`, `rules.json`, `.claude/settings.json`, `.rig/bin`, the git hooks, the guides, the `rig-check` workflow and CODEOWNERS. `CLAUDE.md` is deliberately not on the list (`init` writes it with the Write tool). Rules are evaluated deny, then ask, then allow, so the template's `allow: Edit(.rig/**)` is overridden by the more specific `ask` and `deny` rules; case-folded paths on case-insensitive file systems are not covered. The model can still run `SDLC_HUMAN=1 ... approve` through Bash; CI refuses approval rows a PR adds unless an independent reviewer approves the head commit. **Never self-approved:** approvals, waivers, budget raises.
 
 **Sensors and test are never self-certified.** `ratchet record` refuses those nodes; `quality` and `verify-report` record them because they measure. The ship gate re-measures quality only when the sensors stamp is stale (the tree changed after the sensors node). Tier S and M build slices are script-checked (`ratchet record build --checks`: a green declared run on the current tree, no scope drift, no sensor block); tier L keeps a Sonnet slice review, which is model-self-certified and only paces the build. Test levels, sensors, the ship gate and CI are what a change must pass.
 
@@ -157,9 +153,8 @@ Open: fast and full commands at commit and push see the working tree rather than
 
 ## 11. Open items
 
-- The mod's interactive parts (band, `/rig-approve` dialog, impact dialog, `/rig-sensors` pane) have never been checked by a person; `/rig-approve` has not been tried in a cloud session.
+- `/rig-approve` has not been tried in a cloud session.
 - The git hooks have not been trialled live; the live trials predate them.
 - Confirm 0 permission prompts after plan approval (§8 trial re-run).
-- Usage capture in headless `-p`, so scorecard cost matches run totals.
 - Whether `autoCompactWindow` is honoured from project settings.
 - Windows is unsupported (the hook scripts are POSIX `sh`).

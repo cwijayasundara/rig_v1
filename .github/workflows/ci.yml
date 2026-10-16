@@ -32,7 +32,6 @@ jobs:
           node-version: '22.18'
       - run: npm ci || npm install
       - run: npm run test:e2e:unit
-      - run: npm run test:e2e:fast
   dogfood:
     if: false # off for now: the harness is not run on its own repo; to re-enable: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
