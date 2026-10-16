@@ -119,7 +119,7 @@ test('a legacy sensors.json loads with its commands, contracts and paths', () =>
     fast: { 'unit tests': 'npm test' }, full: { e2e: 'npm run e2e' },
     quality: { lint: { cmd: 'eslint . -f unix', count: 'lines' } },
     behavioral: { validate: 'v', run: 'r', files: ['api/**'], cadence: 'final' },
-    knownRed: ['e2e'], tests: ['**/*.t.js'], limits: { fileLines: 300 },
+    knownRed: ['full.e2e'], tests: ['**/*.t.js'], limits: { fileLines: 300 },
     layers: [{ from: 'src/ui/**', mustNotImport: ['src/db/**'], why: 'ui talks to services' }],
   }
   const { registry, errors, legacy: isLegacy } = loadRegistry(JSON.stringify(legacy))
@@ -152,4 +152,15 @@ test('a file with a sensors list is read as a registry', () => {
 
 test('an empty legacy config gives only the built-ins', () => {
   assert.deepEqual(fromLegacy(parseConfig('').config).sensors.filter(s => !s.builtin), [])
+})
+
+test('legacy knownRed entries use the prefix.name key, so only that command stops blocking', () => {
+  const { registry } = loadRegistry(JSON.stringify({ fast: { test: 'npm test', lint: 'eslint .' }, knownRed: ['fast.test'] }))
+  assert.equal(registry.sensors.find(s => s.id === 'fast-test')?.blocks, false)
+  assert.equal(registry.sensors.find(s => s.id === 'fast-lint')?.blocks, true)
+})
+
+test('legacy contract globs are not frozen; only behavioral.files become contract files', () => {
+  assert.deepEqual(loadRegistry(JSON.stringify({ fast: { t: 'x' } })).registry.contracts, { files: [], validate: '', run: '' })
+  assert.deepEqual(loadRegistry(JSON.stringify({ contracts: ['api/**'] })).registry.contracts.files, [])
 })

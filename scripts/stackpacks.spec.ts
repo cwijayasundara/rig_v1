@@ -42,3 +42,11 @@ test('detects stacks from marker files and globs, and returns all matches', () =
   fs.writeFileSync(path.join(root, 'angular.json'), '{}')
   assert.deepEqual(detectStacks(root, packs).sort(), ['angular', 'dotnet', 'node'])
 })
+
+test('a layers command that targets one test class passes when the class does not exist yet', () => {
+  for (const p of loadPacks(PACKS_DIR).packs) {
+    const cmd = packRegistry(p).sensors.find(s => s.id === 'layers')?.cmd ?? ''
+    if (!/ArchitectureTest/.test(cmd)) continue
+    assert.ok(/failIfNoSpecifiedTests=false|grep -rqs ArchitectureTest/.test(cmd), `${p.stack} layers fails in a repo without ArchitectureTest: ${cmd}`)
+  }
+})

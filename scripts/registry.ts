@@ -218,7 +218,7 @@ export function fromLegacy(cfg: SensorConfig): Registry {
   const r = defaultRegistry()
   const extra: RegistrySensor[] = []
   const declared = (prefix: 'fast' | 'full', cadence: Cadence): void => {
-    for (const [name, c] of Object.entries(cfg[prefix])) extra.push({ id: `${prefix}-${kebab(name)}`, cmd: c, cadence, blocks: !cfg.knownRed.includes(name), count: 'exit', guide: `"${name}" must pass before the ${cadence === 'turn' ? 'turn ends' : 'change is committed'}.`, enabled: true })
+    for (const [name, c] of Object.entries(cfg[prefix])) extra.push({ id: `${prefix}-${kebab(name)}`, cmd: c, cadence, blocks: !cfg.knownRed.includes(`${prefix}.${name}`), count: 'exit', guide: `"${name}" must pass before the ${cadence === 'turn' ? 'turn ends' : 'change is committed'}.`, enabled: true })
   }
   declared('fast', 'turn')
   declared('full', 'commit')
@@ -231,9 +231,8 @@ export function fromLegacy(cfg: SensorConfig): Registry {
   if (size) size.options = { ...cfg.limits }
   const layering = r.sensors.find(s => s.id === 'layering')
   if (layering && cfg.layers.length) layering.options = { layers: cfg.layers }
-  r.contracts = cfg.behavioral
-    ? { files: [...cfg.behavioral.files], validate: cfg.behavioral.validate ?? '', run: cfg.behavioral.run ?? '' }
-    : { files: [...cfg.contracts], validate: '', run: '' }
+  // Legacy `contracts` globs only marked contract-touching diffs; frozen contract files come from `behavioral.files` alone.
+  if (cfg.behavioral) r.contracts = { files: [...cfg.behavioral.files], validate: cfg.behavioral.validate ?? '', run: cfg.behavioral.run ?? '' }
   r.paths = { tests: [...cfg.tests], testSupport: [...cfg.testSupport], fixtures: [...cfg.fixtures], ignore: [...cfg.ignore] }
   return r
 }
