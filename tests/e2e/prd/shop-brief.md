@@ -19,7 +19,7 @@ Node 22 ESM, `node --test`, no dependencies, integer cents throughout.
 
 ## Interfaces
 
-- `Catalog` (`add`, `get`, `list`), `Cart` (`add`, `remove`, `lines`, `subtotalCents`), `checkout(cart, { code })`, `createHandler(catalog)`.
+- `Catalog` (`add`, `get`, `list`) exported from `src/catalog/products.js`; `Cart` (`add`, `remove`, `lines`, `subtotalCents`) from `src/cart/cart.js`; `checkout(cart, { code })` from `src/orders/orders.js`; `createHandler(catalog)` from `src/http/handler.js`, returning a synchronous `handle({ method, path, body })` that returns `{ status, body }`.
 - `npm start` serves the handler on `$PORT` (0 picks a free port), prints `listening on <port>`, and seeds the catalog with TEA-001 (Green tea, 450) and MUG-002 (Mug, 1200). The HTTP contract is `api/openapi.yaml` with examples in `contracts/examples/`.
 
 ## Behaviours

@@ -33,3 +33,17 @@ test('a run that throws is recorded with its error and its spend', async () => {
   assert.match(row.error, /build/)
   assert.equal(typeof row.usd, 'number')
 })
+
+import { EVAL_ALLOW } from './run.mjs'
+
+test('final review: every eval arm may run npm and node, so bare arms can test their code like rig arms', () => {
+  assert.ok(EVAL_ALLOW.includes('Bash(npm *)') && EVAL_ALLOW.includes('Bash(node *)'))
+})
+
+test('final review: a bare session that fails still has its work committed, so tamper can judge it', async () => {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-run-'))
+  const row = await runOne(ARMS.find(a => a.id === 'haiku-bare'), 1, { dry: true, out, capRunUsd: 6, failAt: 'session' })
+  assert.match(row.error, /session/)
+  assert.ok(row.commits >= 1, JSON.stringify(row))
+  assert.equal(typeof row.denials, 'number')
+})

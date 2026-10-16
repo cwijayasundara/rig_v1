@@ -24,3 +24,10 @@ test('the table shows lift in acceptance over Haiku bare, and errored runs', () 
   assert.match(md, /\| haiku-bare \| 0\/2 \| baseline \|/)
   assert.match(md, /errors: haiku-rig 1 \(spend cap \$6 reached\)/)
 })
+
+test('final review: the same row read twice is counted once, and unjudged tamper is shown', () => {
+  const r = row('haiku-bare', 1, true, 1, { at: '2026-10-16T10:00:00Z', tamper: { testTamper: 0, suppression: 0, unjudged: 2 } })
+  const s = summarize([r, { ...r }])
+  assert.equal(s.find(a => a.arm === 'haiku-bare').runs, 1)
+  assert.match(renderMarkdown(s, { date: 'd', files: ['a'] }), /\| 0 \(\+2 unjudged\) \|/)
+})

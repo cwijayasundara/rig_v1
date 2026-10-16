@@ -6,13 +6,18 @@ const median = xs => { if (!xs.length) return null; const s = [...xs].sort((a, b
 const mean = xs => (xs.length ? xs.reduce((n, x) => n + x, 0) / xs.length : null)
 
 export function summarize(rows) {
+  // The same row read twice (a file passed twice, a copy) counts once; two real runs differ in their start time.
+  const seen = new Set()
+  const unique = rows.filter(r => { const k = `${r.arm}|${r.run}|${r.at}`; if (seen.has(k)) return false; seen.add(k); return true })
   return ARMS.map(({ id }) => {
-    const rs = rows.filter(r => r.arm === id)
+    const rs = unique.filter(r => r.arm === id)
     return {
       arm: id, runs: rs.length, accepted: rs.filter(r => r.accepted).length,
       checksMean: mean(rs.map(r => r.checks ?? 0)), inMedian: median(rs.map(r => r.inputTokens ?? 0)), outMedian: median(rs.map(r => r.outputTokens ?? 0)),
       usdMean: mean(rs.map(r => r.usd ?? 0)), minutesMedian: median(rs.map(r => r.minutes ?? 0)),
       tamper: rs.reduce((n, r) => n + (r.tamper?.testTamper ?? 0) + (r.tamper?.suppression ?? 0), 0),
+      unjudged: rs.reduce((n, r) => n + (r.tamper?.unjudged ?? 0), 0),
+      models: rs.reduce((acc, r) => { for (const [m, v] of Object.entries(r.models ?? {})) acc[m] = (acc[m] ?? 0) + (v.costUsd ?? 0); return acc }, {}),
       errors: rs.filter(r => r.error).map(r => r.error),
     }
   })
@@ -21,10 +26,19 @@ export function summarize(rows) {
 const dash = (v, f = x => String(x)) => (v === null || v === undefined ? '–' : f(v))
 const rate = a => (a.runs ? a.accepted / a.runs : null)
 
+// Which models did the work, by cost: a rig arm also runs its evaluator agent on its own model (spec §3.5).
+const mix = summary => {
+  const lines = summary.filter(a => Object.keys(a.models).length).map(a => {
+    const total = Object.values(a.models).reduce((n, v) => n + v, 0)
+    return `- ${a.arm}: ${Object.entries(a.models).sort((x, y) => y[1] - x[1]).map(([m, v]) => `${m} ${total ? Math.round((v / total) * 100) : 0}%`).join(', ')}`
+  })
+  return lines.length ? ['Model mix by cost:', ...lines, ''] : []
+}
+
 export function renderMarkdown(summary, { date, files }) {
   const base = rate(summary.find(a => a.arm === 'haiku-bare') ?? { runs: 0 })
   const lift = a => (a.arm === 'haiku-bare' ? 'baseline' : rate(a) === null || base === null ? '–' : `${rate(a) >= base ? '+' : ''}${Math.round((rate(a) - base) * 100)} pts`)
-  const rows = summary.map(a => `| ${a.arm} | ${a.accepted}/${a.runs} | ${lift(a)} | ${dash(a.checksMean, x => x.toFixed(1))}/3 | ${dash(a.inMedian, Math.round)} | ${dash(a.outMedian, Math.round)} | ${dash(a.usdMean, x => '$' + x.toFixed(2))} | ${dash(a.minutesMedian, x => x.toFixed(1))} | ${a.runs ? a.tamper : '–'} |`)
+  const rows = summary.map(a => `| ${a.arm} | ${a.accepted}/${a.runs} | ${lift(a)} | ${dash(a.checksMean, x => x.toFixed(1))}/3 | ${dash(a.inMedian, Math.round)} | ${dash(a.outMedian, Math.round)} | ${dash(a.usdMean, x => '$' + x.toFixed(2))} | ${dash(a.minutesMedian, x => x.toFixed(1))} | ${a.runs ? `${a.tamper}${a.unjudged ? ` (+${a.unjudged} unjudged)` : ''}` : '–'} |`)
   const errs = summary.filter(a => a.errors.length).map(a => `${a.arm} ${a.errors.length} (${[...new Set(a.errors)].slice(0, 2).join('; ')})`)
   return [
     `# Eval results ${date}`, '',
@@ -33,6 +47,7 @@ export function renderMarkdown(summary, { date, files }) {
     '|---|---|---|---|---|---|---|---|---|',
     ...rows, '',
     errs.length ? `errors: ${errs.join(', ')}` : 'errors: none', '',
+    ...mix(summary), 
     'Rule (spec §9): a sensor, guide or gate with no lift over haiku-bare after two passes is a candidate for removal. These arms measure rig as a whole and its two policies; per-component lift needs ablation arms.',
     '',
   ].join('\n')

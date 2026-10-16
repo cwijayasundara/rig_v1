@@ -16,6 +16,8 @@ import { scoreRun } from './score.mjs'
 import { setupBare, setupRig, dryBare, BARE_PROMPT } from './setup.mjs'
 
 const RESULTS = path.resolve(import.meta.dirname, 'results')
+// The same extra permissions for every arm: a bare model must be able to run its own tests, as a rig arm does through sdlc.ts.
+export const EVAL_ALLOW = ['Bash(npm *)', 'Bash(node *)', 'Bash(git *)', 'Bash(ls *)', 'Bash(mkdir *)', 'Bash(cat *)']
 
 export const nextRunAllowed = (spent, capRun, capTotal) => spent + capRun <= capTotal + 1e-9
 export const resultsAllowed = (file, dry) => (dry && path.resolve(file).startsWith(RESULTS + path.sep) ? 'dry runs never write under eval/results: they replay fixtures, not a model' : null)
@@ -25,7 +27,9 @@ const failing = (driver, failAt) => (failAt ? { ...driver, [failAt]: async () =>
 export async function runOne(arm, n, { dry, out, capRunUsd, failAt }) {
   const t0 = Date.now()
   const sb = createSandbox({ name: `${arm.id}-${n}`, out })
-  const sessions = dry ? null : createSessions({ sb, out: sb.root, capUsd: capRunUsd, model: arm.model })
+  // Subagents run on the arm's own model (the template pins them to Sonnet), so an arm measures its model; rig's evaluator agent keeps
+  // its own pin (spec §3.5) and shows in the per-model usage.
+  const sessions = dry ? null : createSessions({ sb, out: sb.root, capUsd: capRunUsd, model: arm.model, allow: EVAL_ALLOW, env: { CLAUDE_CODE_SUBAGENT_MODEL: arm.model } })
   const row = { arm: arm.id, run: n, model: arm.model, rig: arm.rig, policy: arm.policy ?? null, at: new Date().toISOString() }
   let base = null
   try {
@@ -38,20 +42,24 @@ export async function runOne(arm, n, { dry, out, capRunUsd, failAt }) {
       }
     } else {
       base = setupBare(sb, { dry })
-      if (failAt) throw new Error(`injected failure at ${failAt}`)
       if (dry) dryBare(sb)
-      else sessions.run('bare', BARE_PROMPT)
-      sb.commitAll('chore: session result')
+      if (failAt) throw new Error(`injected failure at ${failAt}`)
+      if (!dry) sessions.run('bare', BARE_PROMPT)
     }
   } catch (err) {
     row.error = String(err?.message ?? err).split('\n')[0]
+  } finally {
+    // Whatever the run left, committed, so tamper judges it even when the session or a change failed midway.
+    if (base) { try { sb.commitAll('chore: run result') } catch {} }
   }
   const score = base ? await scoreRun(sb, base).catch(e => ({ checks: 0, of: 3, accepted: false, error: e.message })) : { checks: 0, of: 3, accepted: false }
-  const t = sessions ? totals(sessions.sessions) : { costUsd: 0, inputTokens: 0, outputTokens: 0 }
+  const t = sessions ? totals(sessions.sessions) : { costUsd: 0, inputTokens: 0, outputTokens: 0, denials: [], models: {} }
+  const commits = base ? Number(sb.git('rev-list', '--count', `${base}..HEAD`)) : 0
   return {
     ...row, ...score, accepted: !row.error && score.accepted, error: row.error ?? score.error,
     inputTokens: t.inputTokens, outputTokens: t.outputTokens, usd: Number(t.costUsd.toFixed(4)),
     minutes: Number(((Date.now() - t0) / 60_000).toFixed(2)), sessions: sessions?.sessions.length ?? 0,
+    denials: t.denials.length, models: t.models, commits,
   }
 }
 
