@@ -19,6 +19,5 @@ test('rule: a lesson needs two occurrences, then becomes a regex rule or one CLA
 
 test('README does not promise parallel slice builds the code does not support', () => {
   const readme = read('README.md')
-  assert.doesNotMatch(readme, /The slice checkpoint refuses a file outside the slice/)
-  assert.match(readme, /one change's slices in parallel sessions is not supported yet/)
+  assert.doesNotMatch(readme, /slice/i, 'slices were removed in step 4b')
 })

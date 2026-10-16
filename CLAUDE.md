@@ -33,7 +33,7 @@ Never paste the plan or the conversation into it.
 
 ## Verification
 
-`npm test` runs the spec files, the mod typecheck and the plugin tests. `npm run typecheck` is incremental
+`npm test` runs the spec files and the e2e unit tests (the scripted e2e suite returns in step 5). `npm run typecheck` is incremental
 (`node_modules/.cache/rig-scripts.tsbuildinfo`). Run them yourself and quote the output; never report a pass you did not see.
 
 ## Plugin scope
