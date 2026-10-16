@@ -14,7 +14,7 @@ export type RegistrySensor = { id: string; cmd?: string; builtin?: true; cadence
 export type Paths = { tests: string[]; testSupport: string[]; fixtures: string[]; ignore: string[] }
 export type Contracts = { files: string[]; validate: string; run: string }
 export type Policy = Record<string, Mode> & { default: Mode }
-export type Registry = { stack: string | null; gates: { plan: boolean; merge: boolean }; contracts: Contracts; models: { build: string; evaluate: string }; paths: Paths; sensors: RegistrySensor[]; policy: Policy }
+export type Registry = { stack: string | null; gates: { plan: boolean; merge: boolean }; contracts: Contracts; models: { build: string; evaluate: string }; paths: Paths; sensors: RegistrySensor[]; knownRed: string[]; policy: Policy }
 
 type Base = { cadence: Cadence; blocks: boolean; guide: string }
 const BUILTIN_DEFAULTS: Record<BuiltinId, Base> = {
@@ -32,7 +32,7 @@ const BUILTIN_DEFAULTS: Record<BuiltinId, Base> = {
 const GENERIC_TESTS = ['**/test/**', '**/tests/**', '**/__tests__/**']
 const DEFAULT_POLICY: Policy = { haiku: 'continuous', sonnet: 'continuous', opus: 'final', default: 'continuous' }
 const SENSOR_KEYS = ['id', 'cmd', 'builtin', 'cadence', 'blocks', 'count', 'guide', 'timeoutMs', 'enabled', 'options']
-const TOP_KEYS = ['stack', 'gates', 'contracts', 'models', 'paths', 'sensors', 'policy']
+const TOP_KEYS = ['stack', 'gates', 'contracts', 'models', 'paths', 'sensors', 'policy', 'knownRed']
 const KEBAB = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
 const isBuiltinId = (v: string): v is BuiltinId => (BUILTIN_IDS as readonly string[]).includes(v)
@@ -50,8 +50,9 @@ export function defaultRegistry(): Registry {
     gates: { plan: true, merge: true },
     contracts: { files: [], validate: '', run: '' },
     models: { build: 'sonnet', evaluate: 'opus' },
-    paths: { tests: [...GENERIC_TESTS], testSupport: [], fixtures: [], ignore: [] },
+    paths: { tests: [...GENERIC_TESTS], testSupport: [], fixtures: [], ignore: ['**/*.md', '**/*.lock'] },
     sensors: BUILTIN_IDS.map(builtinSensor),
+    knownRed: [],
     policy: { ...DEFAULT_POLICY },
   }
 }
@@ -80,6 +81,7 @@ function parseSensor(raw: unknown, at: string, errors: string[]): RegistrySensor
   const enabled = raw.enabled ?? true
   if (typeof enabled !== 'boolean') errors.push(`${at}.enabled must be true or false`)
   if (enabled === false && (ALWAYS_ON as string[]).includes(id)) errors.push(`${at}: ${id} cannot be disabled`)
+  if (blocks === false && (ALWAYS_ON as string[]).includes(id)) errors.push(`${at}: ${id} must block`)
   if ('options' in raw && !builtin) errors.push(`${at}: only built-in sensors take options`)
   else if ('options' in raw && !isObject(raw.options)) errors.push(`${at}.options must be an object`)
   for (const k of Object.keys(raw)) if (!SENSOR_KEYS.includes(k)) errors.push(`${at}: unknown key "${k}"`)
@@ -156,6 +158,10 @@ function parseSections(value: Record<string, unknown>, r: Registry, errors: stri
       else errors.push(`policy.${k} must be "continuous" or "final"`)
     }
   }
+  if ('knownRed' in value) {
+    if (isStringList(value.knownRed)) r.knownRed = [...new Set(value.knownRed)]
+    else errors.push('knownRed must be a list of sensor ids')
+  }
   if ('sensors' in value) r.sensors = parseSensors(value.sensors, errors)
 }
 
@@ -167,6 +173,7 @@ export function parseRegistry(text: string): { registry: Registry; errors: strin
   if (!isObject(value)) return { registry, errors: ['sensors.json must be a JSON object'] }
   const errors: string[] = []
   parseSections(value, registry, errors)
+  for (const id of registry.knownRed) if (!registry.sensors.some(s => s.id === id && s.cmd)) errors.push(`knownRed: "${id}" is not a command sensor`)
   for (const k of Object.keys(value)) if (!TOP_KEYS.includes(k)) errors.push(`unknown key "${k}"`)
   return { registry, errors }
 }
@@ -259,4 +266,42 @@ export function loadRegistry(text: string): { registry: Registry; errors: string
   if (!text.trim() || isRegistryShape(text)) return { ...parseRegistry(text), legacy: false }
   const { config, errors } = parseConfig(text)
   return { registry: fromLegacy(config), errors, legacy: true }
+}
+
+// ---------- the SensorConfig view (step 2: existing checks read a registry through this) ----------
+
+export function registryConfig(r: Registry): { config: SensorConfig; errors: string[] } {
+  const live = r.sensors.filter(s => s.enabled && s.cmd && s.cadence !== 'nightly')
+  const whole = (s: RegistrySensor): string => commandFor(s, null) ?? ''
+  const unit = live.find(s => s.id === 'unit')
+  const size = r.sensors.find(s => s.id === 'size')?.options
+  const layers = r.sensors.find(s => s.id === 'layering')?.options?.layers
+  const red = [...new Set([...r.knownRed, ...live.filter(s => !s.blocks).map(s => s.id)])]
+  const { validate, run, files } = r.contracts
+  const view: Record<string, unknown> = {
+    fast: Object.fromEntries(live.filter(s => s.cadence === 'edit' || s.cadence === 'turn').map(s => [s.id, whole(s)])),
+    full: Object.fromEntries(live.map(s => [s.id, whole(s)])),
+    tests: r.paths.tests, testSupport: r.paths.testSupport, fixtures: r.paths.fixtures, ignore: r.paths.ignore,
+    contracts: files,
+    knownRed: red.flatMap(id => [`fast.${id}`, `full.${id}`]),
+  }
+  if (size) view.limits = size
+  if (layers !== undefined) view.layers = layers
+  if (unit) view.levels = { unit: whole(unit), integration: whole(unit), acceptance: whole(unit), api: whole(unit) }
+  if (validate || run) view.behavioral = { ...(validate ? { validate } : {}), ...(run ? { run } : {}), files: files.length ? files : ['.rig/contracts/**'], cadence: 'final' }
+  const { config, errors } = parseConfig(JSON.stringify(view))
+  const builtins = r.sensors.filter(s => s.builtin)
+  config.builtins = { off: builtins.filter(s => !s.enabled).map(s => s.id), soft: builtins.filter(s => s.enabled && !s.blocks).map(s => s.id) }
+  return { config, errors: errors.map(e => `sensors: ${e}`) }
+}
+
+// Known-red command keys (fast.<name>, full.<name>, <scope>:fast.<name>) into either shape: a registry keeps sensor ids.
+export function updateKnownRed(text: string, add: string[], remove: string[]): string {
+  const raw = JSON.parse(text) as Record<string, unknown>
+  const key = (k: string): string => (Array.isArray(raw.sensors) ? k.replace(/^(?:[^:]*:)?(?:fast|full)\./, '') : k)
+  const drop = new Set(remove.map(key))
+  const now = (isStringList(raw.knownRed) ? raw.knownRed : []).filter(k => !drop.has(k))
+  for (const k of add.map(key)) if (!now.includes(k)) now.push(k)
+  raw.knownRed = now
+  return JSON.stringify(raw, null, 2) + '\n'
 }

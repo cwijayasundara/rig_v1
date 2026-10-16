@@ -61,6 +61,8 @@ export type SensorConfig = {
   affected: string
   sparseBase: boolean
   budget: BudgetConfig
+  // Set only by registryConfig (registry.ts): built-ins a registry turned off, and built-ins it made advisory.
+  builtins?: { off: string[]; soft: string[] }
 }
 
 export const DEFAULT_CONFIG: SensorConfig = {

@@ -1,7 +1,7 @@
 {
   "stack": "angular",
   "markers": ["angular.json"],
-  "paths": { "tests": ["**/*.spec.ts", "**/e2e/**"], "testSupport": ["**/testing/**"] },
+  "paths": { "ignore": ["**/*.md", "**/*.lock", "**/package-lock.json"], "tests": ["**/*.spec.ts", "**/e2e/**"], "testSupport": ["**/testing/**"] },
   "contracts": { "files": [], "validate": "", "run": "" },
   "sensors": [
     { "id": "lint", "cmd": "npx --no-install ng lint", "cadence": "turn", "blocks": true, "count": "exit", "guide": "Angular lint must pass; fix the code rather than the rule." },

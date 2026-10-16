@@ -1,7 +1,7 @@
 {
   "stack": "node",
   "markers": ["package.json"],
-  "paths": { "tests": ["**/*.test.*", "**/*.spec.*", "**/__tests__/**", "**/test/**", "**/tests/**"], "testSupport": ["**/fixtures/**", "**/test-helpers/**"] },
+  "paths": { "ignore": ["**/*.md", "**/*.lock", "**/package-lock.json"], "tests": ["**/*.test.*", "**/*.spec.*", "**/__tests__/**", "**/test/**", "**/tests/**"], "testSupport": ["**/fixtures/**", "**/test-helpers/**"] },
   "contracts": { "files": [], "validate": "", "run": "" },
   "sensors": [
     { "id": "lint", "cmd": "npx --no-install eslint {files}", "cadence": "edit", "blocks": true, "count": "exit", "guide": "Lint must pass on every file you touch; fix the code rather than the rule." },

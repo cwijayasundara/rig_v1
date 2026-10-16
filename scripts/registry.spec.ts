@@ -188,3 +188,64 @@ test('a legacy continuous contract cadence makes every model continuous', () => 
   assert.equal(policyMode(registry, 'claude-opus-5-5'), 'continuous')
   assert.equal(policyMode(loadRegistry(JSON.stringify({ behavioral: { run: 'r', cadence: 'final' } })).registry, 'claude-opus-5-5'), 'final')
 })
+
+import { registryConfig, updateKnownRed } from './registry.ts'
+
+const regOf = (v: unknown) => parseRegistry(JSON.stringify(v)).registry
+
+test('the config view maps edit and turn sensors to fast, every live sensor to full, and skips nightly and disabled ones', () => {
+  const r = regOf({ sensors: [cmd('lint', 'edit', 'eslint {files}'), cmd('unit', 'turn', 'make test'), cmd('arch', 'commit', 'make arch'), cmd('mut', 'nightly', 'make mut'), { ...cmd('off', 'turn', 'x'), enabled: false }] })
+  const { config, errors } = registryConfig(r)
+  assert.deepEqual(errors, [])
+  assert.deepEqual(config.fast, { lint: 'eslint', unit: 'make test' })
+  assert.deepEqual(config.full, { lint: 'eslint', unit: 'make test', arch: 'make arch' })
+  assert.deepEqual(config.levels, { unit: 'make test', integration: 'make test', acceptance: 'make test', api: 'make test' })
+})
+
+test('advisory sensors and knownRed ids become known-red keys; paths, limits, layers and contracts carry over', () => {
+  const r = regOf({
+    sensors: [{ ...cmd('dup', 'commit', 'jscpd .'), blocks: false }, cmd('unit', 'turn', 'make test'),
+      { id: 'size', builtin: true, options: { fileLines: 300 } },
+      { id: 'layering', builtin: true, options: { layers: [{ from: 'src/ui/**', mustNotImport: ['src/db/**'], why: 'ui uses services' }] } }],
+    knownRed: ['unit'], paths: { tests: ['**/*.t.js'] },
+    contracts: { files: ['api/**'], validate: 'v', run: 'r' },
+  })
+  const { config, errors } = registryConfig(r)
+  assert.deepEqual(errors, [])
+  assert.deepEqual([...config.knownRed].sort(), ['fast.dup', 'fast.unit', 'full.dup', 'full.unit'])
+  assert.deepEqual(config.tests, ['**/*.t.js'])
+  assert.equal(config.limits.fileLines, 300)
+  assert.equal(config.layers.length, 1)
+  assert.deepEqual(config.behavioral, { validate: 'v', run: 'r', files: ['api/**'], cadence: 'final' })
+  assert.deepEqual(config.contracts, ['api/**'])
+})
+
+test('disabled and non-blocking built-ins are listed for the checker', () => {
+  const { config } = registryConfig(regOf({ sensors: [{ id: 'test-tamper', builtin: true, enabled: false }] }))
+  assert.deepEqual(config.builtins?.off, ['test-tamper'])
+  assert.ok(config.builtins?.soft.includes('size') && config.builtins.soft.includes('model-role'))
+})
+
+test('Markdown and lock files are not source by default; the node packs also ignore package-lock.json', () => {
+  assert.deepEqual(defaultRegistry().paths.ignore, ['**/*.md', '**/*.lock'])
+  assert.ok(registryConfig(defaultRegistry()).config.ignore.includes('**/*.md'))
+})
+
+test('secrets and harness-tamper must block', () => {
+  assert.match(parseRegistry(JSON.stringify({ sensors: [{ id: 'secrets', builtin: true, blocks: false }] })).errors.join(), /secrets must block/)
+  assert.match(parseRegistry(JSON.stringify({ sensors: [{ id: 'harness-tamper', builtin: true, blocks: false }] })).errors.join(), /harness-tamper must block/)
+})
+
+test('knownRed must name command sensors', () => {
+  assert.deepEqual(parseRegistry(JSON.stringify({ sensors: [cmd('unit', 'turn')], knownRed: ['unit'] })).errors, [])
+  assert.match(parseRegistry(JSON.stringify({ sensors: [], knownRed: ['nope'] })).errors.join(), /knownRed: "nope" is not a command sensor/)
+  assert.match(parseRegistry(JSON.stringify({ sensors: [], knownRed: 'x' })).errors.join(), /knownRed must be a list of sensor ids/)
+})
+
+test('updateKnownRed writes command keys in a legacy file and sensor ids in a registry', () => {
+  const legacy = JSON.parse(updateKnownRed(JSON.stringify({ fast: { a: 'x' }, knownRed: ['fast.b'] }), ['fast.a'], ['fast.b']))
+  assert.deepEqual(legacy.knownRed, ['fast.a'])
+  const reg = JSON.parse(updateKnownRed(JSON.stringify({ sensors: [], knownRed: ['b'] }), ['fast.a', 'full.a', 'web:fast.c'], ['full.b']))
+  assert.deepEqual(reg.knownRed, ['a', 'c'])
+  assert.deepEqual(Object.keys(reg), ['sensors', 'knownRed'])
+})
