@@ -3,7 +3,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { Checks } from './checks.mjs'
-import { sensorOf } from './findings.mjs'
 
 export const FIXTURES = path.join(import.meta.dirname, '../fixtures/stacks')
 // Every fixture language takes a // line comment.
@@ -49,10 +48,10 @@ export async function runStack(sb, s) {
   sb.write(s.file, s.good(original))
   sb.git('add', s.file)
   const ok = check()
-  await c.check(`${s.stack}: check --at commit passes a good staged edit`, () => !ok.blocks?.length || ok.blocks.map(b => `${sensorOf(b)}: ${b.message?.split('\n')[0]}`).join(' | '))
+  await c.check(`${s.stack}: check --at commit passes a good staged edit`, () => !ok.blocks?.length || ok.blocks.map(b => `${b.sensor}: ${b.message?.split('\n')[0]}`).join(' | '))
   sb.write(s.file, s.broken(original))
   sb.git('add', s.file)
   const bad = check()
-  await c.check(`${s.stack}: check --at commit blocks a broken staged edit on ${s.core}`, () => (bad.blocks ?? []).some(b => sensorOf(b) === s.core) || `blocks: ${(bad.blocks ?? []).map(sensorOf).join(', ') || 'none'}`)
+  await c.check(`${s.stack}: check --at commit blocks a broken staged edit on ${s.core}`, () => (bad.blocks ?? []).some(b => b.sensor === s.core) || `blocks: ${(bad.blocks ?? []).map(b => b.sensor).join(', ') || 'none'}`)
   return c
 }

@@ -150,7 +150,8 @@ function cmdWaive(args: Args): void {
   const given = optString(args, 'slug')
   const slug = given ? checkSlug(given) : activeSlug()
   if (!sensor || !file || !reason.length || !slug) fail('usage: waive <sensor> <file|*> <reason...>  (needs an active change)')
-  if (!SENSOR_NAMES.includes(sensor)) fail(`unknown sensor "${sensor}"; known: ${SENSOR_NAMES.join(', ')}`)
+  const commandIds = loadConfig().registry.sensors.filter(s => s.cmd).map(s => s.id)
+  if (!SENSOR_NAMES.includes(sensor) && !commandIds.includes(sensor)) fail(`unknown sensor "${sensor}"; known: ${[...SENSOR_NAMES, ...commandIds].join(', ')}`)
   const by = whoami() || 'unknown'
   const row: Waiver = { slug, sensor, file, reason: reason.join(' '), by, at: now() }
   fs.appendFileSync(WAIVERS, JSON.stringify(row) + '\n')

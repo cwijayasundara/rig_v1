@@ -2,12 +2,11 @@
 // continuous: every turn sensor runs at Stop. final: only secrets and harness-tamper run at Stop; the rest waits for commit.
 import crypto from 'node:crypto'
 import { Checks } from '../lib/checks.mjs'
-import { sensorOf } from '../lib/findings.mjs'
 
 const PROBE = 'policy-probe'
 const fired = sb => {
   const u = sb.read('.rig/unresolved.json')
-  return u ? [...new Set(JSON.parse(u).findings.map(sensorOf))].sort() : []
+  return u ? [...new Set(JSON.parse(u).findings.map(f => f.sensor))].sort() : []
 }
 
 // One turn: the session's model recorded at SessionStart, a prompt, the change, Stop. Returns the SessionStart context and the sensors that blocked.
@@ -44,7 +43,7 @@ export async function runPolicy(sb) {
     const said = r.stdout + r.stderr
     if (sb.git('rev-parse', 'HEAD') !== start) sb.git('reset', '-q', '--hard', start)
     sb.run('git', ['reset', '-q', '--hard', 'HEAD'])
-    await c.check('S5: the commit hook catches what final skipped (unit)', () => (r.status !== 0 && /\bunit\b/.test(said)) || `exit ${r.status}: ${said.trim().split('\n').slice(0, 2).join(' | ')}`)
+    await c.check('S5: the commit hook catches what final skipped (unit)', () => (r.status !== 0 && /\[unit\]/.test(said)) || `exit ${r.status}: ${said.trim().split('\n').slice(0, 2).join(' | ')}`)
   } finally {
     sb.git('checkout', '-q', 'main')
     sb.run('git', ['branch', '-q', '-D', PROBE])

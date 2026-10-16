@@ -191,3 +191,31 @@ test('init --stack refuses once sensors.json is committed or a change exists', (
   const r = run(['init', '--stack'])
   assert.match(r.stdout, /a change already exists/, `${r.code} ${r.stderr}`)
 })
+
+const unitRegistry = () => {
+  fs.mkdirSync(path.join(repo, '.rig'), { recursive: true })
+  fs.writeFileSync(path.join(repo, '.rig/sensors.json'), JSON.stringify({ sensors: [{ id: 'unit', cmd: 'true', cadence: 'turn', blocks: true, count: 'exit', guide: 'g' }] }) + '\n')
+}
+
+test('waive accepts a declared command sensor id', () => {
+  unitRegistry()
+  run(['new', 'xx', '--type', 'chore'])
+  const r = run(['waive', 'unit', '*', 'flaky on CI'], { env: { SDLC_HUMAN: '1' } })
+  assert.equal(r.code, 0, r.stderr)
+  assert.match(r.stdout, /waived unit for \* in xx/)
+})
+
+test('waive refuses an undeclared command id and lists the declared ones', () => {
+  unitRegistry()
+  run(['new', 'xx', '--type', 'chore'])
+  const r = run(['waive', 'unti', '*', 'typo'], { env: { SDLC_HUMAN: '1' } })
+  assert.notEqual(r.code, 0)
+  assert.match(r.stderr, /unknown sensor "unti"/)
+  assert.match(r.stderr, /\bunit\b/)
+  assert.match(r.stderr, /test-tamper/)
+})
+
+test('waive refuses commands: it is no longer a sensor', () => {
+  run(['new', 'xx', '--type', 'chore'])
+  assert.notEqual(run(['waive', 'commands', '*', 'all of them'], { env: { SDLC_HUMAN: '1' } }).code, 0)
+})

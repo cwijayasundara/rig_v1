@@ -86,7 +86,7 @@ export function runSensors(r: Registry, at: Cadence, slug: string | null, budget
     if (!cmd || skip?.has(normCmd(cmd))) continue
     const known = r.knownRed.includes(s.id)
     if (left <= 0) {
-      findings.push({ sensor: 'commands', severity: s.blocks ? 'block' : 'warn', message: `${s.id} not run: the ${Math.round(budgetMs / 1000)} s budget ran out`, fix: `make ${s.id} faster or move it to a later cadence in .rig/sensors.json` })
+      findings.push({ sensor: s.id, severity: s.blocks ? 'block' : 'warn', message: `${s.id} not run: the ${Math.round(budgetMs / 1000)} s budget ran out`, fix: `make ${s.id} faster or move it to a later cadence in .rig/sensors.json`, outOfTime: true })
       continue
     }
     const row = runCommand(cmd, { timeoutMs: Math.min(left, s.timeoutMs ?? left) })
@@ -95,10 +95,11 @@ export function runSensors(r: Registry, at: Cadence, slug: string | null, budget
     if (row.exit === 0) { if (known) cleared.push(s.id); continue }
     const tail = row.tail.split('\n').slice(-TAIL_IN_FINDING).map(t => '      ' + t).join('\n')
     findings.push({
-      sensor: 'commands',
+      sensor: s.id,
       severity: !s.blocks || (known && !row.timedOut) ? 'warn' : 'block',
       message: `${s.id} failed (exit ${row.exit}${row.timedOut ? ', timed out' : ''}): ${s.guide}\n${tail}`,
       fix: known && !row.timedOut ? 'known red before this change: fix it when you can' : `fix what it reports, then rerun: ${cmd}`,
+      ...(row.timedOut ? { outOfTime: true as const } : {}),
     })
   }
   if (cleared.length && allowRatchet) ratchet(cleared)
@@ -320,7 +321,7 @@ export function cmdCheck(args: Args): void {
   const why = humanRows.length ? independentApproval() : null // before runChecks: the PR's test commands could rewrite the event file or shadow gh
   const result = runChecks({ point: at, diffs, config, rules, slugs, commands: replaying ? 'none' : at === 'stop' ? 'fast' : 'full', budgetMs, before, after, base, ratchet: !optString(args, 'config-from') && at !== 'commit', contracts: at === 'commit' ? !replaying : undefined, gates: config.gates })
   // At commit, like at push, a sensor out of time warns: CI runs it again, and a hanging tool must not hold git commit hostage.
-  if (at === 'commit') for (const f of result.findings) if (f.sensor === 'commands' && /budget ran out|timed out/.test(f.message)) f.severity = 'warn'
+  if (at === 'commit') for (const f of result.findings) if (f.outOfTime) f.severity = 'warn'
   result.blocks = result.findings.filter(f => f.severity === 'block')
   const configFindings: Finding[] = errors.map(e => ({ sensor: 'config', severity: 'block', file: SENSORS_JSON, message: e, fix: 'fix the file; see the sdlc README for its format' }))
   const humanFindings: Finding[] = why ? [{ sensor: 'human-approval', severity: 'block', message: `this PR adds ${humanRows.length} approval/waiver row(s): ${why}`, fix: 'a code owner other than the PR author reviews the rows below and approves the current head commit; pushing again needs a fresh approval' }] : []

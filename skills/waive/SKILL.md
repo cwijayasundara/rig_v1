@@ -1,7 +1,7 @@
 ---
 name: waive
 description: Human only. Waive a sensor finding for the active change. The model cannot run this.
-argument-hint: <sensor> <file|*> <reason>
+argument-hint: <sensor-or-command-id> <file|*> <reason>
 disable-model-invocation: true
 allowed-tools: Bash(SDLC_HUMAN=1 node --disable-warning=ExperimentalWarning "${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts" waive *)
 ---

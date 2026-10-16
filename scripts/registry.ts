@@ -8,6 +8,8 @@ type Count = 'exit' | 'lines' | `json:${string}`
 export type Mode = 'continuous' | 'final'
 export const BUILTIN_IDS = ['secrets', 'test-tamper', 'suppression', 'harness-tamper', 'size', 'layering', 'rules', 'red-proof', 'traceability', 'model-role'] as const
 type BuiltinId = typeof BUILTIN_IDS[number]
+// Harness finding names that are not built-ins: a command sensor with one of these ids would inherit that finding's gate rules.
+export const RESERVED_IDS = ['commands', 'config', 'contracts', 'unscanned', 'plan-gate', 'human-approval', 'sync'] as const
 export const ALWAYS_ON: BuiltinId[] = ['secrets', 'harness-tamper']
 
 export type RegistrySensor = { id: string; cmd?: string; builtin?: true; cadence: Cadence; blocks: boolean; count?: Count; guide: string; timeoutMs?: number; enabled: boolean; options?: Record<string, unknown> }
@@ -66,6 +68,7 @@ function parseSensor(raw: unknown, at: string, errors: string[]): RegistrySensor
   const builtin = raw.builtin === true
   if (builtin && id && !isBuiltinId(id)) errors.push(`${at}: "${id}" is not a built-in sensor (known: ${BUILTIN_IDS.join(', ')})`)
   if (!builtin && isBuiltinId(id)) errors.push(`${at}: "${id}" is a built-in id; add "builtin": true or rename the sensor`)
+  if (!builtin && (RESERVED_IDS as readonly string[]).includes(id)) errors.push(`${at}: "${id}" is reserved for a harness finding; rename the sensor`)
   if (builtin && 'cmd' in raw) errors.push(`${at}: a built-in sensor has no cmd`)
   if (!builtin && (typeof raw.cmd !== 'string' || !raw.cmd.trim())) errors.push(`${at}.cmd must be a non-empty command string`)
   if (builtin && 'count' in raw) errors.push(`${at}: a built-in sensor has no count`)
