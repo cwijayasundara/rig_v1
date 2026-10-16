@@ -2,7 +2,7 @@
 // Cheapest above a per-role floor; the floor clamps last, so no override or retry goes below it. Pure: no fs, git or process.
 import type { ChangeType, Tier } from './core.ts'
 
-export type Role = 'scout' | 'researcher' | 'architect' | 'implementer' | 'slice-review' | 'reviewer' | 'referee' | 'triage'
+export type Role = 'scout' | 'researcher' | 'architect' | 'implementer' | 'slice-review' | 'reviewer' | 'referee'
 export type Model = 'haiku' | 'sonnet' | 'opus'
 export type Effort = 'low' | 'medium' | 'high'
 export type Route = { model: Model; effort: Effort } | 'main'
@@ -10,7 +10,7 @@ export type RoutingOverride = Partial<Record<Role, Partial<Record<Tier, { model:
 // Budget pressure (spend governance spec §7): tight eases review effort one step; floors still clamp.
 export type Pressure = 'normal' | 'tight'
 
-export const ROLES: Role[] = ['scout', 'researcher', 'architect', 'implementer', 'slice-review', 'reviewer', 'referee', 'triage']
+export const ROLES: Role[] = ['scout', 'researcher', 'architect', 'implementer', 'slice-review', 'reviewer', 'referee']
 const MODELS: Model[] = ['haiku', 'sonnet', 'opus']
 const EFFORTS: Effort[] = ['low', 'medium', 'high']
 const TIERS: Tier[] = ['S', 'M', 'L']
@@ -26,7 +26,6 @@ export const TABLE: Record<Role, Record<Tier, Route>> = {
   'slice-review': same(at('sonnet', 'high')),
   reviewer: { S: at('sonnet', 'medium'), M: at('sonnet', 'high'), L: at('opus', 'high') },
   referee: { S: at('sonnet', 'medium'), M: at('sonnet', 'medium'), L: at('sonnet', 'high') },
-  triage: same(at('haiku', 'low')),
 }
 // The lowest model a role may run on, per tier. Reviews are decision points: never Haiku. Code above tier S: never Haiku.
 const FLOOR: Record<Role, Record<Tier, Model>> = {
@@ -37,7 +36,6 @@ const FLOOR: Record<Role, Record<Tier, Model>> = {
   'slice-review': { S: 'sonnet', M: 'sonnet', L: 'sonnet' },
   reviewer: { S: 'sonnet', M: 'sonnet', L: 'sonnet' },
   referee: { S: 'sonnet', M: 'sonnet', L: 'sonnet' },
-  triage: { S: 'haiku', M: 'haiku', L: 'haiku' },
 }
 
 // One retry step: effort first, then the next model at medium; opus high is the ceiling.
@@ -73,8 +71,8 @@ export function routes(type: ChangeType, tier: Tier, round = 0, override: Routin
   return { routes: all, warnings }
 }
 
-// Scout, researcher and triage are pinned in their own files: a per-launch alias could resolve to another model outside the template env.
-const PINNED: Record<string, string> = { scout: 'agents/scout.md', researcher: 'agents/researcher.md', triage: 'templates/rig-triage.yml' }
+// Scout and researcher are pinned in their own files: a per-launch alias could resolve to another model outside the template env.
+const PINNED: Record<string, string> = { scout: 'agents/scout.md', researcher: 'agents/researcher.md' }
 
 // sensors.json "routing": { "<role>": { "<tier>": "model" | "model:effort" } }. Architect routes only tier L (S and M draft in the main thread).
 export function parseRouting(value: unknown, errors: string[]): RoutingOverride {

@@ -35,7 +35,6 @@ test('with no remote, pr commits locally, writes pr.md as local-only, and keeps 
   assert.equal(r.code, 0, r.stderr)
   const pr = fs.readFileSync(path.join(repo, '.rig/changes/tiny/pr.md'), 'utf8')
   assert.match(pr, /^state: local-only$/m)
-  assert.match(pr, /## Scorecard/)
   assert.match(gitIn(repo, 'show', '--name-only', '--format=', 'HEAD'), /\.rig\/changes\/tiny\/pr\.md/)
   assert.match(sdlc(repo, ['status']).stdout, /▶ tiny[\s\S]*pr-review/)
 })

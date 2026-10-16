@@ -141,11 +141,6 @@ test('the CI review picker matches the routing table for the reviewer', () => {
   assert.match(block, /--effort \$\{\{ steps\.model\.outputs\.effort \}\}/)
 })
 
-test('CI triage runs Haiku at low effort, as the triage route says', () => {
-  assert.deepEqual(TABLE.triage.S, { model: 'haiku', effort: 'low' })
-  assert.match(read('templates/rig-triage.yml'), /--model claude-haiku-5-5 --effort low --max-turns 5/)
-})
-
 test('build sends tier L findings to a fresh implementer when its route changed', () => {
   assert.match(read('skills/build/SKILL.md'), /differs[^\n]*launch a fresh `rig:implementer`[^\n]*otherwise[^\n]*same implementer/)
 })

@@ -187,38 +187,12 @@ test('session-start injects the active change and next command', () => {
   assert.match(ctx, /\/rig:diagnose add-login/)
 })
 
-test('log-usage tags rows with the active change; metrics report cost and unmeasured samples', () => {
+test('log-usage tags rows with the active change', () => {
   run(['new', 'add-login', '--type', 'feature', '--tier', 'S'])
   run(['log-usage', JSON.stringify({ kind: 'main', model: 'claude-sonnet-5-5', in: 10, out: 100, cr: 1000, cw: 50, usd: 0.12, ctx: 160000 })])
   run(['log-usage', JSON.stringify({ kind: 'agent', agentType: 'implementer', model: 'claude-sonnet-5-5', in: 5, out: 50, cr: 500, cw: 20 })])
   const row = JSON.parse(fs.readFileSync(path.join(repo, '.rig/usage.jsonl'), 'utf8').split('\n')[0] ?? '{}')
   assert.equal(row.change, 'add-login')
-  const m = JSON.parse(run(['metrics', '--json']).stdout).metrics
-  assert.equal(m.cost.usd_total, 0.12)
-  assert.equal(m.cost.turns_over_150k, 1)
-  assert.ok(m.cost.tokens_by_agent_type.implementer > 0)
-  assert.equal(m.first_pass_share.value, null)
-})
-
-test('metrics merge plugin and standalone agent names and ignore a negative cost delta from a reset ledger', () => {
-  run(['new', 'add-login', '--type', 'feature', '--tier', 'S'])
-  run(['log-usage', JSON.stringify({ kind: 'main', usd: 0.5 })])
-  run(['log-usage', JSON.stringify({ kind: 'main', usd: -2.27 })])
-  run(['log-usage', JSON.stringify({ kind: 'agent', agentType: 'rig:scout', in: 10 })])
-  run(['log-usage', JSON.stringify({ kind: 'agent', agentType: 'rig-scout', in: 5 })])
-  const cost = JSON.parse(run(['metrics', '--json']).stdout).metrics.cost
-  assert.equal(cost.usd_total, 0.5)
-  assert.deepEqual(cost.usd_by_change, { 'add-login': 0.5 })
-  assert.deepEqual(cost.tokens_by_agent_type, { 'rig:scout': 15 })
-})
-
-test('metrics report tokens by role and by role and model', () => {
-  run(['new', 'add-login', '--type', 'feature', '--tier', 'S'])
-  run(['log-usage', JSON.stringify({ kind: 'agent', agentType: 'rig:reviewer', stage: 'build', change: 'add-login', model: 'claude-sonnet-5-5', in: 10 })])
-  run(['log-usage', JSON.stringify({ kind: 'agent', agentType: 'rig:reviewer', stage: 'pr-review', change: 'add-login', model: 'claude-opus-5-5', in: 5 })])
-  const cost = JSON.parse(run(['metrics', '--json']).stdout).metrics.cost
-  assert.deepEqual(cost.tokens_by_role, { 'slice-review': 10, reviewer: 5 })
-  assert.deepEqual(cost.model_by_role, { 'slice-review': { 'claude-sonnet-5-5': 10 }, reviewer: { 'claude-opus-5-5': 5 } })
 })
 
 test('status warns when there is no origin remote to open a PR on', () => {
@@ -300,26 +274,6 @@ test('a new intent has a Decisions section for explicit defaults', () => {
   assert.match(fs.readFileSync(path.join(repo, '.rig/changes/add-login/intent.md'), 'utf8'), /## Decisions\n<!-- skipped optional steps and defaults taken, one line each -->/)
 })
 
-test('metrics report rule fires, prune candidates and recurring review categories', () => {
-  run(['new', 'a1', '--type', 'feature', '--tier', 'S'])
-  write('.rig/rules.json', JSON.stringify([
-    { id: 'no-print', pattern: 'print\\(', message: 'use the logger', why: 'stdout is the protocol', action: 'block' },
-    { id: 'old-rule', pattern: 'never-matches-xyz', message: 'm', why: 'w', action: 'warn' },
-  ]))
-  write('.rig/changes/a1/review.md', '## Findings\n- [severity: medium] [category: coupling] a\n- [severity: medium] [category: coupling] b\n- [severity: high] [category: coupling] c\n')
-  write('src/a.py', 'print("x")\nprint("y")\nprint("z")\n')
-  write('.rig/usage.jsonl', JSON.stringify({ at: new Date().toISOString(), kind: 'event', event: 'skill-load-failed' }) + '\n')
-  run(['check', '--at', 'ship'])
-  const h = JSON.parse(run(['metrics', '--json']).stdout).metrics.harness
-  assert.equal(h.rule_fires['no-print'], 1) // 3 matching lines, one fire
-  assert.deepEqual(h.rule_suggestions, [], 'three findings in one change are one occurrence, not a recurring mistake')
-  run(['new', 'a2', '--type', 'feature', '--tier', 'S'])
-  write('.rig/changes/a2/review.md', '## Findings\n- [severity: medium] [category: coupling] d\n')
-  assert.match(JSON.parse(run(['metrics', '--json']).stdout).metrics.harness.rule_suggestions.join('\n'), /coupling \(2 changes\)/)
-  assert.ok(Array.isArray(h.prune_candidates))
-  assert.equal(h.skill_load_failures, 1)
-})
-
 test('check --at ci logs no rule fires', () => {
   run(['init'])
   write('.rig/rules.json', JSON.stringify([{ id: 'no-print', pattern: 'print\\(', message: 'm', why: 'w', action: 'warn' }]))
@@ -332,20 +286,6 @@ test('check --at ci logs no rule fires', () => {
   run(['check', '--at', 'ci', '--base', 'main'])
   const log = path.join(repo, '.rig/usage.jsonl')
   assert.equal(fs.existsSync(log) && fs.readFileSync(log, 'utf8').includes('rule-fired'), false)
-})
-
-test('prune candidates are rules introduced over 90 days ago that never fired', () => {
-  run(['init'])
-  const rule = (id: string) => ({ id, pattern: `${id}-xyz`, message: 'm', why: 'w', action: 'warn' })
-  const commit = (msg: string, date: string) => execFileSync('git', ['commit', '-qm', msg], { cwd: repo, stdio: 'ignore', env: { ...process.env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date } })
-  write('.rig/rules.json', JSON.stringify([rule('old-rule')]))
-  git('add', '-A')
-  commit('old', new Date(Date.now() - 200 * 86_400_000).toISOString())
-  write('.rig/rules.json', JSON.stringify([rule('old-rule'), rule('new-rule')]))
-  git('add', '-A')
-  commit('new', new Date().toISOString())
-  const h = JSON.parse(run(['metrics', '--json']).stdout).metrics.harness
-  assert.deepEqual(h.prune_candidates, ['old-rule'])
 })
 
 test('waive is human-only, records the waiver for the active change, and status reports sensors', () => {
@@ -525,39 +465,10 @@ test('lean S/M: a feature has one design gate and no review stage; a tier L refa
   assert.match(run(['status']).stdout, /human gate: review big\/plan\.md/)
 })
 
-test('metrics report autonomy and economics from events and usage', () => {
-  run(['new', 'aa', '--type', 'chore', '--tier', 'S'])
-  run(['log-usage', JSON.stringify({ kind: 'main', usd: 1, change: 'aa', stage: 'build' })])
-  const m = JSON.parse(run(['metrics', '--json']).stdout).metrics
-  assert.ok('auto_approved_per_change' in m.autonomy)
-  assert.ok('escalations_per_change' in m.autonomy)
-  assert.equal(m.economics.usd_by_node.build, 1)
-  assert.ok('value_over_cost' in m.economics)
-  assert.equal(m.economics.value_is_estimate, true)
-})
-
-test('economics: ratios need a sample, are windowed to the same changes, and honour the value override', () => {
-  run(['new', 'ch-0', '--type', 'chore', '--tier', 'S'])
-  run(['log-usage', JSON.stringify({ kind: 'main', usd: 1, change: 'ch-0', stage: 'build', in: 3 })])
-  const few = JSON.parse(run(['metrics', '--json']).stdout).metrics.economics
-  assert.equal(few.usd_per_change, null)
-  assert.equal(few.value_over_cost, null)
-  for (let i = 1; i < 5; i++) {
-    run(['new', `ch-${i}`, '--type', 'chore', '--tier', 'S'])
-    run(['log-usage', JSON.stringify({ kind: 'main', usd: 1, change: `ch-${i}`, stage: 'build', in: 3 })])
-  }
-  run(['log-usage', JSON.stringify({ kind: 'main', usd: 100, change: 'gone', stage: 'build' })])
-  write('.rig/changes/ch-0/plan.md', 'value_hours: 10 because it is big\n')
-  const e = JSON.parse(run(['metrics', '--json']).stdout).metrics.economics
-  assert.equal(e.usd_per_change, 1)
-  assert.equal(e.value_over_cost, 360)
-  assert.equal(e.tokens_by_node.build, 15 + 0)
-})
-
-test('status --json carries the active story and step for the mod', () => {
+test('status --json carries the active step and no story', () => {
   run(['new', 'aa', '--type', 'chore', '--tier', 'S'])
   const s = JSON.parse(run(['status', '--json']).stdout)
-  assert.equal(s.story.slug, 'aa')
+  assert.equal(s.story, undefined)
   assert.equal(s.step.verdict, 'continue')
   assert.equal(s.step.node, 'build')
 })

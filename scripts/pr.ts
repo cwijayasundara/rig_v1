@@ -15,7 +15,6 @@ import { formatFindings, SENSOR_NAMES, ghBin, type SensorConfig } from './model.
 import { appendEvent, block, unblock, readRatchet, readEvents } from './ratchet.ts'
 import { runQuality } from './quality.ts'
 import { verificationFresh, sensorsFresh } from './stamp.ts'
-import { renderScorecard } from './scorecard.ts'
 import { publishQuietly } from './spend.ts'
 
 type ShippedRepo = { name: string; branch: string; commit: string }
@@ -136,7 +135,7 @@ export function cmdPr(args: Args): void {
   if (remote && git(['rev-parse', '--abbrev-ref', 'HEAD']) !== branch) fail(`not shipping: only ${branch} is pushed and HEAD is ${git(['rev-parse', '--abbrev-ref', 'HEAD'])}; nothing was committed`)
   const title = (message.split('\n')[0] ?? slug).slice(0, 200)
   // pr.md is evidence (written only here) and lands in the same commit as ship.json: a committed ship.json alone reads as a v0.1 change, done.
-  fs.writeFileSync(path.join(CHANGES, slug, 'pr.md'), `---\nstate: ${remote ? 'open' : 'local-only'}\nbranch: ${branch}\n---\n${title}\n\n${renderScorecard(slug)}`)
+  fs.writeFileSync(path.join(CHANGES, slug, 'pr.md'), `---\nstate: ${remote ? 'open' : 'local-only'}\nbranch: ${branch}\n---\n${title}\n`)
   // Without a remote the event is complete now, so it lands in the commit; with one it needs the PR url, after the push.
   if (!remote) appendEvent(slug, { node: 'pr', verdict: 'done', kind: 'pr', target: 'local-only' })
   record()

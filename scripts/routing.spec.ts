@@ -14,7 +14,6 @@ test('every role and tier returns the spec table', () => {
     'slice-review': [{ model: 'sonnet', effort: 'high' }, { model: 'sonnet', effort: 'high' }, { model: 'sonnet', effort: 'high' }],
     reviewer: [{ model: 'sonnet', effort: 'medium' }, { model: 'sonnet', effort: 'high' }, { model: 'opus', effort: 'high' }],
     referee: [{ model: 'sonnet', effort: 'medium' }, { model: 'sonnet', effort: 'medium' }, { model: 'sonnet', effort: 'high' }],
-    triage: [{ model: 'haiku', effort: 'low' }, { model: 'haiku', effort: 'low' }, { model: 'haiku', effort: 'low' }],
   }
   for (const role of ROLES) assert.deepEqual([r(role, 'S'), r(role, 'M'), r(role, 'L')], want[role], role)
 })

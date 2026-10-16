@@ -5,7 +5,7 @@ import path from 'node:path'
 import { ROOT, SDLC, PLUGIN_ROOT, IS_VENDORED, read, out, fail, sanctionWrites, type Args } from './core.ts'
 import { writeHookScripts, installHooks } from './githooks.ts'
 
-export const VENDORED = ['core', 'graph', 'model', 'sensors', 'diffs', 'runs', 'check', 'ratchet', 'stamp', 'slicecheck', 'checkpoint', 'slices', 'stale', 'shards', 'quality', 'basetree', 'configparse', 'routing', 'context', 'scopes', 'toolchain', 'preflight', 'levels', 'verify', 'hooks', 'metrics', 'evals', 'inbox', 'chart', 'chartcheck', 'watch', 'scorecard', 'points', 'timing', 'flow', 'pr', 'spend', 'sdlc', 'githooks', 'vendor', 'initbaseline', 'registry', 'stackpacks', 'modelstate', 'stackinit', 'contracts', 'sync']
+export const VENDORED = ['core', 'graph', 'model', 'sensors', 'diffs', 'runs', 'check', 'ratchet', 'stamp', 'slicecheck', 'checkpoint', 'slices', 'stale', 'shards', 'quality', 'basetree', 'configparse', 'routing', 'context', 'scopes', 'toolchain', 'preflight', 'levels', 'verify', 'hooks', 'evals', 'inbox', 'flow', 'pr', 'spend', 'sdlc', 'githooks', 'vendor', 'initbaseline', 'registry', 'stackpacks', 'modelstate', 'stackinit', 'contracts', 'sync']
 const SDLC_HOOK = '.rig/bin/sdlc.ts'
 type HookGroup = { matcher?: string; hooks: { type: string; command: string; timeout?: number; async?: boolean }[] }
 

@@ -3,7 +3,7 @@
 // Runs directly with Node >= 22.18 (built-in TypeScript type stripping) on macOS, Linux and Windows:
 //   node --disable-warning=ExperimentalWarning scripts/sdlc.ts <command>
 // Everything the model must not judge for itself lives in these scripts: change state, approvals,
-// scope drift, sensors, hook decisions and metrics. This file is the CLI.
+// scope drift, sensors and hook decisions. This file is the CLI.
 import fs from 'node:fs'
 import path from 'node:path'
 import {
@@ -17,14 +17,8 @@ import { readBaseline, branchDiff, turnDiff, type Snapshot } from './diffs.ts'
 import { cmdHook, readGate } from './hooks.ts'
 import { cmdCheck, cmdCheckFile, cmdImpactStatus, loadConfig } from './check.ts'
 import { runCommand, recordRun } from './runs.ts'
-import { cmdMetrics } from './metrics.ts'
 import { cmdEvals, lastRun } from './evals.ts'
 import { cmdInbox, pendingIntents, startRefusal } from './inbox.ts'
-import { cmdChart, approveChart } from './chartcheck.ts'
-import { CHART_RE } from './chart.ts'
-import { cmdWatch, watchWarnings } from './watch.ts'
-import { cmdPoints, parsePoints, pointsOf } from './points.ts'
-import { cmdScorecard, story } from './scorecard.ts'
 import { flowOf, flowLine } from './flow.ts'
 import { cmdVendor, installStandalone } from './vendor.ts'
 import { cmdBaseline } from './initbaseline.ts'
@@ -83,7 +77,7 @@ function cmdInit(args: Args): void {
 
 function cmdNew(args: Args): void {
   const slug = args.pos[0]
-  if (!slug || !SLUG_RE.test(slug) || CHART_RE.test(slug)) fail('usage: new <kebab-slug, not chart-N> --type <type> --tier S|M|L [--title "..."] [--points N] [--source .rig/intent/<file>.md]')
+  if (!slug || !SLUG_RE.test(slug)) fail('usage: new <kebab-slug> --type <type> --tier S|M|L [--title "..."] [--source .rig/intent/<file>.md]')
   const type = optString(args, 'type') ?? 'feature'
   const tier = optString(args, 'tier') ?? 'M'
   if (!isChangeType(type)) fail(`unknown type "${type}"; one of ${Object.keys(PATHS).join(', ')}`)
@@ -101,9 +95,7 @@ function cmdNew(args: Args): void {
     if (note) out(note)
     cmdInit({ pos: [], opt: {} })
   }
-  const explicit = args.opt.points !== undefined ? parsePoints(args.opt.points) : null
-  const defaults = loadConfig().config.points
-  createChange(slug, type, tier, optString(args, 'title') ?? slug, { value: explicit ?? defaults[tier], set: explicit !== null }, source)
+  createChange(slug, type, tier, optString(args, 'title') ?? slug, { value: loadConfig().config.points[tier], set: false }, source)
   const other = otherChangeBranch(slug)
   out(`created ${toPosix(path.relative(ROOT, dir))}/intent.md (type ${type}, tier ${tier})${other ? `\nwarning: ${other}` : ''}`)
 }
@@ -141,7 +133,7 @@ function cmdStatus(args: Args): void {
   const shown = active ?? (json && args.opt.band ? awaitingMerge() : null), lean = json && args.opt.band ? (shown ? loadChange(shown) : null) : undefined
   if (lean !== undefined) {
     const st = shown ? step(shown) : null
-    return out(JSON.stringify({ initialised: true, active: shown, changes: lean ? [{ slug: lean.slug, next: lean.next }] : [], sensors: sensorStatus(), story: shown ? story(shown) : null, step: st, budget: budgetOf(st), pressure: pressureTop(st), flow: flowOf(true, lean) }))
+    return out(JSON.stringify({ initialised: true, active: shown, changes: lean ? [{ slug: lean.slug, next: lean.next }] : [], sensors: sensorStatus(), step: st, budget: budgetOf(st), pressure: pressureTop(st), flow: flowOf(true, lean) }))
   }
   const changes = listChanges().map(loadChange)
   const warnings: string[] = []
@@ -162,19 +154,18 @@ function cmdStatus(args: Args): void {
     if (git(['remote', 'get-url', 'origin']) === null) warnings.push('no origin remote: ship commits locally, but no PR, PR review or gh metrics until one is added (git remote add origin <url>)')
   }
   for (const e of pendingIntents()) warnings.push(`intent ${e.file} is accepted and has no change: ${skillRef('start')} .rig/intent/${e.file}`)
-  warnings.push(...watchWarnings())
   const stale = [...repoStale(ROOT), ...stalenessAll(changes.map(c => c.slug))]
   const open = changes.flatMap(c => openItems(c.slug))
   if (json) {
-    const summary = changes.map(c => ({ slug: c.slug, type: c.type, tier: c.tier, points: pointsOf(c.slug).points, next: c.next, command: nextCommand(c) }))
+    const summary = changes.map(c => ({ slug: c.slug, type: c.type, tier: c.tier, next: c.next, command: nextCommand(c) }))
     const st = active ? step(active) : null
-    return out(JSON.stringify({ initialised: true, active, changes: summary, warnings, stale, open, sensors: sensorStatus(), story: active ? story(active) : null, step: st, budget: budgetOf(st), pressure: pressureTop(st), flow: flowOf(true, active ? loadChange(active) : null) }))
+    return out(JSON.stringify({ initialised: true, active, changes: summary, warnings, stale, open, sensors: sensorStatus(), step: st, budget: budgetOf(st), pressure: pressureTop(st), flow: flowOf(true, active ? loadChange(active) : null) }))
   }
   if (!changes.length) return out([`no changes yet: run ${skillRef('start')} "<what you want>"`, ...warnings.map(w => `warn: ${w}`)].join('\n'))
   const label = (c: Change): string => (c.next ? (c.next.kind === 'approve' && c.next.gate === 'impact' ? 'impact' : c.next.stage) + (c.next.kind === 'approve' ? ' (awaiting approval)' : '') : 'done')
   const rows = changes
     .sort((a, b) => (a.slug === active ? -1 : b.slug === active ? 1 : 0))
-    .map(c => `${c.slug === active ? '▶' : ' '} ${c.slug.padEnd(28)} ${c.type.padEnd(10)} ${c.tier}  ${label(c)}  ${pointsOf(c.slug).points}pt`)
+    .map(c => `${c.slug === active ? '▶' : ' '} ${c.slug.padEnd(28)} ${c.type.padEnd(10)} ${c.tier}  ${label(c)}`)
   const act = active ? loadChange(active) : null
   const st = active ? step(active) : null
   const where = act ? `${act.slug} is at ${act.next ? (act.next.kind === 'approve' ? act.next.gate : act.next.stage) : 'done'}` : 'no active change'
@@ -192,8 +183,6 @@ const humanFallback = (cmd: string, usage: string): string => `! SDLC_HUMAN=1 no
 function cmdApprove(args: Args): void {
   if (process.env.SDLC_HUMAN !== '1') fail(`approvals are human-only: the person runs /rig:approve <slug> <stage>. If that command is not listed, restart Claude Code, or the person types: ${humanFallback('approve', '<slug> <stage>')}`, 3)
   const [slug, stage] = words(args)
-  const chart = CHART_RE.exec(slug ?? '')
-  if (chart) return approveChart(Number(chart[1]), stage, optString(args, 'by') || whoami() || 'unknown')
   if (!slug || !stage) fail('usage: approve <slug> <stage>')
   checkSlug(slug)
   if (stage === 'budget') {
@@ -415,7 +404,6 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   // /rig:init passes --onboarding: its own writes over the next turns open no ad-hoc change (core.ts onboarding()).
   init: args => { cmdInit(args); if (args.opt.onboarding) startOnboarding(); if (args.opt.full) { const note = scaffoldPolicy(); if (note) out(note) } },
   new: cmdNew,
-  points: cmdPoints,
   activate: cmdActivate,
   status: cmdStatus,
   next: cmdNext,
@@ -431,12 +419,8 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   secrets: cmdSecrets,
   'log-usage': cmdLogUsage,
   hook: cmdHook,
-  metrics: cmdMetrics,
   evals: cmdEvals,
   inbox: cmdInbox,
-  chart: cmdChart,
-  watch: cmdWatch,
-  scorecard: cmdScorecard,
   spend: args => cmdSpend(args, () => {
     const slug = typeof args.opt.change === 'string' ? checkSlug(args.opt.change) : activeSlug()
     const c = slug ? loadChange(slug) : null

@@ -1,6 +1,6 @@
 ---
 name: pr
-description: The PR node - scope gate, ship gate, commit on sdlc/<slug>, pr.md scorecard, push and open the PR (or local-only without a remote). No confirmation needed inside an approved plan.
+description: The PR node - scope gate, ship gate, commit on sdlc/<slug>, pr.md, push and open the PR (or local-only without a remote). No confirmation needed inside an approved plan.
 argument-hint: <slug>
 effort: low
 allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Read, Agent

@@ -71,23 +71,3 @@ test('log-usage prints the context warnings for the mod to show and keeps the fi
   assert.equal(rows.at(-1).first, true)
   assert.equal(sdlc(repo, ['log-usage', JSON.stringify({ kind: 'main', ctx: 20_000, usd: 0.1 })], { env: { HOME: home } }).stdout, '')
 })
-
-test('metrics report the heaviest first call and the background sessions found in the project transcripts', () => {
-  const repo = makeRepo()
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-home-'))
-  const env = { HOME: home }
-  sdlc(repo, ['new', 'add-login', '--type', 'feature', '--tier', 'S'], { env })
-  sdlc(repo, ['log-usage', JSON.stringify({ kind: 'main', first: true, ctx: 57_000, usd: 0.1 })], { env })
-  sdlc(repo, ['log-usage', JSON.stringify({ kind: 'main', ctx: 90_000, usd: 0.1 })], { env })
-  const dir = path.join(home, '.claude', 'projects', projectSlug(repo))
-  fs.mkdirSync(dir, { recursive: true })
-  const at = new Date().toISOString()
-  fs.writeFileSync(path.join(dir, 'review.jsonl'), JSON.stringify({ type: 'user', timestamp: at, entrypoint: 'sdk-py' }) + '\n')
-  fs.writeFileSync(path.join(dir, 'me.jsonl'), JSON.stringify({ type: 'user', timestamp: at, entrypoint: 'cli' }) + '\n')
-  const m = JSON.parse(sdlc(repo, ['metrics', '--json'], { env }).stdout).metrics
-  assert.equal(m.cost.first_call_context, 57_000)
-  assert.equal(m.cost.heavy_session_starts, 1)
-  assert.equal(m.background.sessions, 1)
-  assert.deepEqual(m.background.by_entrypoint, { 'sdk-py': 1 })
-  assert.deepEqual(m.background.per_change, { 'add-login': 1 })
-})

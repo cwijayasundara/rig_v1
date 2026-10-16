@@ -59,3 +59,29 @@ test('4a: a typed /rig:approve records one row even when the skill runs the same
   const rows = fs.readFileSync(path.join(repo, '.rig/approvals.jsonl'), 'utf8').trim().split('\n')
   assert.equal(rows.length, 1)
 })
+
+test('4a: chart, watch, metrics, scorecard, points and timing are gone', () => {
+  gone(...['chart', 'chartcheck', 'watch', 'metrics', 'scorecard', 'points', 'timing'].map(m => `scripts/${m}.ts`), 'skills/chart', 'skills/decompose', 'skills/metrics', 'templates/prd-format.md', 'templates/rig-watch.yml', 'templates/rig-triage.yml', 'templates/rig-rehearse.yml')
+  for (const c of ['chart', 'watch', 'metrics', 'scorecard', 'points']) assert.ok(!commands().includes(c), c)
+  assert.ok(commands().includes('inbox'), 'the intent inbox stays')
+})
+
+test('4a: status and status --json no longer carry points or story', () => {
+  const repo = makeRepo()
+  sdlc(repo, ['init'])
+  sdlc(repo, ['new', 'demo', '--type', 'feature', '--tier', 'M'])
+  assert.doesNotMatch(sdlc(repo, ['status']).stdout, /\dpt\b/)
+  const json = JSON.parse(sdlc(repo, ['status', '--json']).stdout) as Record<string, unknown> & { changes: Record<string, unknown>[] }
+  assert.ok(!('story' in json))
+  assert.ok(json.changes.every(c => !('points' in c)))
+})
+
+test('4a: new --source still refuses an intent whose dependency has not shipped, with no chart involved', () => {
+  const repo = makeRepo()
+  sdlc(repo, ['init'])
+  write(repo, '.rig/intent/one.md', '---\nstatus: accepted\n---\n# One\n')
+  write(repo, '.rig/intent/two.md', '---\nstatus: accepted\ndepends: one\n---\n# Two\n')
+  const r = sdlc(repo, ['new', 'two', '--type', 'feature', '--tier', 'M', '--source', '.rig/intent/two.md'])
+  assert.notEqual(r.code, 0)
+  assert.match(r.stderr + r.stdout, /blocked by: one/)
+})

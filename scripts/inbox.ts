@@ -1,17 +1,17 @@
 // The intent inbox (.rig/intent/*.md): ideas a product owner commits before any change exists. People write `status:`
 // (draft | accepted | closed); `shipped` is derived from the change whose intent.md names the file as its `source:`.
-// A sprint intent (`sprint: N`, written by /rig:decompose) is accepted by its sprint's chart approval instead of its own
-// status; `depends:` names other intents that must ship first (chart.ts holds the chart, this file the dependencies).
+// `depends:` names other intents that must ship first.
 import fs from 'node:fs'
 import path from 'node:path'
 import { ROOT, SDLC, CHANGES, toPosix, exists, read, out, frontmatter, listChanges, isShipped, git, optString, defaultBase, type Args, type ChangeType, type Tier } from './core.ts'
 import { modelFor, isChangeType, isTier, type ModelAlias } from './graph.ts'
-import { chartApproval, changedSinceApproval, listField, sprintOf, type ChartState } from './chart.ts'
 
 export const INBOX = path.join(SDLC, 'intent')
+export const listField = (v: string | undefined): string[] =>
+  (v ?? '').replace(/^\[|\]$/g, '').split(',').map(s => s.trim().replace(/^["']|["']$/g, '').replace(/\.md$/, '')).filter(s => /^[A-Za-z0-9][\w.-]*$/.test(s))
 export type InboxEntry = {
   file: string; status: 'draft' | 'accepted' | 'closed' | 'shipped' | 'unknown'; change: string | null; type: ChangeType | null; tier: Tier | null; model: ModelAlias
-  sprint: number | null; depends: string[]; prd: string[]; owner: string | null; accepted: boolean; blockedBy: string[]; ready: boolean
+  depends: string[]; owner: string | null; accepted: boolean; blockedBy: string[]; ready: boolean
 }
 const DECLARED = ['draft', 'accepted', 'closed'] as const
 const KEBAB_MD = /^[a-z0-9][a-z0-9-]{0,60}\.md$/
@@ -46,20 +46,17 @@ export function inboxEntries(): InboxEntry[] {
     const source = frontmatter(read(path.join(CHANGES, slug, 'intent.md'))).data.source
     if (source) bySource.set(path.basename(source), slug)
   }
-  const charts = new Map<number, ChartState>()
-  const chartOf = (n: number): ChartState => charts.get(n) ?? (charts.set(n, chartApproval(n)), charts.get(n) as ChartState)
   const base = fs.readdirSync(INBOX).filter(f => f.endsWith('.md')).sort().map(file => {
     const d = frontmatter(read(path.join(INBOX, file))).data
     const change = bySource.get(file) ?? null
     const declared = (DECLARED as readonly string[]).includes(d.status ?? '') ? (d.status as InboxEntry['status']) : 'unknown'
     const type = isChangeType(d.type) ? d.type : null
     const tier = isTier(d.tier) ? d.tier : null
-    const sprint = sprintOf(d.sprint)
-    const accepted = sprint !== null ? declared !== 'closed' && chartOf(sprint) === 'approved' : declared === 'accepted'
+    const accepted = declared === 'accepted'
     // No valid tier is a doubt, and a doubt is Opus (M0's rule).
     return {
       file, status: change && isShipped(change) ? 'shipped' : declared, change, type, tier, model: tier ? modelFor(type ?? 'feature', tier) : 'opus',
-      sprint, depends: listField(d.depends), prd: listField(d.prd), owner: d.owner || null, accepted,
+      depends: listField(d.depends), owner: d.owner || null, accepted,
     } satisfies Omit<InboxEntry, 'blockedBy' | 'ready'>
   })
   const byName = new Map(base.map(e => [nameOf(e.file), e]))
@@ -74,22 +71,16 @@ export function inboxEntries(): InboxEntry[] {
   })
 }
 
-// Why `new --source` must not start this intent yet, or null. Intents without `sprint:` keep today's rule (no status check).
+// Why `new --source` must not start this intent yet, or null. No status check: a person chose to start it.
 export function startRefusal(file: string): string | null {
   const e = inboxEntries().find(x => x.file === file)
   if (!e) return null
-  // `sprint:` and `depends:` are what the chart approved: an uncommitted or branch-only edit to them (dropping `sprint:` to
-  // skip the gate) is refused until it merges to the trunk through review.
+  // `depends:` decides the order: an uncommitted or branch-only edit to it is refused until it merges to the trunk through review.
   const ref = defaultBase() ?? 'HEAD'
   const was = frontmatter(git(['show', `${ref}:${toPosix(path.relative(ROOT, path.join(INBOX, file)))}`]) ?? '').data
   const now = frontmatter(read(path.join(INBOX, file))).data
-  if (Object.keys(was).length && (sprintOf(was.sprint) !== sprintOf(now.sprint) || listField(was.depends).join() !== listField(now.depends).join())) return `its sprint: or depends: differs from ${ref === 'HEAD' ? 'the last commit' : 'the trunk'}; merge that edit through review first`
+  if (Object.keys(was).length && listField(was.depends).join() !== listField(now.depends).join()) return `its depends: differs from ${ref === 'HEAD' ? 'the last commit' : 'the trunk'}; merge that edit through review first`
   if (e.blockedBy.length) return `blocked by: ${e.blockedBy.join(', ')} (each must ship first: its change's ship.json committed here)`
-  if (e.sprint === null) return null
-  if (e.status === 'closed') return `${file} is closed`
-  const state = chartApproval(e.sprint)
-  if (state === 'missing') return `chart-${e.sprint} is not approved: a person reviews the sprint and runs /rig:approve chart-${e.sprint}`
-  if (state === 'stale') return `chart-${e.sprint} is stale: a person reviews what changed (${changedSinceApproval(e.sprint).join(', ')}) and runs /rig:approve chart-${e.sprint}`
   return null
 }
 
@@ -102,14 +93,9 @@ export const pendingIntents = (): InboxEntry[] => inboxEntries().filter(e =>
 export function cmdInbox(args: Args): void {
   let rows = args.opt.pending ? pendingIntents() : inboxEntries()
   if (args.opt.ready) rows = rows.filter(e => e.ready)
-  if (args.opt.sprint !== undefined) rows = rows.filter(e => e.sprint !== null && e.sprint === sprintOf(optString(args, 'sprint')))
   const owner = optString(args, 'owner')
   if (owner) rows = rows.filter(e => e.owner === owner)
   if (args.opt.json) return out(JSON.stringify(rows))
   if (!rows.length) return out('intent inbox is empty (.rig/intent/)')
-  const sprints = [...new Set(rows.flatMap(e => (e.sprint === null ? [] : [e.sprint])))].sort((a, b) => a - b)
-  out([
-    ...sprints.map(n => `chart-${n}: ${chartApproval(n)}`),
-    ...rows.map(e => `${e.status.padEnd(9)}${e.file}${e.change ? ` → ${e.change}` : ''}${e.blockedBy.length ? `  blocked by ${e.blockedBy.join(', ')}` : ''}`),
-  ].join('\n'))
+  out(rows.map(e => `${e.status.padEnd(9)}${e.file}${e.change ? ` → ${e.change}` : ''}${e.blockedBy.length ? `  blocked by ${e.blockedBy.join(', ')}` : ''}`).join('\n'))
 }
