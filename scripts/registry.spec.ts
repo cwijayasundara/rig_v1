@@ -110,3 +110,46 @@ test('{files} is shell-quoted, removed for whole-repo runs, and an empty list sk
   assert.equal(commandFor(cmd('unit', 'turn', 'make test'), []), 'make test')
   assert.equal(commandFor({ id: 'secrets', builtin: true, cadence: 'edit', blocks: true, guide: 'g', enabled: true }, null), null)
 })
+
+import { loadRegistry, fromLegacy, isRegistryShape } from './registry.ts'
+import { parseConfig } from './model.ts'
+
+test('a legacy sensors.json loads with its commands, contracts and paths', () => {
+  const legacy = {
+    fast: { 'unit tests': 'npm test' }, full: { e2e: 'npm run e2e' },
+    quality: { lint: { cmd: 'eslint . -f unix', count: 'lines' } },
+    behavioral: { validate: 'v', run: 'r', files: ['api/**'], cadence: 'final' },
+    knownRed: ['e2e'], tests: ['**/*.t.js'], limits: { fileLines: 300 },
+    layers: [{ from: 'src/ui/**', mustNotImport: ['src/db/**'], why: 'ui talks to services' }],
+  }
+  const { registry, errors, legacy: isLegacy } = loadRegistry(JSON.stringify(legacy))
+  assert.deepEqual(errors, [])
+  assert.equal(isLegacy, true)
+  const by = (id: string) => registry.sensors.find(s => s.id === id)
+  assert.deepEqual([by('fast-unit-tests')?.cmd, by('fast-unit-tests')?.cadence, by('fast-unit-tests')?.blocks], ['npm test', 'turn', true])
+  assert.deepEqual([by('full-e2e')?.cadence, by('full-e2e')?.blocks], ['commit', false])
+  assert.deepEqual([by('quality-lint')?.cmd, by('quality-lint')?.count], ['eslint . -f unix', 'lines'])
+  assert.deepEqual(registry.contracts, { files: ['api/**'], validate: 'v', run: 'r' })
+  assert.deepEqual(registry.paths.tests, ['**/*.t.js'])
+  assert.equal((by('size')?.options as { fileLines?: number } | undefined)?.fileLines, 300)
+  assert.equal(((by('layering')?.options as { layers?: unknown[] } | undefined)?.layers ?? []).length, 1)
+  assert.ok(registry.sensors.every(s => s.guide.trim().length > 0))
+})
+
+test('legacy config errors are passed through, not thrown', () => {
+  const { errors, legacy } = loadRegistry(JSON.stringify({ fast: 'oops' }))
+  assert.equal(legacy, true)
+  assert.match(errors.join(), /fast must map names to command strings/)
+})
+
+test('a file with a sensors list is read as a registry', () => {
+  assert.equal(isRegistryShape(JSON.stringify({ sensors: [] })), true)
+  assert.equal(isRegistryShape(JSON.stringify({ fast: {} })), false)
+  assert.equal(isRegistryShape('{'), false)
+  assert.equal(loadRegistry(JSON.stringify({ sensors: [] })).legacy, false)
+  assert.equal(loadRegistry('').legacy, false)
+})
+
+test('an empty legacy config gives only the built-ins', () => {
+  assert.deepEqual(fromLegacy(parseConfig('').config).sensors.filter(s => !s.builtin), [])
+})

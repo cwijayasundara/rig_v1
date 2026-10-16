@@ -1,6 +1,6 @@
 // The sensor registry (behavioural harness spec 2026-10-16 §3): one .rig/sensors.json, language-free.
 // A sensor is a command or a built-in, a cadence, a blocks flag and one guide sentence. Tool commands live in templates/stacks/.
-import { isObject, isStringList, posInt } from './model.ts'
+import { isObject, isStringList, posInt, parseConfig, type SensorConfig } from './model.ts'
 
 export type Cadence = 'edit' | 'turn' | 'commit' | 'ci' | 'nightly'
 export const CADENCES: Cadence[] = ['edit', 'turn', 'commit', 'ci', 'nightly']
@@ -208,4 +208,45 @@ export function commandFor(s: RegistrySensor, files: string[] | null): string | 
   if (files && !files.length) return null
   if (!files) return s.cmd.replace(/\s*\{files\}/g, '').trim()
   return s.cmd.replaceAll('{files}', files.map(shq).join(' '))
+}
+
+// ---------- today's config (spec §11 step 1: read the old shape until step 4 removes it) ----------
+
+const kebab = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'cmd'
+
+export function fromLegacy(cfg: SensorConfig): Registry {
+  const r = defaultRegistry()
+  const extra: RegistrySensor[] = []
+  const declared = (prefix: 'fast' | 'full', cadence: Cadence): void => {
+    for (const [name, c] of Object.entries(cfg[prefix])) extra.push({ id: `${prefix}-${kebab(name)}`, cmd: c, cadence, blocks: !cfg.knownRed.includes(name), count: 'exit', guide: `"${name}" must pass before the ${cadence === 'turn' ? 'turn ends' : 'change is committed'}.`, enabled: true })
+  }
+  declared('fast', 'turn')
+  declared('full', 'commit')
+  for (const [cat, q] of Object.entries(cfg.quality)) {
+    if (!q) continue
+    extra.push({ id: `quality-${cat}`, cmd: q.cmd, cadence: 'commit', blocks: true, count: isCount(q.count) ? q.count : 'lines', guide: `Do not raise the ${cat} count above the base branch.`, enabled: true })
+  }
+  r.sensors = [...extra, ...r.sensors]
+  const size = r.sensors.find(s => s.id === 'size')
+  if (size) size.options = { ...cfg.limits }
+  const layering = r.sensors.find(s => s.id === 'layering')
+  if (layering && cfg.layers.length) layering.options = { layers: cfg.layers }
+  r.contracts = cfg.behavioral
+    ? { files: [...cfg.behavioral.files], validate: cfg.behavioral.validate ?? '', run: cfg.behavioral.run ?? '' }
+    : { files: [...cfg.contracts], validate: '', run: '' }
+  r.paths = { tests: [...cfg.tests], testSupport: [...cfg.testSupport], fixtures: [...cfg.fixtures], ignore: [...cfg.ignore] }
+  return r
+}
+
+export function isRegistryShape(text: string): boolean {
+  try {
+    const v: unknown = JSON.parse(text)
+    return isObject(v) && Array.isArray(v.sensors)
+  } catch { return false }
+}
+
+export function loadRegistry(text: string): { registry: Registry; errors: string[]; legacy: boolean } {
+  if (!text.trim() || isRegistryShape(text)) return { ...parseRegistry(text), legacy: false }
+  const { config, errors } = parseConfig(text)
+  return { registry: fromLegacy(config), errors, legacy: true }
 }
