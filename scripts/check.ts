@@ -322,7 +322,7 @@ export function runChecks(i: CheckInput): CheckResult {
     ...rulesSensor(pattern, i.rules),
     ...contractFindings({ ...i, point }),
     ...harnessTamper(diffs, { point, toolEdited: i.toolEdited, before: i.before, after }),
-    ...frozenFindings(i.slugs, after),
+    ...frozenFindings(i.slugs, diffs.map(d => d.file), after),
   ]
   // A diff whose plan the person approved is big by design: the diff-size limit warns instead of blocking.
   if (i.slugs.length && i.slugs.every(planApproved)) {
@@ -351,7 +351,7 @@ export function editFindings(rel: string): Finding[] {
   const diffs = fileDiff(snap, rel)
   const pattern = withoutFixtures(diffs, config)
   const slug = activeSlug()
-  return applyWaivers(builtinsApplied([...testTamper(pattern, config), ...suppressions(pattern, config), ...layering(pattern, config), ...size(diffs, config, fileLines([rel]), 'edit'), ...secretsInDiff(pattern), ...rulesSensor(pattern, rules), ...frozenFindings(slug ? [slug] : [], f => read(path.join(ROOT, f)))], config), slug ? [slug] : []).findings
+  return applyWaivers(builtinsApplied([...testTamper(pattern, config), ...suppressions(pattern, config), ...layering(pattern, config), ...size(diffs, config, fileLines([rel]), 'edit'), ...secretsInDiff(pattern), ...rulesSensor(pattern, rules), ...frozenFindings(slug ? [slug] : [], [rel], f => read(path.join(ROOT, f)))], config), slug ? [slug] : []).findings
 }
 
 // The changes a diff carries evidence for, as CI reads them.

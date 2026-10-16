@@ -253,7 +253,7 @@ function cmdApprove(args: Args): void {
   const row: Approval = { slug, stage, by, at: now(), digest: approvalDigest(slug, stage as GatedStage), ...(frozen ? { contracts: frozen } : {}) }
   // The prompt hook and the /rig:approve skill can both run for one typed command: the second finds the row and adds nothing.
   // A registry's digest leaves contract files out, so a re-approval after a contract edit must still record the new hashes.
-  const sameFreeze = JSON.stringify(frozenFor(slug)) === JSON.stringify(frozen ?? {})
+  const sameFreeze = !frozen || JSON.stringify(frozenFor(slug)) === JSON.stringify(frozen)
   if (sameFreeze && exists(APPROVALS) && read(APPROVALS).split('\n').some(l => l.includes(`"slug":"${slug}","stage":"${stage}"`) && l.includes(`"digest":"${row.digest}"`))) return out(`${slug} ${stage} is already approved (digest ${row.digest}). Next: ${nextCommand(loadChange(slug))}`)
   fs.appendFileSync(APPROVALS, JSON.stringify(row) + '\n')
   out(`approved ${slug} ${stage} by ${by} (digest ${row.digest}). Next: ${nextCommand(loadChange(slug))}`)

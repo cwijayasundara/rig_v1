@@ -18,7 +18,7 @@ import { appendEvent, readEvents } from './ratchet.ts'
 import { treeStamp } from './stamp.ts'
 import { runCommand } from './runs.ts'
 import { policyMode, activeSensors, commandFor, ALWAYS_ON, type Registry, type Mode } from './registry.ts'
-import { contractsTouched } from './contracts.ts'
+import { contractsTouched, contractGlobs } from './contracts.ts'
 import { syncFindings } from './sync.ts'
 import { recordSessionModel, recordLaunch, recordResolved, sessionModel, readModelState, modelRoleFindings } from './modelstate.ts'
 
@@ -269,7 +269,7 @@ function hookStop(input: HookInput = {}): { halt: boolean; warn?: string } {
   const { config, rules, errors, registry } = loadConfig()
   const { mode, model } = modeNow(registry, input)
   const gate = readGate()
-  const diffs = turnDiff(snap).filter(d => isSource(d.file, config) || isProtected(d.file) || matchesAny(d.file, config.contracts))
+  const diffs = turnDiff(snap).filter(d => isSource(d.file, config) || isProtected(d.file) || matchesAny(d.file, registry ? contractGlobs(registry.contracts) : config.contracts))
   if (!diffs.length) return { halt: false }
   const hash = diffHash(diffs) + sha(read(path.join(SDLC, 'sensors.json')) + read(path.join(SDLC, 'rules.json'))) + mode
   if (gate.passed.main === hash) return { halt: false }

@@ -13,25 +13,28 @@ const digest = (text: string): string => sha(text.replace(/\s+$/, ''))
 // The per-file hashes an approval of the spec or plan records, so an edit made after it names the file it touched.
 export function freezeRecord(slug: string, stage: string): Record<string, string> | undefined {
   if (!FREEZING.includes(stage) || !isRegistryShape(read(path.join(SDLC, 'sensors.json')))) return undefined
-  const files = behavioralFiles(slug)
-  return files.length ? Object.fromEntries(files.map(f => [f, digest(read(path.join(ROOT, f)))])) : undefined
+  // Always a record (empty when no contract file is left), so a re-approval can lift an old freeze.
+  return Object.fromEntries(behavioralFiles(slug).map(f => [f, digest(read(path.join(ROOT, f)))]))
 }
 
 // The freeze in force: the latest approval row of the change that recorded one.
 export const frozenFor = (slug: string): Record<string, string> => readJsonl<Approval>(APPROVALS).filter(a => a.slug === slug && a.contracts).at(-1)?.contracts ?? {}
 
-// A frozen file whose text differs from its approved hash (deleted counts) blocks, until a person waives it or re-approves.
-export function frozenFindings(slugs: string[], after: (file: string) => string): Finding[] {
+// A frozen file this diff touches whose text differs from its approved hash (deleted counts) blocks, until a person waives it
+// or re-approves. Only the diff's files: a frozen file changed on the trunk and merged in is not this change's edit.
+export function frozenFindings(slugs: string[], touched: string[], after: (file: string) => string): Finding[] {
   const out: Finding[] = []
   for (const slug of slugs) for (const [file, hash] of Object.entries(frozenFor(slug))) {
-    if (digest(after(file)) === hash || out.some(f => f.file === file)) continue
+    if (!touched.includes(file) || digest(after(file)) === hash || out.some(f => f.file === file)) continue
     out.push({ sensor: 'harness-tamper', severity: 'block', file, message: `${file} is a contract frozen by the approval of ${slug} and has changed since`, fix: `revert it (git checkout -- ${file}); if the contract must change, ask the person to run /rig:waive harness-tamper ${file} <reason> or to re-approve the plan` })
   }
   return out
 }
 
 // A turn runs the contract commands only when its diff reaches a contract file or the source a contract covers.
-export const contractsTouched = (c: Contracts, files: string[]): boolean => files.some(f => matchesAny(f, [...c.files, ...c.covers]))
+export const contractsTouched = (c: Contracts, files: string[]): boolean => files.some(f => matchesAny(f, [...contractGlobs(c), ...c.covers]))
+// The contract files, as the freeze sees them: commands with no files declared default to .rig/contracts/** (core.ts behavioralFiles).
+export const contractGlobs = (c: Contracts): string[] => (c.files.length ? c.files : c.validate || c.run ? ['.rig/contracts/**'] : [])
 
 const shown = (r: RunRow): string => r.tail.split('\n').slice(0, 20).join('\n')
 const how = (r: RunRow): string => `exited ${r.exit}${r.timedOut ? ', timed out' : ''}`

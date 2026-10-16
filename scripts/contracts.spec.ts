@@ -46,6 +46,7 @@ test('a frozen contract edited after approval blocks at commit and names the fil
 
 test('a frozen contract deleted after approval blocks', () => {
   approved()
+  gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'approved', '--no-verify')
   fs.rmSync(path.join(repo, 'api/openapi.yaml'))
   assert.match(commitCheck().stdout, /\[harness-tamper\][\s\S]*api\/openapi\.yaml/)
 })
@@ -164,4 +165,37 @@ test('under final policy a turn never runs the contract commands', () => {
   registry({ policy: { default: 'final', haiku: 'final', sonnet: 'final', opus: 'final' }, contracts: { files: ['api/**'], run: mark(m, 'run') } })
   turnAt('api/openapi.yaml')
   assert.deepEqual(ran(m), [])
+})
+
+// Final review fixes.
+test('with no contracts.files, a turn editing .rig/contracts runs the commands (the freeze default)', () => {
+  const m = marker()
+  registry({ contracts: { run: mark(m, 'run') } })
+  turnAt('.rig/contracts/api.yaml')
+  assert.deepEqual(ran(m), ['run'])
+})
+
+test('a frozen file changed by someone else (not in this diff) does not block this commit', () => {
+  approved()
+  write(repo, 'api/openapi.yaml', 'openapi: 3.1.0\npaths: {}\n')
+  gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'merged from main', '--no-verify')
+  write(repo, 'src/a.js', 'export const a = 1\n')
+  assert.doesNotMatch(commitCheck().stdout, /\[harness-tamper\]/)
+})
+
+test('an untracked frozen contract that is not staged does not block a commit of other files', () => {
+  approved()
+  write(repo, 'src/a.js', 'export const a = 1\n')
+  gitIn(repo, 'add', 'src/a.js')
+  assert.doesNotMatch(sdlc(repo, ['check', '--at', 'commit']).stdout, /\[harness-tamper\]/)
+})
+
+test('re-approving after every contract file is gone clears the freeze, and a second approve adds no row', () => {
+  approved()
+  fs.rmSync(path.join(repo, 'api/openapi.yaml'))
+  sdlc(repo, ['approve', 'demo', 'design'], HUMAN)
+  const rows = approvals().length
+  sdlc(repo, ['approve', 'demo', 'design'], HUMAN)
+  assert.equal(approvals().length, rows)
+  assert.doesNotMatch(commitCheck().stdout, /\[harness-tamper\]/)
 })
