@@ -73,7 +73,7 @@ A model never approves: every gate is a person's command (`SDLC_HUMAN` is set on
 |---|---|---|
 | `.rig/changes/<slug>/` | One change: `intent.md`, `spec.md`, `plan.md`, `approval.json`, `evidence/runs.jsonl`, `verify.json`, `pr.md` | `/rig:start` through `/rig:pr` |
 | `approval.json` (per change), `.rig/waivers.jsonl` | Every human decision, with the hashes of what it covered | `/rig:approve`, `/rig:waive` (people only) |
-| `.rig/sensors.json`, `rules.json`, `guides/` | Commands, gates, test levels | `/rig:init`, then reviewed edits |
+| `.rig/sensors.json`, `rules.json`, `guides/` | The sensor registry (commands and built-ins, cadences, guides), contracts, gates | `/rig:init`, then reviewed edits |
 | `.rig/bin/`, `.claude/` | The vendored harness, so the repo needs no plugin | `/rig:init`, `vendor --standalone` |
 
 Everything above is committed: the repo is the record, and CI (`rig-check`) re-judges it with the base branch's own checker.
@@ -217,8 +217,8 @@ Separate changes can run side by side, each in its own checkout on its own `sdlc
 | You submit a prompt | `prompt-submit` | Snapshots the tree as the turn baseline, so Stop judges exactly this turn's diff. |
 | After an edit | `post-edit` | Rejects secrets and plans containing code, runs the file's sensors against the turn baseline, and injects a matching guide once per session. |
 | A turn ends | `stop` | Runs the sensors on the turn's diff; blocks at most 2 times, then records `unresolved.json`. |
-| You commit | git pre-commit | The staged diff goes through the Stop sensors and the fast commands; warnings print with their fix text, blocks refuse the commit (during a merge or rebase only the fast commands are skipped). |
-| You push | git pre-push | The branch's commits (against its merge-base with the trunk, as CI) go through the sensors; warnings print with their fix text; `githooks.prePush: "off"` disables it. |
+| You commit | git pre-commit | The staged diff goes through the built-in sensors and every edit-, turn- and commit-cadence sensor; warnings print with their fix text, blocks refuse the commit (during a merge or rebase the command sensors are skipped). |
+| You push | git pre-push | The branch's commits (against its merge-base with the trunk, as CI) go through every sensor up to the ci cadence; warnings print with their fix text. |
 | A PR opens | CI `rig-check` | The base branch's checker re-judges; human-approval check on an added or edited `approval.json`. |
 
 **Safety.** No hook runs on Bash. Evidence is protected by `permissions` deny rules and by CI, which recomputes every verdict from the base branch's checker. A shell script can still write a file locally; CI plus branch protection is the boundary.
@@ -311,8 +311,7 @@ Long builds belong in a Claude Code cloud session (claude.ai/code or `claude --c
 ## Guides and sensors
 
 Computational sensors run on the hot path at zero tokens; one inferential review runs per change. `sdlc.ts check` is the single entry point, so local equals CI.
-- **Config** is `.rig/sensors.json`: `fast`/`full` commands, `tests`, `testSupport` (overlaid with the tests when proving against the base), `fixtures` (exempt from pattern sensors only; deletions stay tracked and adding a glob counts as weakening), `ignore`, `contracts`, `layers`, `limits`, `knownRed`, `githooks` (`{ prePush: "ship" | "off", budgetMs }`), and, new in 0.6: `scopes` (glob to `{ name, root, fast, full, quality, deps }`), `scopeLimit` (default 3), `ci.scope` (`affected` | `all`), `affected` (optional command naming extra scopes; fails closed) and `sparseBase` (opt-in; relies on complete `deps`, see DESIGN §6). `.rig/rules.json` holds regex rules.
-- **Scopes (monorepos).** With `scopes` declared, a diff runs only the `fast`, `full` and `quality` commands of the scopes it touches and their `deps` dependents, each in its scope root; files outside every scope run the top-level commands and warn `unscoped`. CI selects from the diff and the base branch's config (`ci.scope: "all"` runs everything). Roots must be relative and inside the repo. If the optional `affected` command fails, every scope counts as affected. `sparseBase: true` measures the base in a throwaway sparse worktree (cone checkout of the affected scopes and their `deps` closure; your `.git/config` is never touched; any failure falls back to a full checkout). It is opt-in and relies on correct `deps`: a scope tool that reads outside its declared closure can fail or over-count on the sparse base and hide a regression, so declare `deps` completely or leave it off.
+- **Config** is `.rig/sensors.json`, a registry (spec §3): `sensors` (each a `cmd` or a `builtin`, a `cadence` of edit, turn, commit, ci or nightly, `blocks`, `count`, one `guide` sentence, optional `timeoutMs`), `paths` (`tests`, `testSupport`, `fixtures`, `ignore`), `contracts` (`files`, `covers`, `validate`, `run`), `gates`, `models`, `policy` and `knownRed` (sensor ids). `init --stack` writes it from the detected stack pack. A file in the pre-registry format (`fast`/`full`/`levels`/`scopes`…) is a config error: rewrite it with `init --stack`. `.rig/rules.json` holds regex rules.
 - **Sensors:** test-tamper, suppression, layering, size, secrets, rules, harness-tamper, traceability and red-proof, plus commands and config findings.
 - **When they fire:** on each edit (secrets, tamper and guide context, from the post-edit hook), at Stop (the turn's diff), in `verify` (traceability, red-proof), and in CI.
 - **Stop cap:** a turn is blocked at most 2 times, then the findings go to `.rig/unresolved.json` and CI refuses them, so a loop cannot wedge a session. Findings that are red on the base are treated as known-red rather than blamed on the change.
@@ -320,7 +319,7 @@ Computational sensors run on the hot path at zero tokens; one inferential review
 - **Guides** (contracts, engineering, testing) are copied to `.rig/guides/` by init and injected on first touch of a matching path.
 - **CI:** `sdlc.ts vendor` copies the checker into `.rig/bin`; copy `templates/rig-check.yml` and require `rig-check`. CI runs the base branch's checker and config.
 
-**Build to PR.** `/rig:start` writes `intent.md` and `spec.md`, `/rig:plan` writes `plan.md`, and the person approves once (`/rig:approve <slug>`). Build, test, verify and the PR then run; in a standalone repo `init --full` allows the project's own `node --disable-warning=ExperimentalWarning .rig/bin/sdlc.ts …` calls, so subagents (which skill `allowed-tools` do not cover) run the recorder without a prompt; with the plugin alone, declared commands prompt unless Claude Code runs in auto mode or you add your own `permissions.allow` rules. Humans keep approvals and waivers. `sensors.json` keys: `gates` (`"gates": {"plan": false}` turns the plan gate off) and `levels` (test commands per level). Run builds in Claude Code's sandbox.
+**Build to PR.** `/rig:start` writes `intent.md` and `spec.md`, `/rig:plan` writes `plan.md`, and the person approves once (`/rig:approve <slug>`). Build, test, verify and the PR then run; in a standalone repo `init --full` allows the project's own `node --disable-warning=ExperimentalWarning .rig/bin/sdlc.ts …` calls, so subagents (which skill `allowed-tools` do not cover) run the recorder without a prompt; with the plugin alone, declared commands prompt unless Claude Code runs in auto mode or you add your own `permissions.allow` rules. Humans keep approvals and waivers. `sensors.json` keys: `gates` (`"gates": {"plan": false}` turns the plan gate off). Run builds in Claude Code's sandbox.
 
 ## What is in the box
 
@@ -328,8 +327,8 @@ Computational sensors run on the hot path at zero tokens; one inferential review
 |---|---|
 | `skills/` (9) | The stages, run by the main thread (Sonnet 5.5; the Opus advisor is opt-in, see below). No skill sets `model:`, because a model switch re-reads the whole conversation uncached. Subagents start with their own small contexts. |
 | `agents/evaluator.md` | The one agent: an advisory review, once per change, in `/rig:pr`. |
-| `hooks/hooks.json` | Four blocking or injecting settings hooks, none on Bash, which also hold in `-p`. `session-start` injects session context; `prompt-submit` records the turn baseline; `post-edit` rejects secrets and plans that contain code and runs the file's sensors against that baseline (exit 2), injecting a matching guide once per session; `stop` runs the quality gate on the turn's diff (the sensors on the diff, the `fast` commands keyed by a stamp of the whole tree, so a tree that already passed them skips them). |
-| `scripts/*.ts` (about 25, not counting specs and testkit) | Zero-dependency Node, no build step (the list names the main ones; the rest include `lifecycle`, `pr`, `verify`, `vendor`, `basetree`, `githooks`, `stamp`, `configparse`, `scopes`, `sync` and `contracts`): `core` (paths, change state, approvals), `model` (pure diff, config and glob model), `sensors` (the pure sensors), `diffs` (baselines and git diffs), `runs` (captured exit codes), `check` (one `check` entry point for Stop, git hooks and CI), `hooks` (hook decisions and the Stop gate), `sdlc` (the CLI). |
+| `hooks/hooks.json` | Four blocking or injecting settings hooks, none on Bash, which also hold in `-p`. `session-start` injects session context; `prompt-submit` records the turn baseline; `post-edit` rejects secrets and plans that contain code and runs the file's sensors against that baseline (exit 2), injecting a matching guide once per session; `stop` runs the quality gate on the turn's diff (the sensors on the diff, the turn-cadence command sensors keyed by a stamp of the whole tree, so a tree that already passed them skips them). |
+| `scripts/*.ts` (about 25, not counting specs and testkit) | Zero-dependency Node, no build step (the list names the main ones; the rest include `lifecycle`, `pr`, `verify`, `vendor`, `basetree`, `githooks`, `stamp`, `sync`, `contracts` and `lifecycle`): `core` (paths, change state, approvals), `model` (pure diff, config and glob model), `sensors` (the pure sensors), `diffs` (baselines and git diffs), `runs` (captured exit codes), `check` (one `check` entry point for Stop, git hooks and CI), `hooks` (hook decisions and the Stop gate), `sdlc` (the CLI). |
 | `guides/` | Short per-area guides (contracts, engineering, testing) injected when a matching file is touched. |
 | `templates/rig-check.yml` | The required CI check, judged by the base branch's vendored checker. |
 | `templates/managed-settings.json`, `templates/production-gate.sh` | For the platform team's managed settings: the playbook's p.42 example plus rig's own rules, and the p.41 production gate as a managed-only hook (see SECURITY.md). |
@@ -353,7 +352,7 @@ claude plugin validate .claude-plugin/plugin.json
 
 ```bash
 npm run test:e2e         # the acceptance test: real Claude Code (claude -p, claude-haiku-5-5 by default), costs money, --cap USD (default 6), fails over --minutes (default 20)
-npm run test:e2e:fast    # a fake model replays fixture files: $0, about 30 s, runs in npm test and CI; never the acceptance result
+npm run test:e2e:fast    # a fake model replays fixture files: $0, about 30 s; out of npm test until step 5 rewrites it; never the acceptance result
 npm run test:e2e:unit    # the operator loop
 node tests/e2e/run.mjs --driver live --phase S3 --cap 20   # one phase (its prerequisites run first)
 ```

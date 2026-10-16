@@ -37,7 +37,7 @@ skills/      the stages, /rig:* (start plan build test pr rule init, plus human-
 agents/      evaluator (advisory review, once per change in /rig:pr)
 hooks/       hooks.json = four settings hooks, none on Bash (work in -p and CI)
 scripts/     zero-dependency Node, no build step; sdlc.ts is the CLI; check.ts is the one checker
-templates/   CI workflow (rig-check), settings.json, stacks.json, REVIEW.md
+templates/   CI workflow (rig-check), settings.json, stacks/ (stack packs), brief.md, REVIEW.md
 guides/      contracts, engineering, testing: injected on first touch of a matching path
 .rig/       the consumer repo's committed evidence (see §5)
 ```
@@ -62,7 +62,7 @@ A change is `.rig/changes/<slug>/`. `/rig:start` writes `intent.md` (`type:` fea
 │                    evidence/runs.jsonl  verify.json  pr.md
 ├── state/active     the active change
 ├── product/brief.md
-├── sensors.json     fast/full commands, tests, gates, levels, limits, layers, contracts, scopes, behavioral (opt-in)
+├── sensors.json     the sensor registry: sensors, paths, contracts, gates, models, policy, knownRed
 ├── rules.json       regex rules          guides/   bin/ (vendored checker)
 └── (gitignored)     .gate  unresolved.json
 ```
@@ -78,17 +78,9 @@ Evidence files (`approval.json`, waivers, `runs.jsonl`, `verify.json`, `pr.md`, 
 | Sonnet main thread, Opus advisor **off** | Template sets `CLAUDE_CODE_DISABLE_ADVISOR_TOOL` (the advisor was a third of each run's cost; a user-level `advisorModel` otherwise still applies) |
 | One review per change | One advisory evaluator review in `/rig:pr`; findings below confidence 80 dropped |
 | Stamp, don't re-run | `verify` runs every commit and ci sensor once against the current tree and writes `verify.json`, tied to the working tree; `/rig:pr` checks it instead of re-running, and a stale one re-runs. CI reads no stamp |
-| Scopes | With `scopes`, a diff runs only the touched scopes and their declared `deps` dependents, each in its root; the same command text in the same resolved directory runs once |
 | Lean plans | No code in plans |
 | Plugin diet | Project `enabledPlugins` turns off unrelated plugins |
 | Cloud for long builds | A cloud session keeps running while the laptop sleeps |
-
-### Scopes and sparse base (v0.6)
-
-- **Fail closed.** The optional `affected` command may only add scopes; if it fails or times out every declared scope is treated as affected, with an `unscoped` warning. `verify` with no resolvable base ref runs every scope, so a clean tree cannot write a passing `verify.json` with nothing run. Scope roots must be relative and resolve inside the repo, else the scope is `not run`. `weakensConfig` flags removed scopes or `deps`, a raised `scopeLimit`, `ci.scope` moving to `affected`, a changed, removed or emptied scope command, a changed root, and, once the base declared scopes, a new scope glob missing a `fast` or `full` command of a kind the base runs (top-level or in any scope).
-- **Sparse base is opt-in and trusts `deps`.** The base is measured in a throwaway worktree with a cone sparse checkout of the affected scopes plus their `deps` closure; the patterns go to that worktree's own `info/sparse-checkout` and the user's `.git/config` is never modified; invalid roots or any sparse failure fall back to a full checkout. A scope tool that reads paths outside its declared closure can fail or over-count on the sparse base and hide a regression, so declare `deps` completely or leave `sparseBase` off.
-- **Known limits.** `declaredCommandSet` omits scoped commands, so a scoped command is not recognised as declared by that check. When two scope keys dedup to one run, only the first key gets a finding. With scopes declared, a source-less diff (docs or harness only) runs no scoped or top-level commands at edit, commit and CI; `verify`, which gates `/rig:pr`, runs the top-level commands.
-
 
 ## 7. What the trials showed
 
@@ -104,11 +96,11 @@ The trials ran the previous lifecycle; their transcripts are in git history. Liv
 
 ## 9. Git hooks (spec 5)
 
-Git is the common layer for every editor, agent and person, so `hooks install` sets `core.hooksPath` to the committed `.rig/githooks/` (POSIX `sh`, running the vendored checker). `check --at commit` runs the Stop sensors on the staged diff plus the fast commands; `check --at push` runs the sensors against CI's base (merge-base with the trunk), within `githooks.budgetMs`; from a clean checkout whose tree matches `verify.json` it skips the full commands (a stale `verify.json` re-runs them). A hook that cannot run warns and lets git continue; a finding that blocks still blocks. Warnings are visible: Stop prints a `systemMessage` and the next prompt carries them over once. `/rig:pr` commits with `--no-verify` because `verify` has just judged that tree. Opt out with `hooks uninstall` (`rig.githooks = off`).
+Git is the common layer for every editor, agent and person, so `hooks install` sets `core.hooksPath` to the committed `.rig/githooks/` (POSIX `sh`, running the vendored checker). `check --at commit` runs the built-in sensors on the staged diff plus every edit-, turn- and commit-cadence command sensor; `check --at push` runs the sensors against CI's base (merge-base with the trunk), within `githooks.budgetMs`; from a clean checkout whose tree matches `verify.json` it skips the command sensors (a stale `verify.json` re-runs them). A hook that cannot run warns and lets git continue; a finding that blocks still blocks. Warnings are visible: Stop prints a `systemMessage` and the next prompt carries them over once. `/rig:pr` commits with `--no-verify` because `verify` has just judged that tree. Opt out with `hooks uninstall` (`rig.githooks = off`).
 
 There is no guard against the model passing `--no-verify` or running `hooks uninstall`: no hook runs on Bash, because a text match over shell commands was too leaky to be worth its size. A person keeps `--no-verify` too, so **CI plus branch protection is the boundary**; the hooks are a fast local signal.
 
-Open: fast and full commands at commit and push see the working tree rather than the index or pushed commits.
+Open: command sensors at commit and push see the working tree rather than the index or pushed commits.
 
 
 ## 10. Open items
