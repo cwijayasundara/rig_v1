@@ -8,7 +8,7 @@ import { runBrief } from '../tests/e2e/phases/s1-brief.mjs'
 const BRIEF = path.resolve(import.meta.dirname, '../tests/e2e/prd/shop-brief.md')
 const FX = path.resolve(import.meta.dirname, '../tests/e2e/fixtures')
 
-export const BARE_PROMPT = 'Build the shop described in BRIEF.md: behaviours B1–B6, in src/, with node --test tests in test/ whose names start with their B-number, `npm test` passing, and `npm start` serving the HTTP API as the brief says. Keep the HTTP contract in api/openapi.yaml and contracts/examples/ (node scripts/contract.mjs validate|run checks it). Work until it is done.'
+export const BARE_PROMPT = 'Build the shop described in BRIEF.md: behaviours B1–B6, in src/, with node --test tests in test/ whose names start with their B-number, `npm test` passing, and `npm start` serving the HTTP API as the brief says. Keep the HTTP contract in api/openapi.yaml and contracts/examples/ (node scripts/contract.mjs validate|run checks it). Work until it is done. In this unattended session, read files with Read, Grep and Glob and change them with Edit or Write; run each command as its own Bash call (no cd, pipes, redirects, &&, ; or heredocs): compound commands are denied.'
 
 export function setupBare(sb, { dry = false } = {}) {
   sb.isolate(dry ? [] : installedPlugins())

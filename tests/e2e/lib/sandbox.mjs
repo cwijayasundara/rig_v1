@@ -48,6 +48,10 @@ export function createSandbox({ name, out }) {
   git('config', 'user.name', 'rig operator')
   execFileSync('git', ['init', '-q', '--bare', origin])
   git('remote', 'add', 'origin', origin)
+  // A temp dir inside the repo, hidden from git: sessions inherit TMPDIR, and writes outside the repo are denied unattended.
+  fs.mkdirSync(path.join(dir, '.tmp'))
+  fs.appendFileSync(path.join(dir, '.git/info/exclude'), '.tmp/\n')
+  env.TMPDIR = path.join(dir, '.tmp')
 
   const sb = {
     name, root, dir, origin, bin, logs, env, run, git,
