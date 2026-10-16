@@ -6,7 +6,7 @@ import {
   ROOT, SDLC, CHANGES, WAIVERS, planFiles, isPlanned, exists, read, out, fail, git, gitIn, approvalOf, planApproved, planPath, readImpact, needsImpact, toPosix, optString, readJsonl, defaultBase, checkSlug,
   type Args, type Waiver, type ImpactHit,
 } from './core.ts'
-import { parseConfig, parseRules, formatFindings, warnLines, matchesAny, isTest, isSource, type FileDiff, type Finding, type Rule, type SensorConfig } from './model.ts'
+import { parseConfig, parseRules, formatFindings, warnLines, matchesAny, isTest, isSource, ghBin, type FileDiff, type Finding, type Rule, type SensorConfig } from './model.ts'
 import { withoutFixtures, testTamper, suppressions, layering, size, secretsInDiff, rulesSensor, retiredIdentifiers, contractsFromPlan, harnessTamper, behaviourIds, behaviourText, missingBehaviours, tierFromDiff } from './sensors.ts'
 import { readBaseline, snapshot, turnDiff, fileDiff, branchDiff, showAt, fileLines, stagedDiff, showStaged } from './diffs.ts'
 import { runCommand, recordRun, normCmd } from './runs.ts'
@@ -370,7 +370,7 @@ export function independentApproval(): string | null {
   try { const ev = JSON.parse(fs.readFileSync(eventPath, 'utf8')) as { pull_request?: typeof pr; repository?: { full_name?: string } }; pr = ev.pull_request ?? {}; repo = ev.repository?.full_name ?? '' } catch { return 'the pull_request event payload is unreadable' }
   if (!pr.number || !repo || !pr.head?.sha) return 'the pull_request event has no number, repository or head commit'
   let reviews: { user?: { login?: string }; state?: string; commit_id?: string; author_association?: string }[]
-  try { reviews = (JSON.parse(execFileSync('gh', ['api', '--paginate', '--slurp', `repos/${repo}/pulls/${pr.number}/reviews?per_page=100`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 })) as unknown[]).flat() as typeof reviews } catch { return 'could not read the PR reviews (the job needs pull-requests: read and GH_TOKEN)' }
+  try { reviews = (JSON.parse(execFileSync(ghBin(), ['api', '--paginate', '--slurp', `repos/${repo}/pulls/${pr.number}/reviews?per_page=100`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 })) as unknown[]).flat() as typeof reviews } catch { return 'could not read the PR reviews (the job needs pull-requests: read and GH_TOKEN)' }
   // a pull_request checkout is a merge commit (head is its 2nd parent); a workflow re-run reuses an old event
   if (![git(['rev-parse', 'HEAD']), git(['rev-parse', 'HEAD^2'])].includes(pr.head.sha)) return `the event's head ${pr.head.sha.slice(0, 7)} is not the checked-out commit (a re-run on a stale event?)`
   const latest = new Map<string, (typeof reviews)[number]>()

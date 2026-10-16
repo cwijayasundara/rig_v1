@@ -1,16 +1,19 @@
 // The live driver: real `claude -p` sessions running the vendored skills with the real model. Costs money; capped.
 import fs from 'node:fs'
 import path from 'node:path'
-import { readSession, totals } from '../../integration/assert/process.mjs'
-import { PLUGIN } from '../../integration/lib/sandbox.mjs'
+import { readSession, totals } from '../assert/process.mjs'
+import { PLUGIN } from '../lib/sandbox.mjs'
 
 // `claude -p` never trusts the workspace, and an untrusted workspace's permissions.allow in .claude/settings.json is ignored
-// ("Ignoring N permissions.allow entries ... has not been trusted"). The template's allow rules go in on --settings, which has no trust step.
-const templateAllow = () =>
-  JSON.stringify({ permissions: { allow: JSON.parse(fs.readFileSync(path.join(PLUGIN, 'templates/settings.json'), 'utf8')).permissions.allow } })
+// ("Ignoring N permissions.allow entries ... has not been trusted"). The template's allow rules and env (foreground subagents,
+// model pins) go in on --settings, which has no trust step.
+const templateSettings = () => {
+  const t = JSON.parse(fs.readFileSync(path.join(PLUGIN, 'templates/settings.json'), 'utf8'))
+  return JSON.stringify({ permissions: { allow: t.permissions.allow }, env: t.env })
+}
 
 // One shared session log per run, so the spend cap covers every phase.
-export function createSessions({ sb, out, capUsd = 6, model = 'sonnet' }) {
+export function createSessions({ sb, out, capUsd = 6, model = 'claude-haiku-5-5' }) {
   if (!(capUsd > 0)) throw new Error(`spend cap must be a positive number of dollars, got ${capUsd}`)
   const sessions = []
   const run = (label, prompt, { withPlugin = false, cont = false } = {}) => {
@@ -20,7 +23,7 @@ export function createSessions({ sb, out, capUsd = 6, model = 'sonnet' }) {
     fs.mkdirSync(path.dirname(file), { recursive: true })
     const budget = Math.min(6, capUsd - spent)
     const args = ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits',
-      '--model', model, '--settings', templateAllow(), '--max-budget-usd', budget.toFixed(2), '--setting-sources', 'project,local',
+      '--model', model, '--settings', templateSettings(), '--max-budget-usd', budget.toFixed(2), '--setting-sources', 'project,local',
       ...(withPlugin ? ['--plugin-dir', PLUGIN] : []), ...(cont ? ['--continue'] : [])]
     const r = sb.run('claude', args, { timeout: 18 * 60_000 })
     fs.writeFileSync(file, r.stdout ?? '')
@@ -48,7 +51,7 @@ export function liveDriver(sb, phase, { sessions }) {
       return active()
     },
     async step(node) {
-      sessions.run(`${phase.id}-${node}`, '/rig-next — continue through the next node; commit on the branch')
+      sessions.run(`${phase.id}-${node}`, '/rig-next — continue through the next node; follow the text of `sdlc.ts skill <node>` exactly, never invoke the Skill tool, one command per Bash call with no pipes or compound commands; the sdlc.ts scripts make every commit, so never run git commit yourself')
     },
   }
 }

@@ -1,22 +1,27 @@
-// node tests/e2e/run.mjs [--driver scripted|live] [--phase P0|P1|P2|P3|P4|P5] [--keep] [--out DIR]
+// The one integration test: node tests/e2e/run.mjs [--driver scripted|live] [--phase S0|S1|S2|S3|S4|S5]
+// [--cap USD] [--model MODEL] [--minutes N] [--live-evals] [--keep] [--out DIR]
+// S0 installs the harness into a throwaway shop-app repo, S1 charts sprint 0 from the PRD and this test approves
+// it, S2 builds the shop greenfield, S3 lands the delete-item change on top, S4 exercises the local deploy and
+// maintain gates, S5 builds the code wiki and seeds (live: runs) the evals. Scripted is $0 and gates CI; live
+// drives real `claude -p` sessions (default model claude-haiku-5-5) and is the release acceptance run; it fails when the whole run
+// takes longer than --minutes (default 20) of wall clock.
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { createSandbox } from '../integration/lib/sandbox.mjs'
+import { createSandbox } from './lib/sandbox.mjs'
 import { writeReport } from './lib/report.mjs'
-import { install, SCAFFOLD_PROMPT } from './phases/p0-install.mjs'
-import { PHASE as P1, runChange } from './phases/p1-greenfield.mjs'
-import { scriptedDriver } from './driver/scripted.mjs'
-import { PHASE as P2 } from './phases/p2-change.mjs'
-import { runDeploy } from './phases/p3-deploy.mjs'
-import { runMaintain, PHASE as P4 } from './phases/p4-maintain.mjs'
 import { mergeToMain } from './lib/merge.mjs'
-import { runSprints } from './phases/p5-sprints.mjs'
-import { runNegatives, runStaleTwin, runDeployNegatives, runMaintainNegatives, runWatchSpikeTwin } from './negative.mjs'
+import { Checks } from './lib/checks.mjs'
+import { install, SCAFFOLD_PROMPT } from './phases/s0-install.mjs'
+import { runChart } from './phases/s1-chart.mjs'
+import { PHASE as S2, runChange } from './phases/s2-greenfield.mjs'
+import { PHASE as S3, assertDelete, staleTwin } from './phases/s3-delete.mjs'
+import { runDeployMaintain } from './phases/s4-deploy-maintain.mjs'
+import { runWikiEvals } from './phases/s5-wiki-evals.mjs'
+import { scriptedDriver } from './driver/scripted.mjs'
 import { createSessions, liveDriver } from './driver/live.mjs'
-import { assertOnboarding } from '../integration/assert/onboarding.mjs'
-import { assertProcess } from '../integration/assert/process.mjs'
-import { Checks } from '../integration/lib/checks.mjs'
+import { assertOnboarding } from './assert/onboarding.mjs'
+import { assertProcess } from './assert/process.mjs'
 
 const arg = (n, d) => { const i = process.argv.indexOf(`--${n}`); return i > 0 ? process.argv[i + 1] : d }
 const driverName = arg('driver', 'scripted')
@@ -25,18 +30,28 @@ const out = path.resolve(arg('out', fs.mkdtempSync(path.join(os.tmpdir(), 'rig-e
 const live = driverName === 'live'
 
 const sb = createSandbox({ name: 'project', out })
-const sessions = live ? createSessions({ sb, out, capUsd: Number(arg('cap', 6)) }) : null
+const sessions = live ? createSessions({ sb, out, capUsd: Number(arg('cap', 6)), model: arg('model', 'claude-haiku-5-5') }) : null
 const driverFor = phase => (live ? liveDriver(sb, phase, { sessions }) : scriptedDriver(sb, phase))
 const results = []
-// A phase runs when it is the requested one or a prerequisite of it (P2 needs P1).
-const NEEDS = { P2: ['P1'], P4: ['P1', 'P2'] }
-const ensureMain = () => {
-  const b = sb.git('rev-parse', '--abbrev-ref', 'HEAD')
-  if (b !== 'main') mergeToMain(sb, b.replace(/^sdlc\//, ''))
+// Wall clock per phase, printed as it ends and checked against the greenfield + brownfield budget at the end of a live run.
+const took = {}
+const timed = async (id, fn) => {
+  const t0 = Date.now()
+  try { return await fn() } finally {
+    took[id] = (Date.now() - t0) / 60_000
+    console.log(`  ${id}: ${took[id].toFixed(1)} min`)
+  }
 }
+const fmt = m => `${m.toFixed(1)} min`
+// A phase runs when it is the requested one or a prerequisite of it.
+const NEEDS = { S2: ['S1'], S3: ['S1', 'S2'], S4: ['S1', 'S2', 'S3'], S5: ['S1', 'S2', 'S3'] }
 const want = id => !only || only === id || (NEEDS[only] ?? []).includes(id)
+const ensureMain = slug => {
+  const b = sb.git('rev-parse', '--abbrev-ref', 'HEAD')
+  if (b !== 'main') mergeToMain(sb, slug)
+}
 // A group that ran fewer checks than this lost coverage silently (an assertion call deleted or skipped): fail the scripted run.
-const FLOOR = { 'P0 install': 16, 'P1 ': 27, 'P2 ': 27, 'P3 deploy': 19, 'P4 maintain: watch': 4, 'P4 maintain: incident fix': 24, 'P4 maintain: metrics': 2, 'P5 sprints': 17 }
+const FLOOR = { 'S0 install': 16, 'S1 chart': 8, 'S2 ': 27, 'S3 ': 29, 'S4 deploy': 19, 'S4 maintain': 4, 'S5 wiki': 8 }
 const lostCoverage = () => (live || only ? [] : Object.entries(FLOOR).filter(([k, n]) => {
   const g = results.find(c => c.title.startsWith(k))
   return !g || g.results.length < n
@@ -50,64 +65,48 @@ const finish = () => {
 }
 
 try {
+  const t0 = Date.now()
   if (live) {
     sb.git('commit', '-q', '--allow-empty', '-m', 'chore: empty start')
     sb.isolate()
-    sessions.run('P0-init', `/rig:init --defaults greenfield "${SCAFFOLD_PROMPT}"`, { withPlugin: true })
+    sessions.run('S0-init', `/rig:init --defaults greenfield "${SCAFFOLD_PROMPT}"`, { withPlugin: true })
     sb.commitAll('chore: onboarding leftovers')
-    const p0 = new Checks('P0 install (live)')
+    const p0 = new Checks('S0 install (live)')
     await assertOnboarding(p0, sb, { lane: 'greenfield' })
     results.push(p0)
   } else {
     results.push(await install(sb))
   }
-  let p1slug = P1.slug
-  if (want('P1')) {
-    const r1 = await runChange(sb, P1, driverFor(P1), { first: true })
-    p1slug = r1.slug
-    results.push(r1.checks)
+  took.S0 = (Date.now() - t0) / 60_000
+  if (want('S1')) results.push(await timed('S1', () => runChart(sb, { sessions: live ? sessions : null })))
+
+  let s2slug = S2.slug
+  if (want('S2')) {
+    const r = await timed('S2', () => runChange(sb, S2, driverFor(S2), { first: true }))
+    s2slug = r.slug
+    results.push(r.checks)
   }
-  if (!live && want('P1')) {
-    const bad = await runNegatives(sb, p1slug)
-    for (const b of bad) console.error(`twin surprise: ${b}`)
-    if (bad.length) process.exitCode = 1
-  }
-  if (want('P2')) {
-    mergeToMain(sb, p1slug)
-    const { slug, checks: c2 } = await runChange(sb, P2, driverFor(P2))
-    // Edited, not rewritten: under 80% of cart.js lines deleted relative to main.
-    const del = Number(sb.git('diff', '--numstat', 'main...HEAD', '--', 'src/cart.js').split('\t')[1])
-    const total = sb.git('show', 'main:src/cart.js').split('\n').length
-    await c2.check('P2: cart.js was edited, not rewritten', () => del / total < 0.8 || `${del} of ${total} lines deleted`)
-    results.push(c2)
+  if (want('S3')) {
+    const { slug, checks } = await timed('S3', () => {
+      ensureMain(s2slug)
+      return runChange(sb, S3, driverFor(S3))
+    })
+    await assertDelete(checks, sb, slug)
+    results.push(checks)
     if (!live) {
-      const bad = await runStaleTwin(sb, slug)
+      const bad = staleTwin(sb, slug)
       for (const b of bad) console.error(`twin surprise: ${b}`)
       if (bad.length) process.exitCode = 1
     }
+    var s3slug = slug
   }
-  if (want('P3')) {
-    ensureMain()
-    results.push(await runDeploy(sb))
-    if (!live) {
-      const bad = await runDeployNegatives(sb)
-      for (const b of bad) console.error(`twin surprise: ${b}`)
-      if (bad.length) process.exitCode = 1
-    }
+  if (want('S4')) {
+    ensureMain(s3slug ?? S3.slug)
+    results.push(...await timed('S4', () => runDeployMaintain(sb)))
   }
-  if (want('P4')) {
-    ensureMain()
-    const r = await runMaintain(sb, driverFor(P4))
-    results.push(...r.checks)
-    if (!live) {
-      const bad = [...(await runMaintainNegatives(out)), ...(await runWatchSpikeTwin(out))]
-      for (const b of bad) console.error(`twin surprise: ${b}`)
-      if (bad.length) process.exitCode = 1
-    }
-  }
-  if (want('P5')) {
-    ensureMain()
-    results.push(await runSprints(sb, { sessions: live ? sessions : null }))
+  if (want('S5')) {
+    if (!want('S4')) ensureMain(s3slug ?? S3.slug)
+    results.push(await timed('S5', () => runWikiEvals(sb, { live, liveEvals: process.argv.includes('--live-evals') })))
   }
   if (live) {
     const pc = new Checks('process (all live sessions)')
@@ -116,6 +115,17 @@ try {
   }
 } catch (err) {
   console.error(`e2e aborted: ${err.message}\nsandbox kept at ${out}`)
+  const ab = new Checks('aborted')
+  await ab.check('the run reached its end', () => err.message)
+  results.push(ab)
   process.exitCode = 1
 }
+if (live) {
+  const budget = Number(arg('minutes', 20))
+  const total = Object.values(took).reduce((n, m) => n + m, 0)
+  const tc = new Checks('timing (live)')
+  await tc.check(`the whole run finished within ${budget} min`, () => total <= budget || `took ${fmt(total)} (${Object.entries(took).map(([k, m]) => `${k} ${fmt(m)}`).join(', ')})`)
+  results.push(tc)
+}
+console.log(`timing: ${Object.entries(took).map(([k, m]) => `${k} ${fmt(m)}`).join(', ')}`)
 finish()

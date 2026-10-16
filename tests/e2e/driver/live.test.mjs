@@ -50,14 +50,15 @@ test('begin(): when /rig-start ends before creating a change, it continues with 
   assert.deepEqual(prompts.map(p => p.cont), [false, true, true])
 })
 
-import { PLUGIN } from '../../integration/lib/sandbox.mjs'
+import { PLUGIN } from '../lib/sandbox.mjs'
 
-test('headless sessions carry the template allow rules on --settings: -p never trusts the workspace, so the same rules in .claude/settings.json are ignored', () => {
+test('headless sessions carry the template allow rules and env on --settings: -p never trusts the workspace, so the same rules in .claude/settings.json are ignored', () => {
   const sb = fakeSb(result(0))
   createSessions({ sb, out: out(), capUsd: 6 }).run('a', 'x')
   const args = sb.calls[0]
   const inline = JSON.parse(args[args.indexOf('--settings') + 1])
   const template = JSON.parse(fs.readFileSync(path.join(PLUGIN, 'templates/settings.json'), 'utf8'))
-  assert.deepEqual(inline, { permissions: { allow: template.permissions.allow } })
+  assert.deepEqual(inline, { permissions: { allow: template.permissions.allow }, env: template.env })
+  assert.equal(inline.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS, '1', 'subagents return before the headless turn ends')
   assert.ok(inline.permissions.allow.some(r => r.startsWith('Bash(node ') && r.includes('sdlc.ts')))
 })

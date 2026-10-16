@@ -64,6 +64,15 @@ test('with a remote, pr pushes the branch and calls gh pr create with pr.md as t
   assert.match(fs.readFileSync(path.join(repo, '.rig/changes/tiny/pr.md'), 'utf8'), /^state: open$/m)
 })
 
+test('RIG_GH names the gh binary when the caller PATH has none (a headless session rebuilds PATH)', () => {
+  ready('tiny')
+  withRemote()
+  const gh = fakeGh('echo https://github.com/o/r/pull/11')
+  const r = sdlc(repo, ['pr', 'tiny', '--message', 'chore: tiny'], { env: { RIG_GH: path.join(gh.bin, 'gh') } })
+  assert.equal(r.code, 0, r.stderr)
+  assert.match(events('tiny'), /"kind":"pr","target":"https:\/\/github.com\/o\/r\/pull\/11"/)
+})
+
 test('a title longer than 200 characters is truncated, and the body comes from the file, never argv', () => {
   ready('tiny')
   withRemote()
@@ -492,6 +501,27 @@ test('R46: after a waiver, next resumes at pr and pr passes the gate and clears 
   assert.equal(n.node, 'pr')
   const r = sdlc(repo, ['pr', 'tiny', '--message', 'chore: tiny'])
   assert.equal(r.code, 0, r.stderr)
+  assert.equal(JSON.parse(sdlc(repo, ['ratchet', 'show', 'tiny']).stdout).blocked, undefined)
+})
+
+test('an over-limit follow-up is refused before committing, names the waiver, and goes through once a person waives', () => {
+  write(repo, '.rig/sensors.json', JSON.stringify({ limits: { diffLines: 5 } }))
+  gitIn(repo, 'add', '.rig/sensors.json')
+  gitIn(repo, 'commit', '-qm', 'cfg')
+  ready('tiny')
+  assert.equal(sdlc(repo, ['pr', 'tiny', '--message', 'chore: tiny']).code, 0)
+  const head = gitIn(repo, 'rev-parse', 'HEAD')
+  write(repo, 'src/app.js', Array.from({ length: 12 }, (_, i) => `line ${i}`).join('\n') + '\n')
+  const r = sdlc(repo, ['pr', 'tiny', '--followup', '--message', 'fix: review findings'])
+  assert.equal(r.code, 1)
+  assert.match(r.stderr, /diff is \d+ changed lines \(limit 5\)/)
+  assert.equal(gitIn(repo, 'rev-parse', 'HEAD'), head, 'nothing is committed on a refusal')
+  const n = JSON.parse(sdlc(repo, ['next', 'tiny', '--json']).stdout)
+  assert.equal(n.verdict, 'continue', 'R46: a gate block resumes at pr-review')
+  assert.match(n.reason, /pending block: pr-review: [\s\S]*\/rig:waive size \* <reason>/)
+  assert.equal(sdlc(repo, ['waive', 'size', '*', 'reviewed', '--slug', 'tiny'], { env: { SDLC_HUMAN: '1' } }).code, 0)
+  const ok = sdlc(repo, ['pr', 'tiny', '--followup', '--message', 'fix: review findings'])
+  assert.equal(ok.code, 0, ok.stderr)
   assert.equal(JSON.parse(sdlc(repo, ['ratchet', 'show', 'tiny']).stdout).blocked, undefined)
 })
 

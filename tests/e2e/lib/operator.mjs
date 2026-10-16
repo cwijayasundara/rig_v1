@@ -30,10 +30,11 @@ export async function runRoute({ sb, slug, driver, operator = 'operator', maxSte
   const approved = []
   const concernLines = []
   const attempts = new Map()
+  const waived = new Set()
   let steps = 0
   for (;;) {
     const s = json(sb, ['next', slug, '--json'])
-    if (s.verdict === 'ready' || s.verdict === 'done') return { steps, approved, resolvedConcerns: concernLines.length, concernLines, end: s.verdict }
+    if (s.verdict === 'ready' || s.verdict === 'done') return { steps, approved, resolvedConcerns: concernLines.length, concernLines, waived: [...waived], end: s.verdict }
     if (s.verdict === 'blocked') throw new Error(`${slug}: blocked: ${s.reason}`)
     if (s.verdict === 'human') {
       const st = json(sb, ['status', '--json']).changes.find(c => c.slug === slug)
@@ -58,6 +59,13 @@ export async function runRoute({ sb, slug, driver, operator = 'operator', maxSte
       if (times > MAX_APPROVALS) throw new Error(`${slug}: approved ${gate} ${times} times and next still asks for a human`)
       continue
     }
+    // A ship gate that refused only on diff size names `/rig:waive size * <reason>`: the person reads the diff and accepts it, once.
+    // No other sensor is waived here: a secret, tamper or scope block stays a failure of the run.
+    if (/pending block:[\s\S]*\/rig:waive size \* <reason>/.test(s.reason) && !/\/rig:waive (?!size )/.test(s.reason) && !waived.has(s.node)) {
+      const w = sb.sdlc(['waive', 'size', '*', `diff read by the ${operator}: one change by design`, '--slug', slug], { human: true })
+      if (w.status !== 0) throw new Error(`waive size failed: ${(w.stderr || w.stdout).trim()}`)
+      waived.add(s.node)
+    }
     const key = `${s.node}:${s.round}`
     // `repeats` is how many sessions one node may take before it counts as no progress (a live node can need a second one).
     if ((attempts.get(key) ?? 0) >= repeats) throw new Error(`${slug}: no progress at ${s.node} (round ${s.round})`)
@@ -65,4 +73,35 @@ export async function runRoute({ sb, slug, driver, operator = 'operator', maxSte
     await driver.step(s.node, { slug, round: s.round })
     attempts.set(key, (attempts.get(key) ?? 0) + 1)
   }
+}
+
+// The person at the sprint chart gate, in code: resolves each unresolved `## Concerns` bullet in the files the
+// refusal names (at most 10; more means a person must read it), then approves chart-<n> and commits the row.
+function resolveChartConcerns(sb, refusal) {
+  const files = [...new Set([...refusal.matchAll(/^ {2}- (\.rig\/[^:]+\.md): /gm)].map(m => m[1]))]
+  const lines = []
+  for (const rel of files) {
+    let inside = false
+    sb.write(rel, sb.read(rel).split('\n').map(line => {
+      if (/^#{2,3} /.test(line)) inside = /^#{2,3}\s+Concerns\b/.test(line)
+      if (!inside || !/^\s*[-*] /.test(line) || line.includes('resolved:') || /^\s*[-*]\s+none\.?$/i.test(line)) return line
+      lines.push(`${rel}: ${line.trim()}`)
+      return `${line} → resolved: accepted for the acceptance run (operator)`
+    }).join('\n'))
+  }
+  if (!lines.length) throw new Error(`chart approval refused on concerns but none was found to resolve: ${refusal.split('\n')[0]}`)
+  if (lines.length > MAX_CONCERNS) throw new Error(`more than ${MAX_CONCERNS} chart concerns (${lines.length}); a person must read this chart`)
+  return lines
+}
+
+export function approveChart(sb, n) {
+  const run = () => sb.sdlc(['approve', `chart-${n}`, '--by', 'operator'], { human: true })
+  let r = run()
+  if (r.status !== 0 && /resolve the concern/.test(r.stderr)) {
+    resolveChartConcerns(sb, r.stderr)
+    r = run()
+  }
+  if (r.status !== 0) throw new Error(`approve chart-${n}: ${(r.stderr || r.stdout).trim().split('\n')[0]}`)
+  sb.commitAll(`chart: approve sprint ${n}`)
+  return r.stdout
 }

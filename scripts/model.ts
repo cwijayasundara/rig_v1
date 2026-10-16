@@ -448,3 +448,5 @@ export function formatFindings(findings: Finding[], max = 40): string {
   if (!shown.length) shown.push(...(rows[0] ?? []).slice(0, room - 1))
   return [...shown, `  … ${total - shown.length} more (run sdlc.ts check to see all)`, ...tail].join('\n')
 }
+// RIG_GH names the gh binary (the evals runner's RIG_CLAUDE precedent): a caller whose PATH is rebuilt by its shell (a headless agent session) can still point the harness at the gh it means.
+export const ghBin = (): string => process.env.RIG_GH || 'gh'

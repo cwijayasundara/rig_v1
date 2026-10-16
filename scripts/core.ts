@@ -296,14 +296,13 @@ export const planVerification = (slug: string): string[] => planVerificationBull
 
 export function planFiles(slug: string): string[] {
   const { body } = frontmatter(read(planPath(slug)))
-  const m = /^##\s+Files\s*\n([\s\S]*?)(?=^##\s|$(?![\s\S]))/m.exec(body)
-  if (!m) return []
-  return (m[1] ?? '')
-    .split('\n')
-    .map(row => /^\s*[-*]\s+`?([^`\s]+)`?/.exec(row)?.[1])
-    .filter((p): p is string => Boolean(p))
-    .map(toPosix)
+  return filesRows(/^##\s+Files\s*\n([\s\S]*?)(?=^##\s|$(?![\s\S]))/m.exec(body)?.[1] ?? '').map(toPosix)
 }
+
+// `## Files` paths: `- path` bullets, or a table row's backticked first cell (read as no files, a model's table sent it to edit the approved design).
+export const filesRows = (section: string): string[] => section.split('\n')
+  .map(row => /^\s*[-*]\s+`?([^`\s]+)`?/.exec(row)?.[1] ?? /^\s*\|\s*`([^`|\s]+)`\s*\|/.exec(row)?.[1])
+  .filter((p): p is string => Boolean(p))
 
 // Paths are compared in POSIX form so plans written on macOS match edits made on Windows.
 export function relPosix(file: string): string {
@@ -358,8 +357,9 @@ export function planProblems(file: string): string[] {
   if (big.length) problems.push(`${big.length} code block(s) over ${LIMITS.planCodeBlockLines} lines: plans carry interfaces and acceptance tests, not implementation code`)
   if (!/^##\s+Files/m.test(text)) problems.push('missing "## Files" section (the ownership contract)')
   const section = /^##\s+Files\s*\n([\s\S]*?)(?=^##\s|$(?![\s\S]))/m.exec(text)?.[1] ?? ''
-  const wide = [...new Set(section.split('\n').map(row => /^\s*[-*]\s+`?([^`\s]+)`?\s*$/.exec(row)?.[1]).filter(p => p === '**' || p === '*'))]
+  const wide = [...new Set(filesRows(section).filter(p => p === '**' || p === '*'))]
   for (const w of wide) problems.push(`"## Files" lists "${w}", which is too broad: the scope gate would allow every file; list the paths or narrower globs`)
+  if (/^##\s+Files\s*$/m.test(text) && !filesRows(section).length) problems.push('"## Files" lists no paths: write one `- path/or/glob` bullet per file, tests included')
   return problems
 }
 

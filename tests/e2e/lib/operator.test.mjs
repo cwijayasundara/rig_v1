@@ -130,3 +130,19 @@ test('final review: concerns are reported, capped, and a path with .. is refused
   await assert.rejects(runRoute({ sb: mk('s/design.md', many), slug: 's', driver: { step: async () => {} } }), /more than 10 policy concerns/)
   await assert.rejects(runRoute({ sb: mk('../../evil.md', many.slice(0, 1)), slug: 's', driver: { step: async () => {} } }), /outside the change folder/)
 })
+
+test('a pending size-only ship-gate block is waived once by the operator; any other sensor is left alone', async () => {
+  const sizeOnly = 'next node: pr-review (pending block: pr-review: the ship gate refused; a person waives with /rig:waive size * <reason>, or fix: size: diff is 507 changed lines (limit 500); then /rig:next resumes)'
+  const sb = fakeSb({ next: seq([nextOf('pr-review', 'continue', { reason: sizeOnly }), nextOf(null, 'ready')]), waive: {} })
+  const out = await runRoute({ sb, slug: 's', driver: { step: async () => {} } })
+  const w = sb.calls.filter(c => c.args[0] === 'waive')
+  assert.equal(w.length, 1)
+  assert.deepEqual(w[0].args.slice(0, 3), ['waive', 'size', '*'])
+  assert.equal(w[0].opts.human, true)
+  assert.deepEqual(out.waived, ['pr-review'])
+
+  const mixed = sizeOnly.replace('/rig:waive size * <reason>', '/rig:waive size * <reason> ; /rig:waive secrets src/a.js <reason>')
+  const sb2 = fakeSb({ next: seq([nextOf('pr-review', 'continue', { reason: mixed }), nextOf(null, 'ready')]), waive: {} })
+  await runRoute({ sb: sb2, slug: 's', driver: { step: async () => {} } })
+  assert.equal(sb2.calls.filter(c => c.args[0] === 'waive').length, 0, 'a secrets block is never waived by the test')
+})

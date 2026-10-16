@@ -20,6 +20,11 @@ test('the settings template pins every alias to its 5.5 model and gives unrouted
   assert.equal(env.CLAUDE_CODE_SUBAGENT_MODEL, 'claude-sonnet-5-5')
 })
 
+test('the settings template keeps subagents in the foreground, so a headless turn never ends while one runs', () => {
+  const env = (JSON.parse(read('templates/settings.json')) as { env: Record<string, string> }).env
+  assert.equal(env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS, '1')
+})
+
 test('the scout runs on Haiku 5.5 by full ID, like the other agents', () => {
   assert.match(read('agents/scout.md'), /^model: claude-haiku-5-5$/m)
 })

@@ -11,7 +11,7 @@ import { loadChange, nextCommand, activeSlug, prRecorded, prDone } from './graph
 import { loadConfig, runChecks } from './check.ts'
 import { branchDiff, showAt } from './diffs.ts'
 import { runCommand, recordRun } from './runs.ts'
-import { formatFindings, SENSOR_NAMES, type SensorConfig } from './model.ts'
+import { formatFindings, SENSOR_NAMES, ghBin, type SensorConfig } from './model.ts'
 import { appendEvent, block, unblock, readRatchet, readEvents } from './ratchet.ts'
 import { runQuality } from './quality.ts'
 import { verificationFresh, sensorsFresh } from './stamp.ts'
@@ -99,28 +99,12 @@ export function cmdPr(args: Args): void {
   const base = defaultBase() ?? (head && ['main', 'master'].includes(head) ? git(['rev-parse', 'HEAD']) : null)
   const r = scopeDrift(slug, base)
   if (r.drift.length) fail(`scope drift, not shipping. Out-of-plan files:\n${r.drift.map(f => '  ' + f).join('\n')}\nAdd them to ${planName(slug)} ## Files (and re-approve if gated) or revert them.`)
-  const { config, rules, errors } = loadConfig()
   const sensorsBefore = read(path.join(SDLC, 'sensors.json'))
   // verify ran the declared full commands on this exact tree: judging the tree again would only repeat them.
   const covered = verificationFresh(slug).fullCovered // the knownRed ratchet is not tightened on this path; it tightens at the next Stop
-  const gate = runChecks({ point: 'ship', diffs: branchDiff(base ?? 'HEAD'), config, rules, slugs: [slug], commands: covered ? 'none' : 'full', budgetMs: 1_800_000, before: f => showAt(base ?? 'HEAD', f) ?? '', base, ratchet: true })
+  const { config, errors, gate } = shipGate(slug, base, covered ? 'none' : 'full', true)
   const ratcheted = read(path.join(SDLC, 'sensors.json')) !== sensorsBefore
-  // Defence in depth: when the tree changed after the sensors node, measure again (the base counts are cached per base SHA)
-  // so a lint or quality regression cannot ship. No round is recorded.
-  if (Object.values(config.quality).some(Boolean) && !sensorsFresh(slug)) {
-    const q = runQuality(slug).blocks.filter(b => b.sensor.startsWith('quality.') || b.sensor === 'invariant')
-    gate.blocks.push(...q)
-    gate.findings.push(...q)
-  }
-  if (errors.length || gate.blocks.length) {
-    const configFindings = errors.map(e => `[config] ${e}`)
-    const q = (f: string): string => (/\s/.test(f) ? JSON.stringify(f) : f)
-    const waives = [...new Set(gate.blocks.filter(f => SENSOR_NAMES.includes(f.sensor)).map(f => `/rig:waive ${f.sensor} ${q(f.file ?? '*')} <reason>`))]
-    const summary = [...configFindings, ...gate.blocks.map(f => `${f.sensor}${f.file ? ` ${f.file}` : ''}: ${f.message}`)].join('; ').replace(/\s+/g, ' ').slice(0, 400)
-    const resume = 'then /rig:next resumes'
-    block(slug, 'pr', waives.length && !errors.length ? `the ship gate refused; a person waives with ${waives.join(' ; ')}, or fix: ${summary}; ${resume}` : `fix: ${summary}; ${resume}`, 'gate')
-    fail(`not shipping: the ship gate found problems\n${[...configFindings, formatFindings(gate.findings)].filter(Boolean).join('\n')}\nFix them (one implementer round), or the person waives with /rig:waive <sensor> <file|*> <reason>.`)
-  }
+  if (errors.length || gate.blocks.length) refuse(slug, 'pr', errors, gate, 'not shipping')
 
   if (readRatchet(slug).blocked?.node === 'pr') unblock(slug, 'ship gate passed', 'gate')
   const consumers = changedConsumers(slug, config)
@@ -182,7 +166,7 @@ function openPr(slug: string, title: string): string {
   const file = toPosix(path.relative(ROOT, path.join(CHANGES, slug, 'pr.md')))
   const body = path.join(CHANGES, slug, 'pr.md')
   let url = ''
-  try { url = ghLast(execFileSync('gh', ['pr', 'create', '--title', title, '--body-file', body], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 })) } catch (e) {
+  try { url = ghLast(execFileSync(ghBin(), ['pr', 'create', '--title', title, '--body-file', body], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 })) } catch (e) {
     const x = e as { stdout?: unknown; stderr?: unknown }
     // The PR already exists (a rerun, or opened by hand): record its url instead of blocking.
     if (/already exists/i.test(`${String(x.stdout ?? '')}${String(x.stderr ?? '')}`)) url = ghLast(ghRun(['pr', 'view', `sdlc/${slug}`, '--json', 'url', '-q', '.url']) ?? '')
@@ -208,7 +192,7 @@ function resume(slug: string, message: string): void {
 }
 
 function ghRun(argv: string[], keepStdoutOnFailure = false): string | null {
-  try { return execFileSync('gh', argv, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 }) } catch (e) {
+  try { return execFileSync(ghBin(), argv, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 }) } catch (e) {
     // gh pr checks exits non-zero for failing or pending checks but still prints the JSON.
     const stdout = (e as { stdout?: unknown }).stdout
     return keepStdoutOnFailure && typeof stdout === 'string' && stdout.trim() ? stdout : null
@@ -223,7 +207,31 @@ function gitLoud(argv: string[]): boolean {
   } catch { return false }
 }
 
+// The ship gate pr and pr --followup both judge. Defence in depth: when the tree changed after the sensors node, quality is measured
+// again (the base counts are cached per base SHA) so a lint or quality regression cannot ship. No round is recorded.
+function shipGate(slug: string, base: string | null, commands: 'none' | 'full', ratchet: boolean): { config: SensorConfig; errors: string[]; gate: ReturnType<typeof runChecks> } {
+  const { config, rules, errors } = loadConfig()
+  const gate = runChecks({ point: 'ship', diffs: branchDiff(base ?? 'HEAD'), config, rules, slugs: [slug], commands, budgetMs: 1_800_000, before: f => showAt(base ?? 'HEAD', f) ?? '', base, ratchet })
+  if (Object.values(config.quality).some(Boolean) && !sensorsFresh(slug)) {
+    const q = runQuality(slug).blocks.filter(b => b.sensor.startsWith('quality.') || b.sensor === 'invariant')
+    gate.blocks.push(...q)
+    gate.findings.push(...q)
+  }
+  return { config, errors, gate }
+}
+
+// A refused ship gate: a gate-kind block on `node` that names the waiver a person gives (R46: the node resumes once it is given).
+function refuse(slug: string, node: 'pr' | 'pr-review', errors: string[], gate: ReturnType<typeof runChecks>, what: string): never {
+  const configFindings = errors.map(e => `[config] ${e}`)
+  const q = (f: string): string => (/\s/.test(f) ? JSON.stringify(f) : f)
+  const waives = [...new Set(gate.blocks.filter(f => SENSOR_NAMES.includes(f.sensor)).map(f => `/rig:waive ${f.sensor} ${q(f.file ?? '*')} <reason>`))]
+  const summary = [...configFindings, ...gate.blocks.map(f => `${f.sensor}${f.file ? ` ${f.file}` : ''}: ${f.message}`)].join('; ').replace(/\s+/g, ' ').slice(0, 400)
+  block(slug, node, `${waives.length && !errors.length ? `the ship gate refused; a person waives with ${waives.join(' ; ')}, or fix` : 'fix'}: ${summary}; then /rig:next resumes`, 'gate')
+  fail(`${what}: the ship gate found problems\n${[...configFindings, formatFindings(gate.findings)].filter(Boolean).join('\n')}\nFix them (one implementer round), or the person waives with /rig:waive <sensor> <file|*> <reason>.`)
+}
+
 const FOLLOWUP_CAP = 4
+const PUSH_FAILED = 'git push of the follow-up failed'
 function followup(slug: string, message: string): void {
   const head = git(['rev-parse', '--abbrev-ref', 'HEAD'])
   if (!prDone(slug)) fail(`no follow-up yet: the pr node of ${slug} is not done (run pr ${slug} --message ... first)`)
@@ -234,13 +242,19 @@ function followup(slug: string, message: string): void {
   const used = events.slice(since + 1).filter(e => e.kind === 'followup').length
   if (used >= FOLLOWUP_CAP) { block(slug, 'pr-review', `cap: ${used} follow-up pushes used`, 'cap'); fail(`blocked: ${used} follow-up pushes used on ${slug}; a person decides, and /rig:approve ${slug} budget allows more`) }
   if (head !== `sdlc/${slug}`) fail(`follow-ups go on sdlc/${slug}; HEAD is ${head}`)
-  const r = scopeDrift(slug, defaultBase())
+  const base = defaultBase()
+  const r = scopeDrift(slug, base)
   if (r.drift.length) fail(`scope drift, not committing: ${r.drift.join(', ')}`)
+  // Judged before the commit (verify ran the commands): the pre-push hook would only say "push failed", with no waiver named.
+  const { errors, gate } = shipGate(slug, base, 'none', false)
+  if (errors.length || gate.blocks.length) refuse(slug, 'pr-review', errors, gate, 'not committing the follow-up')
+  if (readRatchet(slug).blocked?.node === 'pr-review') unblock(slug, 'ship gate passed', 'gate')
   const code = r.changed.filter(f => !f.startsWith('.rig/'))
   if (git(['add', '--', toPosix(path.relative(ROOT, path.join(CHANGES, slug))), ...code]) === null) fail('git add failed')
   if (!gitLoud(['commit', '-q', '-m', message])) fail('git commit failed (nothing staged, or a commit hook refused it)')
   appendEvent(slug, { node: 'pr-review', verdict: 'followup', kind: 'followup' })
-  if (git(['remote', 'get-url', 'origin']) !== null && !gitLoud(['push', 'origin', `sdlc/${slug}`])) { block(slug, 'pr-review', 'git push of the follow-up failed'); fail('push failed (blocked)') }
+  if (git(['remote', 'get-url', 'origin']) !== null && !gitLoud(['push', 'origin', `sdlc/${slug}`])) { block(slug, 'pr-review', PUSH_FAILED); fail('push failed (blocked)') }
+  if (readRatchet(slug).blocked?.reason === PUSH_FAILED) unblock(slug, 'follow-up pushed', 'other')
   publishQuietly()
   out(`follow-up committed on sdlc/${slug} at ${git(['rev-parse', '--short', 'HEAD'])}`)
 }

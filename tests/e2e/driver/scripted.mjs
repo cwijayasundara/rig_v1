@@ -19,13 +19,22 @@ export function scriptedDriver(sb, phase) {
   return {
     async begin() {
       sb.git('checkout', '-q', '-b', `sdlc/${slug}`)
-      must(sb.sdlc(['new', slug, '--type', phase.type, '--tier', phase.tier, '--title', phase.title]), 'new')
-      sb.write(`${dir}/intent.md`, intentMd(sb, slug, phase))
+      const args = ['new', slug, '--type', phase.type, '--tier', phase.tier, '--title', phase.title]
+      if (phase.source) args.push('--source', phase.source)
+      must(sb.sdlc(args), 'new')
+      if (!phase.source) sb.write(`${dir}/intent.md`, intentMd(sb, slug, phase))
       return slug
     },
     async step(node) {
       switch (node) {
-        case 'design': sb.write(`${dir}/design.md`, phase.design); break
+        case 'design':
+          sb.write(`${dir}/design.md`, phase.design)
+          if (phase.archUpdate) {
+            sb.write('.rig/product/architecture.md', sb.read('.rig/product/architecture.md') + phase.archUpdate)
+            sb.git('add', '.rig/product/architecture.md')
+            sb.git('commit', '-q', '--no-verify', '-m', `docs: architecture for ${slug}`)
+          }
+          break
         case 'build':
           copy(sb, phase.tests)
           must(sb.sdlc(['run', '--slug', slug, '--expect-fail', '--', 'npm test']), 'red run')

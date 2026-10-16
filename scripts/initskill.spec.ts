@@ -72,6 +72,20 @@ test('init skill: never tells the model to write `/rig-start`, and shows the pre
   assert.match(skill, /"valueRate": 100/)
 })
 
+test('init skill: allowed-tools grants the scaffold commands init itself instructs (git, npm, node, make), and no blanket ones', () => {
+  const tools = /^allowed-tools: (.*)$/m.exec(skill)?.[1] ?? ''
+  for (const t of ['Bash(git init*)', 'Bash(git add *)', 'Bash(git commit *)', 'Bash(git remote*)', 'Bash(npm test*)', 'Bash(node --test*)', 'Bash(node --check *)', 'Bash(make test*)']) assert.ok(tools.includes(t), `allowed-tools is missing ${t}: ${tools}`)
+  for (const t of ['Bash(git *)', 'Bash(npm *)', 'Bash(node *)', 'Bash(make *)']) assert.ok(!tools.includes(t), `allowed-tools grants ${t}, which runs any code unprompted: ${tools}`)
+})
+
+test('init skill: one command per Bash call, so unattended runs are not denied on compound commands', () => {
+  assert.match(skill, /its own Bash call \(no `cd`, pipes, redirects, `&&`/)
+})
+
+test('init skill: the greenfield lint script never writes helper files under .rig/', () => {
+  assert.match(skill, /never write scaffold helper files under `\.rig\/`/)
+})
+
 test('init skill: --quick is the no-question fast lane that turns on rig-brain, registration and workflows', () => {
   assert.match(skill, /argument-hint: '\[--quick \| --defaults\]/)
   const mode = /## `--quick` mode\n([\s\S]*?)\n## /.exec(skill)?.[1] ?? ''

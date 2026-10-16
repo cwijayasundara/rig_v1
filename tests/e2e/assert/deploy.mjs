@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { parse } from 'yaml'
-import { PLUGIN } from '../../integration/lib/sandbox.mjs'
+import { PLUGIN } from '../lib/sandbox.mjs'
 
 const GATE = path.join(PLUGIN, 'templates/production-gate.sh')
 const payload = (command, session = 's1') => JSON.stringify({ session_id: session, tool_input: { command } })

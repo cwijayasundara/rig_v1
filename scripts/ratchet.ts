@@ -148,6 +148,9 @@ export function cmdRatchet(args: Args): void {
   const n = node as RatchetNode
   // sensors and test are recorded internally by `quality` and `verify-report`; a model-written verdict must not certify them.
   if (n === 'sensors' || n === 'test') fail(`the ${n} node is recorded only by sdlc.ts quality / verify-report`)
+  // A cap, stall or budget block on this node is a person's decision (graph.ts R46): a later clean round must not record over it.
+  const held = readRatchet(slug).blocked
+  if (held?.node === n && ['cap', 'stall', 'budget'].includes(held.kind ?? '')) fail(`blocked (${held.kind}) at ${n}: ${held.reason}; nothing recorded. A person reads the findings and decides: /rig:approve ${slug} budget`, 3)
   let slice = typeof args.opt.slice === 'string' ? args.opt.slice : undefined
   if (n === 'build') {
     const ids = slicesIn(slug)

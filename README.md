@@ -122,13 +122,13 @@ As of 2026-10-11. `.claude-plugin/plugin.json` says **0.6.0**; the last git tag 
 |---|---|---|
 | Build loop: start, design or plan, build, test, sensors, PR, review; human gates; tiers | Shipped and trialled live with paid runs | [DESIGN.md](DESIGN.md) §§8 and 9 |
 | Autonomous ratchet (bounded build, quality and cost caps) | Shipped | DESIGN §9 |
-| Plan loop: PRD, `/rig:chart`, one gate per sprint, intent dependencies, carry-over between sprints | Shipped. Scripted e2e P5 passes 17/17; live P5 (real `/rig-chart` sessions for sprint 0 and sprint 1, Sonnet main loop) passed 13/13 on 2026-10-11 for $1.37 | `scripts/chart.spec.ts`, `tests/e2e/phases/p5-sprints.mjs` |
-| Greenfield end to end (init, sprint-0 chart, intents in dependency order, change to PR, deploy, maintain, sprint 1) | Every phase passes scripted (P0-P5) and has run live; the live process check still reports `/rig:init` permission denials on scaffold commands (`npm test`, `mkdir`) | `npm run test:e2e:fast`, `npm run test:e2e` |
-| Run loop: production gate, rollback rehearsal, rig-watch bands, incidents, triage, DORA | Shipped; covered by e2e P3 and P4 | DESIGN, SECURITY.md |
+| Plan loop: PRD, `/rig:chart`, one gate per sprint, intent dependencies, carry-over between sprints | Shipped. Covered by the e2e S1 chart phase (scripted in CI; live `/rig-chart` passed 13/13 on 2026-10-11 for $1.37) | `scripts/chart.spec.ts`, `tests/e2e/phases/s1-chart.mjs` |
+| Greenfield end to end (init, sprint-0 chart, greenfield build, a follow-on change, deploy, maintain, wiki, evals) | The one integration test: scripted S0–S5 in CI; the live lane is the release acceptance run | `npm run test:e2e:fast`, `npm run test:e2e` |
+| Run loop: production gate, rollback rehearsal, rig-watch bands, incidents, triage, DORA | Shipped; the production gate, rollback rehearsal and watch band are covered by e2e S4 | DESIGN, SECURITY.md |
 | Git hooks: `pre-commit`, `pre-push`, session-start wiring | Merged and covered by tests that drive real `git`. **Not yet trialled live.** No bypass guard: CI plus branch protection is the boundary | DESIGN §10, [SECURITY.md](SECURITY.md) |
 | Windows | **Not supported.** Its CI jobs are red, and the hook scripts are POSIX `sh` | SECURITY.md |
 
-**Quality gates on `main`:** `npm test` (about 830 specs, the mod typecheck, the e2e operator and scripted phases P0-P5, the mod tests and rig-brain's suite), `npm run typecheck` and `claude plugin validate` pass locally. In CI trust the Linux and macOS jobs and the dogfood check; the Windows jobs fail for the reason above. Open items are in [DESIGN.md](DESIGN.md) §§9-11.
+**Quality gates on `main`:** `npm test` (about 830 specs, the mod typecheck, the e2e operator and scripted phases S0–S5, the mod tests and rig-brain's suite), `npm run typecheck` and `claude plugin validate` pass locally. In CI trust the Linux and macOS jobs and the dogfood check; the Windows jobs fail for the reason above. Open items are in [DESIGN.md](DESIGN.md) §§9-11.
 
 ## How the harness is put together
 
@@ -499,7 +499,7 @@ rig is the harness. **rig-brain** (in [`brain/`](brain/), the same repo and mark
 6. **Build in parallel.** Each engineer runs `/rig:start .rig/intent/<x>.md` in their own checkout (separate changes run side by side, each on its own `sdlc/<slug>` branch), approves its design, and lets `/rig:next` take it to a PR. An intent whose dependencies have not shipped is refused with their names; when a dependency's PR merges (its `ship.json` reaches the trunk), its dependents become ready. With `rig-spec` installed, CI drafts each ready intent's design as a PR by itself.
 7. **Next sprint.** Write `sprint-(N+1).md`. Charting it edits the shared architecture and test plan, so sprint N's unstarted intents pause until `chart-(N+1)` is approved, then carry over under it. Run `/rig-brain:wiki-refresh` before charting so the architect compares the plan with the code as built.
 
-**Worked example** (the e2e phase P5 runs exactly this, `tests/e2e/fixtures/p5/`):
+**Worked example** (the e2e S1 phase runs exactly this against a cart PRD; the shop-app chart fixture is `tests/e2e/fixtures/chart/`):
 
 | Step | Command | Result |
 |---|---|---|
@@ -627,11 +627,12 @@ npm run test:brain                           # rig-brain: installs brain/ deps, 
 
 ### End-to-end acceptance test
 
-`tests/e2e/` scaffolds a throwaway project, installs the harness into it, and drives the lifecycle with the human gates approved in code (the operator): P0 install, P1 greenfield cart to a PR, P2 a small change to the built app, P3 deploy (production gate, rollback rehearsal, workflow lint; local only) P4 maintain (band breach, incident, fix, eval, metrics) and P5 sprints (chart sprint 0, one approval, intents start in dependency order; chart sprint 1, carry-over under the new chart). Spec: `docs/superpowers/specs/2026-10-09-e2e-acceptance-test-design.md`.
+`tests/e2e/` is the one integration test. It scaffolds a throwaway repo, installs the harness into it with `/rig:init`, charts sprint 0 from a PRD written to `templates/prd-format.md` (the test itself approves the chart and every later human gate, in code: the operator), builds the shop greenfield, lands a delete-item change on top without regressions, exercises the local deploy gate and the watch band, then builds the code wiki and seeds the evals: S0 install, S1 chart, S2 greenfield build, S3 delete-item change, S4 deploy/maintain (local only), S5 wiki and evals.
 
 ```bash
-npm run test:e2e         # the acceptance test: real Claude Code (claude -p, Sonnet), costs money, --cap USD (default 6)
+npm run test:e2e         # the acceptance test: real Claude Code (claude -p, claude-haiku-5-5 by default), costs money, --cap USD (default 6), fails over --minutes (default 20)
 npm run test:e2e:fast    # a fake model replays fixture files: $0, about 30 s, runs in npm test and CI; never the acceptance result
 npm run test:e2e:unit    # the operator loop
-node tests/e2e/run.mjs --driver live --phase P1 --cap 6   # one phase (P2 and P4 run their prerequisites first)
+node tests/e2e/run.mjs --driver live --phase S3 --cap 20   # one phase (its prerequisites run first)
+node tests/e2e/run.mjs --driver live --live-evals          # also execute the seeded evals (extra model spend)
 ```

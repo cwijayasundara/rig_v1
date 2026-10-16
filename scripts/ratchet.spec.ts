@@ -29,6 +29,28 @@ test('a slice with no high findings is done; new high findings continue; a repea
   assert.equal(r.blocked.node, 'build')
 })
 
+test('a clean round cannot record over a stall: the node stays blocked until a person decides', () => {
+  assert.equal(record('pr-review', HIGH).verdict, 'continue')
+  assert.equal(record('pr-review', HIGH).verdict, 'blocked')
+  const r = sdlc(repo, ['ratchet', 'record', 'big', 'pr-review'], { input: 'verdict: pass\n' })
+  assert.equal(r.code, 3)
+  assert.match(r.stderr, /blocked \(stall\) at pr-review[\s\S]*\/rig:approve big budget/)
+  const rt = JSON.parse(fs.readFileSync(path.join(repo, '.rig/changes/big/ratchet.json'), 'utf8'))
+  assert.notEqual(rt.nodes['pr-review'].status, 'done')
+  assert.equal(rt.blocked.kind, 'stall')
+  assert.equal(sdlc(repo, ['approve', 'big', 'budget'], { env: { SDLC_HUMAN: '1' } }).code, 0)
+  assert.equal(record('pr-review', 'verdict: pass\n').verdict, 'done', 'after the person decides, a clean round records')
+})
+
+test('only a cap, stall or budget block on the same node refuses a record; an other-kind block elsewhere does not', () => {
+  const rt = path.join(repo, '.rig/changes/big/ratchet.json')
+  const r = JSON.parse(fs.readFileSync(rt, 'utf8'))
+  fs.writeFileSync(rt, JSON.stringify({ ...r, blocked: { node: 'pr', reason: 'gh pr create printed no PR url', at: 'now', kind: 'other' } }))
+  assert.equal(record('pr-review', 'verdict: pass\n').verdict, 'done', 'an other block at pr is fixed by rerunning pr, not by a budget approval')
+  fs.writeFileSync(rt, JSON.stringify({ ...r, blocked: { node: 'build', reason: 'stall: x', at: 'now', kind: 'stall' } }))
+  assert.equal(sdlc(repo, ['ratchet', 'record', 'big', 'build', '--slice', '1'], { input: 'verdict: pass\n' }).code, 3)
+})
+
 test('the round cap blocks: default build cap is 2 fix rounds', () => {
   assert.equal(record('build', HIGH).verdict, 'continue')
   assert.equal(record('build', HIGH2).verdict, 'continue')

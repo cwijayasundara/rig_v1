@@ -2,7 +2,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { parseRules } from './model.ts'
+import { parseRules, ghBin } from './model.ts'
 import { inboxEntries } from './inbox.ts'
 import {
   ROOT, SDLC, APPROVALS, MANAGED_DIR, managedSettings, managedFiles, USAGE, MIN_SAMPLE, exists, read, frontmatter, readJsonl, git, fail, out, optString, toPosix,
@@ -55,7 +55,7 @@ function commitTimes(file: string): string[] {
 function ghPrs(): PullRequest[] | null {
   try {
     const fields = 'number,createdAt,mergedAt,body,reviews,statusCheckRollup'
-    const raw = execFileSync('gh', ['pr', 'list', '--state', 'merged', '--limit', '200', '--json', fields], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 60_000 })
+    const raw = execFileSync(ghBin(), ['pr', 'list', '--state', 'merged', '--limit', '200', '--json', fields], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 60_000 })
     return JSON.parse(raw) as PullRequest[]
   } catch {
     return null
@@ -65,7 +65,7 @@ function ghPrs(): PullRequest[] | null {
 // gh JSON for the DORA, triage and rehearsal metrics: null when gh is missing, unauthenticated, has no remote or the call fails.
 function ghJson<T>(args: string[]): T[] | null {
   try {
-    const v: unknown = JSON.parse(execFileSync('gh', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 60_000 }))
+    const v: unknown = JSON.parse(execFileSync(ghBin(), args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 60_000 }))
     return Array.isArray(v) ? v as T[] : null
   } catch {
     return null

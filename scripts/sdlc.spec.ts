@@ -599,6 +599,22 @@ test('status warns when a plan lists ** or * in ## Files, which makes the scope 
   assert.doesNotMatch(run(['status']).stdout, /too broad/)
 })
 
+test('a ## Files table counts as the file list, and a section with no paths is a warning', () => {
+  run(['new', 'tbl', '--type', 'chore', '--tier', 'S'])
+  write('.rig/changes/tbl/plan.md', '## Files\n| File/glob | Purpose |\n|---|---|\n| `src/app.js` | entry |\n| `test/app.test.js` | tests |\n')
+  write('src/app.js', 'changed\n')
+  write('test/app.test.js', 'new\n')
+  const drift = run(['scope-drift', 'tbl']).stdout
+  assert.doesNotMatch(drift, /src\/app\.js|test\/app\.test\.js/, drift)
+  assert.doesNotMatch(run(['status']).stdout, /lists no paths/)
+  write('.rig/changes/tbl/plan.md', '## Files\nthe shop modules and their tests\n')
+  assert.match(run(['status']).stdout, /warn: tbl: "## Files" lists no paths/)
+  write('.rig/changes/tbl/plan.md', '## Files\n| File | Why |\n|---|---|\n| `**` | everything |\n')
+  assert.match(run(['status']).stdout, /warn: tbl: .*"\*\*".*too broad/, 'a ** table row is as wide as a ** bullet')
+  write('.rig/changes/tbl/plan.md', '## Filesystem layout\nflat\n')
+  assert.doesNotMatch(run(['status']).stdout, /lists no paths/, '"## Filesystem" is not a Files section')
+})
+
 test('init runs git init when the directory is not inside a repository, and leaves an existing repo alone', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-norepo-'))
   const init = (cwd: string) => spawnSync('node', ['--disable-warning=ExperimentalWarning', SCRIPT, 'init'], { cwd, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: cwd } }).stdout

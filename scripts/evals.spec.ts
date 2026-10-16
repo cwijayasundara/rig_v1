@@ -201,6 +201,14 @@ test('the template asks before sdlc.ts evals runs, though it allows the other sd
   assert.ok(t.permissions.ask.includes('Bash(node --disable-warning=ExperimentalWarning .rig/bin/sdlc.ts evals*)'))
 })
 
+test('the templates allow sdlc.ts only at the vendored .rig/bin path: a wildcard prefix would allow any nested .rig/bin/sdlc.ts and skip the evals ask rule', () => {
+  for (const f of ['settings.json', 'managed-settings.json']) {
+    const t = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, '../templates', f), 'utf8'))
+    const loose = t.permissions.allow.filter((r: string) => r.includes('sdlc.ts') && !r.startsWith('Bash(node --disable-warning=ExperimentalWarning .rig/bin/sdlc.ts '))
+    assert.deepEqual(loose, [], f)
+  }
+})
+
 test('an eval file missing at HEAD is an error naming it', () => {
   defineEval('nofile', { prompt: 'p', files: ['tests/nope.js'], checks: [{ kind: 'command', cmd: 'true' }] })
   const r = evals([])

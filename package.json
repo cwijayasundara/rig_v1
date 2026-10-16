@@ -11,7 +11,6 @@
     "typecheck:mod": "tsc -p tsconfig.json",
     "test:brain": "npm ci --prefix brain --silent && npm test --prefix brain",
     "validate": "claude plugin validate .claude-plugin/plugin.json",
-    "test:integration:self": "node tests/integration/selftest.mjs",
     "test:e2e": "node tests/e2e/run.mjs --driver live",
     "test:e2e:fast": "node tests/e2e/run.mjs --driver scripted",
     "test:e2e:unit": "node --test tests/e2e/lib/*.test.mjs tests/e2e/driver/*.test.mjs"

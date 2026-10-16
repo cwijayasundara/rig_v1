@@ -3,10 +3,10 @@ name: init
 description: One-time setup of a repo for the sdlc harness. Brownfield writes a compact CLAUDE.md from a cheap parallel scout sweep; greenfield scaffolds a walking skeleton with test and lint commands. Never rerun per task.
 argument-hint: '[--quick | --defaults] [greenfield "<stack and goal>"]'
 effort: medium
-allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Read, Write, Edit, Glob, Grep, AskUserQuestion, Agent
+allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Bash(git init*), Bash(git add *), Bash(git commit *), Bash(git status*), Bash(git remote*), Bash(git rev-parse*), Bash(npm test*), Bash(npm run *), Bash(node --test*), Bash(node --check *), Bash(node --version), Bash(make test*), Bash(make lint*), Read, Write, Edit, Glob, Grep, AskUserQuestion, Agent
 ---
 # Initialise this repo
-**Subagents:** run them in the foreground (never `run_in_background`) and wait; never end your turn while one is running. Every agent of one step goes in one message.
+**Subagents:** run them in the foreground (never `run_in_background`) and wait; never end your turn while one is running. Every agent of one step goes in one message. Run each command as its own Bash call (no `cd`, pipes, redirects, `&&`, variables or heredocs); read files with Read; one-line commit messages — compound commands are denied in unattended runs and stall the install.
 
 Run `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts init --onboarding` first (`--onboarding`: what init writes over the next turns, a scaffold or CI workflows, opens no ad-hoc change until the preflight step). **Model check:** if this session's main model is an Opus model, say so in one line before any other step (init is orchestration and file writes, so Sonnet does it at a fraction of the cost; `templates/settings.json` pins Sonnet only for later sessions) and offer to continue after `/model sonnet`. Never stop on it; with `--defaults` or `--quick` just note it in the final table.
 ## `--defaults` mode
@@ -39,7 +39,7 @@ The fast lane for a person at the keyboard, so the "skip in unattended or cloud 
 
 ## Greenfield
 1. Ask up to three questions with AskUserQuestion: stack, deployment target, and test framework (recommend defaults).
-2. Scaffold the smallest walking skeleton that builds, plus one passing smoke test, a lint config, and a `Makefile` or package scripts with `test`, `test-fast` and `lint` targets. For Node, the test script is `node --test` with no directory argument: Node 24 reads `test/` as a module path and fails with `MODULE_NOT_FOUND` before any test runs, which also stops the red-proof gate on the base commit.
+2. Scaffold the smallest walking skeleton that builds, plus one passing smoke test, a lint config, and a `Makefile` or package scripts with `test`, `test-fast` and `lint` targets. For Node the `lint` script is `node --check src/index.js`; never write scaffold helper files under `.rig/` (that is the vendored harness, and writing there asks the person). For Node, the test script is `node --test` with no directory argument: Node 24 reads `test/` as a module path and fails with `MODULE_NOT_FOUND` before any test runs, which also stops the red-proof gate on the base commit.
 3. Write `CLAUDE.md` as above, then `git init` if needed.
 
 ## Both

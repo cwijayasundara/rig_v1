@@ -81,3 +81,13 @@ test('new in a repository with no commits commits what is there as a baseline, i
   assert.ok(!files.includes('.DS_Store'))
   assert.ok(!files.some(f => f.startsWith('.rig/changes/add-x')), 'the change itself is not in the baseline')
 })
+
+test('the design skill moves the shared architecture with a contract change, in the same change', () => {
+  const t = fs.readFileSync(path.join(import.meta.dirname, '../skills/design/SKILL.md'), 'utf8')
+  assert.match(t, /adds or changes a public contract[\s\S]*appends `## Update \(<slug>\)` to `\.rig\/product\/architecture\.md`[\s\S]*lists that file in `## Files`/)
+})
+
+test('the build skill builds only on the change branch and stops on a chart or other branch', () => {
+  const t = fs.readFileSync(path.join(import.meta.dirname, '../skills/build/SKILL.md'), 'utf8')
+  assert.match(t, /Build only on `sdlc\/\$0`[\s\S]*`rig\/chart-N` branch[\s\S]*stop and tell the person/)
+})
