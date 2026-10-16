@@ -6,6 +6,8 @@
       "Edit(.rig/**)", "Bash(node --disable-warning=ExperimentalWarning .rig/bin/sdlc.ts *)",
       "Skill(rig:start)", "Skill(rig:start *)", "Skill(rig:plan)", "Skill(rig:plan *)", "Skill(rig:build)", "Skill(rig:build *)",
       "Skill(rig:test)", "Skill(rig:test *)", "Skill(rig:pr)", "Skill(rig:pr *)", "Skill(rig:rule)", "Skill(rig:rule *)",
+      "Skill(rig-start)", "Skill(rig-start *)", "Skill(rig-plan)", "Skill(rig-plan *)", "Skill(rig-build)", "Skill(rig-build *)",
+      "Skill(rig-test)", "Skill(rig-test *)", "Skill(rig-pr)", "Skill(rig-pr *)", "Skill(rig-rule)", "Skill(rig-rule *)",
       "Bash(gh pr comment *)", "Bash(gh pr view *)"
     ],
     "ask": [

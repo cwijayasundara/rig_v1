@@ -2,7 +2,7 @@
 // status is which files it has. Only a person writes approval.json; verify writes verify.json for the tree it judged.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SDLC, CHANGES, read, exists, sha, now, git, defaultBase, frontmatter } from './core.ts'
+import { ROOT, SDLC, CHANGES, read, exists, sha, now, git, defaultBase, frontmatter, skillRef as k } from './core.ts'
 import { openQuestions, globToRegex } from './model.ts'
 import { parseRegistry, contractGlobs } from './registry.ts'
 
@@ -96,6 +96,6 @@ export function status(slug: string, gates: { plan: boolean }, tree: string | nu
 }
 
 export const nextStep = (slug: string, s: Status): string => ({
-  spec: `/rig:start ${slug}`, plan: `/rig:plan ${slug}`, approve: `a person reviews spec.md and plan.md, then runs /rig:approve ${slug}`,
-  build: `/rig:build ${slug}`, pr: `/rig:pr ${slug}`, review: 'a person reviews and merges the PR', shipped: 'done',
+  spec: `${k('start')} ${slug}`, plan: `${k('plan')} ${slug}`, approve: `a person reviews spec.md and plan.md, then runs ${k('approve')} ${slug}`,
+  build: `${k('build')} ${slug}`, pr: `${k('pr')} ${slug}`, review: 'a person reviews and merges the PR', shipped: 'done',
 })[s]

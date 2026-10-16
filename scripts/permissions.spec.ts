@@ -16,7 +16,8 @@ test('every skill or gh command a skill tells the model to run is allowed', () =
     const text = fs.readFileSync(path.join(ROOT, 'skills', s, 'SKILL.md'), 'utf8').replace(/^---[\s\S]*?---\n/, '')
     for (const [, name] of text.matchAll(/\/rig:([a-z]+)/g)) {
       if (name === 'approve' || name === 'waive' || name === s || !SKILLS.includes(name ?? '')) continue // the person runs these; a self-reference is no chain; /rig:x is a placeholder
-      assert.ok(rules.includes(`Skill(rig:${name})`) && rules.includes(`Skill(rig:${name} *)`), `${s} runs /rig:${name}`)
+      // A vendored skill registers under its folder name (rig-test), the plugin's under rig:test: both must be allowed.
+      for (const n of [`rig:${name}`, `rig-${name}`]) assert.ok(rules.includes(`Skill(${n})`) && rules.includes(`Skill(${n} *)`), `${s} runs /rig:${name}: Skill(${n}) missing`)
     }
     for (const [, sub] of text.matchAll(/`gh pr ([a-z]+)/g)) assert.ok(rules.includes(`Bash(gh pr ${sub} *)`), `${s} runs gh pr ${sub}`)
   }
@@ -24,7 +25,7 @@ test('every skill or gh command a skill tells the model to run is allowed', () =
 
 test('the template never lets the model invoke approve or waive, or the Skill tool unscoped', () => {
   const rules = allow()
-  assert.deepEqual(rules.filter(r => /^Skill\(rig:(approve|waive)\b/.test(r) || r === 'Skill' || /^Skill\(rig ?\*?\)$/.test(r) || r === 'Bash(gh *)'), [])
+  assert.deepEqual(rules.filter(r => /^Skill\(rig[:-](approve|waive)\b/.test(r) || r === 'Skill' || /^Skill\(rig ?\*?\)$/.test(r) || r === 'Bash(gh *)'), [])
 })
 
 test('init --full adds the new allow rules to an existing settings.json and keeps the team\'s', () => {
@@ -35,4 +36,9 @@ test('init --full adds the new allow rules to an existing settings.json and keep
   const got: string[] = JSON.parse(fs.readFileSync(path.join(repo, '.claude/settings.json'), 'utf8')).permissions.allow
   assert.ok(got.includes('Bash(make test)'), 'the team rule stays')
   assert.ok(got.includes('Skill(rig:test *)') && got.includes('Bash(gh pr comment *)'), JSON.stringify(got))
+})
+
+test('the pr skill posts its review from a file: a multi-line --body may not match the gh allow rule', () => {
+  const pr = fs.readFileSync(path.join(ROOT, 'skills/pr/SKILL.md'), 'utf8')
+  assert.match(pr, /gh pr comment[^`]*--body-file \.rig\/changes\/<slug>\/review\.md/)
 })
