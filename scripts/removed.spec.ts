@@ -70,7 +70,7 @@ test('4a: chart, watch, metrics, scorecard, points and timing are gone', () => {
 test('4a: status and status --json no longer carry points or story', () => {
   const repo = makeRepo()
   sdlc(repo, ['init'])
-  sdlc(repo, ['new', 'demo', '--type', 'feature', '--tier', 'M'])
+  sdlc(repo, ['new', 'demo', '--type', 'feature'])
   assert.doesNotMatch(sdlc(repo, ['status']).stdout, /\dpt\b/)
   const json = JSON.parse(sdlc(repo, ['status', '--json']).stdout) as Record<string, unknown> & { changes: Record<string, unknown>[] }
   assert.ok(!('story' in json))

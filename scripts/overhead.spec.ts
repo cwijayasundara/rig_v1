@@ -21,7 +21,7 @@ function gitCalls(args: string[]): { out: string; calls: string[] } {
 }
 
 function shipped(slug: string, commit: boolean): void {
-  sdlc(repo, ['new', slug, '--type', 'chore', '--tier', 'S'])
+  sdlc(repo, ['new', slug, '--type', 'chore'])
   write(repo, `.rig/changes/${slug}/pr.md`, 'x\n')
   if (commit) { gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', `ship ${slug}`) }
 }
@@ -43,7 +43,7 @@ test('Stop runs its fast commands even when a green run is recorded on this exac
   write(repo, '.rig/sensors.json', fromOld({ fast: { test: cmd } }))
   gitIn(repo, 'add', '.')
   gitIn(repo, 'commit', '-qm', 'cfg')
-  sdlc(repo, ['new', 'xx', '--type', 'chore', '--tier', 'S'])
+  sdlc(repo, ['new', 'xx', '--type', 'chore'])
   hook(repo, 'prompt-submit', {})
   write(repo, 'src/a.js', 'export const a = 1\n')
   sdlc(repo, ['run', '--', cmd])

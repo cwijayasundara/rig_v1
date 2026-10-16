@@ -120,7 +120,7 @@ test('at commit, validate runs first and a failing validate skips run', () => {
   write(repo, 'src/a.js', 'export const a = 1\n')
   const r = commitCheck()
   assert.equal(r.code, 1)
-  assert.match(r.stdout, /\[behavioral\][\s\S]*examples do not match the specs/)
+  assert.match(r.stdout, /\[contracts\][\s\S]*examples do not match the specs/)
   assert.deepEqual(ran(m), ['validate'])
 })
 

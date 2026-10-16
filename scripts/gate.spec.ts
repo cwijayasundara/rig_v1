@@ -24,7 +24,7 @@ test('Stop is silent outside sdlc repos and on turns that changed no source', ()
 })
 
 test('Stop blocks twice, then lets the turn end with a system message and unresolved.json; a fix clears it', () => {
-  sdlc(repo, ['new', 'xx', '--type', 'chore', '--tier', 'S'])
+  sdlc(repo, ['new', 'xx', '--type', 'chore'])
   hook(repo, 'prompt-submit', {})
   tamper()
   for (const n of [1, 2]) {
@@ -41,7 +41,7 @@ test('Stop blocks twice, then lets the turn end with a system message and unreso
 })
 
 test('a harness file changed by Bash blocks at Stop; the same change through Edit only warns', () => {
-  sdlc(repo, ['new', 'xx', '--type', 'chore', '--tier', 'S'])
+  sdlc(repo, ['new', 'xx', '--type', 'chore'])
   write(repo, '.rig/sensors.json', fromOld({ limits: { diffLines: 500 } }))
   gitIn(repo, 'add', '.')
   gitIn(repo, 'commit', '-qm', 'cfg')
@@ -57,7 +57,7 @@ test('a harness file changed by Bash blocks at Stop; the same change through Edi
 })
 
 test('post-edit blocks a single edited file with exit 2 and records the edit', () => {
-  sdlc(repo, ['new', 'xx', '--type', 'chore', '--tier', 'S'])
+  sdlc(repo, ['new', 'xx', '--type', 'chore'])
   hook(repo, 'prompt-submit', {})
   tamper()
   const r = hook(repo, 'post-edit', { tool_input: { file_path: path.join(repo, 'test/a.test.js') } })
@@ -67,7 +67,7 @@ test('post-edit blocks a single edited file with exit 2 and records the edit', (
 })
 
 test('a corrupt gate file never wedges the session', () => {
-  sdlc(repo, ['new', 'xx', '--type', 'chore', '--tier', 'S'])
+  sdlc(repo, ['new', 'xx', '--type', 'chore'])
   hook(repo, 'prompt-submit', {})
   fs.writeFileSync(path.join(repo, '.rig/.gate'), '{not json')
   tamper()
@@ -86,7 +86,7 @@ test('a protected-only diff creates no ad-hoc change; contract edits are tier M'
 })
 
 test('a gate file with wrongly typed fields never crashes the hooks', () => {
-  sdlc(repo, ['new', 'xx', '--type', 'chore', '--tier', 'S'])
+  sdlc(repo, ['new', 'xx', '--type', 'chore'])
   hook(repo, 'prompt-submit', {})
   fs.writeFileSync(path.join(repo, '.rig/.gate'), '{"blocks":null,"agents":null}')
   tamper()
@@ -118,14 +118,14 @@ test('a guide is injected the first time a matching file is edited in a session,
 })
 
 test('session start lists guide names without their bodies', () => {
-  sdlc(repo, ['new', 'xx', '--type', 'chore', '--tier', 'S'])
+  sdlc(repo, ['new', 'xx', '--type', 'chore'])
   const ctx = JSON.parse(hook(repo, 'session-start', { session_id: 's1', source: 'startup' }).stdout).hookSpecificOutput.additionalContext
   assert.match(ctx, /Guides \(injected when you first touch matching files\): contracts, engineering, testing/)
   assert.doesNotMatch(ctx, /Iron rules/)
 })
 
 test('I3: Stop ratchets a known-red command that now passes; it then blocks when it fails again', () => {
-  sdlc(repo, ['new', 'xx', '--type', 'chore', '--tier', 'S'])
+  sdlc(repo, ['new', 'xx', '--type', 'chore'])
   const lint = 'node -e "process.exit(require(\'fs\').existsSync(\'bad.flag\') ? 1 : 0)"'
   write(repo, '.rig/sensors.json', fromOld({ fast: { lint }, knownRed: ['fast.lint'] }) + '\n')
   gitIn(repo, 'add', '.')
@@ -146,7 +146,7 @@ const stop = () => hook(repo, 'stop', { session_id: 's1' })
 const tamper = () => write(repo, 'test/a.test.js', "it.only('x', () => {})\n")
 
 test('harness files untracked at turn start and committed unchanged in the turn are not harness-tamper', () => {
-  sdlc(repo, ['new', 'xx', '--type', 'chore', '--tier', 'S'])
+  sdlc(repo, ['new', 'xx', '--type', 'chore'])
   gitIn(repo, 'add', '.')
   gitIn(repo, 'commit', '-qm', 'cfg')
   write(repo, '.claude/agents/rig-scout.md', '# scout\n')
@@ -206,6 +206,6 @@ test('a typed /rig:approve (either spelling, with or without arguments) records 
 
 test('Stop does not continue a change that waits at a human gate or has no active change', () => {
   assert.equal(stop().stdout, '')
-  sdlc(repo, ['new', 'gated', '--type', 'feature', '--tier', 'M'])
+  sdlc(repo, ['new', 'gated', '--type', 'feature'])
   assert.equal(stop().stdout, '', 'a feature before its design approval is a person step, not an auto step')
 })

@@ -77,3 +77,30 @@ test('CI with --config-from judges with the base registry; an old-shape base is 
   gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'pr')
   assert.match(sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main']).stdout, /pre-registry format/)
 })
+
+test('a failing contract run is reported as the contracts sensor', () => {
+  commit(registry({ contracts: { files: ['api/**'], run: 'node -e "process.exit(3)"' } }))
+  write(repo, 'src/a.js', 'export const a = 1\n')
+  gitIn(repo, 'add', '.')
+  assert.match(sdlc(repo, ['check', '--at', 'commit']).stdout, /\[contracts\][\s\S]*behavioural suite failed/)
+})
+
+test('a waiver row cannot clear plan-gate, even a hand-written one', () => {
+  commit(registry({}))
+  sdlc(repo, ['new', 'demo', '--type', 'chore'])
+  write(repo, '.rig/changes/demo/spec.md', '# Spec\n\n## Behaviours\n- none\n')
+  write(repo, '.rig/changes/demo/plan.md', '# Plan\n')
+  write(repo, '.rig/waivers.jsonl', JSON.stringify({ slug: 'demo', sensor: 'plan-gate', file: '*', reason: 'x', by: 'p', at: 't' }) + '\n')
+  assert.match(sdlc(repo, ['verify', 'demo']).stdout, /\[plan-gate\]/)
+})
+
+test('a resumed session after a passing verify is told to open the PR', () => {
+  commit(registry({}))
+  sdlc(repo, ['new', 'demo', '--type', 'chore'])
+  write(repo, '.rig/changes/demo/spec.md', '# Spec\n\n## Behaviours\n- none\n\n## Open questions\nnone\n')
+  write(repo, '.rig/changes/demo/plan.md', '# Plan\n\n## Open questions\nnone\n')
+  sdlc(repo, ['approve', 'demo'], { env: { SDLC_HUMAN: '1' } })
+  assert.equal(sdlc(repo, ['verify', 'demo']).code, 0)
+  const ctx = JSON.parse(hook(repo, 'session-start', { session_id: 's1' }).stdout).hookSpecificOutput.additionalContext as string
+  assert.match(ctx, /Next: \/rig:pr demo/)
+})

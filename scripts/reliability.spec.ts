@@ -16,7 +16,7 @@ const runHook = (repo: string, name: string, input: object): Promise<void> => ne
 
 test('parallel post-edit hooks all land in .gate', async () => {
   const repo = makeRepo()
-  sdlc(repo, ['new', 'tiny', '--type', 'chore', '--tier', 'S'])
+  sdlc(repo, ['new', 'tiny', '--type', 'chore'])
   hook(repo, 'prompt-submit', {})
   const n = 10
   for (let i = 0; i < n; i++) write(repo, `f${i}.ts`, `export const v${i} = ${i}\n`)
@@ -28,7 +28,7 @@ test('parallel post-edit hooks all land in .gate', async () => {
 
 test('a stale lock does not wedge a hook', () => {
   const repo = makeRepo()
-  sdlc(repo, ['new', 'tiny', '--type', 'chore', '--tier', 'S'])
+  sdlc(repo, ['new', 'tiny', '--type', 'chore'])
   const lock = path.join(repo, '.rig/.gate.lock')
   fs.mkdirSync(lock)
   const old = new Date(Date.now() - 60_000)
@@ -39,7 +39,7 @@ test('a stale lock does not wedge a hook', () => {
 
 test('a turn on a tree with many untracked files is fast and still sees a changed one', () => {
   const repo = makeRepo()
-  sdlc(repo, ['new', 'tiny', '--type', 'chore', '--tier', 'S'])
+  sdlc(repo, ['new', 'tiny', '--type', 'chore'])
   fs.mkdirSync(path.join(repo, 'gen'))
   for (let i = 0; i < 3000; i++) fs.writeFileSync(path.join(repo, 'gen', `g${i}.txt`), `x${i}`)
   const t0 = Date.now()

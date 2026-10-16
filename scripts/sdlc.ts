@@ -52,7 +52,7 @@ function cmdInit(args: Args): void {
 function cmdNew(args: Args): void {
   const slug = args.pos[0] ?? ''
   if (!SLUG_RE.test(slug)) fail(`usage: new <kebab-slug> [--type ${TYPES.join('|')}] [--title "..."]`)
-  const raw = optString(args, 'type') ?? 'feature' // --tier is accepted and ignored until step 4c
+  const raw = optString(args, 'type') ?? 'feature'
   // The four types, plus the older names toType folds in (greenfield, incident, migration, spike).
   if (![...TYPES, 'greenfield', 'incident', 'migration', 'spike'].includes(raw)) fail(`usage: new <slug> [--type ${TYPES.join('|')}] [--title "..."]`)
   if (exists(changeDir(slug))) fail(`${slug} already exists: /rig:start ${slug} continues it`)

@@ -33,7 +33,7 @@ beforeEach(() => {
 })
 
 test('new creates intent and makes the change active; status prints next command', () => {
-  assert.equal(run(['new', 'add-login', '--type', 'feature', '--tier', 'M']).code, 0)
+  assert.equal(run(['new', 'add-login', '--type', 'feature']).code, 0)
   assert.ok(fs.existsSync(path.join(repo, '.rig/changes/add-login/intent.md')))
   const status = run(['status']).stdout
   assert.match(status, /▶ add-login/)
@@ -42,7 +42,7 @@ test('new creates intent and makes the change active; status prints next command
 
 test('new writes .rig/.gitignore even when .rig already exists', () => {
   fs.mkdirSync(path.join(repo, '.rig'))
-  run(['new', 'x-change', '--type', 'chore', '--tier', 'S'])
+  run(['new', 'x-change', '--type', 'chore'])
   assert.equal(fs.readFileSync(path.join(repo, '.rig/.gitignore'), 'utf8'), 'state/\n.baseline\n.gate\nunresolved.json\ngates.jsonl\nspend-cache.json\nspend-fetched\nbudget-seen.json\n.onboarding\nchanges/*/prototype/\n')
 })
 
@@ -53,7 +53,7 @@ test('hooks are silent in repos that never opted in', () => {
 })
 
 test('post-edit blocks secrets with exit 2', () => {
-  run(['new', 'add-login', '--type', 'feature', '--tier', 'S'])
+  run(['new', 'add-login', '--type', 'feature'])
   write('src/config.js', 'const key = "AKIAABCDEFGHIJKLMNOP"\n')
   const secret = hook('post-edit', { tool_input: { file_path: path.join(repo, 'src/config.js') } })
   assert.equal(secret.code, 2)
@@ -67,7 +67,7 @@ test('session-start tells the model that sdlc routes work, not superpowers', () 
 })
 
 test('session-start injects the active change and next command', () => {
-  run(['new', 'add-login', '--type', 'bugfix', '--tier', 'S'])
+  run(['new', 'add-login', '--type', 'bugfix'])
   const ctx = JSON.parse(hook('session-start', {}).stdout).hookSpecificOutput.additionalContext
   assert.match(ctx, /add-login/)
   assert.match(ctx, /Active change: add-login \(bugfix, spec\)\. Next: \/rig:start add-login/)
@@ -95,7 +95,7 @@ test('check --at ci logs no rule fires', () => {
 })
 
 test('waive is human-only, records the waiver for the active change, and status reports sensors', () => {
-  run(['new', 'xx', '--type', 'chore', '--tier', 'S'])
+  run(['new', 'xx', '--type', 'chore'])
   assert.equal(run(['waive', 'size', '*', 'generated', 'file']).code, 3)
   assert.equal(run(['waive', 'size', '*', 'generated', 'file'], { env: { SDLC_HUMAN: '1' } }).code, 0)
   const w = JSON.parse(fs.readFileSync(path.join(repo, '.rig/waivers.jsonl'), 'utf8').trim())
@@ -106,7 +106,7 @@ test('waive is human-only, records the waiver for the active change, and status 
 })
 
 test('waive rejects an unknown sensor name', () => {
-  run(['new', 'xx', '--type', 'chore', '--tier', 'S'])
+  run(['new', 'xx', '--type', 'chore'])
   const r = run(['waive', 'nonsense', '*', 'because'], { env: { SDLC_HUMAN: '1' } })
   assert.notEqual(r.code, 0)
   assert.match(r.stderr, /test-tamper/)
@@ -114,7 +114,7 @@ test('waive rejects an unknown sensor name', () => {
 
 
 test('F5: a failing command that prints a key is recorded without the key', () => {
-  run(['new', 'leak', '--type', 'chore', '--tier', 'S'])
+  run(['new', 'leak', '--type', 'chore'])
   run(['run', '--slug', 'leak', '--', `node -e "console.log('AKIA'+'IOSFODNN7EXAMPLE'); process.exit(1)"`])
   const runs = fs.readFileSync(path.join(repo, '.rig/changes/leak/evidence/runs.jsonl'), 'utf8')
   assert.doesNotMatch(runs, /AKIA[0-9A-Z]{16}/)
@@ -122,7 +122,7 @@ test('F5: a failing command that prints a key is recorded without the key', () =
 })
 
 test('status --json carries the active change and each change\'s status and next step', () => {
-  run(['new', 'aa', '--type', 'chore', '--tier', 'S'])
+  run(['new', 'aa', '--type', 'chore'])
   const s = JSON.parse(run(['status', '--json']).stdout)
   assert.equal(s.active, 'aa')
   assert.deepEqual(s.changes, [{ slug: 'aa', type: 'chore', status: 'spec', next: '/rig:start aa' }])
@@ -144,7 +144,7 @@ test('every slug-taking command refuses a path-like slug and writes nothing outs
     [['next', '../x']],
     [['approve', '../x', 'budget'], human],
     [['waive', 'rules', '*', 'why', '--slug', '../x'], human],
-    [['new', '../x', '--type', 'feature', '--tier', 'M']],
+    [['new', '../x', '--type', 'feature']],
     [['scope-drift', '../x']],
   ]
   for (const [args, env] of cases) {
@@ -187,7 +187,7 @@ test('init --stack refuses once sensors.json is committed or a change exists', (
   assert.match(run(['init', '--stack']).stdout, /is committed/)
   assert.equal(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8'), '{}')
   git('rm', '-q', '--cached', '.rig/sensors.json'); git('commit', '-qm', 'untrack')
-  run(['new', 'tiny', '--type', 'chore', '--tier', 'S'])
+  run(['new', 'tiny', '--type', 'chore'])
   const r = run(['init', '--stack'])
   assert.match(r.stdout, /a change already exists/, `${r.code} ${r.stderr}`)
 })

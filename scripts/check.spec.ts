@@ -96,7 +96,7 @@ test('check is silent-success: one pass line, exit 0', () => {
 
 test('a failing fast command blocks with its output tail; a passing one is silent', () => {
   sensors({ fast: { lint: 'node -e "console.log(\'src/app.js:1 no-var\'); process.exit(1)"', test: 'node -e "process.exit(0)"' } })
-  sdlc(repo, ['new', 'xx', '--type', 'chore', '--tier', 'S'])
+  sdlc(repo, ['new', 'xx', '--type', 'chore'])
   hook(repo, 'prompt-submit', {})
   write(repo, 'src/app.js', 'var a = 5\n')
   const r = check('--at', 'stop')
@@ -141,7 +141,7 @@ test('an invalid sensors.json blocks with the parse error', () => {
 })
 
 test('a human waiver for the active change drops the matching finding', () => {
-  sdlc(repo, ['new', 'xx', '--type', 'chore', '--tier', 'S'])
+  sdlc(repo, ['new', 'xx', '--type', 'chore'])
   hook(repo, 'prompt-submit', {})
   write(repo, 'src/app.js', 'export const a = 9 // eslint-disable-line\n')
   assert.equal(check('--at', 'stop').code, 1)
@@ -171,7 +171,7 @@ test('an unknown --config-from ref blocks instead of falling back to defaults', 
 })
 
 test('ci with a base-branch config never ratchets sensors.json or records runs', () => {
-  sdlc(repo, ['new', 'xx', '--type', 'chore', '--tier', 'S'])
+  sdlc(repo, ['new', 'xx', '--type', 'chore'])
   sensors({ fast: {}, full: { t: 'node -e "process.exit(0)"' }, knownRed: ['full.t'] })
   sdlc(repo, ['sync'])
   gitIn(repo, 'add', '-A')
@@ -199,7 +199,7 @@ test('a non-numeric --budget-ms is a usage error', () => {
 })
 
 test('approving impact without an impact.json fails', () => {
-  sdlc(repo, ['new', 'ev', '--type', 'feature', '--tier', 'M'])
+  sdlc(repo, ['new', 'ev', '--type', 'feature'])
   write(repo, '.rig/changes/ev/plan.md', '## Files\n- a\n')
   assert.notEqual(sdlc(repo, ['approve', 'ev', 'impact'], { env: { SDLC_HUMAN: '1' } }).code, 0)
 })
@@ -268,7 +268,7 @@ test('ship: every behaviour needs a test that names it', () => {
 })
 
 test('sdlc run does not inherit NODE_TEST_CONTEXT: a failing node --test records a non-zero exit', () => {
-  sdlc(repo, ['new', 'rn', '--type', 'chore', '--tier', 'S'])
+  sdlc(repo, ['new', 'rn', '--type', 'chore'])
   write(repo, 'test/bad.test.js', "import { test } from 'node:test'\nimport assert from 'node:assert'\ntest('bad', () => assert.equal(1, 2))\n")
   write(repo, 'package.json', '{ "type": "module" }\n')
   sdlc(repo, ['run', '--slug', 'rn', '--', 'node --test test/bad.test.js'], { env: { NODE_TEST_CONTEXT: 'child-v8' } })
@@ -302,7 +302,7 @@ test('vendor copies a standalone checker that runs without the plugin', () => {
 })
 
 test('the harness vendoring its own files does not trip the Stop gate', () => {
-  sdlc(repo, ['new', 'xx', '--type', 'chore', '--tier', 'S'])
+  sdlc(repo, ['new', 'xx', '--type', 'chore'])
   hook(repo, 'prompt-submit', {})
   sdlc(repo, ['vendor'])
   assert.equal(hook(repo, 'stop', {}).stdout, '')
@@ -333,7 +333,7 @@ test('CI re-runs the behavioral commands from the base config and blocks on a fa
   gitIn(repo, 'commit', '-qm', 'change')
   const r = check('--at', 'ci', '--base', 'main', '--config-from', 'main')
   assert.equal(r.code, 1, r.stdout)
-  assert.match(r.stdout, /\[behavioral\]/)
+  assert.match(r.stdout, /\[contracts\]/)
 })
 
 test('CI runs a behavioral command that is also a full command once, not twice', () => {
@@ -352,7 +352,7 @@ test('CI runs a behavioral command that is also a full command once, not twice',
 
 test('I4: CI lists every waiver and approval row the PR adds, for human review', () => {
   gitIn(repo, 'checkout', '-qb', 'pr')
-  sdlc(repo, ['new', 'tiny', '--type', 'chore', '--tier', 'S'])
+  sdlc(repo, ['new', 'tiny', '--type', 'chore'])
   write(repo, '.rig/waivers.jsonl', JSON.stringify({ slug: 'tiny', sensor: 'red-proof', file: '*', reason: 'trust me', by: 'Mallory', at: '2026-10-03T00:00:00Z' }) + '\n')
   write(repo, '.rig/changes/tiny/approval.json', JSON.stringify({ by: 'Mallory', at: '2026-10-03T00:00:00Z', hashes: {}, contracts: {} }))
   gitIn(repo, 'add', '-A')
@@ -370,7 +370,7 @@ test('I4: CI lists every waiver and approval row the PR adds, for human review',
 
 test('I4: PR-controlled waiver fields cannot break out of the review listing', () => {
   gitIn(repo, 'checkout', '-qb', 'pr')
-  sdlc(repo, ['new', 'tiny', '--type', 'chore', '--tier', 'S'])
+  sdlc(repo, ['new', 'tiny', '--type', 'chore'])
   const reason = 'ok\n```\n::warning::all clean\n<b>x</b>\u2028more'
   write(repo, '.rig/waivers.jsonl', JSON.stringify({ slug: 'tiny', sensor: 'red-proof', file: '*', reason, by: 'M\r\n::error::x' }) + '\n')
   gitIn(repo, 'add', '-A')
@@ -392,7 +392,7 @@ test('a big diff blocks in CI unless the person approved the change plan; then i
   write(repo, '.rig/sensors.json', fromOld({ limits: { diffLines: 50 } }))
   gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'base')
   gitIn(repo, 'checkout', '-qb', 'big')
-  sdlc(repo, ['new', 'big-change', '--type', 'refactor', '--tier', 'L'])
+  sdlc(repo, ['new', 'big-change', '--type', 'refactor'])
   write(repo, '.rig/changes/big-change/spec.md', '# Spec\n\n## Behaviours\n- none\n')
   write(repo, '.rig/changes/big-change/plan.md', '# Plan\n\n## Files\n- src/**\n\n## Verification\n- `node -e 0`\n')
   write(repo, 'src/a.js', Array.from({ length: 80 }, (_, i) => `export const v${i} = ${i}`).join('\n') + '\n')
@@ -408,7 +408,7 @@ test('a big diff blocks in CI unless the person approved the change plan; then i
 test('CI waivers apply only to changes the PR adds, to any file of that change', () => {
   const waiver = (slug: string, file: string) => JSON.stringify({ slug, sensor: 'suppression', file, reason: 'ok', by: 'p', at: 'now' }) + '\n'
   const ci = () => check('--at', 'ci', '--base', 'main', '--config-from', 'main')
-  sdlc(repo, ['new', 'old-one', '--type', 'chore', '--tier', 'S'])
+  sdlc(repo, ['new', 'old-one', '--type', 'chore'])
   write(repo, '.rig/waivers.jsonl', waiver('old-one', '*'))
   gitIn(repo, 'add', '-A')
   gitIn(repo, 'commit', '-qm', 'old change with a wildcard waiver')
@@ -421,7 +421,7 @@ test('CI waivers apply only to changes the PR adds, to any file of that change',
   assert.equal(touched.code, 1, 'an older change\'s * waiver is not inherited by touching its folder\n' + touched.stdout)
   assert.match(touched.stdout, /suppression/)
   // A change the PR adds: its waiver applies to its findings in any file (no plan ## Files scoping since step 4b).
-  sdlc(repo, ['new', 'fresh-one', '--type', 'chore', '--tier', 'S'])
+  sdlc(repo, ['new', 'fresh-one', '--type', 'chore'])
   write(repo, '.rig/changes/fresh-one/plan.md', '# Plan\n## Files\n- src/app.js\n')
   write(repo, '.rig/waivers.jsonl', waiver('old-one', '*') + waiver('fresh-one', '*'))
   gitIn(repo, 'add', '-A')
@@ -438,7 +438,7 @@ test('at CI a harness-tamper waiver in the PR never waives, exact file or *; oth
   const ci = () => check('--at', 'ci', '--base', 'main', '--config-from', 'main')
   const waiver = (sensor: string, file: string) => JSON.stringify({ slug: 'lvl', sensor, file, reason: 'r', by: 'p', at: 'now' }) + '\n'
   gitIn(repo, 'checkout', '-qb', 'pr')
-  sdlc(repo, ['new', 'lvl', '--type', 'chore', '--tier', 'S'])
+  sdlc(repo, ['new', 'lvl', '--type', 'chore'])
   write(repo, '.rig/changes/lvl/plan.md', '## Files\n- src/**\n')
   write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [{ id: 'size', builtin: true, options: { diffLines: 9000 } }] })) // a weakening harness edit
   write(repo, 'src/app.js', 'export const a = 9 // eslint-disable-line\n')
@@ -467,7 +467,7 @@ const prRun = (reviews: unknown[], head = 'HEAD') => {
   const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-gh-'))
   gitIn(repo, 'checkout', '-q', 'main')
   gitIn(repo, 'checkout', '-qb', `pr${++prN}`)
-  sdlc(repo, ['new', 'tiny', '--type', 'chore', '--tier', 'S'])
+  sdlc(repo, ['new', 'tiny', '--type', 'chore'])
   write(repo, '.rig/waivers.jsonl', JSON.stringify({ slug: 'tiny', sensor: 'red-proof', file: '*', reason: 'forged', by: 'dev', at: '2026-10-03T00:00:00Z' }) + '\n')
   gitIn(repo, 'add', '-A')
   gitIn(repo, 'commit', '-qm', 'pr')
@@ -514,7 +514,7 @@ test('the reviewer lookup happens before any PR test command runs', { skip: !pos
   gitIn(repo, 'add', '-A')
   gitIn(repo, 'commit', '-qm', 'config')
   gitIn(repo, 'checkout', '-qb', 'prx')
-  sdlc(repo, ['new', 'tiny', '--type', 'chore', '--tier', 'S'])
+  sdlc(repo, ['new', 'tiny', '--type', 'chore'])
   write(repo, '.rig/waivers.jsonl', JSON.stringify({ slug: 'tiny', sensor: 'red-proof', file: '*', reason: 'forged', by: 'dev' }) + '\n')
   gitIn(repo, 'add', '-A')
   gitIn(repo, 'commit', '-qm', 'pr')

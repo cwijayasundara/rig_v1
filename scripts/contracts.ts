@@ -29,9 +29,9 @@ const how = (r: RunRow): string => `exited ${r.exit}${r.timedOut ? ', timed out'
 export function runContracts(c: { validate?: string; run?: string }, timeoutMs: number): Finding[] {
   if (c.validate) {
     const v = runCommand(c.validate, { timeoutMs })
-    if (v.exit !== 0) return [{ sensor: 'behavioral', severity: 'block', message: `examples do not match the specs (validate ${how(v)})\n${shown(v)}`, fix: `fix the examples or the specs; a specs change needs a person to re-approve the plan. Rerun: ${c.validate}` }]
+    if (v.exit !== 0) return [{ sensor: 'contracts', severity: 'block', message: `examples do not match the specs (validate ${how(v)})\n${shown(v)}`, fix: `fix the examples or the specs; a specs change needs a person to re-approve the plan. Rerun: ${c.validate}` }]
   }
   if (!c.run) return []
   const r = runCommand(c.run, { timeoutMs })
-  return r.exit === 0 ? [] : [{ sensor: 'behavioral', severity: 'block', message: `the behavioural suite failed (${how(r)})\n${shown(r)}`, fix: `fix the implementation or the execution setup, never the examples or specs. Rerun: ${c.run}` }]
+  return r.exit === 0 ? [] : [{ sensor: 'contracts', severity: 'block', message: `the behavioural suite failed (${how(r)})\n${shown(r)}`, fix: `fix the implementation or the execution setup, never the examples or specs. Rerun: ${c.run}` }]
 }

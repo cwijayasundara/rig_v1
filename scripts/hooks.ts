@@ -105,7 +105,7 @@ function hookSessionStart(input: HookInput): void {
   const { mode, model } = modeNow(registry, input)
   const guides = listGuides(registry).map(g => g.name)
   const active = activeSlug()
-  const st = active ? status(active, registry.gates, null) : null
+  const st = active ? status(active, registry.gates, treeStamp()) : null
   const context = [
     'sdlc harness is active in this repo (artifacts in .rig/).',
     ROUTING_LINE,
