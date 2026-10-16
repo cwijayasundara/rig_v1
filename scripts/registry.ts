@@ -24,7 +24,7 @@ const BUILTIN_DEFAULTS: Record<BuiltinId, Base> = {
   'test-tamper': { cadence: 'edit', blocks: true, guide: 'Fix the code, never the test: do not skip, delete or weaken tests or lower coverage thresholds.' },
   'suppression': { cadence: 'edit', blocks: true, guide: 'Do not silence a lint or type error without a reason on the same line.' },
   'harness-tamper': { cadence: 'edit', blocks: true, guide: 'Do not weaken .rig/sensors.json, .rig/rules.json or frozen contract files; ask a person to waive instead.' },
-  'size': { cadence: 'turn', blocks: false, guide: 'Keep files and diffs under the size limits; split a file before it grows past them.' },
+  'size': { cadence: 'turn', blocks: false, guide: 'Keep files, diffs and lines under the size limits; the size finding names each file and line over the limit, so fix those rather than searching for them.' },
   'layering': { cadence: 'edit', blocks: true, guide: 'Respect the declared layer rules; do not import across a forbidden boundary.' },
   'rules': { cadence: 'edit', blocks: true, guide: 'Follow the project rules in .rig/rules.json.' },
   'red-proof': { cadence: 'commit', blocks: true, guide: 'A new test must fail before the change and pass after it.' },
