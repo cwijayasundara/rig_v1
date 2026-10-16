@@ -39,7 +39,6 @@ import { treeStamp } from './stamp.ts'
 import { stalenessAll, openItems, sliceWarnings, repoStale } from './stale.ts'
 import { cmdPreflight } from './preflight.ts'
 import { contextWarnings, enabledPlugins } from './context.ts'
-import { cmdBrainSource } from './brainsource.ts'
 import { declareStack } from './stackinit.ts'
 import { freezeRecord, frozenFor } from './contracts.ts'
 import { cmdSync } from './sync.ts'
@@ -415,8 +414,6 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   stamp: () => out(treeStamp() ?? 'none'),
   // /rig:init passes --onboarding: its own writes over the next turns open no ad-hoc change (core.ts onboarding()).
   init: args => { cmdInit(args); if (args.opt.onboarding) startOnboarding(); if (args.opt.full) { const note = scaffoldPolicy(); if (note) out(note) } },
-  // /rig:init --quick: the marketplace that lists rig-brain, read from Claude Code's registry (no writes).
-  'brain-source': cmdBrainSource,
   new: cmdNew,
   points: cmdPoints,
   activate: cmdActivate,

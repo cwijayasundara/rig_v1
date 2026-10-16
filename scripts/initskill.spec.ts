@@ -27,21 +27,9 @@ test('init skill: a Node scaffold uses `node --test` with no directory argument 
   assert.doesNotMatch(skill, /node --test test\//)
 })
 
-test('init skill: rig-brain is opt-in, per project, and skipped under --defaults', () => {
-  assert.match(skill, /Optional add-on: rig-brain/)
-  assert.match(skill, /never run `claude plugin install` or `claude plugin marketplace add` for it and never write user settings/)
+test('init skill: marketplace registration is per project', () => {
   assert.match(skill, /marketplace add <repo-root> --scope project/)
   assert.doesNotMatch(skill, /marketplace add <repo-root>`/)
-  assert.match(skill, /Skip:[^\n]*rig-brain add-on/)
-})
-
-test('init skill: enabling rig-brain seeds memory and the wiki rather than only registering the plugin', () => {
-  assert.match(skill, /memory\.ts\b[^\n]*|\$M seed --placeholders/)
-  assert.match(skill, /\$W index/)
-  assert.match(skill, /\$W apply/)
-  assert.match(skill, /Wiki, brownfield/)
-  assert.match(skill, /\*\*Greenfield:\*\* run only `\$W index`/)
-  assert.match(skill, /\.rig\/wiki\/` and `\.rig\/memory\/`/)
 })
 
 test('init skill: writes rig docs into README.md between markers, brownfield in place and greenfield new', () => {
@@ -54,7 +42,7 @@ test('init skill: writes rig docs into README.md between markers, brownfield in 
   assert.match(tpl, /### Architecture/)
   assert.match(tpl, /### User guide/)
   assert.doesNotMatch(tpl, /\{\{P\}\}|\/rig-(start|next|approve|waive|status)\b/, 'skills are /rig:x in every install mode')
-  assert.match(tpl, /\{\{BRAIN\}\}/)
+  assert.doesNotMatch(tpl, /\{\{BRAIN\}\}/)
 })
 
 test('init skill: warns when the main model is Opus, without blocking', () => {
@@ -86,12 +74,10 @@ test('init skill: the greenfield lint script never writes helper files under .ri
   assert.match(skill, /never write scaffold helper files under `\.rig\/`/)
 })
 
-test('init skill: --quick is the no-question fast lane that turns on rig-brain, registration and workflows', () => {
+test('init skill: --quick is the no-question fast lane that turns on registration and workflows', () => {
   assert.match(skill, /argument-hint: '\[--quick \| --defaults\]/)
   const mode = /## `--quick` mode\n([\s\S]*?)\n## /.exec(skill)?.[1] ?? ''
   assert.match(mode, /no AskUserQuestion at all/)
-  assert.match(mode, /sdlc\.ts brain-source/)
-  assert.match(mode, /rig-brain@<marketplace>/)
   assert.match(mode, /marketplace add <repo-root> --scope project/)
   assert.match(mode, /`--workflows`[^\n]*only when `git remote get-url origin` succeeds/)
   assert.doesNotMatch(mode, /claude plugin install|~\/\.claude\/settings/)
