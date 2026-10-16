@@ -22,7 +22,7 @@ Research behind this spec: `reports/rig harness fit and simplification.md` and `
 | Language support | Core is language-free. Per-language defaults ship as JSON stack packs that `rig init` copies into the repo. |
 | What a contract is | Any frozen executable spec the repo declares: OpenAPI or AsyncAPI with examples, Playwright or component specs, golden or CLI snapshot tests, public-API fixture tests. |
 | Lifecycle | Kept and slimmed: intent, spec, plan, change record and evidence. Tiers, slices, points and spend removed. |
-| Shape | One registry file per target repo, five hook entry points (four Claude Code events plus git hooks), one CLI entry `rig check <cadence>`. |
+| Shape | One registry file per target repo, Claude Code hooks plus git hooks, one CLI entry `rig check <cadence>`. |
 
 ## 3. The registry: `.rig/sensors.json`
 
@@ -37,6 +37,7 @@ Replaces `SensorConfig` in `scripts/model.ts`. Four parts plus a policy.
     "validate": "specmatic examples validate --spec api/openapi.yaml",
     "run": "specmatic test --spec api/openapi.yaml"
   },
+  "models": { "build": "sonnet", "evaluate": "opus" },
   "sensors": [
     { "id": "types", "cmd": "mvn -q compile", "cadence": "edit", "blocks": true, "count": "exit",
       "guide": "Code must compile before the turn ends." },
@@ -62,6 +63,7 @@ Replaces `SensorConfig` in `scripts/model.ts`. Four parts plus a policy.
 
 ### 3.2 Built-in sensors (language-free, no tool needed)
 
+New: `model-role` (section 3.5, warns).
 Kept from `scripts/sensors.ts`: `secrets`, `test-tamper`, `suppression`, `harness-tamper`, `size`, `layering` (regex on import lines), `rules` (`.rig/rules.json`), `red-proof`, `traceability`.
 Removed: `tier`, `adhoc`, `unscoped`, `contract-impact` (consumer-repo grep; may return later).
 New rule in `test-tamper`: a diff that lowers the assertion count in a frozen contract or example file is a block.
@@ -72,10 +74,34 @@ New rule in `test-tamper`: a diff that lowers the assertion count in a frozen co
 
 - `continuous`: every cadence runs in-session.
 - `final`: at `edit` and `turn`, only `secrets` and `harness-tamper` run. Everything else waits for `commit`.
-- The family is resolved in order: the hook input's model field if present, else the pinned model in `.claude/settings.json`, else `ANTHROPIC_MODEL`, else `default`.
 - CI always runs every cadence up to `ci`, whatever the policy.
 
 The mapping of Claude grades to policies is an assumption until section 9's evaluation measures it.
+
+### 3.4 Knowing which model is running
+
+Claude Code hook inputs do not carry the model, except `SessionStart`, which may omit it after `/clear` or recovery, and there is no `$CLAUDE_MODEL` (Claude Code hooks reference). `$ANTHROPIC_MODEL` does not follow `/model`. rig therefore records the model itself, per `session_id`, in `.rig/state/model.json`:
+
+1. `PostModelSwitch` hook: writes `to_model` on every `/model` change.
+2. `SessionStart` hook: writes `model` when present.
+3. Fallback when neither has written: the `model` of the last assistant message in `transcript_path`. Verified on 2026-10-16: the transcript records it on every reply and reflects a mid-session switch.
+4. Last resort: the pinned `model` in `.claude/settings.json`, else `policy.default`.
+
+For tool events fired inside a subagent, the common `agent_id` and `agent_type` fields identify the subagent; its model is the one recorded for that agent at launch (section 3.5).
+
+### 3.5 Model roles
+
+```jsonc
+"models": { "build": "sonnet", "evaluate": "opus" }
+```
+
+- **build** runs the main thread and every implementer: intent, spec, plan, code, tests. Default `sonnet` (Sonnet 5.5).
+- **evaluate** runs the inferential sensors and the merge-gate review. Default `opus` (Opus 5.5). It never writes code.
+- rig ships one agent, `agents/evaluator.md`, with `model: opus` in its frontmatter and read-only tools. The `pr` skill launches it once per change.
+- A `PreToolUse` hook on `Agent` records each launch's `tool_input.model` against its agent, and a `PostToolUse` hook records `resolvedModel`. A launch whose resolved model differs from its role is a warning at the next prompt.
+- `SessionStart` and the `model-role` built-in sensor warn when the main thread is not on the `build` model. Warning, not block: a person may choose another model deliberately.
+
+These roles apply to target repos that rig drives. The rig repository itself may be built on any model.
 
 ## 4. Stack packs
 
@@ -106,6 +132,8 @@ Examples per stack (to be confirmed per tool when the pack is written):
 
 `rig init` detects the stack from `markers`. When several match, it asks. It copies the pack into `.rig/sensors.json`; the team owns the file after that.
 Unknown stacks get an empty `sensors` list plus built-ins, and init tells the person which concerns are unfilled.
+
+**Contract tool across stacks.** Specmatic is the default `validate` and `run` for HTTP and event services in every pack. The npm package `specmatic` (2.55.3, MIT wrapper) bundles `specmatic.jar` and launches it with `java`, so it needs a Java runtime on `PATH` and is independent of the project's language. `rig init` checks `java -version` and, when Java is missing, leaves `contracts.validate` and `contracts.run` empty and says why. Projects without an HTTP or event interface declare their own contract commands (section 6). The licence of the bundled jar itself is to be confirmed before it is a default.
 
 ## 5. Guides and sensors in sync
 
@@ -144,6 +172,8 @@ The three long guides in `guides/` stay as path-triggered, once-per-session inje
 | `Stop` | `turn` | Turn sensors on the turn's diff. `decision: block` with findings, at most two attempts, then a system message. |
 | git `pre-commit` / `pre-push` | `commit` | Installed by `rig init`. Primary commit gate; covers headless runs and Bash commits. |
 | `SessionStart` | none | Registry summary, current change, `sync --check` as a warning. |
+| `PostModelSwitch` | none | Records `to_model` for the session (section 3.4). |
+| `PreToolUse` / `PostToolUse` on `Agent` | none | Records each launch's requested and resolved model (section 3.5). |
 | `UserPromptSubmit` | none | Kept. Snapshots the tree so Stop diffs exactly this turn. Records a typed `/rig:approve` or `/rig:waive` with `SDLC_HUMAN=1` before the model sees the prompt, which is what makes gates human-only. Re-offers last turn's warnings once. |
 
 Removed hooks: `SubagentStart`, `SubagentStop` (fed the UI only), `PostToolUseFailure` (skill-load fallback, not needed with 7 skills).
@@ -166,11 +196,11 @@ Files under `.rig/changes/<slug>/`. Status is derived from which files exist.
 
 Kept: approvals go stale on hash change; `rig waive` is human-only and recorded; CI judges with the base branch's checker and registry.
 Changed: review findings advise and never block on their own.
-Removed: tiers, type-by-tier routing, gates per tier, slices, checkpoint, ratchet rounds, points, value, budget, spend ledger, metrics, scorecard, timing.
+Removed: tiers, type-by-tier routing (replaced by the two roles in section 3.5), gates per tier, slices, checkpoint, ratchet rounds, points, value, budget, spend ledger, metrics, scorecard, timing.
 
 Skills (7): `start` (intent and spec), `plan`, `build`, `test`, `pr`, `rule`, `init`.
 Deleted skills: architecture, chart, codebase-design, decompose, design, diagnose, incident, intent, metrics, next, pr-review, prototype, sensors, spec, testplan.
-Deleted elsewhere: `brain/`, `hooks/` mod UI, `agents/` (all five), `workflows/`, CI templates other than `rig-check.yml` and a new `rig-nightly.yml`.
+Deleted elsewhere: `brain/`, `hooks/` mod UI, `agents/` (all five; replaced by one `evaluator.md`), `workflows/`, CI templates other than `rig-check.yml` and a new `rig-nightly.yml`.
 
 ## 9. Outer loop: evaluation
 
@@ -214,7 +244,7 @@ Deleted elsewhere: `brain/`, `hooks/` mod UI, `agents/` (all five), `workflows/`
 Each step lands with `npm test` green.
 
 1. Registry type, parser and stack packs, with an adapter that reads the old config so nothing breaks yet.
-2. Hooks and `rig check <cadence>` on the registry; policy resolution.
+2. Hooks and `rig check <cadence>` on the registry; model recording (3.4), model roles and `agents/evaluator.md` (3.5); policy resolution.
 3. Contracts, freeze and sync.
 4. Deletions (lifecycle, skills, brain, UI, agents, workflows) and removal of the old-config adapter.
 5. E2e rewrite and stack fixtures.
@@ -224,8 +254,13 @@ Each step lands with `npm test` green.
 
 Monorepo scopes and sparse base; consumer-repo contract impact; spend tracking (use `/cost`); dashboards; any memory or wiki layer; migrating existing target repos beyond re-running `rig init`.
 
-## 13. Open questions
+## 13. Resolved questions
 
-- Whether hook input carries the model name. Fallback order in 3.3 covers it either way.
-- Specmatic's runtime needs (JVM or not) for the node pack's contract defaults.
-- Whether Sonnet belongs with Haiku under `continuous`. The evaluation decides.
+- **Model in hooks:** not carried by most events; rig records it from `PostModelSwitch`, `SessionStart` and the transcript (section 3.4).
+- **Specmatic runtime:** needs Java on `PATH`; usable from every stack (section 4).
+- **Sonnet's cadence:** `continuous`, same as Haiku (person's decision, 2026-10-16).
+
+## 14. Open items
+
+- Confirm the bundled `specmatic.jar` licence.
+- Confirm with a spec that `PostModelSwitch` fires for `/model` and for a settings-pinned model at start.
