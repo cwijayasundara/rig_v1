@@ -155,7 +155,8 @@ test('init --full vendors, wires git hooks and merges the settings template with
   assert.equal(settings.env.CLAUDE_CODE_DISABLE_ADVISOR_TOOL, 'true')
   assert.equal(settings.env.ENABLE_STOP_REVIEW, '0', 'init turns off the security-guidance per-turn review (proposal 2026-10-08 §3.3.1)')
   const RECORDER = 'node --disable-warning=ExperimentalWarning .rig/bin/sdlc.ts'
-  assert.deepEqual(settings.permissions.allow, ['Bash(ls)', 'Edit(.rig/**)', `Bash(${RECORDER} *)`])
+  assert.deepEqual(settings.permissions.allow.slice(0, 3), ['Bash(ls)', 'Edit(.rig/**)', `Bash(${RECORDER} *)`])
+  assert.ok(settings.permissions.allow.includes('Skill(rig:test *)'), 'the skill-chaining rules come with the template')
   // Subagents get no skill allowed-tools: each sdlc.ts call their prompts spell out must be the form the allow rule matches.
   for (const agent of ['rig-evaluator.md']) {
     const calls = fs.readFileSync(path.join(repo, '.claude/agents', agent), 'utf8').match(/node [^`"]*sdlc\.ts/g) ?? []
