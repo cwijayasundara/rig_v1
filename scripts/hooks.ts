@@ -19,6 +19,7 @@ import { treeStamp } from './stamp.ts'
 import { runCommand } from './runs.ts'
 import { policyMode, activeSensors, commandFor, ALWAYS_ON, type Registry, type Mode } from './registry.ts'
 import { contractsTouched } from './contracts.ts'
+import { syncFindings } from './sync.ts'
 import { recordSessionModel, recordLaunch, recordResolved, sessionModel, readModelState, modelRoleFindings } from './modelstate.ts'
 
 const MODEL_STATE = path.join(SDLC, 'state', 'model.json')
@@ -114,6 +115,7 @@ function hookSessionStart(input: HookInput): void {
     'sdlc harness is active in this repo (artifacts in .rig/).',
     ROUTING_LINE,
     registry ? `rig policy: ${mode} checks for ${model ?? 'an unknown model'} (build on ${registry.models.build}, evaluate on ${registry.models.evaluate}).` : '',
+    registry ? syncFindings(registry, [], 'warn').slice(0, 5).map(f => `rig sync: ${f.message}`).join('\n') : '',
     c ? `Active change: ${c.slug} (${c.type}, tier ${c.tier}). Next: ${nextCommand(c)}` : `No active change. Start one with ${skillRef('start')} "<request>".`,
     `Rules: plans hold interfaces + acceptance tests, never code; delegate searches to ${agentRef('scout')} and slices to ${agentRef('implementer')}; read .rig/approvals.jsonl with the Read tool (only the person writes it); run subagents in the foreground and never end a turn while one is running; never sleep-poll; at ~150k context run /compact (the active change lives in .rig/STATE.md). If an sdlc skill fails to load, run \`node "${SCRIPT()}" skill <stage> <slug>\` and follow it exactly.`,
     sessionNote(),

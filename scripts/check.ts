@@ -15,6 +15,7 @@ import { withBaseTree } from './basetree.ts'
 import { loadChange, activeSlug } from './graph.ts'
 import { isRegistryShape, parseRegistry, registryConfig, updateKnownRed, type Registry } from './registry.ts'
 import { frozenFindings, runContracts } from './contracts.ts'
+import { syncFindings } from './sync.ts'
 
 export type Point = 'stop' | 'commit' | 'ship' | 'ci'
 export type CheckInput = {
@@ -447,7 +448,8 @@ export function cmdCheck(args: Args): void {
   const result = runChecks({ point: at, diffs, config, rules, slugs, commands: replaying ? 'none' : partial ? 'fast' : 'full', budgetMs, before, after, base, ratchet: !optString(args, 'config-from') && at !== 'commit', contracts: at === 'commit' ? registry !== null && !replaying : undefined })
   const configFindings: Finding[] = errors.map(e => ({ sensor: 'config', severity: 'block', file: SENSORS_JSON, message: e, fix: 'fix the file; see the sdlc README for its format' }))
   const humanFindings: Finding[] = why ? [{ sensor: 'human-approval', severity: 'block', message: `this PR adds ${humanRows.length} approval/waiver row(s): ${why}`, fix: 'a code owner other than the PR author reviews the rows below and approves the current head commit; pushing again needs a fresh approval' }] : []
-  const all = { ...result, findings: [...humanFindings, ...configFindings, ...result.findings], blocks: [...humanFindings, ...configFindings, ...result.blocks] }
+  const syncBlocks = registry && (at === 'commit' || at === 'ci') ? syncFindings(registry, [], 'block') : [] // config errors already block above
+  const all = { ...result, findings: [...humanFindings, ...configFindings, ...syncBlocks, ...result.findings], blocks: [...humanFindings, ...configFindings, ...syncBlocks, ...result.blocks] }
   report(at, all, diffs.length, Boolean(args.opt.json), humanRows)
   process.exitCode = all.blocks.length ? 1 : 0
 }

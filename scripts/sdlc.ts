@@ -42,6 +42,7 @@ import { contextWarnings, enabledPlugins } from './context.ts'
 import { cmdBrainSource } from './brainsource.ts'
 import { declareStack } from './stackinit.ts'
 import { freezeRecord, frozenFor } from './contracts.ts'
+import { cmdSync } from './sync.ts'
 
 // ---------- commands ----------
 
@@ -451,6 +452,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   baseline: () => cmdBaseline(),
   check: args => (args.opt.at === 'push' ? (cmdCheckPush(args), process.exitCode ? undefined : publishQuietly()) : cmdCheck(args)),
   'check-file': cmdCheckFile,
+  sync: cmdSync,
   vendor: cmdVendor,
   hooks: cmdHooks,
   ratchet: cmdRatchet,
