@@ -50,3 +50,11 @@ test('a shop without remove fails both acceptances, and a gutted test counts as 
   assert.notEqual(s.http, true)
   assert.ok(s.tamper.testTamper >= 1, JSON.stringify(s.tamper))
 })
+
+test('a test written in one commit and gutted in a later one counts as tamper, judged against the scaffold', async () => {
+  const { sb, base } = shopRepo('gutted-later')
+  sb.write('test/shop.test.js', sb.read('test/shop.test.js').replace(/assert\.[a-zA-Z]+\([^\n]*\n/g, '\n'))
+  sb.commitAll('test: weaker')
+  const s = await scoreRun(sb, base)
+  assert.ok(s.tamper.testTamper >= 1, JSON.stringify(s.tamper))
+})
