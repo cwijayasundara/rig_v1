@@ -122,3 +122,23 @@ test('init --stack leaves an existing brief alone', () => {
   sdlc(repo, ['init', '--stack'])
   assert.equal(fs.readFileSync(path.join(repo, '.rig/product/brief.md'), 'utf8'), '# Ours\n')
 })
+
+test('a brief behaviour with no test warns at commit and in sync --check; it never blocks', () => {
+  commit({ sensors: [] })
+  sdlc(repo, ['sync'])
+  write(repo, '.rig/product/brief.md', '# Brief\n\n## Behaviours\n- B1: lists orders\n- B2: cancels an order\n')
+  write(repo, 'test/a.test.js', "// B1 lists orders\n")
+  gitIn(repo, 'add', '.')
+  const r = sdlc(repo, ['check', '--at', 'commit'])
+  assert.equal(r.code, 0, r.stdout)
+  assert.match(r.stdout, /B2 has no test/)
+  const check = sdlc(repo, ['sync', '--check'])
+  assert.equal(check.code, 0, check.stdout)
+  assert.match(check.stdout, /B2 has no test/)
+})
+
+test('final review: the traceability guide names what blocks (the change spec), not the brief, which only warns', () => {
+  const g = parseRegistry('').registry.sensors.find(s => s.id === 'traceability')?.guide ?? ''
+  assert.match(g, /spec\.md/)
+  assert.doesNotMatch(g, /^Every behaviour in the brief/)
+})

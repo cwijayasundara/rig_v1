@@ -85,11 +85,11 @@ test('4a: the review workflow, the rig-spec CI template and four non-lifecycle s
   assert.deepEqual(kept, ['approve', 'build', 'init', 'plan', 'pr', 'rule', 'start', 'test', 'waive'])
 })
 
-test('4a: the scripted e2e suite is out of npm test until step 5 rewrites it; the e2e unit tests stay', () => {
+test('5a: the scripted e2e suite runs in npm test and in CI again', () => {
   const t = (JSON.parse(read('package.json')) as { scripts: Record<string, string> }).scripts.test ?? ''
-  assert.doesNotMatch(t, /test:e2e:fast/)
   assert.match(t, /test:e2e:unit/)
-  assert.doesNotMatch(read('.github/workflows/ci.yml'), /test:e2e:fast/)
+  assert.match(t, /test:e2e:fast/)
+  assert.match(read('.github/workflows/ci.yml'), /npm run test:e2e:fast/)
 })
 
 // Every slash command and sdlc subcommand the shipped text names must exist (a deleted skill or command left behind breaks the flow).

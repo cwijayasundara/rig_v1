@@ -11,7 +11,7 @@ const catalog = () => {
   return c
 }
 
-test('remove deletes the whole line and throws for an absent SKU', () => {
+test('B5 remove deletes the whole line and throws for an absent SKU', () => {
   const cart = new Cart(catalog())
   cart.add('TEA-001', 2)
   cart.add('MUG-002')
@@ -21,7 +21,7 @@ test('remove deletes the whole line and throws for an absent SKU', () => {
   assert.throws(() => cart.remove('TEA-001'), /not in cart/)
 })
 
-test('DELETE /cart/<sku> removes the line through the handler', () => {
+test('B6 DELETE /cart/<sku> removes the line through the handler', () => {
   const h = createHandler(catalog())
   h({ method: 'POST', path: '/cart', body: { sku: 'MUG-002', qty: 1 } })
   assert.equal(h({ method: 'DELETE', path: '/cart/MUG-002' }).status, 200)

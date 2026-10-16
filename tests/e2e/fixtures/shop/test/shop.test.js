@@ -12,12 +12,12 @@ const catalog = () => {
   return c
 }
 
-test('catalog rejects bad SKUs and prices', () => {
+test('B1 catalog rejects bad SKUs and prices', () => {
   assert.throws(() => new Catalog().add({ sku: 'tea', name: 'x', priceCents: 1 }), /invalid sku/)
   assert.throws(() => new Catalog().add({ sku: 'TEA-001', name: 'x', priceCents: 0 }), /positive/)
 })
 
-test('cart sums quantities and prices', () => {
+test('B2 cart sums quantities and prices', () => {
   const cart = new Cart(catalog())
   cart.add('TEA-001', 2)
   cart.add('MUG-002')
@@ -25,7 +25,7 @@ test('cart sums quantities and prices', () => {
   assert.equal(cart.subtotalCents(), 3 * 450 + 1200)
 })
 
-test('checkout applies a known discount and rejects unknown codes', () => {
+test('B3 checkout applies a known discount and rejects unknown codes', () => {
   const cart = new Cart(catalog())
   cart.add('MUG-002', 2)
   assert.equal(checkout(cart, { code: 'SAVE10' }).totalCents, 2160)
@@ -33,7 +33,7 @@ test('checkout applies a known discount and rejects unknown codes', () => {
   assert.throws(() => checkout(new Cart(catalog())), /empty/)
 })
 
-test('http handler wires catalog, cart and checkout', () => {
+test('B4 http handler wires catalog, cart and checkout', () => {
   const h = createHandler(catalog())
   assert.equal(h({ method: 'GET', path: '/products' }).body.length, 2)
   assert.equal(h({ method: 'POST', path: '/cart', body: { sku: 'TEA-001', qty: 2 } }).status, 201)

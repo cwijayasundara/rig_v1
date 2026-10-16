@@ -50,8 +50,13 @@ export function liveDriver(sb, phase, { sessions }) {
       if (!active()) throw new Error(`${phase.id}: /rig-start created no change after 2 continuations`)
       return active()
     },
-    async step(node) {
-      sessions.run(`${phase.id}-${node}`, '/rig-next — continue through the next node; follow the text of `sdlc.ts skill <node>` exactly, never invoke the Skill tool, one command per Bash call with no pipes or compound commands; the sdlc.ts scripts make every commit, so never run git commit yourself')
+    async plan(slug) {
+      sessions.run(`${phase.id}-plan`, `/rig-plan ${slug}. Write plan.md, then stop for the person's approval.`, { cont: true })
+    },
+    async build(slug) {
+      sessions.run(`${phase.id}-build`, `/rig-build ${slug}. The person approved the plan: build test-first, then /rig-test and /rig-pr in this turn.`, { cont: true })
+      const st = () => (JSON.parse(sb.sdlc(['status', '--json']).stdout || '{}').changes ?? []).find(c => c.slug === slug)?.status
+      if (st() !== 'review') sessions.run(`${phase.id}-build-2`, `/rig-build ${slug}. Continue from where it stopped: finish the tests, then /rig-test and /rig-pr until the PR is open.`, { cont: true })
     },
   }
 }

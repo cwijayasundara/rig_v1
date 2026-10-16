@@ -62,3 +62,17 @@ test('headless sessions carry the template allow rules and env on --settings: -p
   assert.equal(inline.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS, '1', 'subagents return before the headless turn ends')
   assert.ok(inline.permissions.allow.some(r => r.startsWith('Bash(node ') && r.includes('sdlc.ts')))
 })
+
+test('final review: build() retries with /rig-build when the first turn stops short of review; /rig-start never builds', async () => {
+  const prompts = []
+  const sb = {
+    run: (cmd, args) => { prompts.push({ prompt: args[1], cont: args.includes('--continue') }); return { status: 0, stdout: result(0.1), stderr: '' } },
+    sdlc: () => ({ status: 0, stdout: JSON.stringify({ changes: [{ slug: 'c', status: 'build' }] }), stderr: '' }),
+  }
+  const sessions = createSessions({ sb, out: out(), capUsd: 6 })
+  const d = liveDriver(sb, { id: 'PX', prompt: '/rig-start x' }, { sessions })
+  await d.plan('c')
+  await d.build('c')
+  assert.deepEqual(prompts.map(p => p.prompt.split(' ')[0]), ['/rig-plan', '/rig-build', '/rig-build'])
+  assert.ok(prompts.every(p => p.cont))
+})

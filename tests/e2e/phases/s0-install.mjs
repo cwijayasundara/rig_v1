@@ -11,7 +11,9 @@ const must = (r, what) => {
   return r.stdout
 }
 
-// What the standalone install does, via the harness's own commands (the live driver instead runs /rig:init with --plugin-dir).
+// The registry S0 declares: the unit suite, plus the built-ins every registry gets (spec §3).
+export const REGISTRY = { sensors: [{ id: 'unit', cmd: 'npm test', cadence: 'turn', blocks: true, count: 'exit', guide: 'Run the unit suite before claiming done; fix the code, never the tests.' }] }
+
 export async function install(sb) {
   sb.isolate([])
   const scripts = { test: 'node --test', 'test-fast': 'node --test', lint: 'node --check src/index.js' }
@@ -20,13 +22,11 @@ export async function install(sb) {
   sb.write('test/smoke.test.js', "import { test } from 'node:test'\nimport '../src/index.js'\ntest('loads', () => {})\n")
   sb.commitAll('chore: scaffold')
   must(sb.sdlc(['init']), 'init')
-  sb.write('.rig/sensors.json', JSON.stringify({ fast: { test: 'npm test' }, full: { test: 'npm test' } }, null, 2) + '\n')
-  must(sb.sdlc(['init', '--stack']), 'init --stack')
+  sb.write('.rig/sensors.json', JSON.stringify(REGISTRY, null, 2) + '\n')
   must(sb.sdlc(['init', '--full']), 'init --full')
   sb.write('CLAUDE.md', `# shop-app\n\n${ROUTING}\n\n## Map\n- src/\n`)
+  must(sb.sdlc(['sync']), 'sync')
   sb.commitAll('chore: onboard rig')
-  must(sb.sdlc(['preflight', '--answers', '{"gates":"default","valueRate":"100","consumers":"none"}']), 'preflight')
-  sb.commitAll('chore: preflight report')
   const c = new Checks('S0 install')
   await assertOnboarding(c, sb, { lane: 'greenfield' })
   return c
