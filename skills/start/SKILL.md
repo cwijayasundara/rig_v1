@@ -13,7 +13,7 @@ Run each sdlc.ts command as its own Bash call (no `cd`, pipes, redirects, `&&` o
 
 Request: $ARGUMENTS
 
-If the request ends with `--plan-only` (the rig-spec workflow passes it), drop it from the request and stop after intent.md, and design.md for a feature or greenfield change: never build in that run, whatever the tier, and end with `Next: review the pull request`.
+If the request ends with `--plan-only`, drop it from the request and stop after intent.md, and design.md for a feature or greenfield change: never build in that run, whatever the tier, and end with `Next: review the pull request`.
 
 ## Resume
 If the request is empty or names an existing folder under `.rig/changes/`: run `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts activate <slug>` (when named), then `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts status`, read that change's artifacts and `.rig/STATE.md`, and continue with the printed next command. If that change's intent.md has `source:` and it has a design.md or plan.md, run `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts check --at plan --slug <slug>` once before continuing, so impact is re-derived (it was not published). Stop here. With `--plan-only`, do not resume a build: report the change's status and stop.

@@ -85,3 +85,11 @@ test('4a: new --source still refuses an intent whose dependency has not shipped,
   assert.notEqual(r.code, 0)
   assert.match(r.stderr + r.stdout, /blocked by: one/)
 })
+
+test('4a: the review workflow, the rig-spec CI template and the five non-lifecycle skills are gone', () => {
+  gone('workflows', 'templates/rig-review.yml', 'templates/rig-spec.yml', ...['architecture', 'codebase-design', 'prototype', 'sensors', 'testplan'].map(s => `skills/${s}`))
+  const ci = fs.readdirSync(path.join(ROOT, 'templates')).filter(f => /^rig-.*\.yml$/.test(f))
+  assert.deepEqual(ci, ['rig-check.yml'])
+  const kept = fs.readdirSync(path.join(ROOT, 'skills')).sort()
+  assert.deepEqual(kept, ['approve', 'build', 'design', 'diagnose', 'incident', 'init', 'intent', 'next', 'plan', 'pr', 'pr-review', 'rule', 'spec', 'start', 'test', 'waive'])
+})

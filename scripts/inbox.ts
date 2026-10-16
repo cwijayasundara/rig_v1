@@ -86,7 +86,7 @@ export function startRefusal(file: string): string | null {
 
 export const specBranch = (file: string): string => `sdlc/intent-${file.replace(/\.md$/, '')}`
 
-// What the rig-spec workflow drafts: ready (accepted, unblocked, no change yet), a plain name, and no draft branch already on the remote.
+// Intents ready to start: ready (accepted, unblocked, no change yet), a plain name, and no draft branch already on the remote.
 export const pendingIntents = (): InboxEntry[] => inboxEntries().filter(e =>
   e.ready && KEBAB_MD.test(e.file) && git(['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${specBranch(e.file)}`]) === null)
 

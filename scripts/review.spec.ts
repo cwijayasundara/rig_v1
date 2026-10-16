@@ -17,18 +17,18 @@ test('build: tier S and M verify a slice with --checks and no model review; tier
   assert.doesNotMatch(tierL, /model: /, 'the model comes from next --json, not the line')
 })
 
-test('pr-review: one review; shards and the rig-review workflow for a large tier L diff; security-review only on named risks', () => {
+test('pr-review: one review; one reviewer per shard for a large tier L diff; security-review only on named risks', () => {
   assert.match(review, /sdlc\.ts shards \$0 --json/)
-  assert.match(review, /rig-review/)
-  assert.match(review, /scriptPath/)
+  assert.doesNotMatch(review, /rig-review|scriptPath|workflows\/review/)
+  assert.match(review, /one `rig:reviewer` per shard/)
   assert.match(review, /more than 8/)
   assert.match(review, /security-review[^\n]*only when[^\n]*risks name/i)
   assert.doesNotMatch(review, /If the tier is L or the risks name/)
   assert.match(review, /at most once, on the fix diff only/)
-  assert.match(review, /allowed-tools:[^\n]*Workflow/)
+  assert.doesNotMatch(review, /allowed-tools:[^\n]*Workflow/)
   const record = review.split('\n').find(l => /^4\. \*\*Record/.test(l)) ?? ''
-  assert.match(record, /`incomplete`, `disputed` and any non-empty `unreviewed` are never recorded as `pass`/)
-  assert.match(record, /rerun the workflow once for the failed shards only/)
+  assert.match(record, /the worst verdict any reviewer or shard gave/)
+  assert.match(record, /rerun once/)
   assert.match(record, /record nothing and stop/)
 })
 

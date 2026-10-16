@@ -12,42 +12,6 @@ const read = (rel: string): string => {
   return fs.readFileSync(file, 'utf8')
 }
 
-test('prototype: a spike skill that answers one question with throwaway code and keeps only the verdict', () => {
-  const skill = read('skills/prototype/SKILL.md')
-  assert.match(skill, /^name: prototype$/m)
-  assert.match(skill, /spike/)
-  assert.match(skill, /throwaway/i)
-  assert.match(skill, /one question|single question/i)
-  assert.match(skill, /logic/i)
-  assert.match(skill, /UI/)
-  assert.match(skill, /notes\.md/)
-  assert.match(skill, /verdict/i)
-  assert.match(skill, /^effort: /m)
-  assert.match(skill, /at least three/i)
-  assert.match(skill, /PROTOTYPE - throwaway/)
-  assert.match(skill, /no edits to production files/i)
-  assert.match(skill, /stays uncommitted/)
-  assert.match(skill, /never list it in a later change's `## Files`/)
-  assert.match(skill, /never copy it into production/)
-  assert.doesNotMatch(skill, /merge the prototype|ship the prototype/i)
-})
-
-test('codebase-design: model-invoked vocabulary layer pointing at rig artifacts, not Matt tracker files', () => {
-  const skill = read('skills/codebase-design/SKILL.md')
-  assert.match(skill, /^name: codebase-design$/m)
-  assert.match(skill, /^effort: /m)
-  assert.match(skill, /earn its existence/)
-  assert.doesNotMatch(skill, /disable-model-invocation/)
-  for (const term of ['Module', 'Interface', 'Depth', 'Seam', 'Adapter', 'Leverage', 'Locality']) {
-    assert.match(skill, new RegExp(`\\*\\*${term}\\*\\*`), `defines ${term}`)
-  }
-  assert.match(skill, /deletion test/i)
-  assert.match(skill, /interface is the test surface/i)
-  assert.match(skill, /\.rig\/product\/architecture\.md/)
-  assert.match(skill, /\.rig\/product\/adr\//)
-  assert.doesNotMatch(skill, /GLOSSARY\.md|setup-matt-pocock-skills|issue tracker/)
-})
-
 test('diagnose: no hypothesizing before a tight red feedback loop, with tightening, flakes and redaction', () => {
   const skill = read('skills/diagnose/SKILL.md')
   assert.match(skill, /feedback loop/i)

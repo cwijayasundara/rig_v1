@@ -3,11 +3,6 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import os from 'node:os'
-import { execFileSync } from 'node:child_process'
-import { makeRepo, gitIn, write } from './testkit.ts'
-import { TABLE } from './routing.ts'
-const out = (model: string, effort: string): string => `model=claude-${model}-5-5\neffort=${effort}`
 
 const ROOT = path.join(import.meta.dirname, '..')
 const read = (rel: string): string => fs.readFileSync(path.join(ROOT, rel), 'utf8')
@@ -64,10 +59,6 @@ test('design and spec send external docs questions to one researcher', () => {
   for (const s of ['design', 'spec']) assert.match(read(`skills/${s}/SKILL.md`), /one `rig:researcher`/, s)
 })
 
-test('pr-review hands the reviewer and referee routes to the review workflow', () => {
-  assert.match(read('skills/pr-review/SKILL.md'), /routes: \{reviewer: routes\.reviewer, referee: routes\.referee\}/)
-})
-
 test('tier S builds through a Haiku implementer; tier S and M review through rig:evaluator, not code-review', () => {
   const build = read('skills/build/SKILL.md')
   assert.doesNotMatch(build, /Tier S, and tier M with/, 'tier S no longer builds inline')
@@ -77,68 +68,6 @@ test('tier S builds through a Haiku implementer; tier S and M review through rig
   const review = read('skills/pr-review/SKILL.md')
   assert.match(review, /Tier S and M: one `rig:evaluator`/)
   assert.doesNotMatch(review, /Tier S and M: one `code-review`/)
-})
-
-// The model-by-tier step, cut from the workflow between its markers and run in a real git repo.
-function pickModel(setup: (repo: string) => void): string {
-  const yml = read('templates/rig-review.yml')
-  const block = yml.slice(yml.indexOf('# model-by-tier:start'), yml.indexOf('# model-by-tier:end'))
-  assert.ok(block, 'the workflow carries the model-by-tier markers')
-  const script = block.split('\n').map(l => l.replace(/^ {10}/, '')).join('\n')
-  const repo = makeRepo()
-  gitIn(repo, 'update-ref', 'refs/remotes/origin/main', 'main')
-  gitIn(repo, 'checkout', '-q', '-b', 'pr')
-  setup(repo)
-  gitIn(repo, 'add', '-A')
-  gitIn(repo, 'commit', '-qm', 'pr', '--allow-empty')
-  const outFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rig-gh-')), 'out')
-  execFileSync('bash', ['-e', '-c', script], { cwd: repo, env: { ...process.env, BASE: 'main', GITHUB_OUTPUT: outFile } })
-  return fs.readFileSync(outFile, 'utf8').trim()
-}
-// intent.md defaults to the floor (S feature), so the ratchet decides unless a case raises the intent.
-const change = (slug: string, ratchet: string, intent = '---\nslug: x\ntype: feature\ntier: S\n---\n# x\n') => (repo: string) => {
-  write(repo, `.rig/changes/${slug}/ratchet.json`, ratchet)
-  if (intent) write(repo, `.rig/changes/${slug}/intent.md`, intent)
-}
-
-test('CI review model: S haiku, M sonnet, L opus', () => {
-  assert.equal(pickModel(change('a', '{"tier":"S","type":"feature"}')), out('sonnet', 'medium'))
-  assert.equal(pickModel(change('a', '{"tier":"M","type":"refactor"}')), out('sonnet', 'high'))
-  assert.equal(pickModel(change('a', '{"tier":"L","type":"feature"}')), out('opus', 'high'))
-})
-
-test('CI review model fails closed to Opus: greenfield, no change folder, two folders, unreadable ratchet', () => {
-  assert.equal(pickModel(change('a', '{"tier":"S","type":"greenfield"}')), out('opus', 'high'))
-  assert.equal(pickModel(repo => write(repo, 'src/x.js', 'x\n')), out('opus', 'high'))
-  assert.equal(pickModel(repo => { change('a', '{"tier":"S"}')(repo); change('b', '{"tier":"S"}')(repo) }), out('opus', 'high'))
-  assert.equal(pickModel(change('a', 'not json')), out('opus', 'high'))
-})
-
-test('CI review model takes the stricter of intent.md and ratchet.json, as effective() does', () => {
-  assert.equal(pickModel(change('a', '{"tier":"S","type":"feature"}', '---\ntype: feature\ntier: L\n---\n')), out('opus', 'high'))
-  assert.equal(pickModel(change('a', '{"tier":"S","type":"feature"}', '---\ntype: greenfield\ntier: S\n---\n')), out('opus', 'high'))
-  assert.equal(pickModel(change('a', '{"tier":"S","type":"feature"}', '---\ntype: feature\ntier: S\n---\n')), out('sonnet', 'medium'))
-  assert.equal(pickModel(change('a', '{"tier":"S","type":"feature"}', '---\ntype: feature\ntier: "M"\n---\n')), out('sonnet', 'high'))
-})
-
-test('CI review model fails closed on the intent: missing intent.md, no tier line, or a tier only in the body', () => {
-  assert.equal(pickModel(change('a', '{"tier":"S","type":"feature"}', '')), out('opus', 'high'))
-  assert.equal(pickModel(change('a', '{"tier":"S","type":"feature"}', '---\ntype: feature\n---\n')), out('opus', 'high'))
-  assert.equal(pickModel(change('a', '{"tier":"S","type":"feature"}', '# no frontmatter\ntier: S\n')), out('opus', 'high'))
-})
-
-test('the CI review passes the picked model to Claude', () => {
-  assert.match(read('templates/rig-review.yml'), /--model \$\{\{ steps\.model\.outputs\.model \}\}/)
-})
-
-test('the CI review picker matches the routing table for the reviewer', () => {
-  const block = read('templates/rig-review.yml')
-  for (const tier of ['S', 'M', 'L'] as const) {
-    const r = TABLE.reviewer[tier] as { model: string; effort: string }
-    const line = tier === 'L' ? `model=claude-${r.model}-5-5; effort=${r.effort}` : `${tier}) model=claude-${r.model}-5-5; effort=${r.effort} ;;`
-    assert.ok(block.includes(line), `rig-review.yml lacks "${line}"`)
-  }
-  assert.match(block, /--effort \$\{\{ steps\.model\.outputs\.effort \}\}/)
 })
 
 test('build sends tier L findings to a fresh implementer when its route changed', () => {

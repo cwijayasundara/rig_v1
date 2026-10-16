@@ -59,12 +59,6 @@ test('the vendored copy names project skills and agents, and prints its own skil
   assert.doesNotMatch(ctx, /(?<!\/)rig:scout/)
 })
 
-test('the PR review may write its two files through Edit rules; a Write(path) rule grants nothing', () => {
-  const yml = fs.readFileSync(path.join(import.meta.dirname, '..', 'templates', 'rig-review.yml'), 'utf8')
-  const allowed = /--allowedTools "([^"]+)"/.exec(yml)?.[1] ?? ''
-  assert.deepEqual(allowed.split(','), ['Read(./**)', 'Grep', 'Glob', 'Edit(./review.md)', 'Edit(./review-verdict.txt)'])
-})
-
 const humanCommand = (cmd: string): string => `SDLC_HUMAN=1 node --disable-warning=ExperimentalWarning .rig/bin/sdlc.ts ${cmd}`
 test('standalone ships human-only /rig:approve and /rig:waive skills the model cannot invoke', () => {
   const repo = makeRepo()
@@ -128,7 +122,7 @@ test('the settings template is portable: no personal plugins, absolute paths or 
 test('standalone vendoring ships the v0.4 skills and REVIEW.md template', () => {
   const repo = makeRepo()
   sdlc(repo, ['vendor', '--standalone'])
-  for (const s of ['rig-test', 'rig-sensors', 'rig-pr', 'rig-pr-review'])
+  for (const s of ['rig-test', 'rig-pr', 'rig-pr-review'])
     assert.ok(fs.existsSync(path.join(repo, `.claude/skills/${s}/SKILL.md`)), s)
   assert.ok(!fs.existsSync(path.join(repo, '.claude/skills/rig-verify/SKILL.md')), 'old names are gone')
   assert.ok(fs.existsSync(path.join(repo, '.rig/templates/REVIEW.md')))
@@ -176,17 +170,8 @@ test('init --full --workflows writes the CI files and never overwrites an existi
   write(repo, 'REVIEW.md', 'mine\n')
   sdlc(repo, ['init', '--full', '--workflows'])
   assert.ok(fs.existsSync(path.join(repo, '.github/workflows/rig-check.yml')))
-  assert.ok(fs.existsSync(path.join(repo, '.github/workflows/rig-review.yml')))
+  assert.ok(!fs.existsSync(path.join(repo, '.github/workflows/rig-review.yml')), 'the review workflow is gone (step 4a)')
   assert.equal(fs.readFileSync(path.join(repo, 'REVIEW.md'), 'utf8'), 'mine\n')
-})
-
-test('standalone vendoring copies the review workflow and points the skills at it', () => {
-  const repo = makeRepo()
-  sdlc(repo, ['vendor', '--standalone'])
-  assert.ok(fs.existsSync(path.join(repo, '.claude/workflows/review.js')))
-  const skill = fs.readFileSync(path.join(repo, '.claude/skills/rig-pr-review/SKILL.md'), 'utf8')
-  assert.match(skill, /\.claude\/workflows\/review\.js/)
-  assert.doesNotMatch(skill, /CLAUDE_PLUGIN_ROOT/)
 })
 
 test('the settings template protects evidence with deny rules and the harness config with ask rules', () => {

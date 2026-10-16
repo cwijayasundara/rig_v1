@@ -17,7 +17,6 @@ export function forProject(text: string, kind: 'skill' | 'agent' = 'skill'): str
   return text
     .replaceAll('${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts', SDLC_HOOK)
     .replaceAll('<plugin>/scripts/sdlc.ts', SDLC_HOOK)
-    .replaceAll('${CLAUDE_PLUGIN_ROOT}/workflows/', '.claude/workflows/')
     .replaceAll('${CLAUDE_PLUGIN_ROOT}/templates/', '.rig/templates/')
     .replace(new RegExp(`(?<![/\\w])rig:(${AGENTS.join('|')})\\b`, 'g'), 'rig-$1')
     .replace(/^name: (?!rig[-:])(\S+)$/m, kind === 'skill' ? 'name: rig:$1' : 'name: rig-$1')
@@ -87,9 +86,6 @@ function vendorStandalone(written: string[], version: string): void {
   for (const file of (fs.readdirSync(templates, { recursive: true }) as string[]).filter(f => fs.statSync(path.join(templates, f)).isFile()).sort()) {
     writeFile(`.rig/templates/${file}`, read(path.join(templates, file)), written)
   }
-  for (const file of fs.readdirSync(path.join(PLUGIN_ROOT, 'workflows')).filter(f => f.endsWith('.js'))) {
-    writeFile(`.claude/workflows/${file}`, read(path.join(PLUGIN_ROOT, 'workflows', file)), written)
-  }
   // An older vendoring installed the mod as a local plugin; remove that copy and its marketplace file (only rig's own).
   fs.rmSync(path.join(ROOT, '.rig', 'mod'), { recursive: true, force: true })
   const market = path.join(ROOT, '.claude-plugin', 'marketplace.json')
@@ -149,7 +145,7 @@ export function installStandalone(workflows: boolean): string {
   writeFile('.claude/settings.json', JSON.stringify(merged, null, 2) + '\n', written)
   lines.push('merged templates/settings.json into .claude/settings.json (existing values kept)')
   if (workflows) {
-    for (const [from, to] of [['rig-check.yml', '.github/workflows/rig-check.yml'], ['rig-review.yml', '.github/workflows/rig-review.yml'], ['REVIEW.md', 'REVIEW.md']] as const) {
+    for (const [from, to] of [['rig-check.yml', '.github/workflows/rig-check.yml'], ['REVIEW.md', 'REVIEW.md']] as const) {
       if (fs.existsSync(path.join(ROOT, to))) lines.push(`${to} already exists; left as it is`)
       else { writeFile(to, read(path.join(PLUGIN_ROOT, 'templates', from)), written); lines.push(`wrote ${to}`) }
     }

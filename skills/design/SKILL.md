@@ -22,7 +22,7 @@ When `behavioral` is declared in `sensors.json`, list each behaviour's contract/
 4. **Impact.** `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts check --at plan --slug $0`. Consumer references make the change tier L: name the repos, and put the consumer files in `## Files` and each consumer's test in `## Verification`.
 5. **Decide, do not stall.** Take the recommended answer for every open question; ask (at most 3, only when it changes behaviour). Record each answer as `- Q<n>: <question> → <answer> (person|default)` under `## Decisions` and leave `## Open questions` as `none`: approval is refused while one is open. Ask with AskUserQuestion only when the answer changes behaviour; with no answer (headless, or the person defers) take your recommended option. A `## Concerns` bullet blocks approval until it carries `resolved:`; tell the person which owner to ask.
 
-If the run is `--plan-only` (the rig-spec workflow), stop after design.md and its checks: do not ask for approval and do not build; end with `Next: review the pull request`.
+If the run is `--plan-only`, stop after design.md and its checks: do not ask for approval and do not build; end with `Next: review the pull request`.
 
 Otherwise ask for the single approval. The sdlc mod shows an Approve / Not yet dialog when this turn ends, and approving it starts the build. Without the mod, end by telling the person to type `/rig:approve` (no arguments: it approves this gate); that one command is their only step, and the build then starts on its own. Never tell them to run `/rig:design` or any other command first.
 

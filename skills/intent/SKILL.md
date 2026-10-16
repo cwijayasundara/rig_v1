@@ -27,8 +27,8 @@ Idea: $ARGUMENTS
    ## Open questions
    ```
 
-   Add `type:` and `tier:` to the frontmatter only if the originator knows them; otherwise the engineer or the rig-spec workflow classifies the idea.
+   Add `type:` and `tier:` to the frontmatter only if the originator knows them; otherwise the engineer classifies the idea.
 3. **Read it back.** Show the file and ask the originator to correct anything misunderstood; edit until they agree.
-4. **Hand over.** It is a draft. The product owner accepts it by setting `status: accepted` and merging it to the trunk in a pull request the inbox's code owners review. With the rig-spec workflow installed, that merge opens a pull request with intent.md and design.md; otherwise an engineer runs `/rig:start .rig/intent/<kebab-name>.md`.
+4. **Hand over.** It is a draft. The product owner accepts it by setting `status: accepted` and merging it to the trunk in a pull request the inbox's code owners review. Then an engineer runs `/rig:start .rig/intent/<kebab-name>.md`.
 
 End with: `Next: open a pull request with .rig/intent/<kebab-name>.md (or ask an engineer to)`.
