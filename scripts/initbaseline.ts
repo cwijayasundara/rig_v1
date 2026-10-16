@@ -9,6 +9,7 @@ import { runCommand } from './runs.ts'
 import { loadConfig } from './check.ts'
 import { countIn } from './quality.ts'
 import { resolveCommands } from './scopes.ts'
+import { updateKnownRed } from './registry.ts'
 
 const SENSORS_JSON = '.rig/sensors.json'
 const BUDGET_MS = 600_000
@@ -46,9 +47,7 @@ export function cmdBaseline(): void {
   const known = new Set(config.knownRed)
   const added = red.filter(k => !known.has(k))
   if (added.length) {
-    const raw = JSON.parse(read(file)) as Record<string, unknown>
-    raw.knownRed = [...config.knownRed, ...added]
-    fs.writeFileSync(file, JSON.stringify(raw, null, 2) + '\n')
+    fs.writeFileSync(file, updateKnownRed(read(file), added, []))
     sanctionWrites([SENSORS_JSON])
   }
   out([...rows, '', `known red: ${[...known, ...added].join(', ') || 'none'}${added.length ? ' (written to .rig/sensors.json)' : ''}`].join('\n'))

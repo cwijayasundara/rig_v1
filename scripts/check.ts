@@ -13,6 +13,7 @@ import { runCommand, recordRun, normCmd } from './runs.ts'
 import { selectScopes, resolveCommands } from './scopes.ts'
 import { withBaseTree } from './basetree.ts'
 import { loadChange, activeSlug } from './graph.ts'
+import { isRegistryShape, parseRegistry, registryConfig, updateKnownRed, type Registry } from './registry.ts'
 
 export type Point = 'stop' | 'commit' | 'ship' | 'ci'
 export type CheckInput = {
@@ -35,22 +36,34 @@ const SENSORS_JSON = '.rig/sensors.json'
 const TAIL_IN_FINDING = 15
 
 // With a ref (CI), config comes from the base branch, so a PR cannot loosen the rules it is judged by.
-export function loadConfig(ref: string | null = null): { config: SensorConfig; rules: Rule[]; errors: string[] } {
-  if (ref && git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]) === null) return { config: parseConfig('').config, rules: [], errors: [`config ref ${ref} does not exist`] }
+// A registry-shaped sensors.json (behavioural harness step 2) is read through registryConfig; registry is null otherwise.
+export function loadConfig(ref: string | null = null): { config: SensorConfig; rules: Rule[]; errors: string[]; registry: Registry | null } {
+  if (ref && git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]) === null) return { config: parseConfig('').config, rules: [], errors: [`config ref ${ref} does not exist`], registry: null }
   const text = (rel: string): string => (ref ? git(['show', `${ref}:${rel}`]) ?? '' : read(path.join(ROOT, rel)))
-  const c = parseConfig(text(SENSORS_JSON))
   const r = parseRules(text('.rig/rules.json'))
-  return { config: c.config, rules: r.rules, errors: [...c.errors, ...r.errors.map(e => `rules.json: ${e}`)] }
+  const ruleErrors = r.errors.map(e => `rules.json: ${e}`)
+  const raw = text(SENSORS_JSON)
+  if (isRegistryShape(raw)) {
+    const p = parseRegistry(raw)
+    const v = registryConfig(p.registry)
+    return { config: v.config, rules: r.rules, errors: [...p.errors, ...v.errors, ...ruleErrors], registry: p.registry }
+  }
+  const c = parseConfig(raw)
+  return { config: c.config, rules: r.rules, errors: [...c.errors, ...ruleErrors], registry: null }
 }
 
 // Once a known-red command passes, it blocks from then on: the only automatic edit to sensors.json, and it only tightens.
 function ratchet(cleared: string[]): void {
   const file = path.join(ROOT, SENSORS_JSON)
   if (!exists(file)) return
-  let raw: { knownRed?: string[] }
-  try { raw = JSON.parse(read(file)) as { knownRed?: string[] } } catch { return }
-  raw.knownRed = (raw.knownRed ?? []).filter(k => !cleared.includes(k))
-  fs.writeFileSync(file, JSON.stringify(raw, null, 2) + '\n')
+  try { fs.writeFileSync(file, updateKnownRed(read(file), [], cleared)) } catch { /* unparseable: leave it */ }
+}
+
+// A registry can turn a built-in off or make it advisory; secrets and harness-tamper always block (registry.ts).
+function builtinsApplied(findings: Finding[], config: SensorConfig): Finding[] {
+  const b = config.builtins
+  if (!b) return findings
+  return findings.filter(f => !b.off.includes(f.sensor)).map(f => (f.severity === 'block' && b.soft.includes(f.sensor) ? { ...f, severity: 'warn' as const } : f))
 }
 
 // files: the changed source files select the scopes whose commands run; 'all' runs every scope's; undefined only the top-level ones.
@@ -324,7 +337,7 @@ export function runChecks(i: CheckInput): CheckResult {
     }
   }
   if (i.commands !== 'none') findings.push(...runDeclared(i.commands, config, i.point === 'ci' ? null : i.slugs[0] ?? null, i.budgetMs, Boolean(i.ratchet) && i.point !== 'ci', i.point === 'ci' && config.ci.scope === 'all' ? 'all' : diffs.map(d => d.file).filter(f => isSource(f, config)), config.behavioral ? new Set([config.behavioral.validate ?? '', config.behavioral.run ?? ''].filter(Boolean).map(normCmd)) : undefined))
-  const result = applyWaivers(findings, i.slugs, i.point === 'ci' ? { base: i.base } : undefined)
+  const result = applyWaivers(builtinsApplied(findings, config), i.slugs, i.point === 'ci' ? { base: i.base } : undefined)
   logRuleFires(result.findings, i.point)
   return result
 }
@@ -337,7 +350,7 @@ export function editFindings(rel: string): Finding[] {
   const diffs = fileDiff(snap, rel)
   const pattern = withoutFixtures(diffs, config)
   const slug = activeSlug()
-  return applyWaivers([...testTamper(pattern, config), ...suppressions(pattern, config), ...layering(pattern, config), ...size(diffs, config, fileLines([rel]), 'edit'), ...secretsInDiff(pattern), ...rulesSensor(pattern, rules)], slug ? [slug] : []).findings
+  return applyWaivers(builtinsApplied([...testTamper(pattern, config), ...suppressions(pattern, config), ...layering(pattern, config), ...size(diffs, config, fileLines([rel]), 'edit'), ...secretsInDiff(pattern), ...rulesSensor(pattern, rules)], config), slug ? [slug] : []).findings
 }
 
 // The changes a diff carries evidence for, as CI reads them.
