@@ -2,13 +2,9 @@
 // so it holds for any language or layout. Nothing under src/ is imported. `remove` re-checks `shop` first, on a fresh server.
 import fs from 'node:fs'
 import path from 'node:path'
-import { start, stop } from '../fixtures/tooling/scripts/contract.mjs'
+import { start, stop, request } from '../fixtures/tooling/scripts/contract.mjs'
 
-const call = port => async (method, p, body) => {
-  const init = body === undefined ? { method } : { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }
-  const res = await fetch(`http://127.0.0.1:${port}${p}`, init)
-  return { status: res.status, body: await res.json().catch(() => null) }
-}
+const call = port => (method, p, body) => request(port, method, p, body)
 
 const PROMISES = {
   async shop(req, repo) {
@@ -45,7 +41,7 @@ export async function assertShopHttp(c, repo, phase) {
         const r = await PROMISES[p](call(port), repo)
         if (r !== true) return `${p}: ${r}`
       } finally {
-        stop(child)
+        await stop(child)
       }
     }
     return true

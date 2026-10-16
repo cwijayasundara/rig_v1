@@ -59,3 +59,24 @@ test('the CLI logs its mode first, and passes when there is no api/openapi.yaml 
   assert.match(r.stdout, /no api\/openapi\.yaml yet/)
   assert.equal(fs.readFileSync(log, 'utf8'), 'validate\n')
 })
+
+test('final review: run() fails an example whose request never gets an answer, within its timeout', async () => {
+  const dir = repo("import http from 'node:http'\nconst s = http.createServer(() => {})\ns.listen(Number(process.env.PORT), () => console.log(`listening on ${s.address().port}`))\n")
+  const t0 = Date.now()
+  const fails = await run(dir, [ex('01', 'GET', '/n', 200)], 1000)
+  assert.match(fails[0] ?? '', /01: GET \/n got no answer within 1000 ms/)
+  assert.ok(Date.now() - t0 < 5000, `took ${Date.now() - t0} ms`)
+})
+
+test('final review: stop() kills a server that ignores SIGTERM', async () => {
+  const dir = repo("import http from 'node:http'\nprocess.on('SIGTERM', () => {})\nconst s = http.createServer((q, r) => r.end('{}'))\ns.listen(Number(process.env.PORT), () => console.log(`listening on ${s.address().port}`))\n")
+  const { child, port } = await start(dir)
+  await stop(child, 500)
+  await new Promise(r => setTimeout(r, 200))
+  await assert.rejects(fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(1000) }))
+})
+
+test('final review: a server that dies before listening is reported with its stderr', async () => {
+  const dir = repo("console.error('boom: port in use')\nprocess.exit(1)\n")
+  await assert.rejects(start(dir, 5000), /boom: port in use/)
+})

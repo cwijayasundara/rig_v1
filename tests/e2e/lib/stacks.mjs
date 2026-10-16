@@ -18,6 +18,14 @@ export const STACKS = [
   { stack: 'dotnet', probe: ['dotnet', '--version'], core: 'types', file: 'Add.cs', good, broken: typeError },
 ]
 
+// CI passes --require so a toolchain missing from the runner fails the job instead of skipping silently.
+export function requiredStacks(arg) {
+  if (!arg) return []
+  const names = arg === 'all' ? STACKS.map(s => s.stack) : arg.split(',').map(n => n.trim()).filter(Boolean)
+  for (const n of names) if (!STACKS.some(s => s.stack === n)) throw new Error(`unknown stack: ${n}`)
+  return names
+}
+
 export function probe(run, cmd, args) {
   const r = run(cmd, args)
   if (r.error?.code === 'ENOENT') return { ok: false, why: `${cmd} not found` }

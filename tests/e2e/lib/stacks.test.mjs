@@ -27,3 +27,12 @@ test('sensorOf() names a command finding by the registry id its message leads wi
   assert.equal(sensorOf({ sensor: 'commands', message: 'unit not run: the 600 s budget ran out' }), 'unit')
   assert.equal(sensorOf({ sensor: 'secrets', message: 'unit failed' }), 'secrets')
 })
+
+import { requiredStacks } from './stacks.mjs'
+
+test('final review: --require names the stacks a skip must fail; all means every pack; an unknown name is refused', () => {
+  assert.deepEqual(requiredStacks(undefined), [])
+  assert.deepEqual(requiredStacks('go,dotnet'), ['go', 'dotnet'])
+  assert.deepEqual(requiredStacks('all').sort(), ['dotnet', 'go', 'java-maven', 'node', 'rust'])
+  assert.throws(() => requiredStacks('go,cobol'), /unknown stack: cobol/)
+})

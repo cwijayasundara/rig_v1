@@ -22,8 +22,10 @@ export async function assertChange(c, sb, slug, phase) {
       return !bad.length || `not frozen as shipped: ${bad.join(', ')} (${JSON.stringify(a?.contracts)})`
     })
     await c.check(`${id}: verify ran the contract validate before the contract run`, () => {
-      const log = (fs.existsSync(sb.env.CONTRACT_LOG ?? '') ? fs.readFileSync(sb.env.CONTRACT_LOG, 'utf8') : '').trim().split('\n')
-      return (log.at(-2) === 'validate' && log.at(-1) === 'run') || `contract log ends: ${log.slice(-3).join(', ')}`
+      // Only verify's own lines: the pr commit and push run the contracts again afterwards (the scripted driver keeps verify's lines apart).
+      const file = `${sb.env.CONTRACT_LOG}.verify`
+      const log = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').trim() : '(no log of verify)'
+      return log === 'validate\nrun' || `verify logged: ${log.split('\n').join(', ')}`
     })
   }
   const runs = sb.read(`${dir}/evidence/runs.jsonl`).trim().split('\n').filter(Boolean).map(json)

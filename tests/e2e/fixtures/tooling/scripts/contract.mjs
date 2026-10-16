@@ -38,20 +38,47 @@ export function subset(expected, actual) {
   return expected === actual
 }
 
-// Its own process group, so stop() takes npm and the server it started down together.
+// Its own process group, so stop() takes npm and the server it started down together. stderr is drained (a full pipe would
+// stall the server) and its tail explains a server that dies before listening.
 export function start(root, timeoutMs = 10_000) {
   return new Promise((resolve, reject) => {
     const child = spawn('npm', ['start', '--silent'], { cwd: root, env: { ...process.env, PORT: '0' }, stdio: ['ignore', 'pipe', 'pipe'], detached: true })
     let out = ''
+    let err = ''
     let settled = false
     const done = (fn, v) => { if (!settled) { settled = true; clearTimeout(timer); fn(v) } }
-    const timer = setTimeout(() => { stop(child); done(reject, new Error(`npm start printed no "listening on <port>" within ${timeoutMs} ms`)) }, timeoutMs)
+    const why = () => (err.trim() ? `: ${err.trim().split('\n').slice(-3).join(' | ')}` : '')
+    const timer = setTimeout(() => { stop(child); done(reject, new Error(`npm start printed no "listening on <port>" within ${timeoutMs} ms${why()}`)) }, timeoutMs)
     child.stdout.on('data', d => { out += d; const m = /listening on (\d+)/.exec(out); if (m) done(resolve, { child, port: Number(m[1]) }) })
-    child.on('exit', code => done(reject, new Error(`npm start exited ${code} before listening`)))
+    child.stderr.on('data', d => { err = (err + d).slice(-2000) })
+    child.on('error', e => done(reject, new Error(`npm start could not run: ${e.message}`)))
+    child.on('exit', code => done(reject, new Error(`npm start exited ${code} before listening${why()}`)))
   })
 }
 
-export const stop = child => { try { process.kill(-child.pid, 'SIGTERM') } catch {} }
+// SIGTERM to the group, then SIGKILL once npm has gone or the grace period is over: a server that ignores SIGTERM still dies.
+export function stop(child, graceMs = 1000) {
+  const kill = sig => { try { process.kill(-child.pid, sig) } catch {} }
+  return new Promise(resolve => {
+    const end = () => { clearTimeout(t); kill('SIGKILL'); resolve() }
+    const t = setTimeout(end, graceMs)
+    if (child.exitCode !== null || child.signalCode !== null) return end()
+    child.once('exit', end)
+    kill('SIGTERM')
+  })
+}
+
+// A request that gets no answer fails its example instead of hanging the run.
+export async function request(port, method, p, body, timeoutMs = 10_000) {
+  const init = body === undefined ? { method } : { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}${p}`, { ...init, signal: AbortSignal.timeout(timeoutMs) })
+    return { status: res.status, body: await res.json().catch(() => null) }
+  } catch (e) {
+    if (e?.name === 'TimeoutError') return { status: null, body: null, error: `got no answer within ${timeoutMs} ms` }
+    return { status: null, body: null, error: e?.message ?? String(e) }
+  }
+}
 
 export async function run(root, examples, timeoutMs = 10_000) {
   const { child, port } = await start(root, timeoutMs)
@@ -59,14 +86,13 @@ export async function run(root, examples, timeoutMs = 10_000) {
   try {
     for (const ex of examples) {
       const { method, path: p, body } = ex.request
-      const init = body === undefined ? { method } : { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }
-      const res = await fetch(`http://127.0.0.1:${port}${p}`, init)
-      const got = await res.json().catch(() => null)
-      if (res.status !== ex.response.status) failures.push(`${ex.name}: ${method} ${p} gave ${res.status}, want ${ex.response.status}`)
-      else if (ex.response.body !== undefined && !subset(ex.response.body, got)) failures.push(`${ex.name}: ${method} ${p} body ${JSON.stringify(got)} does not contain ${JSON.stringify(ex.response.body)}`)
+      const got = await request(port, method, p, body, timeoutMs)
+      if (got.error) failures.push(`${ex.name}: ${method} ${p} ${got.error}`)
+      else if (got.status !== ex.response.status) failures.push(`${ex.name}: ${method} ${p} gave ${got.status}, want ${ex.response.status}`)
+      else if (ex.response.body !== undefined && !subset(ex.response.body, got.body)) failures.push(`${ex.name}: ${method} ${p} body ${JSON.stringify(got.body)} does not contain ${JSON.stringify(ex.response.body)}`)
     }
   } finally {
-    stop(child)
+    await stop(child)
   }
   return failures
 }
