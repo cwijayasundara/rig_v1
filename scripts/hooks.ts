@@ -16,6 +16,45 @@ import { formatFindings, isSource, isTest, matchesAny, warnRow, type Finding, ty
 import { sessionNote } from './githooks.ts'
 import { appendEvent, readEvents } from './ratchet.ts'
 import { treeStamp } from './stamp.ts'
+import { runCommand } from './runs.ts'
+import { policyMode, activeSensors, commandFor, ALWAYS_ON, type Registry, type Mode } from './registry.ts'
+import { recordSessionModel, recordLaunch, recordResolved, sessionModel, readModelState, modelRoleFindings } from './modelstate.ts'
+
+const MODEL_STATE = path.join(SDLC, 'state', 'model.json')
+
+// The policy for this session's model (spec §3.3); a legacy config has no policy, so checks run as they always have.
+function modeNow(registry: Registry | null, input: HookInput): { mode: Mode; model: string | null } {
+  if (!registry) return { mode: 'continuous', model: null }
+  const model = sessionModel(MODEL_STATE, input.session_id, input.transcript_path, ROOT)
+  return { mode: policyMode(registry, model), model }
+}
+
+// Edit-cadence command sensors on the edited file (spec §7 feedback shape): id, guide, output tail, rerun command.
+function editSensorFailures(registry: Registry, rel: string): string[] {
+  const out: string[] = []
+  for (const s of activeSensors(registry, 'edit', 'continuous')) {
+    if (!s.cmd || s.cadence !== 'edit' || !s.blocks) continue
+    const cmd = commandFor(s, [rel])
+    if (!cmd) continue
+    const r = runCommand(cmd, { timeoutMs: s.timeoutMs ?? 60_000 })
+    if (r.exit !== 0) out.push(`${s.id}: ${s.guide}\n${r.tail.split('\n').slice(-20).join('\n')}\nrerun: ${cmd}`)
+  }
+  return out
+}
+
+function hookModelSwitch(input: HookInput): void {
+  if (exists(SDLC) && input.to_model) recordSessionModel(MODEL_STATE, input.session_id ?? 'default', input.to_model, 'switch', now())
+}
+
+function hookAgentLaunch(input: HookInput): void {
+  if (!exists(SDLC) || !input.tool_use_id) return
+  recordLaunch(MODEL_STATE, { session: input.session_id ?? 'default', id: input.tool_use_id, agent: String(input.tool_input?.subagent_type ?? 'general-purpose'), requested: input.tool_input?.model ?? null, resolved: null, at: now() })
+}
+
+function hookAgentDone(input: HookInput): void {
+  const resolved = input.tool_response?.resolvedModel ?? input.tool_response?.model
+  if (exists(SDLC) && input.tool_use_id && resolved) recordResolved(MODEL_STATE, input.tool_use_id, resolved)
+}
 
 function readStdin(): HookInput {
   try {
@@ -55,10 +94,12 @@ const SCRIPT = () => (IS_VENDORED ? '.rig/bin/sdlc.ts' : `${toPosix(PLUGIN_ROOT)
 
 function hookSessionStart(input: HookInput): void {
   if (!exists(SDLC)) return
+  if (input.model) recordSessionModel(MODEL_STATE, input.session_id ?? 'default', input.model, 'session-start', now())
   if (input.source === 'compact' || input.source === 'clear') {
     updateGate(g => { delete g.guides[input.session_id ?? 'default'] })
   }
-  const cfg = loadConfig().config
+  const { config: cfg, registry } = loadConfig()
+  const { mode, model } = modeNow(registry, input)
   const guides = listGuides(cfg).map(g => g.name)
   const active = activeSlug()
   const c = active ? loadChange(active) : null
@@ -66,6 +107,7 @@ function hookSessionStart(input: HookInput): void {
   const context = [
     'sdlc harness is active in this repo (artifacts in .rig/).',
     ROUTING_LINE,
+    registry ? `rig policy: ${mode} checks for ${model ?? 'an unknown model'} (build on ${registry.models.build}, evaluate on ${registry.models.evaluate}).` : '',
     c ? `Active change: ${c.slug} (${c.type}, tier ${c.tier}). Next: ${nextCommand(c)}` : `No active change. Start one with ${skillRef('start')} "<request>".`,
     `Rules: plans hold interfaces + acceptance tests, never code; delegate searches to ${agentRef('scout')} and slices to ${agentRef('implementer')}; read .rig/approvals.jsonl with the Read tool (only the person writes it); run subagents in the foreground and never end a turn while one is running; never sleep-poll; at ~150k context run /compact (the active change lives in .rig/STATE.md). If an sdlc skill fails to load, run \`node "${SCRIPT()}" skill <stage> <slug>\` and follow it exactly.`,
     sessionNote(),
@@ -88,7 +130,11 @@ function hookPostEdit(input: HookInput): void {
   if (exists(SDLC)) {
     const rel = relPosix(file)
     updateGate(g => { g.tool = pushUnique(g.tool, rel) })
-    edits = formatFindings(editFindings(rel).filter(f => f.severity === 'block' && f.sensor !== 'secrets'))
+    const { config, registry } = loadConfig()
+    if (modeNow(registry, input).mode === 'continuous') {
+      edits = formatFindings(editFindings(rel).filter(f => f.severity === 'block' && f.sensor !== 'secrets'))
+      if (registry && isSource(rel, config)) edits = [edits, ...editSensorFailures(registry, rel)].filter(Boolean).join('\n')
+    }
     if (!problems.length && !edits) guide = guidesFor(rel, input.session_id ?? 'default')
   }
   if (problems.length || edits) {
@@ -206,17 +252,18 @@ function hookPromptSubmit(input: HookInput = {}): void {
 // adopted as an ad-hoc change and judged the same way.
 // halt: the gate printed a block (or gave up) and the turn is not continued. warn: a systemMessage the caller prints, so
 // a turn that only warned and is also continued emits one JSON object, not two.
-function hookStop(): { halt: boolean; warn?: string } {
+function hookStop(input: HookInput = {}): { halt: boolean; warn?: string } {
   if (!exists(SDLC)) return { halt: false }
   // Before any early return, so the Stop after preflight closes the window even on a turn with no source diff.
   const initRunning = onboarding()
   const snap = readBaseline()
   if (!snap) return { halt: false }
-  const { config, rules, errors } = loadConfig()
+  const { config, rules, errors, registry } = loadConfig()
+  const { mode, model } = modeNow(registry, input)
   const gate = readGate()
   const diffs = turnDiff(snap).filter(d => isSource(d.file, config) || isProtected(d.file))
   if (!diffs.length) return { halt: false }
-  const hash = diffHash(diffs) + sha(read(path.join(SDLC, 'sensors.json')) + read(path.join(SDLC, 'rules.json')))
+  const hash = diffHash(diffs) + sha(read(path.join(SDLC, 'sensors.json')) + read(path.join(SDLC, 'rules.json'))) + mode
   if (gate.passed.main === hash) return { halt: false }
   let slug = activeSlug()
   // A turn that shipped (its commits add a change's ship.json) is recorded already; any other commit is still ad hoc.
@@ -228,18 +275,21 @@ function hookStop(): { halt: boolean; warn?: string } {
   const stamp = treeStamp()
   const treePassed = stamp !== null && gate.trees.includes(stamp)
   const result = runChecks({
-    point: 'stop', diffs, config, rules, slugs: slug ? [slug] : [], commands: treePassed ? 'none' : 'fast', budgetMs: STOP_BUDGET_MS,
+    point: 'stop', diffs, config, rules, slugs: slug ? [slug] : [], commands: treePassed || mode === 'final' ? 'none' : 'fast', budgetMs: STOP_BUDGET_MS,
     before: f => showAt(snap.sha, f) ?? '', toolEdited: new Set(gate.tool), base: null, ratchet: true,
   })
   const configBlocks: Finding[] = errors.map(e => ({ sensor: 'config', severity: 'block', file: '.rig/sensors.json', message: e, fix: 'fix the file' }))
-  const findings = [...configBlocks, ...result.findings]
+  const kept = mode === 'final' ? result.findings.filter(f => (ALWAYS_ON as string[]).includes(f.sensor)) : result.findings
+  const roleOn = registry?.sensors.some(s => s.id === 'model-role' && s.enabled) ?? false
+  const roles = registry && roleOn ? modelRoleFindings(registry, model, readModelState(MODEL_STATE).launches.filter(l => l.session === (input.session_id ?? 'default'))) : []
+  const findings = [...configBlocks, ...kept, ...roles]
   const blocks = findings.filter(f => f.severity === 'block')
   gate.last = summarize(findings)
   // Write back only what this hook owns: edits recorded while the checks ran must survive.
   const save = (): void => updateGate(g => { g.last = gate.last; if (gate.passed.main) g.passed.main = gate.passed.main; if (gate.blocks.main) g.blocks.main = gate.blocks.main; if (gate.trees !== g.trees) g.trees = gate.trees })
   if (!blocks.length) {
     gate.passed.main = hash
-    if (stamp && !treePassed) gate.trees = [...gate.trees, stamp].slice(-PASSED_TREES)
+    if (stamp && !treePassed && mode === 'continuous') gate.trees = [...gate.trees, stamp].slice(-PASSED_TREES)
     save()
     if (exists(UNRESOLVED)) fs.rmSync(UNRESOLVED)
     const warns = gate.last?.warnRows ?? []
@@ -326,10 +376,13 @@ function openLanes(slug: string): boolean {
 const HOOKS: Record<string, (input: HookInput) => void> = {
   'session-start': hookSessionStart,
   'post-edit': hookPostEdit,
+  'model-switch': hookModelSwitch,
+  'agent-launch': hookAgentLaunch,
+  'agent-done': hookAgentDone,
   'skill-failed': hookSkillFailed,
   'prompt-submit': i => hookPromptSubmit(i),
-  stop: () => {
-    const r = hookStop()
+  stop: i => {
+    const r = hookStop(i)
     if (r.halt) return
     const cont = continueChange()
     if (r.warn || cont) out(JSON.stringify({ ...(r.warn ? { systemMessage: r.warn } : {}), ...cont }))

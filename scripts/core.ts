@@ -62,6 +62,12 @@ export type HookInput = {
   agent_type?: string
   source?: string
   prompt?: string
+  transcript_path?: string
+  model?: string
+  to_model?: string
+  from_model?: string
+  tool_use_id?: string
+  tool_response?: { resolvedModel?: string; model?: string }
   tool_input?: {
     command?: string
     file_path?: string
@@ -73,6 +79,8 @@ export type HookInput = {
     edits?: { old_string?: string; new_string?: string; replace_all?: boolean }[]
     skill?: string
     args?: string
+    subagent_type?: string
+    model?: string
   }
 }
 

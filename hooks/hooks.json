@@ -1,27 +1,123 @@
 {
-  "description": "rig: session context, turn baselines, the end-of-turn quality gate, a slim per-edit check, the skill-load fallback, and async subagent lane events for work/span/idle timing. No hook runs on Bash. The mod adds usage capture, the band and zero-token commands",
-  "modules": ["./register.ts"],
+  "description": "rig: session context, turn baselines, the end-of-turn quality gate, a slim per-edit check, the skill-load fallback, and async subagent lane events for work/span/idle timing. It also records the running model (session start, /model switches) and each agent launch's model. No hook runs on Bash. The mod adds usage capture, the band and zero-token commands",
+  "modules": [
+    "./register.ts"
+  ],
   "hooks": {
     "UserPromptSubmit": [
-      { "hooks": [ { "type": "command", "command": "node --disable-warning=ExperimentalWarning \"${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts\" hook prompt-submit", "timeout": 15 } ] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node --disable-warning=ExperimentalWarning \"${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts\" hook prompt-submit",
+            "timeout": 15
+          }
+        ]
+      }
     ],
     "Stop": [
-      { "hooks": [ { "type": "command", "command": "node --disable-warning=ExperimentalWarning \"${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts\" hook stop", "timeout": 90 } ] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node --disable-warning=ExperimentalWarning \"${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts\" hook stop",
+            "timeout": 90
+          }
+        ]
+      }
     ],
     "SessionStart": [
-      { "matcher": "startup|resume|clear|compact", "hooks": [ { "type": "command", "command": "node --disable-warning=ExperimentalWarning \"${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts\" hook session-start", "timeout": 10 } ] }
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node --disable-warning=ExperimentalWarning \"${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts\" hook session-start",
+            "timeout": 10
+          }
+        ]
+      }
     ],
     "PostToolUse": [
-      { "matcher": "Write|Edit|MultiEdit", "hooks": [ { "type": "command", "command": "node --disable-warning=ExperimentalWarning \"${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts\" hook post-edit", "timeout": 15 } ] }
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node --disable-warning=ExperimentalWarning \"${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts\" hook post-edit",
+            "timeout": 75
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node --disable-warning=ExperimentalWarning \"${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts\" hook agent-done",
+            "timeout": 10
+          }
+        ]
+      }
     ],
     "SubagentStart": [
-      { "hooks": [ { "type": "command", "async": true, "command": "node --disable-warning=ExperimentalWarning \"${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts\" hook subagent-start", "timeout": 10 } ] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "async": true,
+            "command": "node --disable-warning=ExperimentalWarning \"${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts\" hook subagent-start",
+            "timeout": 10
+          }
+        ]
+      }
     ],
     "SubagentStop": [
-      { "hooks": [ { "type": "command", "async": true, "command": "node --disable-warning=ExperimentalWarning \"${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts\" hook subagent-stop", "timeout": 10 } ] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "async": true,
+            "command": "node --disable-warning=ExperimentalWarning \"${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts\" hook subagent-stop",
+            "timeout": 10
+          }
+        ]
+      }
     ],
     "PostToolUseFailure": [
-      { "matcher": "Skill", "hooks": [ { "type": "command", "command": "node --disable-warning=ExperimentalWarning \"${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts\" hook skill-failed", "timeout": 10 } ] }
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node --disable-warning=ExperimentalWarning \"${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts\" hook skill-failed",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node --disable-warning=ExperimentalWarning \"${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts\" hook agent-launch",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostModelSwitch": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node --disable-warning=ExperimentalWarning \"${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts\" hook model-switch",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

@@ -235,7 +235,8 @@ test('re-vendoring over an older standalone install drops the retired sdlc hooks
   const hooks = JSON.parse(once).hooks as Record<string, { matcher?: string; hooks: { command: string }[] }[]>
   const commands = Object.values(hooks).flat().flatMap(g => g.hooks.map(h => h.command))
   for (const gone of ['pre-bash', 'pre-edit']) assert.ok(!commands.some(c => c.endsWith(`hook ${gone}`)), gone)
-  assert.deepEqual(hooks.PreToolUse, [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'echo mine' }] }], 'the project\'s own hook is kept untouched')
+  assert.deepEqual(hooks.PreToolUse?.filter(g => g.matcher === 'Bash'), [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'echo mine' }] }], 'the project\'s own hook is kept untouched')
+  assert.equal(hooks.PreToolUse?.filter(g => g.matcher === 'Agent' && g.hooks.some(h => h.command.endsWith('hook agent-launch'))).length, 1, 'the agent-launch hook is registered once')
   for (const [event, name] of [['SubagentStart', 'subagent-start'], ['SubagentStop', 'subagent-stop']] as const) {
     const lane = hooks[event]?.flatMap(g => g.hooks) as { command: string; async?: boolean }[] | undefined
     assert.equal(lane?.length, 1, `${event} registered exactly once`)
