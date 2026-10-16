@@ -4,19 +4,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { parseConfig } from './model.ts'
 
 const skill = fs.readFileSync(path.resolve(import.meta.dirname, '../skills/init/SKILL.md'), 'utf8')
-
-test('init skill: the sensors.json shape it shows for fast and full is accepted by the parser', () => {
-  const shown = /`(\{"fast":[^`]*)`/.exec(skill)?.[1]
-  assert.ok(shown, 'the skill must show a literal {"fast": {...}, "full": {...}} shape in inline code')
-  const example = JSON.parse(shown.replace(/<[^>]+>/g, 'npm test'))
-  const { errors } = parseConfig(JSON.stringify(example))
-  assert.deepEqual(errors, [])
-  assert.equal(typeof example.fast, 'object')
-  assert.equal(typeof example.full, 'object')
-})
 
 test('init skill: never says fast/full are plain command strings', () => {
   assert.doesNotMatch(skill, /`fast`\/`full` command strings/)

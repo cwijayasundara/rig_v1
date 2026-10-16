@@ -168,8 +168,8 @@ test('onlyKnownRedRemoved accepts the ratchet and nothing more', () => {
 
 test('harnessTamper: Bash-made edits block at Stop, weakening blocks at ship, plain edits warn', () => {
   const cfgDiff = fd('.rig/sensors.json', ['x'], ['y'])
-  const before = () => J({ limits: { diffLines: 500 } })
-  const weaker = () => J({ limits: { diffLines: 900 } })
+  const before = () => J({ sensors: [{ id: 'size', builtin: true, options: { diffLines: 500 } }] })
+  const weaker = () => J({ sensors: [{ id: 'size', builtin: true, options: { diffLines: 900 } }] })
   const viaBash = harnessTamper([cfgDiff], { point: 'stop', toolEdited: new Set(), before, after: weaker })
   assert.match(viaBash[0]?.message ?? '', /outside Write\/Edit/)
   assert.equal(viaBash[0]?.severity, 'block')

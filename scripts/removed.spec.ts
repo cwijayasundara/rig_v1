@@ -128,3 +128,9 @@ test('4b: the old lifecycle modules are gone and the harness templates guard app
   assert.match(settings, /approval\.json/)
   assert.doesNotMatch(settings, /approvals\.jsonl|usage\.jsonl|PREFLIGHT/)
 })
+
+test('4c: the old-config adapter is gone', () => {
+  gone('scripts/configparse.ts', 'scripts/scopes.ts', 'templates/stacks.json')
+  for (const name of ['SensorConfig', 'parseConfig', 'BehavioralConfig']) assert.doesNotMatch(read('scripts/model.ts'), new RegExp(`export (?:function|const|type) ${name}\\b`), name)
+  for (const name of ['fromLegacy', 'registryConfig']) assert.doesNotMatch(read('scripts/registry.ts'), new RegExp(`export function ${name}\\b`), name)
+})

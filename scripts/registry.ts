@@ -1,6 +1,6 @@
 // The sensor registry (behavioural harness spec 2026-10-16 §3): one .rig/sensors.json, language-free.
 // A sensor is a command or a built-in, a cadence, a blocks flag and one guide sentence. Tool commands live in templates/stacks/.
-import { isObject, isStringList, posInt, parseConfig, type SensorConfig } from './model.ts'
+import { isObject, isStringList, posInt } from './model.ts'
 
 export type Cadence = 'edit' | 'turn' | 'commit' | 'ci' | 'nightly'
 export const CADENCES: Cadence[] = ['edit', 'turn', 'commit', 'ci', 'nightly']
@@ -222,40 +222,6 @@ export function commandFor(s: RegistrySensor, files: string[] | null): string | 
   return s.cmd.replaceAll('{files}', files.map(shq).join(' '))
 }
 
-// ---------- today's config (spec §11 step 1: read the old shape until step 4 removes it) ----------
-
-const kebab = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'cmd'
-
-export function fromLegacy(cfg: SensorConfig): Registry {
-  const r = defaultRegistry()
-  const extra: RegistrySensor[] = []
-  const unique = (id: string): string => {
-    let out = id
-    for (let n = 2; extra.some(s => s.id === out); n++) out = `${id}-${n}`
-    return out
-  }
-  const declared = (prefix: 'fast' | 'full', cadence: Cadence): void => {
-    for (const [name, c] of Object.entries(cfg[prefix])) extra.push({ id: unique(`${prefix}-${kebab(name)}`), cmd: c, cadence, blocks: !cfg.knownRed.includes(`${prefix}.${name}`), count: 'exit', guide: `"${name}" must pass before the ${cadence === 'turn' ? 'turn ends' : 'change is committed'}.`, enabled: true })
-  }
-  declared('fast', 'turn')
-  declared('full', 'commit')
-  for (const [cat, q] of Object.entries(cfg.quality)) {
-    if (!q) continue
-    extra.push({ id: `quality-${cat}`, cmd: q.cmd, cadence: 'commit', blocks: true, count: isCount(q.count) ? q.count : 'lines', guide: `Do not raise the ${cat} count above the base branch.`, enabled: true })
-  }
-  r.sensors = [...extra, ...r.sensors]
-  const size = r.sensors.find(s => s.id === 'size')
-  if (size) size.options = { ...cfg.limits }
-  const layering = r.sensors.find(s => s.id === 'layering')
-  if (layering && cfg.layers.length) layering.options = { layers: cfg.layers }
-  // Legacy `contracts` globs only marked contract-touching diffs; frozen contract files come from `behavioral.files` alone.
-  // A legacy continuous contract cadence asked for in-session checks on every model.
-  if (cfg.behavioral?.cadence === 'continuous') for (const k of Object.keys(r.policy)) r.policy[k] = 'continuous'
-  if (cfg.behavioral) r.contracts = { files: [...cfg.behavioral.files], covers: [], validate: cfg.behavioral.validate ?? '', run: cfg.behavioral.run ?? '' }
-  r.paths = { tests: [...cfg.tests], testSupport: [...cfg.testSupport], fixtures: [...cfg.fixtures], ignore: [...cfg.ignore] }
-  return r
-}
-
 export function isRegistryShape(text: string): boolean {
   try {
     const v: unknown = JSON.parse(text)
@@ -263,46 +229,12 @@ export function isRegistryShape(text: string): boolean {
   } catch { return false }
 }
 
-export function loadRegistry(text: string): { registry: Registry; errors: string[]; legacy: boolean } {
-  if (!text.trim() || isRegistryShape(text)) return { ...parseRegistry(text), legacy: false }
-  const { config, errors } = parseConfig(text)
-  return { registry: fromLegacy(config), errors, legacy: true }
-}
-
-// ---------- the SensorConfig view (step 2: existing checks read a registry through this) ----------
-
-export function registryConfig(r: Registry): { config: SensorConfig; errors: string[] } {
-  const live = r.sensors.filter(s => s.enabled && s.cmd && s.cadence !== 'nightly')
-  const whole = (s: RegistrySensor): string => commandFor(s, null) ?? ''
-  const unit = live.find(s => s.id === 'unit')
-  const size = r.sensors.find(s => s.id === 'size')?.options
-  const layers = r.sensors.find(s => s.id === 'layering')?.options?.layers
-  const { validate, run, files } = r.contracts
-  const view: Record<string, unknown> = {
-    fast: Object.fromEntries(live.filter(s => s.cadence === 'edit' || s.cadence === 'turn').map(s => [s.id, whole(s)])),
-    full: Object.fromEntries(live.map(s => [s.id, whole(s)])),
-    tests: r.paths.tests, testSupport: r.paths.testSupport, fixtures: r.paths.fixtures, ignore: r.paths.ignore,
-    contracts: files,
-    knownRed: r.knownRed.flatMap(id => [`fast.${id}`, `full.${id}`]),
-  }
-  if (size) view.limits = size
-  if (layers !== undefined) view.layers = layers
-  if (unit) view.levels = { unit: whole(unit), integration: whole(unit), acceptance: whole(unit), api: whole(unit) }
-  if (validate || run) view.behavioral = { ...(validate ? { validate } : {}), ...(run ? { run } : {}), files: files.length ? files : ['.rig/contracts/**'], cadence: 'final' }
-  const { config, errors } = parseConfig(JSON.stringify(view))
-  const builtins = r.sensors.filter(s => s.builtin)
-  config.advisory = live.filter(s => !s.blocks).flatMap(s => [`fast.${s.id}`, `full.${s.id}`])
-  config.builtins = { off: builtins.filter(s => !s.enabled).map(s => s.id), soft: builtins.filter(s => s.enabled && !s.blocks).map(s => s.id) }
-  return { config, errors: errors.map(e => `sensors: ${e}`) }
-}
-
-// Known-red command keys (fast.<name>, full.<name>, <scope>:fast.<name>) into either shape: a registry keeps sensor ids.
+// Known-red sensor ids, added and removed, keeping the rest of the file as it is.
 export function updateKnownRed(text: string, add: string[], remove: string[]): string {
   const raw = JSON.parse(text) as Record<string, unknown>
-  const key = (k: string): string => (Array.isArray(raw.sensors) ? k.replace(/^(?:[^:]*:)?(?:fast|full)\./, '') : k)
-  const drop = new Set(remove.map(key))
+  const drop = new Set(remove)
   const now = (isStringList(raw.knownRed) ? raw.knownRed : []).filter(k => !drop.has(k))
-  for (const k of add.map(key)) if (!now.includes(k)) now.push(k)
+  for (const k of add) if (!now.includes(k)) now.push(k)
   raw.knownRed = now
   return JSON.stringify(raw, null, 2) + '\n'
 }
@@ -315,9 +247,9 @@ const LIMIT_DEFAULTS: Record<string, number> = { fileLines: 400, diffLines: 500,
 // What an edit loosens: a sensor removed, disabled, made advisory, re-commanded or moved later; wider ignores; fewer
 // test globs; new known red; a family moved to "final"; raised size limits; lost contract files or commands; a gate off.
 export function weakensRegistry(beforeText: string, afterText: string): string[] {
-  const now = loadRegistry(afterText)
+  const now = parseRegistry(afterText)
   if (now.errors.some(e => /does not parse|must be a JSON object|not valid JSON/.test(e))) return ['sensors.json no longer parses']
-  const b = loadRegistry(beforeText).registry
+  const b = parseRegistry(beforeText).registry
   const a = now.registry
   const out: string[] = []
   for (const s of b.sensors) {

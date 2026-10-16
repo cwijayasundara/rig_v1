@@ -111,66 +111,6 @@ test('{files} is shell-quoted, removed for whole-repo runs, and an empty list sk
   assert.equal(commandFor({ id: 'secrets', builtin: true, cadence: 'edit', blocks: true, guide: 'g', enabled: true }, null), null)
 })
 
-import { loadRegistry, fromLegacy, isRegistryShape } from './registry.ts'
-import { parseConfig } from './model.ts'
-
-test('a legacy sensors.json loads with its commands, contracts and paths', () => {
-  const legacy = {
-    fast: { 'unit tests': 'npm test' }, full: { e2e: 'npm run e2e' },
-    quality: { lint: { cmd: 'eslint . -f unix', count: 'lines' } },
-    behavioral: { validate: 'v', run: 'r', files: ['api/**'], cadence: 'final' },
-    knownRed: ['full.e2e'], tests: ['**/*.t.js'], limits: { fileLines: 300 },
-    layers: [{ from: 'src/ui/**', mustNotImport: ['src/db/**'], why: 'ui talks to services' }],
-  }
-  const { registry, errors, legacy: isLegacy } = loadRegistry(JSON.stringify(legacy))
-  assert.deepEqual(errors, [])
-  assert.equal(isLegacy, true)
-  const by = (id: string) => registry.sensors.find(s => s.id === id)
-  assert.deepEqual([by('fast-unit-tests')?.cmd, by('fast-unit-tests')?.cadence, by('fast-unit-tests')?.blocks], ['npm test', 'turn', true])
-  assert.deepEqual([by('full-e2e')?.cadence, by('full-e2e')?.blocks], ['commit', false])
-  assert.deepEqual([by('quality-lint')?.cmd, by('quality-lint')?.count], ['eslint . -f unix', 'lines'])
-  assert.deepEqual(registry.contracts, { files: ['api/**'], covers: [], validate: 'v', run: 'r' })
-  assert.deepEqual(registry.paths.tests, ['**/*.t.js'])
-  assert.equal((by('size')?.options as { fileLines?: number } | undefined)?.fileLines, 300)
-  assert.equal(((by('layering')?.options as { layers?: unknown[] } | undefined)?.layers ?? []).length, 1)
-  assert.ok(registry.sensors.every(s => s.guide.trim().length > 0))
-})
-
-test('legacy config errors are passed through, not thrown', () => {
-  const { errors, legacy } = loadRegistry(JSON.stringify({ fast: 'oops' }))
-  assert.equal(legacy, true)
-  assert.match(errors.join(), /fast must map names to command strings/)
-})
-
-test('a file with a sensors list is read as a registry', () => {
-  assert.equal(isRegistryShape(JSON.stringify({ sensors: [] })), true)
-  assert.equal(isRegistryShape(JSON.stringify({ fast: {} })), false)
-  assert.equal(isRegistryShape('{'), false)
-  assert.equal(loadRegistry(JSON.stringify({ sensors: [] })).legacy, false)
-  assert.equal(loadRegistry('').legacy, false)
-})
-
-test('an empty legacy config gives only the built-ins', () => {
-  assert.deepEqual(fromLegacy(parseConfig('').config).sensors.filter(s => !s.builtin), [])
-})
-
-test('legacy knownRed entries use the prefix.name key, so only that command stops blocking', () => {
-  const { registry } = loadRegistry(JSON.stringify({ fast: { test: 'npm test', lint: 'eslint .' }, knownRed: ['fast.test'] }))
-  assert.equal(registry.sensors.find(s => s.id === 'fast-test')?.blocks, false)
-  assert.equal(registry.sensors.find(s => s.id === 'fast-lint')?.blocks, true)
-})
-
-test('legacy contract globs are not frozen; only behavioral.files become contract files', () => {
-  assert.deepEqual(loadRegistry(JSON.stringify({ fast: { t: 'x' } })).registry.contracts, { files: [], covers: [], validate: '', run: '' })
-  assert.deepEqual(loadRegistry(JSON.stringify({ contracts: ['api/**'] })).registry.contracts.files, [])
-})
-
-test('legacy names that kebab to the same id get distinct ids', () => {
-  const { registry, errors } = loadRegistry(JSON.stringify({ fast: { 'a b': 'x', 'a-b': 'y' } }))
-  assert.deepEqual(errors, [])
-  const ids = registry.sensors.filter(s => !s.builtin).map(s => s.id)
-  assert.deepEqual(ids, ['fast-a-b', 'fast-a-b-2'])
-})
 
 test('a file name starting with a dash is passed as a path, not a flag', () => {
   const s = cmd('lint', 'edit', 'eslint {files}')
@@ -183,54 +123,10 @@ test('a whole-repo run passes "." for {files}, so tools that need a path still g
   assert.equal(commandFor(cmd('lint', 'edit', 'eslint --files={files} --quiet'), ['a.ts']), 'eslint --files=a.ts --quiet')
 })
 
-test('a legacy continuous contract cadence makes every model continuous', () => {
-  const b = { behavioral: { run: 'r', cadence: 'continuous' } }
-  const { registry } = loadRegistry(JSON.stringify(b))
-  assert.equal(policyMode(registry, 'claude-opus-5-5'), 'continuous')
-  assert.equal(policyMode(loadRegistry(JSON.stringify({ behavioral: { run: 'r', cadence: 'final' } })).registry, 'claude-opus-5-5'), 'final')
-})
 
-import { registryConfig, updateKnownRed } from './registry.ts'
-
-const regOf = (v: unknown) => parseRegistry(JSON.stringify(v)).registry
-
-test('the config view maps edit and turn sensors to fast, every live sensor to full, and skips nightly and disabled ones', () => {
-  const r = regOf({ sensors: [cmd('lint', 'edit', 'eslint {files}'), cmd('unit', 'turn', 'make test'), cmd('arch', 'commit', 'make arch'), cmd('mut', 'nightly', 'make mut'), { ...cmd('off', 'turn', 'x'), enabled: false }] })
-  const { config, errors } = registryConfig(r)
-  assert.deepEqual(errors, [])
-  assert.deepEqual(config.fast, { lint: 'eslint .', unit: 'make test' })
-  assert.deepEqual(config.full, { lint: 'eslint .', unit: 'make test', arch: 'make arch' })
-  assert.deepEqual(config.levels, { unit: 'make test', integration: 'make test', acceptance: 'make test', api: 'make test' })
-})
-
-test('knownRed ids become known-red keys and advisory sensors advisory keys; paths, limits, layers and contracts carry over', () => {
-  const r = regOf({
-    sensors: [{ ...cmd('dup', 'commit', 'jscpd .'), blocks: false }, cmd('unit', 'turn', 'make test'),
-      { id: 'size', builtin: true, options: { fileLines: 300 } },
-      { id: 'layering', builtin: true, options: { layers: [{ from: 'src/ui/**', mustNotImport: ['src/db/**'], why: 'ui uses services' }] } }],
-    knownRed: ['unit'], paths: { tests: ['**/*.t.js'] },
-    contracts: { files: ['api/**'], validate: 'v', run: 'r' },
-  })
-  const { config, errors } = registryConfig(r)
-  assert.deepEqual(errors, [])
-  assert.deepEqual([...config.knownRed].sort(), ['fast.unit', 'full.unit'])
-  assert.deepEqual([...(config.advisory ?? [])].sort(), ['fast.dup', 'full.dup'])
-  assert.deepEqual(config.tests, ['**/*.t.js'])
-  assert.equal(config.limits.fileLines, 300)
-  assert.equal(config.layers.length, 1)
-  assert.deepEqual(config.behavioral, { validate: 'v', run: 'r', files: ['api/**'], cadence: 'final' })
-  assert.deepEqual(config.contracts, ['api/**'])
-})
-
-test('disabled and non-blocking built-ins are listed for the checker', () => {
-  const { config } = registryConfig(regOf({ sensors: [{ id: 'test-tamper', builtin: true, enabled: false }] }))
-  assert.deepEqual(config.builtins?.off, ['test-tamper'])
-  assert.ok(config.builtins?.soft.includes('size') && config.builtins.soft.includes('model-role'))
-})
 
 test('Markdown and lock files are not source by default; the node packs also ignore package-lock.json', () => {
   assert.deepEqual(defaultRegistry().paths.ignore, ['**/*.md', '**/*.lock'])
-  assert.ok(registryConfig(defaultRegistry()).config.ignore.includes('**/*.md'))
 })
 
 test('secrets and harness-tamper must block', () => {
@@ -242,14 +138,6 @@ test('knownRed must name command sensors', () => {
   assert.deepEqual(parseRegistry(JSON.stringify({ sensors: [cmd('unit', 'turn')], knownRed: ['unit'] })).errors, [])
   assert.match(parseRegistry(JSON.stringify({ sensors: [], knownRed: ['nope'] })).errors.join(), /knownRed: "nope" is not a command sensor/)
   assert.match(parseRegistry(JSON.stringify({ sensors: [], knownRed: 'x' })).errors.join(), /knownRed must be a list of sensor ids/)
-})
-
-test('updateKnownRed writes command keys in a legacy file and sensor ids in a registry', () => {
-  const legacy = JSON.parse(updateKnownRed(JSON.stringify({ fast: { a: 'x' }, knownRed: ['fast.b'] }), ['fast.a'], ['fast.b']))
-  assert.deepEqual(legacy.knownRed, ['fast.a'])
-  const reg = JSON.parse(updateKnownRed(JSON.stringify({ sensors: [], knownRed: ['b'] }), ['fast.a', 'full.a', 'web:fast.c'], ['full.b']))
-  assert.deepEqual(reg.knownRed, ['a', 'c'])
-  assert.deepEqual(Object.keys(reg), ['sensors', 'knownRed'])
 })
 
 import { weakensRegistry } from './registry.ts'

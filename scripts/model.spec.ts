@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseUnifiedDiff, globToRegex, matchesAny, parseConfig, parseRules, formatFindings, warnRow, printable, DEFAULT_CONFIG, type Finding } from './model.ts'
+import { parseUnifiedDiff, globToRegex, matchesAny, parseRules, formatFindings, warnRow, printable, type Finding } from './model.ts'
 
 test('parses a modified file with added and removed line numbers', () => {
   const d = parseUnifiedDiff('diff --git a/src/a.js b/src/a.js\nindex 1..2 100644\n--- a/src/a.js\n+++ b/src/a.js\n@@ -3 +3,2 @@\n-old\n+new\n+more\n')
@@ -44,32 +44,6 @@ test('globs: ** spans directories without matching partial names', () => {
   assert.ok(matchesAny('../checkout-service/src/a.ts', ['../checkout-service/**']))
 })
 
-test('config: defaults, merging and validation errors', () => {
-  assert.deepEqual(parseConfig('').config, DEFAULT_CONFIG)
-  const ok = parseConfig(JSON.stringify({ fast: { test: 'npm test' }, limits: { diffLines: 300 } }))
-  assert.deepEqual([ok.errors, ok.config.fast.test, ok.config.limits.diffLines, ok.config.limits.fileLines], [[], 'npm test', 300, 400])
-  assert.match(parseConfig('{nope').errors[0] ?? '', /not valid JSON/)
-  assert.match(parseConfig(JSON.stringify({ layers: [{ from: 'src/**', mustNotImport: ['x'] }] })).errors[0] ?? '', /needs a why/)
-  assert.match(parseConfig(JSON.stringify({ limit: {} })).errors[0] ?? '', /unknown key "limit"/)
-  assert.match(parseConfig(JSON.stringify({ limits: { fileLines: -1 } })).errors[0] ?? '', /positive/)
-})
-
-test('config: behavioral block parses with defaults and rejects bad shapes', () => {
-  const ok = parseConfig(JSON.stringify({ behavioral: { validate: 'v', run: 'r' } }))
-  assert.deepEqual(ok.errors, [])
-  assert.deepEqual(ok.config.behavioral, { validate: 'v', run: 'r', files: ['.rig/contracts/**'], cadence: 'final' })
-  const partial = parseConfig(JSON.stringify({ behavioral: { run: 'r', files: ['spec/**'], cadence: 'continuous' } }))
-  assert.deepEqual(partial.config.behavioral, { run: 'r', files: ['spec/**'], cadence: 'continuous' })
-  assert.equal(parseConfig('').config.behavioral, null)
-  assert.match(parseConfig(JSON.stringify({ behavioral: {} })).errors[0] ?? '', /behavioral needs at least one of validate or run/)
-  assert.match(parseConfig(JSON.stringify({ behavioral: { run: 'r', cadence: 'often' } })).errors[0] ?? '', /behavioral\.cadence/)
-  assert.match(parseConfig(JSON.stringify({ behavioral: { run: 3 } })).errors[0] ?? '', /behavioral\.run/)
-  assert.match(parseConfig(JSON.stringify({ behavioral: { run: 'r', files: 'x' } })).errors[0] ?? '', /behavioral\.files/)
-  const mixed = parseConfig(JSON.stringify({ limits: { fileLines: -1 }, behavioral: { run: 'r' } }))
-  assert.match(mixed.errors[0] ?? '', /limits/)
-  assert.deepEqual(mixed.config.behavioral, { run: 'r', files: ['.rig/contracts/**'], cadence: 'final' }, 'an unrelated config error must not silently drop the behavioral block')
-})
-
 test('rules: why is required and patterns must compile', () => {
   const good = parseRules(JSON.stringify([{ id: 'no-print', pattern: 'print\\(', message: 'use the logger', why: 'stdout is the protocol', action: 'block' }]))
   assert.deepEqual([good.errors, good.rules.length], [[], 1])
@@ -100,11 +74,6 @@ test('findings: multi-line messages count physical lines toward the cap, fix on 
   assert.match(text, /l1\.0 → fixit/)
 })
 
-test('fixtures must be a list of strings', () => {
-  assert.match(parseConfig(JSON.stringify({ fixtures: 'x' })).errors[0] ?? '', /fixtures must be a list of strings/)
-  assert.deepEqual(parseConfig(JSON.stringify({ fixtures: ['x/**'] })).config.fixtures, ['x/**'])
-})
-
 test('every sensor name emitted by the scripts is waivable', async () => {
   const fs = await import('node:fs')
   const path = await import('node:path')
@@ -132,59 +101,6 @@ test('maskSecrets masks a whole private-key block through its END line', async (
   assert.equal(maskSecrets(['before', ...pem, 'after'].join('\n')), 'before\n[masked by sdlc]\n[masked by sdlc]\n[masked by sdlc]\nafter')
 })
 
-test('config build mode is native by default and only native or sdd', async () => {
-  const { parseConfig } = await import('./model.ts')
-  assert.equal(parseConfig('{}').config.build, 'native')
-  assert.equal(parseConfig('{"build":"sdd"}').config.build, 'sdd')
-  assert.deepEqual(parseConfig('{"build":"fast"}').errors, ['build must be "native" or "sdd"'])
-})
-
-test('sensors.json v0.4 keys parse, with defaults when absent', () => {
-  const d = parseConfig('{}').config
-  assert.deepEqual(d.gates, { S: [], M: ['design'], L: ['spec', 'plan', 'design'], greenfield: ['spec', 'plan', 'design'] })
-  assert.deepEqual(d.ratchet, { rounds: { build: 2, test: 2, sensors: 1, 'pr-review': 1 }, usd: { build: 6, test: 2, sensors: 2, 'pr-review': 2 } })
-  assert.deepEqual(d.value, { rate: 100, hours: { S: 2, M: 8, L: 24 } })
-  const { config, errors } = parseConfig(JSON.stringify({
-    gates: { M: ['plan'] },
-    levels: { unit: 'npm test', api: 'npm run test:api' },
-    quality: { lint: { cmd: 'npx eslint .', count: 'lines' }, deps: { cmd: 'npm audit --json', count: 'json:metadata.vulnerabilities.total' } },
-    ratchet: { build: 3, usd: { build: 10 } },
-    value: { rate: 120, hours: { L: 40 } },
-  }))
-  assert.deepEqual(errors, [])
-  assert.deepEqual(config.gates.M, ['plan'])
-  assert.deepEqual(config.gates.L, ['spec', 'plan', 'design'], 'unnamed tiers keep defaults')
-  assert.equal(config.levels.api, 'npm run test:api')
-  assert.deepEqual(config.quality.deps, { cmd: 'npm audit --json', count: 'json:metadata.vulnerabilities.total' })
-  assert.equal(config.ratchet.rounds.build, 3)
-  assert.equal(config.ratchet.rounds.test, 2)
-  assert.equal(config.ratchet.usd.build, 10)
-  assert.equal(config.value.rate, 120)
-  assert.equal(config.value.hours.L, 40)
-  assert.equal(config.value.hours.S, 2)
-})
-
-test('sensors.json v0.4 keys reject bad shapes', () => {
-  const bad = (o: unknown) => parseConfig(JSON.stringify(o)).errors.join('\n')
-  assert.match(bad({ gates: { M: ['deploy'] } }), /gates\.M must list spec, plan and\/or design/)
-  assert.match(bad({ levels: { smoke: 'x' } }), /levels: unknown level "smoke"/)
-  assert.match(bad({ quality: { lint: 'npx eslint .' } }), /quality\.lint must be \{ cmd, count \}/)
-  assert.match(bad({ quality: { lint: { cmd: 'x', count: 'words' } } }), /quality\.lint\.count must be exit, lines or json:<path>/)
-  assert.match(bad({ ratchet: { build: 0 } }), /ratchet\.build must be a positive integer/)
-  assert.match(bad({ value: { rate: -1 } }), /value\.rate must be a non-negative number/)
-})
-
-test('v0.4 keys ignore prototype names and reject blank quality commands', () => {
-  const errs = (t: string) => parseConfig(t).errors.join('\n')
-  assert.match(errs('{"gates":{"toString":[]}}'), /gates: unknown tier "toString"/)
-  const r = parseConfig('{"value":{"hours":{"__proto__":1}}}')
-  assert.match(r.errors.join('\n'), /value\.hours: unknown tier "__proto__"/)
-  assert.deepEqual(r.config.value.hours, { S: 2, M: 8, L: 24 })
-  assert.equal(({} as Record<string, unknown>).toString !== undefined, true)
-  assert.match(errs('{"quality":{"lint":{"cmd":"  ","count":"exit"}}}'), /quality\.lint must be \{ cmd, count \}/)
-  assert.match(errs('{"quality":{"lint":{"cmd":"","count":"exit"}}}'), /quality\.lint must be \{ cmd, count \}/)
-})
-
 const SPOOF = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/
 test('printable strips control, bidi-override and zero-width characters', () => {
   assert.equal(printable('a\x1b[31mb\u202Ec\u2066d\u200Be\u200Ff\u2069g\u202Ah'), 'a [31mb c d e f g h')
@@ -199,71 +115,4 @@ test('warn rows and block rows never carry control or bidi characters from file 
   assert.doesNotMatch(text, SPOOF)
   assert.equal(text.split('\n').length, 4, 'a block message keeps its line breaks')
   assert.match(text, /RED/)
-})
-
-test('v0.6 keys default and parse: points, idleGapMs, scopeLimit, ci, affected, sparseBase', () => {
-  const d = parseConfig('').config
-  assert.deepEqual(d.points, { S: 5, M: 7, L: 11 })
-  assert.equal(d.idleGapMs, 900_000)
-  assert.equal(d.scopeLimit, 3)
-  assert.deepEqual(d.ci, { scope: 'affected' })
-  assert.equal(d.affected, '')
-  assert.equal(d.sparseBase, false)
-  assert.deepEqual(d.scopes, {})
-  const c = parseConfig(JSON.stringify({ points: { S: 2, L: 13 }, idleGapMs: 60000, scopeLimit: 2, ci: { scope: 'all' }, affected: 'echo api', sparseBase: true }))
-  assert.deepEqual(c.errors, [])
-  assert.deepEqual(c.config.points, { S: 2, M: 7, L: 13 })
-  assert.equal(c.config.idleGapMs, 60000)
-  assert.equal(c.config.scopeLimit, 2)
-  assert.equal(c.config.ci.scope, 'all')
-  assert.equal(c.config.affected, 'echo api')
-  assert.equal(c.config.sparseBase, true)
-})
-
-test('v0.6 keys reject bad values with a precise error', () => {
-  const errs = (cfg: object): string[] => parseConfig(JSON.stringify(cfg)).errors
-  assert.match(errs({ points: { S: 0 } }).join(), /points\.S must be a positive integer/)
-  assert.match(errs({ points: { S: 1.5 } }).join(), /points\.S must be a positive integer/)
-  assert.match(errs({ points: { XL: 3 } }).join(), /points: unknown tier "XL"/)
-  assert.match(errs({ idleGapMs: -1 }).join(), /idleGapMs must be a positive integer/)
-  assert.match(errs({ scopeLimit: 0 }).join(), /scopeLimit must be a positive integer/)
-  assert.match(errs({ ci: { scope: 'some' } }).join(), /ci\.scope must be "affected" or "all"/)
-  assert.match(errs({ sparseBase: 'yes' }).join(), /sparseBase must be true or false/)
-})
-
-test('scopes parse: name, root, command maps, deps; every mistake is named', () => {
-  const ok = parseConfig(JSON.stringify({ scopes: {
-    'packages/api/**': { name: 'api', root: 'packages/api', fast: { test: 'npm test' }, quality: { lint: { cmd: 'npx eslint .', count: 'lines' } }, deps: ['packages/shared/**'] },
-    'packages/shared/**': { name: 'shared', root: 'packages/shared', full: { test: 'npm test' } },
-  } }))
-  assert.deepEqual(ok.errors, [])
-  assert.equal(ok.config.scopes['packages/api/**']?.name, 'api')
-  assert.deepEqual(ok.config.scopes['packages/api/**']?.deps, ['packages/shared/**'])
-  const errs = (scopes: object): string => parseConfig(JSON.stringify({ scopes })).errors.join('; ')
-  assert.match(errs({ 'a/**': { name: 'a', root: '../escape' } }), /root must be a relative path inside the repo/)
-  assert.match(errs({ 'a/**': { name: 'a', root: '/abs' } }), /root must be a relative path inside the repo/)
-  assert.match(errs({ 'a/**': { root: 'a' } }), /name must be a non-empty string/)
-  assert.match(errs({ 'a/**': { name: 'x', root: 'a' }, 'b/**': { name: 'x', root: 'b' } }), /scope name "x" is used twice/)
-  assert.match(errs({ 'a/**': { name: 'a', root: 'a', deps: ['nope/**'] } }), /deps entry "nope\/\*\*" is not a declared scope glob/)
-  assert.match(errs({ 'a/**': { name: 'a', root: 'a', levels: { unit: 'x' } } }), /levels is not supported yet/)
-  assert.match(errs({ 'a/**': { name: 'a', root: 'a', fast: 'npm test' } }), /fast must map names to command strings/)
-  assert.match(errs({ 'a/**': { name: 'a', root: 'a', bogus: 1 } }), /unknown key "bogus"/)
-})
-
-test('evals settings: defaults, overrides and precise errors', () => {
-  assert.deepEqual(DEFAULT_CONFIG.evals, { minPass: 0.9, maxErrors: 2, maxTurns: 30, timeoutMs: 600_000 })
-  const ok = parseConfig(JSON.stringify({ evals: { minPass: 0.8, maxErrors: 0, maxTurns: 10, timeoutMs: 60000 } }))
-  assert.deepEqual(ok.errors, [])
-  assert.deepEqual(ok.config.evals, { minPass: 0.8, maxErrors: 0, maxTurns: 10, timeoutMs: 60000 })
-  const errs = (evals: unknown): string => parseConfig(JSON.stringify({ evals })).errors.join()
-  assert.match(errs({ minPass: 1.5 }), /evals\.minPass must be a number from 0 to 1/)
-  assert.match(errs({ maxTurns: 0 }), /evals\.maxTurns must be a positive integer/)
-  assert.match(errs({ maxErrors: -1 }), /evals\.maxErrors must be a whole number/)
-  assert.match(errs({ bogus: 1 }), /evals: unknown key "bogus"/)
-  assert.match(errs('yes'), /evals must be \{ minPass, maxErrors, maxTurns, timeoutMs \}/)
-})
-
-test('routing in sensors.json is accepted and ignored since step 4b', () => {
-  assert.deepEqual(parseConfig(JSON.stringify({ routing: { implementer: { S: 'gpt' } } })).errors, [])
-  assert.deepEqual(parseConfig(JSON.stringify({ routing: { implementer: { S: 'sonnet:high' } } })).config.routing, {})
 })

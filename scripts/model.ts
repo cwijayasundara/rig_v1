@@ -1,7 +1,5 @@
 // The pure data model for sensors: diffs, globs, config, rules and findings. No fs, git or process access.
 import type { Paths } from './registry.ts'
-import { parseV4, parseV6 } from './configparse.ts'
-export type RoutingOverride = Record<string, unknown> // step 4b removed routing; 4c removes the key
 export type Line = { n: number; text: string }
 export type FileStatus = 'A' | 'M' | 'D' | 'R'
 export type FileDiff = { file: string; from?: string; status: FileStatus; added: Line[]; removed: Line[]; binary?: true; oversize?: true }
@@ -13,92 +11,8 @@ export const SENSOR_NAMES = [
 ]
 
 export type Finding = { sensor: string; severity: Severity; file?: string; line?: number; message: string; fix: string; labels?: string[] }
-export type Consumer = { name: string; path: string; repo?: string; test?: string }
 export type Layer = { from: string; mustNotImport: string[]; why: string }
 export type Rule = { id: string; pattern: string; paths?: string[]; message: string; why: string; action: Severity }
-export type GateKey = 'S' | 'M' | 'L' | 'greenfield'
-export type Level = 'unit' | 'integration' | 'acceptance' | 'api'
-export type QualityCategory = 'lint' | 'types' | 'deps' | 'coupling' | 'complexity' | 'security' | 'perf'
-export type QualityCmd = { cmd: string; count: string }
-  export type Band = { id: string; query: string; count?: string; window: number; step: number; minSd: number; tools: string; routes: string[] }
-  export type Scope = { name: string; root: string; fast?: Record<string, string>; full?: Record<string, string>; quality?: Partial<Record<QualityCategory, QualityCmd>>; deps?: string[] }
-export type RatchetNode = 'build' | 'test' | 'sensors' | 'pr-review'
-export const LEVELS: Level[] = ['unit', 'integration', 'acceptance', 'api']
-export const QUALITY_CATEGORIES: QualityCategory[] = ['lint', 'types', 'deps', 'coupling', 'complexity', 'security', 'perf']
-export const RATCHET_NODES: RatchetNode[] = ['build', 'test', 'sensors', 'pr-review']
-// Soft budgets (spend governance spec §5). No budget set: spend shows, nothing warns or downshifts.
-export type BudgetConfig = { teamMonthlyUsd: number | null; changeUsd: Partial<Record<'S' | 'M' | 'L', number>>; warnAt: [number, number, number]; downshift: boolean }
-// Opt-in behavioural harness (lite spec 2026-10-15): the repo declares its own contract commands; rig runs and freezes them.
-export type BehavioralConfig = { validate?: string; run?: string; files: string[]; cadence: 'final' | 'continuous' }
-export const DEFAULT_BUDGET: BudgetConfig = { teamMonthlyUsd: null, changeUsd: {}, warnAt: [50, 80, 100], downshift: true }
-export type SensorConfig = {
-  fast: Record<string, string>
-  full: Record<string, string>
-  tests: string[]
-  testSupport: string[]
-  fixtures: string[]
-  ignore: string[]
-  contracts: string[]
-  consumers: Consumer[]
-  layers: Layer[]
-  limits: { fileLines: number; diffLines: number; lineChars: number }
-  knownRed: string[]
-  build: 'native' | 'sdd'
-  githooks: { prePush: 'ship' | 'off'; budgetMs: number }
-  gates: Record<GateKey, ('spec' | 'plan' | 'design')[]>
-  levels: Partial<Record<Level, string>>
-  quality: Partial<Record<QualityCategory, QualityCmd>>
-  ratchet: { rounds: Record<RatchetNode, number>; usd: Record<RatchetNode, number> }
-  value: { rate: number; hours: Record<'S' | 'M' | 'L', number> }
-  points: Record<'S' | 'M' | 'L', number>
-  idleGapMs: number
-  evals: { minPass: number; maxErrors: number; maxTurns: number; timeoutMs: number }
-  routing: RoutingOverride
-  bands: Band[]
-  scopes: Record<string, Scope>
-  scopeLimit: number
-  ci: { scope: 'affected' | 'all' }
-  behavioral: BehavioralConfig | null
-  affected: string
-  sparseBase: boolean
-  budget: BudgetConfig
-  // Set only by registryConfig (registry.ts): built-ins a registry turned off, and built-ins it made advisory.
-  builtins?: { off: string[]; soft: string[] }
-  advisory?: string[] // command keys (fast.<id>, full.<id>) of registry sensors with blocks: false: they warn, never block
-}
-
-export const DEFAULT_CONFIG: SensorConfig = {
-  fast: {},
-  full: {},
-  tests: ['**/test/**', '**/tests/**', '**/__tests__/**', '**/*.test.*', '**/*.spec.*', '**/*_test.*', '**/test_*.py', '**/*Test.java', '**/*_spec.rb'],
-  testSupport: ['**/testdata/**', '**/fixtures/**', '**/__fixtures__/**', '**/conftest.py', '**/testing/**', '**/test-helpers/**', '**/test_helpers/**'],
-  fixtures: [],
-  ignore: ['**/*.md', '**/*.lock', '**/package-lock.json'],
-  contracts: ['api/**', 'schema/**', 'migrations/**', '**/*.proto', '**/openapi.*'],
-  consumers: [],
-  layers: [],
-  limits: { fileLines: 400, diffLines: 500, lineChars: 160 },
-  knownRed: [],
-  build: 'native',
-  githooks: { prePush: 'ship', budgetMs: 300_000 },
-  gates: { S: [], M: ['design'], L: ['spec', 'plan', 'design'], greenfield: ['spec', 'plan', 'design'] },
-  levels: {},
-  quality: {},
-  ratchet: { rounds: { build: 2, test: 2, sensors: 1, 'pr-review': 1 }, usd: { build: 6, test: 2, sensors: 2, 'pr-review': 2 } },
-  value: { rate: 100, hours: { S: 2, M: 8, L: 24 } },
-  points: { S: 5, M: 7, L: 11 },
-  idleGapMs: 900_000,
-  evals: { minPass: 0.9, maxErrors: 2, maxTurns: 30, timeoutMs: 600_000 },
-  routing: {},
-  bands: [],
-  scopes: {},
-  scopeLimit: 3,
-  ci: { scope: 'affected' },
-  behavioral: null,
-  affected: '',
-  sparseBase: false,
-  budget: structuredClone(DEFAULT_BUDGET),
-}
 
 export const SECRET_PATTERNS: [string, RegExp][] = [
   ['AWS access key', /AKIA[0-9A-Z]{16}/],
@@ -136,25 +50,6 @@ export function openQuestions(text: string): string[] {
   const listed = section.split('\n').map(l => l.replace(/^\s*[-*]\s*/, '').trim()).filter(l => l && !/^none\.?$/i.test(l))
   const prose = text.split('\n').filter(l => /\bQ\d+\b.*\b(?:still open|is open|unresolved)\b/i.test(l)).map(l => l.trim())
   return [...new Set([...listed, ...prose])]
-}
-
-// Concerns a spec, plan or design flags against a policy skill: bullets under `## Concerns` other than "none" without a
-// `resolved:`. Approval needs none. A document with no Concerns section has none, so changes begun before it keep working.
-export function unresolvedConcerns(text: string): string[] {
-  // Any `## Concerns…` or `### Concerns…` heading opens the section (a variant must not fail open); it ends at the next heading of its level or above.
-  const t = text.replace(/\r\n?/g, '\n')
-  const head = /^(#{2,3})\s+Concerns\b[^\n]*\n/m.exec(t)
-  const rest = head ? t.slice(head.index + head[0].length) : ''
-  const section = rest.slice(0, new RegExp(`^#{1,${head?.[1]?.length ?? 2}}\\s`, 'm').exec(rest)?.index ?? rest.length)
-  const items: { text: string; body: string; indent: number }[] = []
-  for (const l of section.split('\n')) {
-    const m = /^(\s*)(?:[-*]|\d+[.)])\s+(.*?)\s*$/.exec(l)
-    const indent = (m?.[1] ?? /^\s*/.exec(l)?.[0] ?? '').length
-    const cur = items[items.length - 1]
-    if (m && (!cur || indent <= cur.indent || /\bowner:/i.test(m[2] ?? ''))) items.push({ text: m[2] ?? '', body: l, indent })
-    else if (cur && l.trim() && indent > cur.indent) cur.body += `\n${l}`
-  }
-  return items.filter(i => i.text && !/^none\.?$/i.test(i.text) && !/\bresolved:/i.test(i.body)).map(i => i.text)
 }
 
 // ---------- globs ----------
@@ -295,92 +190,6 @@ function parseJson(text: string, name: string): { value: unknown; error?: string
   } catch (err) {
     return { value: null, error: `${name} is not valid JSON: ${(err as Error).message}` }
   }
-}
-
-export function parseConfig(text: string): { config: SensorConfig; errors: string[] } {
-  const config: SensorConfig = structuredClone(DEFAULT_CONFIG)
-  if (!text.trim()) return { config, errors: [] }
-  const { value, error } = parseJson(text, 'sensors.json')
-  if (error) return { config, errors: [error] }
-  if (!isObject(value)) return { config, errors: ['sensors.json must be a JSON object'] }
-  const errors: string[] = []
-  for (const key of ['fast', 'full'] as const) {
-    if (!(key in value)) continue
-    if (isStringMap(value[key])) config[key] = value[key]
-    else errors.push(`${key} must map names to command strings`)
-  }
-  for (const key of ['tests', 'testSupport', 'fixtures', 'ignore', 'contracts', 'knownRed'] as const) {
-    if (!(key in value)) continue
-    if (isStringList(value[key])) config[key] = value[key]
-    else errors.push(`${key} must be a list of strings`)
-  }
-  if ('consumers' in value) {
-    const list = value.consumers
-    if (Array.isArray(list) && list.every(c => isObject(c) && typeof c.name === 'string' && typeof c.path === 'string')) config.consumers = list as Consumer[]
-    else errors.push('consumers must be a list of { name, path, repo?, test? }')
-  }
-  if ('layers' in value) {
-    const list = value.layers
-    const valid = (l: unknown): boolean => isObject(l) && typeof l.from === 'string' && isStringList(l.mustNotImport) && typeof l.why === 'string' && l.why.trim() !== ''
-    if (Array.isArray(list) && list.every(valid)) config.layers = list as Layer[]
-    else errors.push('layers must be a list of { from, mustNotImport: [...], why }, and every layer needs a why')
-  }
-  if ('limits' in value) {
-    const limits = isObject(value.limits) ? value.limits : {}
-    for (const k of ['fileLines', 'diffLines', 'lineChars'] as const) {
-      if (!(k in limits)) continue
-      const v = limits[k]
-      if (typeof v === 'number' && v > 0) config.limits[k] = v
-      else errors.push(`limits.${k} must be a positive number`)
-    }
-  }
-  if ('build' in value) {
-    if (value.build === 'native' || value.build === 'sdd') config.build = value.build
-    else errors.push('build must be "native" or "sdd"')
-  }
-  if ('githooks' in value) {
-    const g = isObject(value.githooks) ? value.githooks : null
-    if (!g) errors.push('githooks must be { prePush?: "ship" | "off", budgetMs?: number }')
-    else {
-      if ('prePush' in g) {
-        if (g.prePush === 'ship' || g.prePush === 'off') config.githooks.prePush = g.prePush
-        else errors.push('githooks.prePush must be "ship" or "off"')
-      }
-      if ('budgetMs' in g) {
-        if (typeof g.budgetMs === 'number' && g.budgetMs > 0) config.githooks.budgetMs = g.budgetMs
-        else errors.push('githooks.budgetMs must be a positive number')
-      }
-      for (const k of Object.keys(g)) if (k !== 'prePush' && k !== 'budgetMs') errors.push(`githooks: unknown key "${k}"`)
-    }
-  }
-  if ('behavioral' in value) {
-    const b = isObject(value.behavioral) ? value.behavioral : null
-    if (!b) errors.push('behavioral must be { validate?: string, run?: string, files?: [globs], cadence?: "final" | "continuous" }')
-    else {
-      const before = errors.length
-      const out: BehavioralConfig = { files: ['.rig/contracts/**'], cadence: 'final' }
-      for (const k of ['validate', 'run'] as const) {
-        if (!(k in b)) continue
-        if (typeof b[k] === 'string' && b[k].trim()) out[k] = b[k]
-        else errors.push(`behavioral.${k} must be a non-empty command string`)
-      }
-      if ('files' in b) {
-        if (isStringList(b.files) && b.files.length) out.files = b.files
-        else errors.push('behavioral.files must be a non-empty list of globs')
-      }
-      if ('cadence' in b) {
-        if (b.cadence === 'final' || b.cadence === 'continuous') out.cadence = b.cadence
-        else errors.push('behavioral.cadence must be "final" or "continuous"')
-      }
-      for (const k of Object.keys(b)) if (!['validate', 'run', 'files', 'cadence'].includes(k)) errors.push(`behavioral: unknown key "${k}"`)
-      if (!out.validate && !out.run && errors.length === before) errors.push('behavioral needs at least one of validate or run')
-      if (errors.length === before) config.behavioral = out
-    }
-  }
-  parseV4(value, config, errors)
-  parseV6(value, config, errors)
-  for (const k of Object.keys(value)) if (!(k in DEFAULT_CONFIG)) errors.push(`unknown key "${k}"`)
-  return { config, errors }
 }
 
 export function parseRules(text: string): { rules: Rule[]; errors: string[] } {

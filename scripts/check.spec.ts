@@ -440,7 +440,7 @@ test('at CI a harness-tamper waiver in the PR never waives, exact file or *; oth
   gitIn(repo, 'checkout', '-qb', 'pr')
   sdlc(repo, ['new', 'lvl', '--type', 'chore', '--tier', 'S'])
   write(repo, '.rig/changes/lvl/plan.md', '## Files\n- src/**\n')
-  write(repo, '.rig/sensors.json', JSON.stringify({ levels: { acceptance: 'node -e "0"' } }))
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [{ id: 'size', builtin: true, options: { diffLines: 9000 } }] })) // a weakening harness edit
   write(repo, 'src/app.js', 'export const a = 9 // eslint-disable-line\n')
   for (const file of ['*', '.rig/sensors.json']) {
     write(repo, '.rig/waivers.jsonl', waiver('harness-tamper', file))
