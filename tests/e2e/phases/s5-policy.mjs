@@ -2,13 +2,12 @@
 // continuous: every turn sensor runs at Stop. final: only secrets and harness-tamper run at Stop; the rest waits for commit.
 import crypto from 'node:crypto'
 import { Checks } from '../lib/checks.mjs'
+import { sensorOf } from '../lib/findings.mjs'
 
 const PROBE = 'policy-probe'
-// A command sensor's finding is filed as `commands` with its registry id leading the message ("unit failed (exit 1): …").
-const idOf = f => (f.sensor === 'commands' ? /^(\S+) (?:failed|not run)/.exec(f.message)?.[1] ?? 'commands' : f.sensor)
 const fired = sb => {
   const u = sb.read('.rig/unresolved.json')
-  return u ? [...new Set(JSON.parse(u).findings.map(idOf))].sort() : []
+  return u ? [...new Set(JSON.parse(u).findings.map(sensorOf))].sort() : []
 }
 
 // One turn: the session's model recorded at SessionStart, a prompt, the change, Stop. Returns the SessionStart context and the sensors that blocked.

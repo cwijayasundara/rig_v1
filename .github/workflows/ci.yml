@@ -34,6 +34,17 @@ jobs:
       - run: npm ci || npm install
       - run: npm run test:e2e:unit
       - run: npm run test:e2e:fast
+  e2e-stacks:
+    # Stack fixtures: each pack onboards a tiny repo and check --at commit blocks a broken edit on its core sensor.
+    # ubuntu-latest carries go, java with mvn, dotnet and cargo; a missing toolchain is skipped, not failed.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18'
+      - run: npm ci || npm install
+      - run: npm run test:e2e:stacks
   dogfood:
     if: false # off for now: the harness is not run on its own repo; to re-enable: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
