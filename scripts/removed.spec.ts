@@ -41,7 +41,7 @@ test('4a: a retired hook name from an old vendored settings file exits quietly',
 })
 
 test('4a: the plugin ships human-only approve and waive skills that run sdlc with SDLC_HUMAN=1', () => {
-  for (const [cmd, hint] of [['approve', '<slug>'], ['waive', '<sensor> <file|*> <reason>']] as const) {
+  for (const [cmd, hint] of [['approve', '<slug>'], ['waive', '<sensor-or-command-id> <file|*> <reason>']] as const) {
     const text = read(`skills/${cmd}/SKILL.md`)
     assert.match(text, /^disable-model-invocation: true$/m)
     assert.ok(text.includes(`argument-hint: ${hint}\n`), `${cmd} argument-hint`)
@@ -143,4 +143,11 @@ test('5b: the e2e stages and the stack runner are wired, and no shipped e2e text
     assert.doesNotMatch(fs.readFileSync(f, 'utf8'), /\bcharted\b|\bPRD\b|\boracle\b/i, f)
   }
   assert.match(fs.readFileSync('tests/e2e/run.mjs', 'utf8'), /'S5 policy': \d+/)
+})
+
+test('per-sensor ids: no shipped text or e2e helper still speaks of a commands sensor', () => {
+  assert.ok(!fs.existsSync('tests/e2e/lib/findings.mjs'), 'sensorOf is gone: findings carry their id')
+  for (const f of ['README.md', 'skills/waive/SKILL.md', 'tests/e2e/phases/s5-policy.mjs', 'tests/e2e/lib/stacks.mjs']) {
+    assert.doesNotMatch(fs.readFileSync(f, 'utf8'), /sensorOf|plus commands and config findings/, f)
+  }
 })

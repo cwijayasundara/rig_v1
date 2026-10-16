@@ -182,6 +182,7 @@ The three long guides in `guides/` stay as path-triggered, once-per-session inje
 Removed hooks: `SubagentStart`, `SubagentStop` (fed the UI only), `PostToolUseFailure` (skill-load fallback, not needed with 7 skills).
 
 **Feedback shape** (all cadences): sensor id, its guide sentence, the first 20 lines of output, the rerun command. Non-blocking warnings are re-offered once at the next prompt and then dropped.
+A command sensor's finding carries its registry id as its sensor name, so a waiver names one sensor. The ids `commands`, `config`, `contracts`, `unscanned`, `plan-gate`, `human-approval` and `sync` are reserved for harness findings.
 
 ## 8. Slim lifecycle
 

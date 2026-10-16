@@ -20,14 +20,6 @@ test('every pack the spec names has a fixture whose broken edit differs from its
   for (const s of STACKS) assert.notEqual(s.broken('x'), s.good('x'), s.stack)
 })
 
-import { sensorOf } from './findings.mjs'
-
-test('sensorOf() names a command finding by the registry id its message leads with', () => {
-  assert.equal(sensorOf({ sensor: 'commands', message: 'types failed (exit 101): Code must compile.' }), 'types')
-  assert.equal(sensorOf({ sensor: 'commands', message: 'unit not run: the 600 s budget ran out' }), 'unit')
-  assert.equal(sensorOf({ sensor: 'secrets', message: 'unit failed' }), 'secrets')
-})
-
 import { requiredStacks } from './stacks.mjs'
 
 test('final review: --require names the stacks a skip must fail; all means every pack; an unknown name is refused', () => {
