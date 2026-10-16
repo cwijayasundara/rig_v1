@@ -1,5 +1,5 @@
 // Hidden acceptance for the shop lane. Lives outside the sandbox repo, so the model never sees it.
-// `shop` re-checks every sprint-0 PRD promise; `remove` adds the delete-item change and re-checks `shop` first.
+// `shop` re-checks every promise of the brief's B1–B4; `remove` adds the delete-item change and re-checks `shop` first.
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -68,7 +68,7 @@ export async function assertShop(c, repo, phase) {
   await c.check(`hidden acceptance: ${phase}`, () => {
     const { spawnSync } = process.getBuiltinModule('node:child_process')
     const r = spawnSync('node', [import.meta.filename, repo, phase], { encoding: 'utf8' })
-    if (r.status !== 0) return `oracle child exited ${r.status}: ${(r.stderr || '').trim().split('\n')[0]}`
+    if (r.status !== 0) return `acceptance child exited ${r.status}: ${(r.stderr || '').trim().split('\n')[0]}`
     const out = JSON.parse(r.stdout.trim().split('\n').at(-1))
     return out === true ? true : out
   })

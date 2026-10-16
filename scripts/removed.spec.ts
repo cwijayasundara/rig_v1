@@ -134,3 +134,13 @@ test('4c: the old-config adapter is gone', () => {
   for (const name of ['SensorConfig', 'parseConfig', 'BehavioralConfig']) assert.doesNotMatch(read('scripts/model.ts'), new RegExp(`export (?:function|const|type) ${name}\\b`), name)
   for (const name of ['fromLegacy', 'registryConfig']) assert.doesNotMatch(read('scripts/registry.ts'), new RegExp(`export function ${name}\\b`), name)
 })
+
+test('5b: the e2e stages and the stack runner are wired, and no shipped e2e text still says charted, PRD or oracle', () => {
+  const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
+  assert.match(pkg.scripts['test:e2e:stacks'], /tests\/e2e\/stacks\.mjs/)
+  assert.match(fs.readFileSync('.github/workflows/ci.yml', 'utf8'), /npm run test:e2e:stacks/)
+  for (const f of ['tests/e2e/phases/s0-install.mjs', 'tests/e2e/acceptance/shop.mjs', 'tests/e2e/run.mjs']) {
+    assert.doesNotMatch(fs.readFileSync(f, 'utf8'), /\bcharted\b|\bPRD\b|\boracle\b/i, f)
+  }
+  assert.match(fs.readFileSync('tests/e2e/run.mjs', 'utf8'), /'S5 policy': \d+/)
+})

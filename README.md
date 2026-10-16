@@ -85,7 +85,7 @@ As of 2026-10-11. `.claude-plugin/plugin.json` says **0.6.0**; the last git tag 
 | Area | State | Evidence |
 |---|---|---|
 | Lifecycle: start, plan, approve, build, verify, PR; human gates | Rebuilt as the slim lifecycle on this branch | [DESIGN.md](DESIGN.md) §4 |
-| Greenfield end to end (install, brief, greenfield change, a follow-on change, deploy gate) | The one integration test: scripted in CI; the live lane is the release acceptance run | `npm run test:e2e:fast`, `npm run test:e2e` |
+| Greenfield end to end (install, brief, greenfield change, a follow-on change with the contract stage, deploy gate, policy) | The one integration test: scripted in CI; the live lane is the release acceptance run | `npm run test:e2e:fast`, `npm run test:e2e` |
 | Run loop: production gate | Shipped; the production gate is covered by e2e S4 | DESIGN, SECURITY.md |
 | Git hooks: `pre-commit`, `pre-push`, session-start wiring | Merged and covered by tests that drive real `git`. **Not yet trialled live.** No bypass guard: CI plus branch protection is the boundary | DESIGN §9, [SECURITY.md](SECURITY.md) |
 | Windows | **Not supported.** Its CI jobs are red, and the hook scripts are POSIX `sh` | SECURITY.md |
@@ -348,11 +348,12 @@ claude plugin validate .claude-plugin/plugin.json
 
 ### End-to-end acceptance test
 
-`tests/e2e/` is the one integration test. It scaffolds a throwaway repo and installs the harness into it; the test itself plays the person who approves (`approve <slug>` with SDLC_HUMAN=1). Phases: S0 install (registry, vendored harness, git hooks, guides block), S1 product brief, S2 greenfield change, S3 follow-on change (with a stale-approval check), S4 local deploy gate. `npm run test:e2e:fast` runs in `npm test` and CI; the live run stays under 20 minutes and $6.
+`tests/e2e/` is the one integration test. It scaffolds a throwaway repo and installs the harness into it; the test itself plays the person who approves (`approve <slug>` with SDLC_HUMAN=1). Phases: S0 install (registry, vendored harness, git hooks, guides block), S1 product brief, S2 greenfield change, S3 follow-on change (with a stale-approval check and the contract stage: a weakened frozen example is refused, validate runs before run), S4 local deploy gate, S5 the same change under the continuous and the final policy. S2 and S3 also pass a hidden HTTP acceptance that imports no source. Stack fixtures (node, go, rust, java-maven, dotnet) run separately and skip a missing toolchain. `npm run test:e2e:fast` runs in `npm test` and CI; the live run stays under 20 minutes and $6.
 
 ```bash
 npm run test:e2e         # the acceptance test: real Claude Code (claude -p, claude-haiku-5-5 by default), costs money, --cap USD (default 6), fails over --minutes (default 20)
 npm run test:e2e:fast    # a fake model plays the skills from fixture files: $0, about 30 s; runs in npm test and CI; never the acceptance result
-npm run test:e2e:unit    # the route runner and the live driver's budget accounting
+npm run test:e2e:unit    # the route runner, the contract tool, the stack probe and the live driver's budget accounting
+npm run test:e2e:stacks  # stack fixtures: onboard a tiny repo per pack, check --at commit blocks a broken edit; skips a missing toolchain
 node tests/e2e/run.mjs --driver live --phase S3 --cap 20   # one phase (its prerequisites run first)
 ```

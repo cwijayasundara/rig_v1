@@ -2,7 +2,8 @@
 // [--cap USD] [--model MODEL] [--minutes N] [--out DIR]
 // S0 installs the harness into a throwaway shop-app repo, S1 writes the product brief, S2 builds the shop greenfield
 // through approval, verify and PR, S3 lands the delete-item change on top (with a stale-approval check), S4 exercises
-// the local deploy gate. Scripted is $0 and gates CI; live drives real `claude -p` sessions (default model
+// the local deploy gate, S5 runs one change under the continuous and the final policy (scripted only). S2 and S3 also
+// write and freeze the HTTP contract and pass the hidden HTTP acceptance. Scripted is $0 and gates CI; live drives real `claude -p` sessions (default model
 // claude-haiku-5-5) and fails when the whole run takes longer than --minutes (default 20) of wall clock.
 import fs from 'node:fs'
 import os from 'node:os'
@@ -11,7 +12,7 @@ import { createSandbox } from './lib/sandbox.mjs'
 import { writeReport } from './lib/report.mjs'
 import { mergeToMain } from './lib/merge.mjs'
 import { Checks } from './lib/checks.mjs'
-import { install, SCAFFOLD_PROMPT } from './phases/s0-install.mjs'
+import { install, SCAFFOLD_PROMPT, copyContractTool } from './phases/s0-install.mjs'
 import { runBrief } from './phases/s1-brief.mjs'
 import { PHASE as S2, runShopChange } from './phases/s2-greenfield.mjs'
 import { PHASE as S3, assertDelete, staleCheck, contractChecks } from './phases/s3-delete.mjs'
@@ -68,6 +69,7 @@ try {
   if (live) {
     sb.git('commit', '-q', '--allow-empty', '-m', 'chore: empty start')
     sb.isolate()
+    copyContractTool(sb)
     sessions.run('S0-init', `/rig:init --defaults greenfield "${SCAFFOLD_PROMPT}"`, { withPlugin: true })
     sb.commitAll('chore: onboarding leftovers')
     const p0 = new Checks('S0 install (live)')

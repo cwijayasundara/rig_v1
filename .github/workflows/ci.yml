@@ -20,7 +20,7 @@ jobs:
       - run: node --disable-warning=ExperimentalWarning --test scripts/*.spec.ts
   e2e-fast:
     # The e2e unit tests and the scripted acceptance flow (a fake model, $0): install, brief, two changes through approval,
-    # verify and PR, and the deploy gate. The real-model run is `npm run test:e2e`, by a person.
+    # verify and PR (with the contract stage and an HTTP acceptance), the deploy gate and the policy stage. The real-model run is `npm run test:e2e`, by a person.
     strategy:
       fail-fast: false
       matrix:
