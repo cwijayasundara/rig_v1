@@ -179,24 +179,13 @@ test('init --stack writes the detected stack pack when there is no sensors.json,
   assert.match(run(['init', '--stack', 'cobol']).stdout, /no stack pack for cobol \(known: .*node/)
 })
 
-test('init --stack keeps declaring levels into a hand-written sensors.json, and never overwrites declared ones', () => {
-  const init = (...a: string[]) => run(['init', ...a])
-  write('package.json', '{ "type": "module" }\n')
-  write('.rig/sensors.json', JSON.stringify({ fast: { test: 'npm test' } }))
-  assert.match(init('--stack').stdout, /declared levels for node: unit=npm test, integration=npm test, acceptance=npm test, api=npm test/)
-  const cfg = JSON.parse(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8')) as { levels: Record<string, string>; fast: { test: string } }
-  assert.deepEqual(cfg.levels, { unit: 'npm test', integration: 'npm test', acceptance: 'npm test', api: 'npm test' })
-  fs.writeFileSync(path.join(repo, '.rig/sensors.json'), JSON.stringify({ ...cfg, levels: { unit: 'make t' } }))
-  assert.match(init('--stack').stdout, /already declared/)
-})
-
 test('init --stack refuses once sensors.json is committed or a change exists', () => {
   write('package.json', '{ "type": "module" }\n')
   run(['init'])
-  fs.writeFileSync(path.join(repo, '.rig/sensors.json'), JSON.stringify({ fast: { test: 'x' }, full: { test: 'x' } }))
+  fs.writeFileSync(path.join(repo, '.rig/sensors.json'), '{}')
   git('add', '.'); git('commit', '-qm', 'sensors')
   assert.match(run(['init', '--stack']).stdout, /is committed/)
-  assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8'))), ['fast', 'full'])
+  assert.equal(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8'), '{}')
   git('rm', '-q', '--cached', '.rig/sensors.json'); git('commit', '-qm', 'untrack')
   run(['new', 'tiny', '--type', 'chore', '--tier', 'S'])
   const r = run(['init', '--stack'])

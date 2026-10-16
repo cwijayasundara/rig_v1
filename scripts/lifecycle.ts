@@ -2,8 +2,9 @@
 // status is which files it has. Only a person writes approval.json; verify writes verify.json for the tree it judged.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SDLC, CHANGES, read, exists, sha, now, git, defaultBase, frontmatter, behavioralFiles } from './core.ts'
-import { openQuestions } from './model.ts'
+import { ROOT, SDLC, CHANGES, read, exists, sha, now, git, defaultBase, frontmatter } from './core.ts'
+import { openQuestions, globToRegex } from './model.ts'
+import { parseRegistry, contractGlobs } from './registry.ts'
 
 export const TYPES = ['feature', 'bugfix', 'refactor', 'chore'] as const
 export type ChangeType = typeof TYPES[number]
@@ -42,7 +43,13 @@ export function newChange(slug: string, type: ChangeType, title: string): void {
 }
 
 // Contract files frozen by an approval, hashed one by one so a later edit names the file (spec §6).
-export const freezeRecord = (slug: string): Record<string, string> => Object.fromEntries(behavioralFiles(slug).filter(f => exists(path.join(ROOT, f))).map(f => [f, digest(read(path.join(ROOT, f)))]))
+// The contract files under the registry's globs (spec §6), tracked or new.
+export function contractFiles(): string[] {
+  const globs = contractGlobs(parseRegistry(read(path.join(SDLC, 'sensors.json'))).registry.contracts)
+  if (!globs.length) return []
+  return (git(['ls-files', '--cached', '--others', '--exclude-standard']) ?? '').split('\n').filter(f => f && globs.some(g => globToRegex(g).test(f))).sort()
+}
+export const freezeRecord = (_slug: string): Record<string, string> => Object.fromEntries(contractFiles().filter(f => exists(path.join(ROOT, f))).map(f => [f, digest(read(path.join(ROOT, f)))]))
 const hashes = (slug: string): Record<string, string> => Object.fromEntries(APPROVED.filter(n => exists(file(slug, n))).map(n => [n, digest(read(file(slug, n)))]))
 export const readApproval = (slug: string): Approval | null => json<Approval>(file(slug, 'approval.json'))
 export function approvalState(slug: string): 'missing' | 'stale' | 'approved' {

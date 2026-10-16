@@ -1,7 +1,20 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { DEFAULT_CONFIG as CFG, type FileDiff, type SensorConfig, type Rule, parseConfig } from './model.ts'
-import { withoutFixtures, testTamper, suppressions, TAMPER_PATTERNS, layering, size, secretsInDiff, rulesSensor, retiredIdentifiers, contractsFromPlan, weakensConfig, weakensRules, isProtected, onlyKnownRedRemoved, harnessTamper, behaviourIds, missingBehaviours } from './sensors.ts'
+import { type FileDiff, type Rule } from './model.ts'
+import { defaultRegistry, type Registry } from './registry.ts'
+import { withoutFixtures, testTamper, suppressions, TAMPER_PATTERNS, layering, size, secretsInDiff, rulesSensor, contractsFromPlan, weakensRules, isProtected, onlyKnownRedRemoved, harnessTamper, behaviourIds, missingBehaviours } from './sensors.ts'
+
+// A registry with the overrides the sensor tests set: paths, size limits, layers, contract globs.
+const reg = (o: { tests?: string[]; fixtures?: string[]; ignore?: string[]; testSupport?: string[]; limits?: Record<string, number>; layers?: unknown[]; contracts?: string[] } = {}): Registry => {
+  const r = defaultRegistry()
+  for (const k of ['tests', 'fixtures', 'ignore', 'testSupport'] as const) { const v = o[k]; if (v) r.paths[k] = v }
+  const size = r.sensors.find(x => x.id === 'size')
+  if (size && o.limits) size.options = { ...o.limits }
+  const lay = r.sensors.find(x => x.id === 'layering')
+  if (lay && o.layers) lay.options = { layers: o.layers }
+  if (o.contracts) r.contracts.files = o.contracts
+  return r
+}
 
 export const fd = (file: string, added: string[] = [], removed: string[] = [], status: FileDiff['status'] = 'M'): FileDiff => ({
   file, status, added: added.map((text, i) => ({ n: i + 1, text })), removed: removed.map((text, i) => ({ n: i + 1, text })),
@@ -26,79 +39,79 @@ test('every tamper pattern has fixtures', () => {
 
 for (const [id, [positive, negative]] of Object.entries(FIXTURES)) {
   test(`tamper ${id}: positive blocks, negative passes`, () => {
-    assert.equal(blocks(testTamper([fd('test/a.test.js', [positive])], CFG)).length, 1, positive)
-    assert.equal(blocks(testTamper([fd('test/a.test.js', [negative])], CFG)).length, 0, negative)
+    assert.equal(blocks(testTamper([fd('test/a.test.js', [positive])], reg())).length, 1, positive)
+    assert.equal(blocks(testTamper([fd('test/a.test.js', [negative])], reg())).length, 0, negative)
   })
 }
 
 test('skip markers in non-test files are ignored', () => {
-  assert.equal(testTamper([fd('src/a.js', ["it.skip('x')"])], CFG).length, 0)
+  assert.equal(testTamper([fd('src/a.js', ["it.skip('x')"])], reg()).length, 0)
 })
 
 test('assertions are counted across all test files, so moving tests is neutral', () => {
   const moved = [fd('test/a.test.js', [], ['  expect(a).toBe(1)', '  expect(b).toBe(2)']), fd('test/b.test.js', ['  expect(a).toBe(1)', '  expect(b).toBe(2)'])]
-  assert.equal(blocks(testTamper(moved, CFG)).length, 0)
+  assert.equal(blocks(testTamper(moved, reg())).length, 0)
   const dropped = [fd('test/a.test.js', ['  expect(a).toBeTruthy()'], ['  expect(a).toBe(1)', '  expect(b).toBe(2)'])]
-  assert.match(blocks(testTamper(dropped, CFG))[0]?.message ?? '', /2 removed, 1 added/)
+  assert.match(blocks(testTamper(dropped, reg()))[0]?.message ?? '', /2 removed, 1 added/)
   const comments = [fd('test/a.test.js', [], ['  // expect(a).toBe(1) was flaky'])]
-  assert.equal(blocks(testTamper(comments, CFG)).length, 0)
+  assert.equal(blocks(testTamper(comments, reg())).length, 0)
 })
 
 test('a deleted test file blocks unless its content reappears in a new file', () => {
   const body = ["test('a', () => {", '  expect(add(1, 2)).toBe(3)', '})']
-  assert.equal(blocks(testTamper([fd('test/a.test.js', [], body, 'D')], CFG)).length, 1)
-  assert.equal(blocks(testTamper([fd('test/a.test.js', [], body, 'D'), fd('test/math/a.test.js', body, [], 'A')], CFG)).length, 0)
+  assert.equal(blocks(testTamper([fd('test/a.test.js', [], body, 'D')], reg())).length, 1)
+  assert.equal(blocks(testTamper([fd('test/a.test.js', [], body, 'D'), fd('test/math/a.test.js', body, [], 'A')], reg())).length, 0)
 })
 
 test('a lowered coverage threshold in config blocks; source code numbers do not', () => {
-  assert.equal(blocks(testTamper([fd('package.json', ['    "lines": 80,'], ['    "lines": 85,'])], CFG)).length, 1)
-  assert.equal(blocks(testTamper([fd('pyproject.toml', ['fail_under = 70'], ['fail_under = 85'])], CFG)).length, 1)
-  assert.equal(blocks(testTamper([fd('package.json', ['    "lines": 90,'], ['    "lines": 85,'])], CFG)).length, 0)
-  assert.equal(blocks(testTamper([fd('src/report.js', ['const lines = 80'], ['const lines = 85'])], CFG)).length, 0)
+  assert.equal(blocks(testTamper([fd('package.json', ['    "lines": 80,'], ['    "lines": 85,'])], reg())).length, 1)
+  assert.equal(blocks(testTamper([fd('pyproject.toml', ['fail_under = 70'], ['fail_under = 85'])], reg())).length, 1)
+  assert.equal(blocks(testTamper([fd('package.json', ['    "lines": 90,'], ['    "lines": 85,'])], reg())).length, 0)
+  assert.equal(blocks(testTamper([fd('src/report.js', ['const lines = 80'], ['const lines = 85'])], reg())).length, 0)
 })
 
 test('rewritten snapshots warn', () => {
-  const r = testTamper([fd('test/__snapshots__/a.test.js.snap', ['x'], ['y'])], CFG)
+  const r = testTamper([fd('test/__snapshots__/a.test.js.snap', ['x'], ['y'])], reg())
   assert.deepEqual(r.map(f => f.severity), ['warn'])
 })
 
 test('suppression comments block unless they carry a reason', () => {
   for (const line of ['// eslint-disable-next-line no-console', 'x = y  # type: ignore', 'import os  # noqa', '// @ts-ignore', '//nolint', '@SuppressWarnings("unchecked")', '# rubocop:disable Metrics/AbcSize']) {
-    assert.equal(blocks(suppressions([fd('src/a.ts', [line])], CFG)).length, 1, line)
+    assert.equal(blocks(suppressions([fd('src/a.ts', [line])], reg())).length, 1, line)
   }
-  assert.equal(suppressions([fd('src/a.ts', ['// eslint-disable-next-line no-console -- the CLI prints by design'])], CFG).length, 0)
-  assert.equal(suppressions([fd('src/a.py', ['x = y  # type: ignore because the stub is wrong upstream'])], CFG).length, 0)
-  assert.equal(suppressions([fd('README.md', ['use // eslint-disable sparingly'])], CFG).length, 0)
+  assert.equal(suppressions([fd('src/a.ts', ['// eslint-disable-next-line no-console -- the CLI prints by design'])], reg()).length, 0)
+  assert.equal(suppressions([fd('src/a.py', ['x = y  # type: ignore because the stub is wrong upstream'])], reg()).length, 0)
+  assert.equal(suppressions([fd('README.md', ['use // eslint-disable sparingly'])], reg()).length, 0)
 })
 
 test('assert.* calls count as assertions', () => {
-  const r = testTamper([fd('test/a.test.js', ['  assert.equal(add(1, 2), 3)'], ['  assert.equal(add(1, 2), 3)', '  assert.equal(add(0, 0), 0)'])], CFG)
+  const r = testTamper([fd('test/a.test.js', ['  assert.equal(add(1, 2), 3)'], ['  assert.equal(add(1, 2), 3)', '  assert.equal(add(0, 0), 0)'])], reg())
   assert.match(blocks(r)[0]?.message ?? '', /2 removed, 1 added/)
 })
 
 test('each assertion form counts exactly once', () => {
   for (const line of ['assert.equal(a, b)', 'assert.ok(x)', 'assert_eq!(a, b)', 'assert!(x)', 'expect { x }.to raise_error', 'self.assertEqual(a, b)', 'assert x == 1', 'expect(a).toBe(1)']) {
-    const r = testTamper([fd('test/a.test.js', [], [line])], CFG)
+    const r = testTamper([fd('test/a.test.js', [], [line])], reg())
     assert.match(blocks(r)[0]?.message ?? '', /1 removed, 0 added/, line)
   }
 })
 
 test('focus and skip variants block', () => {
-  assert.equal(blocks(testTamper([fd('test/a.test.js', ["it.skip.each([1])('x', () => {})"])], CFG)).length, 1)
-  assert.equal(blocks(testTamper([fd('test/a.test.js', ["describe.only.each([1])('x', () => {})"])], CFG)).length, 1)
+  assert.equal(blocks(testTamper([fd('test/a.test.js', ["it.skip.each([1])('x', () => {})"])], reg())).length, 1)
+  assert.equal(blocks(testTamper([fd('test/a.test.js', ["describe.only.each([1])('x', () => {})"])], reg())).length, 1)
 })
 
 test('a commented-out tamper line does not block', () => {
-  assert.equal(blocks(testTamper([fd('test/a.test.js', ["// it.skip('x')"])], CFG)).length, 0)
+  assert.equal(blocks(testTamper([fd('test/a.test.js', ["// it.skip('x')"])], reg())).length, 0)
 })
 
 test('a lone deleted test file with assertions yields exactly one block', () => {
-  const r = blocks(testTamper([fd('test/a.test.js', [], ["test('a', () => {", '  expect(add(1, 2)).toBe(3)', '})'], 'D')], CFG))
+  const r = blocks(testTamper([fd('test/a.test.js', [], ["test('a', () => {", '  expect(add(1, 2)).toBe(3)', '})'], 'D')], reg()))
   assert.equal(r.length, 1)
   assert.match(r[0]?.message ?? '', /test file deleted/)
 })
 
-const withLayers: SensorConfig = { ...CFG, layers: [{ from: 'src/domain/**', mustNotImport: ['infra', 'http'], why: 'the domain stays framework-free' }] }
+const withLayers: Registry = reg({ layers: [{ from: 'src/domain/**', mustNotImport: ['infra', 'http'], why: 'the domain stays framework-free' }] })
 
 test('layering blocks forbidden imports in any import syntax, and nothing else', () => {
   for (const line of ["import { db } from '../infra/db'", 'from infra.db import session', "const h = require('../http/client')", 'use crate::infra::db;', '#include "infra/db.h"', 'import com.acme.infra.Db;']) {
@@ -112,19 +125,19 @@ test('layering blocks forbidden imports in any import syntax, and nothing else',
 
 test('size blocks when a file crosses the line limit at stop, and the diff limit blocks only from ship on', () => {
   const big = fd('src/a.ts', Array.from({ length: 30 }, () => 'x'))
-  assert.equal(size([big], CFG, { 'src/a.ts': 410 }, 'stop')[0]?.severity, 'block')
-  assert.equal(size([big], CFG, { 'src/a.ts': 900 }, 'stop').length, 0, 'already over before this diff: no news')
+  assert.equal(size([big], reg(), { 'src/a.ts': 410 }, 'stop')[0]?.severity, 'block')
+  assert.equal(size([big], reg(), { 'src/a.ts': 900 }, 'stop').length, 0, 'already over before this diff: no news')
   const huge = fd('src/b.ts', Array.from({ length: 600 }, () => 'y'), [], 'A')
-  assert.equal(size([huge], CFG, { 'src/b.ts': 600 }, 'stop').find(f => !f.file)?.severity, 'warn')
-  assert.equal(size([huge], CFG, { 'src/b.ts': 600 }, 'ship').find(f => !f.file)?.severity, 'block')
-  assert.equal(size([fd('docs/x.md', Array.from({ length: 900 }, () => 'z'))], CFG, {}, 'ship').length, 0, 'ignored files do not count')
+  assert.equal(size([huge], reg(), { 'src/b.ts': 600 }, 'stop').find(f => !f.file)?.severity, 'warn')
+  assert.equal(size([huge], reg(), { 'src/b.ts': 600 }, 'ship').find(f => !f.file)?.severity, 'block')
+  assert.equal(size([fd('docs/x.md', Array.from({ length: 900 }, () => 'z'))], reg(), {}, 'ship').length, 0, 'ignored files do not count')
 })
 
 test('size does not judge the vendored harness: an install or upgrade is neither long lines nor an oversized diff', () => {
   const long = 'x'.repeat(200)
   const vendored = [fd('.claude/workflows/review.js', [long], [], 'A'), fd('.rig/bin/check.ts', Array.from({ length: 1600 }, () => 'y'), [], 'A')]
-  assert.deepEqual(size(vendored, CFG, { '.claude/workflows/review.js': 1, '.rig/bin/check.ts': 1600 }, 'ship'), [])
-  assert.equal(size([fd('src/review.js', [long], [], 'A')], CFG, { 'src/review.js': 1 }, 'ship')[0]?.sensor, 'size', 'project code still is')
+  assert.deepEqual(size(vendored, reg(), { '.claude/workflows/review.js': 1, '.rig/bin/check.ts': 1600 }, 'ship'), [])
+  assert.equal(size([fd('src/review.js', [long], [], 'A')], reg(), { 'src/review.js': 1 }, 'ship')[0]?.sensor, 'size', 'project code still is')
 })
 
 test('secrets in added lines block; an in-line allow comment does not opt out', () => {
@@ -139,66 +152,13 @@ test('rules apply to added lines within their paths, labelled with the rule id',
   assert.match(r[0]?.message ?? '', /stdout carries the protocol/)
 })
 
-test('retired identifiers: removed tokens from contract files, minus generic words and names still present', () => {
-  const schema = fd('schema/billing.sql', ['  promotional_discount NUMERIC,'], ['  discount_rate NUMERIC,', '  id SERIAL,'])
-  assert.deepEqual(retiredIdentifiers([schema], CFG, 'CREATE TABLE billing (id SERIAL, promotional_discount NUMERIC)'), ['discount_rate'])
-  assert.deepEqual(retiredIdentifiers([schema], CFG, 'discount_rate is still exported in api/v1'), [])
-  assert.deepEqual(retiredIdentifiers([fd('src/billing.ts', [], ['discount_rate'])], CFG, ''), [], 'only contract files count')
-})
-
-test('retired identifiers: migration-style renames and drops in added lines', () => {
-  const mig = fd('migrations/0042_rename.sql', ['ALTER TABLE billing RENAME COLUMN discount_rate TO promotional_discount;', 'ALTER TABLE billing DROP COLUMN legacy_code;'], [], 'A')
-  assert.deepEqual(retiredIdentifiers([mig], CFG, 'CREATE TABLE billing (discount_rate NUMERIC)').sort(), ['discount_rate', 'legacy_code'])
-  const rails = fd('migrations/20261003_rename.rb', ['    rename_column :billing, :discount_rate, :promotional_discount'], [], 'A')
-  assert.deepEqual(retiredIdentifiers([rails], CFG, ''), ['discount_rate'])
-})
-
 test('contractsFromPlan reads rename and remove lines only', () => {
   const plan = '## Contracts\n- rename `discount_rate` → `promotional_discount`\n- remove `legacy_code`\n- add `currency`\n## Risks\n- rename `x`\n'
   assert.deepEqual(contractsFromPlan(plan), ['discount_rate', 'legacy_code'])
   assert.deepEqual(contractsFromPlan('## Contracts\nnone\n'), [])
 })
 
-test('retired identifiers: comment and description prose is not a contract change', () => {
-  const proto = fd('api/rate.proto', ['  // discount applied at checkout'], ['  // the rate of discount we apply'])
-  assert.deepEqual(retiredIdentifiers([proto], CFG, ''), [])
-  const oas = fd('api/openapi.yaml', ['    description: Amount after tax'], ['    description: Amount before tax'])
-  assert.deepEqual(retiredIdentifiers([oas], CFG, ''), [])
-})
-
-test('retired identifiers: migration history does not hide a schema rename; every drop on a line counts', () => {
-  const schema = fd('schema/billing.sql', ['  promotional_discount NUMERIC,'], ['  discount_rate NUMERIC,'])
-  assert.deepEqual(retiredIdentifiers([schema], CFG, 'CREATE TABLE billing (promotional_discount NUMERIC)'), ['discount_rate'])
-  const mig = fd('migrations/2.sql', ['ALTER TABLE t DROP COLUMN aaa_col, DROP COLUMN bbb_col;'], [], 'A')
-  assert.deepEqual(retiredIdentifiers([mig], CFG, '').sort(), ['aaa_col', 'bbb_col'])
-})
-
 const J = (o: object) => JSON.stringify(o, null, 2)
-
-test('weakensConfig names every loosening and nothing else', () => {
-  const before = J({ fast: { lint: 'eslint .', test: 'npm test' }, limits: { diffLines: 500 }, layers: [{ from: 'src/domain/**', mustNotImport: ['infra'], why: 'w' }], knownRed: [] })
-  const after = J({ fast: { test: 'npm test' }, limits: { diffLines: 900 }, layers: [], knownRed: ['fast.test'], ignore: ['**/*.md', '**/*.lock', '**/package-lock.json', 'src/**'] })
-  const reasons = weakensConfig(before, after).join('\n')
-  for (const r of [/diffLines raised 500 → 900/, /fast\.lint removed/, /layer src\/domain\/\*\* removed/, /knownRed added fast\.test/, /ignore added src\/\*\*/]) assert.match(reasons, r)
-  assert.deepEqual(weakensConfig(before, J({ fast: { lint: 'eslint . --max-warnings 0', test: 'npm test' }, limits: { diffLines: 400 }, layers: [{ from: 'src/domain/**', mustNotImport: ['infra', 'http'], why: 'w' }] })), [])
-  assert.deepEqual(weakensConfig(before, '{ broken'), ['sensors.json no longer parses'])
-})
-
-test('weakensConfig flags raising or removing a budget, raising warnAt and turning downshift off; lowering is fine', () => {
-  const cfg = (b: unknown) => JSON.stringify({ budget: b })
-  const base = { teamMonthlyUsd: 500, changeUsd: { M: 20 }, warnAt: [50, 80, 100], downshift: true }
-  const r = weakensConfig(cfg(base), cfg({ teamMonthlyUsd: 900, changeUsd: {}, warnAt: [50, 90, 100], downshift: false })).join('\n')
-  for (const want of ['budget.teamMonthlyUsd raised 500 → 900', 'budget.changeUsd.M removed', 'budget.warnAt raised', 'budget.downshift turned off']) assert.ok(r.includes(want), `${want} in:\n${r}`)
-  assert.ok(weakensConfig(cfg(base), cfg({})).join('\n').includes('budget.teamMonthlyUsd removed'))
-  assert.deepEqual(weakensConfig(cfg(base), cfg({ ...base, teamMonthlyUsd: 300, changeUsd: { M: 10, S: 3 }, warnAt: [40, 70, 90] })), [])
-})
-
-test('weakensConfig flags removing or changing the behavioral block', () => {
-  const before = J({ behavioral: { run: 'npm run contract', validate: 'npm run ex:validate', files: ['.rig/contracts/**'], cadence: 'final' } })
-  assert.match(weakensConfig(before, J({})).join('\n'), /behavioral removed/)
-  assert.match(weakensConfig(before, J({ behavioral: { run: 'true', validate: 'npm run ex:validate', files: ['.rig/contracts/**'], cadence: 'final' } })).join('\n'), /behavioral\.run changed/)
-  assert.deepEqual(weakensConfig(before, before), [])
-})
 
 test('onlyKnownRedRemoved accepts the ratchet and nothing more', () => {
   const before = J({ fast: { lint: 'x' }, knownRed: ['fast.lint'] })
@@ -221,17 +181,17 @@ test('harnessTamper: Bash-made edits block at Stop, weakening blocks at ship, pl
 })
 
 test('harnessTamper: the commit that adopts rig (no sensors.json or rules.json on the base) warns at local ship; CI still blocks', () => {
-  const levels = () => J({ levels: { unit: 'npm test', acceptance: 'npm test' }, limits: { diffLines: 900 } })
+  const adopted = () => J({ sensors: [{ id: 'size', builtin: true, options: { diffLines: 900 } }] })
   const rules = () => J([{ id: 'a', action: 'downgrade-me', pattern: 'x', message: 'm', why: 'w' }])
-  const cfg = harnessTamper([fd('.rig/sensors.json', ['x'], [], 'A')], { point: 'ship', before: () => '', after: levels })
+  const cfg = harnessTamper([fd('.rig/sensors.json', ['x'], [], 'A')], { point: 'ship', before: () => '', after: adopted })
   assert.deepEqual(cfg.map(f => f.severity), ['warn'])
   assert.equal(harnessTamper([fd('.rig/rules.json', ['x'], [], 'A')], { point: 'ship', before: () => '', after: rules })[0]?.severity, 'warn')
-  const ci = harnessTamper([fd('.rig/sensors.json', ['x'], [], 'A')], { point: 'ci', before: () => '', after: levels })
+  const ci = harnessTamper([fd('.rig/sensors.json', ['x'], [], 'A')], { point: 'ci', before: () => '', after: adopted })
   assert.equal(ci[0]?.severity, 'block', 'a PR adding a config from scratch is still judged in CI')
-  const edited = harnessTamper([fd('.rig/sensors.json', ['x'], ['y'])], { point: 'ship', before: () => J({}), after: levels })
-  assert.equal(edited[0]?.severity, 'block', 'adding a level to an existing config still blocks')
-  const atStop = harnessTamper([fd('.rig/sensors.json', ['x'], [], 'A')], { point: 'stop', toolEdited: new Set(['.rig/sensors.json']), before: () => '', after: levels })
-  assert.match(atStop[0]?.message ?? '', /limits\.diffLines raised/, 'at Stop a new config is still compared with the defaults')
+  const edited = harnessTamper([fd('.rig/sensors.json', ['x'], ['y'])], { point: 'ship', before: () => J({ sensors: [] }), after: adopted })
+  assert.equal(edited[0]?.severity, 'block', 'raising a limit in an existing config still blocks')
+  const atStop = harnessTamper([fd('.rig/sensors.json', ['x'], [], 'A')], { point: 'stop', toolEdited: new Set(['.rig/sensors.json']), before: () => '', after: adopted })
+  assert.match(atStop[0]?.message ?? '', /size\.diffLines raised/, 'at Stop a new config is still compared with the defaults')
 })
 
 test('weakensRules names removed and downgraded rules only', () => {
@@ -259,57 +219,25 @@ test('behaviour ids come from the named section only; a test must name each one'
 
 test('files matching fixtures skip the pattern sensors, others do not', () => {
   const diff = [fd('scripts/detect.spec.ts', ["it.skip('x', () => {})", 'const key = "AKIAABCDEFGHIJKLMNOP"'])]
-  const fx = { ...CFG, fixtures: ['scripts/*.spec.ts'] }
-  const run = (cfg: typeof CFG) => { const d = withoutFixtures(diff, cfg); return [...testTamper(d, cfg), ...secretsInDiff(d)] }
+  const fx = reg({ fixtures: ['scripts/*.spec.ts'] })
+  const run = (cfg: Registry) => { const d = withoutFixtures(diff, cfg); return [...testTamper(d, cfg), ...secretsInDiff(d)] }
   assert.equal(run(fx).length, 0)
-  assert.ok(run({ ...CFG, tests: ['scripts/*.spec.ts'] }).length >= 2)
-})
-
-test('weakensConfig counts added fixtures and removed testSupport globs', () => {
-  const reasons = weakensConfig(J({ testSupport: ['a/**', 'b/**'] }), J({ testSupport: ['a/**'], fixtures: ['x/**'] })).join('\n')
-  assert.match(reasons, /fixtures added x\/\*\*/)
-  assert.match(reasons, /testSupport glob removed b\/\*\*/)
-  assert.deepEqual(weakensConfig(J({ fixtures: ['x/**'] }), J({})), [])
+  assert.ok(run(reg({ tests: ['scripts/*.spec.ts'] })).length >= 2)
 })
 
 test('a deleted test file matching fixtures is still reported', () => {
-  const cfg = { ...CFG, tests: ['scripts/*.spec.ts'], fixtures: ['scripts/*.spec.ts'] }
+  const cfg = reg({ tests: ['scripts/*.spec.ts'], fixtures: ['scripts/*.spec.ts'] })
   const d = withoutFixtures([fd('scripts/a.spec.ts', [], ['it("x", () => {})'], 'D')], cfg)
   assert.ok(testTamper(d, cfg).some(f => f.message === 'test file deleted'))
 })
 
 test('size warns once per file on added lines over limits.lineChars, not at edit time', () => {
-  const cfg = { ...CFG, limits: { ...CFG.limits, lineChars: 20 } }
+  const cfg = reg({ limits: { lineChars: 20 } })
   const added = [{ n: 3, text: 'x'.repeat(21) }, { n: 4, text: 'ok' }, { n: 9, text: 'y'.repeat(30) }]
   const d = { file: 'src/a.ts', status: 'M' as const, added, removed: [] }
   const f = size([d], cfg, { 'src/a.ts': 10 }, 'stop')
   assert.deepEqual(f.map(x => [x.sensor, x.severity, x.line, x.message]), [['size', 'warn', 3, '2 added line(s) over 20 characters']])
   assert.deepEqual(size([d], cfg, { 'src/a.ts': 10 }, 'edit'), [])
-})
-
-test('weakensConfig names v0.4 weakenings: a gate removed, a cap or budget raised, a level or category removed', () => {
-  const before = JSON.stringify({ gates: { M: ['plan'] }, levels: { unit: 'npm test' }, quality: { lint: { cmd: 'x', count: 'lines' } } })
-  const after = JSON.stringify({ gates: { M: [], L: ['plan'] }, ratchet: { build: 4, usd: { test: 9 } } })
-  const reasons = weakensConfig(before, after)
-  assert.ok(reasons.includes('gate M removed plan'))
-  assert.ok(reasons.includes('gate L removed spec'))
-  assert.ok(reasons.includes('ratchet.build raised 2 → 4'))
-  assert.ok(reasons.includes('ratchet.usd.test raised 2 → 9'))
-  assert.ok(reasons.includes('levels.unit removed'))
-  assert.ok(reasons.includes('quality.lint removed'))
-  assert.deepEqual(weakensConfig(after, before).filter(r => /gate|ratchet|removed/.test(r)), [], 'tightening is not weakening')
-})
-
-test('weakensConfig flags changed and added declared level and quality commands', () => {
-  const cfg = (o: object) => JSON.stringify(o)
-  const base = { levels: { unit: 'npm test' }, quality: { lint: { cmd: 'eslint .', count: 'lines' } } }
-  const only = (r: string[]) => r.filter(x => /^(levels|quality)\./.test(x))
-  assert.deepEqual(only(weakensConfig(cfg(base), cfg(base))), [])
-  assert.deepEqual(only(weakensConfig(cfg(base), cfg({ ...base, levels: { unit: 'true' } }))), ['levels.unit changed'])
-  assert.deepEqual(only(weakensConfig(cfg(base), cfg({ ...base, quality: { lint: { cmd: 'true', count: 'lines' } } }))), ['quality.lint changed'])
-  assert.deepEqual(only(weakensConfig(cfg(base), cfg({ ...base, quality: { lint: { cmd: 'eslint .', count: 'exit' } } }))), ['quality.lint changed'])
-  assert.deepEqual(only(weakensConfig(cfg(base), cfg({ ...base, levels: { unit: 'npm test', api: 'x' } }))), ['levels.api added'])
-  assert.deepEqual(only(weakensConfig(cfg(base), cfg({ ...base, quality: { ...base.quality, deps: { cmd: 'x', count: 'exit' } } }))), ['quality.deps added'])
 })
 
 test('the repo-root plugin marketplace and the vendored mod are protected, case-insensitively', () => {
@@ -333,24 +261,10 @@ test('secrets: provider keys, JWTs and unquoted env-file secrets are caught', ()
 })
 
 test('size: a file too large to scan is blocked, never silently skipped', () => {
-  const f = size([{ file: 'dump.sql', status: 'A', added: [], removed: [], binary: true, oversize: true }], CFG, {}, 'stop')
+  const f = size([{ file: 'dump.sql', status: 'A', added: [], removed: [], binary: true, oversize: true }], reg(), {}, 'stop')
   assert.equal(f.length, 1)
   assert.equal(f[0]?.sensor, 'unscanned', 'its own sensor name, so a size waiver cannot cover it')
   assert.match(f[0]?.message ?? '', /not scanned/)
-})
-
-test('githooks config defaults to ship, parses, and turning pre-push off counts as weakening', () => {
-  assert.deepEqual(parseConfig('').config.githooks, { prePush: 'ship', budgetMs: 300_000 })
-  const off = parseConfig('{"githooks":{"prePush":"off","budgetMs":1000}}')
-  assert.deepEqual(off.errors, [])
-  assert.deepEqual(off.config.githooks, { prePush: 'off', budgetMs: 1000 })
-  assert.match(parseConfig('{"githooks":{"prePush":"later"}}').errors.join(), /githooks\.prePush must be/)
-  assert.match(parseConfig('{"githooks":{"budgetMs":-1}}').errors.join(), /githooks\.budgetMs must be a positive number/)
-  assert.match(parseConfig('{"githooks":{"nope":1}}').errors.join(), /githooks: unknown key "nope"/)
-  assert.match(parseConfig('{"githooks":5}').errors.join(), /githooks must be/)
-  assert.ok(weakensConfig('{}', '{"githooks":{"prePush":"off"}}').some(r => /prePush/.test(r)))
-  assert.ok(weakensConfig('{}', '{"githooks":{"budgetMs":900000}}').some(r => /budgetMs/.test(r)))
-  assert.deepEqual(weakensConfig('{}', '{"githooks":{"budgetMs":1000}}'), [])
 })
 
 test('the git hook scripts are protected harness files', () => {
@@ -359,7 +273,7 @@ test('the git hook scripts are protected harness files', () => {
 })
 
 test('a file crossing the line limit blocks at edit and stop, and only warns at ship and ci', () => {
-  const cfg = parseConfig(JSON.stringify({ limits: { fileLines: 10 } })).config
+  const cfg = reg({ limits: { fileLines: 10 } })
   const crossing: FileDiff = { file: 'src/a.ts', status: 'M', added: Array.from({ length: 5 }, (_, i) => ({ n: i + 1, text: 'x' })), removed: [] } // 12 lines now, 7 before: crossed
   for (const point of ['edit', 'stop'] as const) {
     const f = size([crossing], cfg, { 'src/a.ts': 12 }, point).find(x => x.sensor === 'size')
@@ -370,7 +284,7 @@ test('a file crossing the line limit blocks at edit and stop, and only warns at 
 })
 
 test('a file that was already over the limit is not blamed for growing', () => {
-  const cfg = parseConfig(JSON.stringify({ limits: { fileLines: 10 } })).config
+  const cfg = reg({ limits: { fileLines: 10 } })
   const d: FileDiff = { file: 'src/a.ts', status: 'M', added: [{ n: 1, text: 'x' }], removed: [] }
   assert.deepEqual(size([d], cfg, { 'src/a.ts': 30 }, 'edit').filter(f => f.message.includes('grew')), [])
 })

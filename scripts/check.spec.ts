@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { makeRepo, sdlc, hook, write, gitIn } from './testkit.ts'
+import { makeRepo, sdlc, hook, write, gitIn, fromOld } from './testkit.ts'
 
 let repo: string
 beforeEach(() => {
@@ -83,7 +83,7 @@ test('diff --turn without a baseline says so instead of diffing against now', ()
   assert.deepEqual([r.code, r.stdout.trim()], [0, 'no turn baseline yet (run a prompt first)'])
 })
 
-const sensors = (cfg: object) => write(repo, '.rig/sensors.json', JSON.stringify(cfg, null, 2) + '\n')
+const sensors = (cfg: object) => write(repo, '.rig/sensors.json', fromOld(cfg as Record<string, unknown>) + '\n')
 const check = (...args: string[]) => sdlc(repo, ['check', ...args])
 
 test('check is silent-success: one pass line, exit 0', () => {
@@ -102,9 +102,9 @@ test('a failing fast command blocks with its output tail; a passing one is silen
   const r = check('--at', 'stop')
   assert.equal(r.code, 1)
   assert.match(r.stdout, /\[commands\]/)
-  assert.match(r.stdout, /fast\.lint failed \(exit 1\)/)
+  assert.match(r.stdout, /lint failed \(exit 1\)/)
   assert.match(r.stdout, /src\/app\.js:1 no-var/)
-  assert.doesNotMatch(r.stdout, /fast\.test/)
+  assert.doesNotMatch(r.stdout, /test/)
   assert.match(fs.readFileSync(path.join(repo, '.rig/changes/xx/evidence/runs.jsonl'), 'utf8'), /fast|no-var|process\.exit/)
 })
 
@@ -132,12 +132,12 @@ test('known-red commands warn instead of block, and the ratchet removes them onc
 })
 
 test('an invalid sensors.json blocks with the parse error', () => {
-  write(repo, '.rig/sensors.json', '{ "limits": { "fileLines": "big" } }')
+  write(repo, '.rig/sensors.json', '{ "sensors": [{ "id": "Bad Id" }] }')
   hook(repo, 'prompt-submit', {})
   write(repo, 'src/app.js', 'export const a = 8\n')
   const r = check('--at', 'stop')
   assert.equal(r.code, 1)
-  assert.match(r.stdout, /\[config\][\s\S]*limits\.fileLines must be a positive number/)
+  assert.match(r.stdout, /\[config\][\s\S]*id must be kebab-case/)
 })
 
 test('a human waiver for the active change drops the matching finding', () => {
@@ -173,6 +173,7 @@ test('an unknown --config-from ref blocks instead of falling back to defaults', 
 test('ci with a base-branch config never ratchets sensors.json or records runs', () => {
   sdlc(repo, ['new', 'xx', '--type', 'chore', '--tier', 'S'])
   sensors({ fast: {}, full: { t: 'node -e "process.exit(0)"' }, knownRed: ['full.t'] })
+  sdlc(repo, ['sync'])
   gitIn(repo, 'add', '-A')
   gitIn(repo, 'commit', '-qm', 'cfg')
   const file = path.join(repo, '.rig/sensors.json')
@@ -204,11 +205,11 @@ test('approving impact without an impact.json fails', () => {
 })
 
 test('check --at ship reports a weakened committed sensors.json as harness-tamper', () => {
-  write(repo, '.rig/sensors.json', JSON.stringify({ limits: { diffLines: 500 } }))
+  write(repo, '.rig/sensors.json', fromOld({ limits: { diffLines: 500 } }))
   gitIn(repo, 'add', '.rig/sensors.json')
   gitIn(repo, 'commit', '-qm', 'cfg')
   gitIn(repo, 'checkout', '-qb', 'feature')
-  write(repo, '.rig/sensors.json', JSON.stringify({ limits: { diffLines: 9000 } }))
+  write(repo, '.rig/sensors.json', fromOld({ limits: { diffLines: 9000 } }))
   gitIn(repo, 'commit', '-qam', 'loosen')
   const r = check('--at', 'ship', '--base', 'main')
   assert.equal(r.code, 1)
@@ -216,7 +217,7 @@ test('check --at ship reports a weakened committed sensors.json as harness-tampe
 })
 
 function featureRepo(): void {
-  sensors({ full: { test: 'node --test test/*.test.js' } })
+  sensors({ full: { unit: 'node --test test/*.test.js' } })
   write(repo, 'src/add.js', 'export const add = (a, b) => a + b\n')
   write(repo, 'test/add.test.js', "import { test } from 'node:test'\nimport assert from 'node:assert'\nimport { add } from '../src/add.js'\ntest('add', () => assert.equal(add(1, 2), 3))\n")
   write(repo, 'package.json', '{ "type": "module" }\n')
@@ -388,7 +389,7 @@ test('I4: PR-controlled waiver fields cannot break out of the review listing', (
 test('a big diff blocks in CI unless the person approved the change plan; then it only warns', () => {
   const repo = makeRepo()
   sdlc(repo, ['init'])
-  write(repo, '.rig/sensors.json', JSON.stringify({ limits: { diffLines: 50 } }))
+  write(repo, '.rig/sensors.json', fromOld({ limits: { diffLines: 50 } }))
   gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'base')
   gitIn(repo, 'checkout', '-qb', 'big')
   sdlc(repo, ['new', 'big-change', '--type', 'refactor', '--tier', 'L'])
@@ -509,7 +510,7 @@ test('the reviewer lookup happens before any PR test command runs', { skip: !pos
   fs.mkdirSync(planted)
   fs.writeFileSync(path.join(bin, 'gh'), "#!/bin/sh\necho '[[]]'\n", { mode: 0o755 })
   gitIn(repo, 'checkout', '-q', 'main')
-  write(repo, '.rig/sensors.json', JSON.stringify({ full: { plant: `cp ${planted}/gh ${bin}/gh` } }))
+  write(repo, '.rig/sensors.json', fromOld({ full: { plant: `cp ${planted}/gh ${bin}/gh` } }))
   gitIn(repo, 'add', '-A')
   gitIn(repo, 'commit', '-qm', 'config')
   gitIn(repo, 'checkout', '-qb', 'prx')

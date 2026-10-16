@@ -1,4 +1,5 @@
 // The pure data model for sensors: diffs, globs, config, rules and findings. No fs, git or process access.
+import type { Paths } from './registry.ts'
 import { parseV4, parseV6 } from './configparse.ts'
 export type RoutingOverride = Record<string, unknown> // step 4b removed routing; 4c removes the key
 export type Line = { n: number; text: string }
@@ -8,7 +9,7 @@ export type Severity = 'block' | 'warn'
 // Every sensor name a Finding can carry; /rig:waive accepts exactly these (a test keeps this in step with the sources).
 export const SENSOR_NAMES = [
   'test-tamper', 'suppression', 'layering', 'size', 'secrets', 'rules', 'harness-tamper',
-  'traceability', 'red-proof', 'unscanned', 'commands', 'config', 'unscoped', 'behavioral', 'model-role',
+  'traceability', 'red-proof', 'unscanned', 'commands', 'config', 'behavioral', 'model-role',
 ]
 
 export type Finding = { sensor: string; severity: Severity; file?: string; line?: number; message: string; fix: string; labels?: string[] }
@@ -186,9 +187,9 @@ export function matchesAny(file: string, globs: string[]): boolean {
     return re.test(file)
   })
 }
-export const isTest = (file: string, cfg: SensorConfig): boolean => matchesAny(file, cfg.tests)
-export const isSource = (file: string, cfg: SensorConfig): boolean =>
-  !file.startsWith('.rig/') && !matchesAny(file, cfg.ignore)
+export const isTest = (file: string, paths: Paths): boolean => matchesAny(file, paths.tests)
+export const isSource = (file: string, paths: Paths): boolean =>
+  !file.startsWith('.rig/') && !matchesAny(file, paths.ignore)
 
 // ---------- unified diff ----------
 

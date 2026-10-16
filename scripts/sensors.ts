@@ -1,7 +1,7 @@
 // Language-agnostic sensors: pure functions from a parsed diff and config to findings.
 // Language knowledge lives in the pattern tables below, never in code paths per language.
-import { RATCHET_NODES, parseConfig, parseRules, type FileDiff, type Finding, type SensorConfig, isTest, isSource, matchesAny, globToRegex, SECRET_PATTERNS } from './model.ts'
-import { isRegistryShape, weakensRegistry } from './registry.ts'
+import { parseRules, type FileDiff, type Finding, type Layer, isTest, isSource, matchesAny, globToRegex, SECRET_PATTERNS } from './model.ts'
+import { weakensRegistry, builtinOptions, type Registry } from './registry.ts'
 
 export const TAMPER_PATTERNS: { id: string; re: RegExp; what: string }[] = [
   { id: 'skip-or-only', re: /\b(?:it|describe|test|context|suite)\.(?:skip|only|todo)\s*[.(]/, what: 'test skipped or focused' },
@@ -56,11 +56,11 @@ function loweredThresholds(diffs: FileDiff[]): Finding[] {
 
 // Files that intentionally contain detector patterns (a human-approved list) are invisible to the pattern sensors only.
 // Deletions stay visible, so removing a fixture or test file is still reported.
-export const withoutFixtures = (diffs: FileDiff[], cfg: SensorConfig): FileDiff[] => (cfg.fixtures.length ? diffs.filter(d => d.status === 'D' || !matchesAny(d.file, cfg.fixtures)) : diffs)
+export const withoutFixtures = (diffs: FileDiff[], r: Registry): FileDiff[] => (r.paths.fixtures.length ? diffs.filter(d => d.status === 'D' || !matchesAny(d.file, r.paths.fixtures)) : diffs)
 
-export function testTamper(diffs: FileDiff[], cfg: SensorConfig): Finding[] {
+export function testTamper(diffs: FileDiff[], r: Registry): Finding[] {
   const findings: Finding[] = []
-  const tests = diffs.filter(d => isTest(d.file, cfg) && !d.binary)
+  const tests = diffs.filter(d => isTest(d.file, r.paths) && !d.binary)
   const newFiles = tests.filter(d => d.status === 'A')
   const reported = new Set<string>()
   for (const d of tests.filter(t => t.status === 'D')) {
@@ -88,9 +88,9 @@ export function testTamper(diffs: FileDiff[], cfg: SensorConfig): Finding[] {
   return findings
 }
 
-export function suppressions(diffs: FileDiff[], cfg: SensorConfig): Finding[] {
+export function suppressions(diffs: FileDiff[], r: Registry): Finding[] {
   const findings: Finding[] = []
-  for (const d of diffs.filter(f => !f.binary && (isSource(f.file, cfg) || isTest(f.file, cfg)))) {
+  for (const d of diffs.filter(f => !f.binary && (isSource(f.file, r.paths) || isTest(f.file, r.paths)))) {
     for (const l of d.added) {
       if (SUPPRESSIONS.some(re => re.test(l.text)) && !REASONED.test(l.text)) {
         findings.push({ sensor: 'suppression', severity: 'block', file: d.file, line: l.n, message: `suppression added: ${l.text.trim()}`, fix: 'fix the warning instead, or give the reason on the same line after "--" or "because"' })
@@ -103,9 +103,9 @@ export function suppressions(diffs: FileDiff[], cfg: SensorConfig): Finding[] {
 const IMPORT_LINE = /^\s*(?:import|from|require|use|using|#\s*include|include|extern\s+crate)\b|\brequire\s*\(|\bimport\s*\(/
 const word = (t: string): RegExp => new RegExp(`(?:^|[^A-Za-z0-9_])${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:$|[^A-Za-z0-9_])`)
 
-export function layering(diffs: FileDiff[], cfg: SensorConfig): Finding[] {
+export function layering(diffs: FileDiff[], r: Registry): Finding[] {
   const findings: Finding[] = []
-  for (const layer of cfg.layers) {
+  for (const layer of (builtinOptions(r, 'layering').layers ?? []) as Layer[]) {
     const from = globToRegex(layer.from)
     const banned = layer.mustNotImport.map(t => ({ t, re: word(t) }))
     for (const d of diffs.filter(f => from.test(f.file) && !f.binary)) {
@@ -118,32 +118,34 @@ export function layering(diffs: FileDiff[], cfg: SensorConfig): Finding[] {
   return findings
 }
 
-export function size(diffs: FileDiff[], cfg: SensorConfig, fileLines: Record<string, number>, point: 'edit' | 'stop' | 'ship' | 'ci'): Finding[] {
+export function size(diffs: FileDiff[], r: Registry, fileLines: Record<string, number>, point: 'edit' | 'stop' | 'ship' | 'ci'): Finding[] {
+  const o = builtinOptions(r, 'size')
+  const limits = { fileLines: Number(o.fileLines ?? 400), diffLines: Number(o.diffLines ?? 500), lineChars: Number(o.lineChars ?? 160) }
   const findings: Finding[] = diffs.filter(d => d.oversize).map(d => ({ sensor: 'unscanned', severity: 'block', file: d.file, message: 'file is over 20 MB and was not scanned', fix: 'keep it out of the repo (gitignore it, or use LFS); a person can waive `unscanned` for it (a `size` waiver does not cover it)' }))
   // The vendored harness is rig's code, not the project's (harness-tamper watches it), so installing or upgrading it is never a size finding.
-  const counted = diffs.filter(d => isSource(d.file, cfg) && !d.binary && !isProtected(d.file))
+  const counted = diffs.filter(d => isSource(d.file, r.paths) && !d.binary && !isProtected(d.file))
   for (const d of counted.filter(f => f.status !== 'D')) {
     const now = fileLines[d.file]
     if (now === undefined) continue
     const before = now - d.added.length + d.removed.length
-    if (now > cfg.limits.fileLines && before <= cfg.limits.fileLines) {
-      findings.push({ sensor: 'size', severity: point === 'edit' || point === 'stop' ? 'block' : 'warn', file: d.file, message: `grew to ${now} lines (limit ${cfg.limits.fileLines})`, fix: 'split it by responsibility now: this file was within the limit before this change' })
+    if (now > limits.fileLines && before <= limits.fileLines) {
+      findings.push({ sensor: 'size', severity: point === 'edit' || point === 'stop' ? 'block' : 'warn', file: d.file, message: `grew to ${now} lines (limit ${limits.fileLines})`, fix: 'split it by responsibility now: this file was within the limit before this change' })
     }
   }
   const total = counted.reduce((n, d) => n + d.added.length + d.removed.length, 0)
-  if (total > cfg.limits.diffLines && point !== 'edit') {
+  if (total > limits.diffLines && point !== 'edit') {
     findings.push({
-      sensor: 'size', severity: point === 'stop' ? 'warn' : 'block', message: `diff is ${total} changed lines (limit ${cfg.limits.diffLines})`,
+      sensor: 'size', severity: point === 'stop' ? 'warn' : 'block', message: `diff is ${total} changed lines (limit ${limits.diffLines})`,
       fix: 'ship it as smaller changes, or the person approves the plan (/rig:approve <slug> plan) or waives with /rig:waive size * <reason>',
     })
   }
   if (point !== 'edit') {
     for (const d of counted) {
-      const long = d.added.filter(l => l.text.length > cfg.limits.lineChars)
+      const long = d.added.filter(l => l.text.length > limits.lineChars)
       if (!long.length) continue
       findings.push({
         sensor: 'size', severity: 'warn', file: d.file, line: long[0]?.n,
-        message: `${long.length} added line(s) over ${cfg.limits.lineChars} characters`,
+        message: `${long.length} added line(s) over ${limits.lineChars} characters`,
         fix: 'one idea per line: name intermediate values instead of nesting expressions',
       })
     }
@@ -188,32 +190,7 @@ export const RETIRE_PATTERNS: RegExp[] = [
   /\bdropColumn\s*\(\s*["'](\w+)["']/,
 ]
 
-const STOP_WORDS = new Set([
-  'id', 'name', 'type', 'string', 'number', 'integer', 'int', 'value', 'data', 'text', 'true', 'false', 'null', 'table', 'column',
-  'create', 'alter', 'drop', 'not', 'default', 'primary', 'key', 'references', 'varchar', 'numeric', 'serial', 'boolean', 'timestamp',
-  'message', 'service', 'rpc', 'returns', 'optional', 'required', 'repeated', 'import', 'package', 'syntax', 'option', 'enum', 'oneof',
-  'properties', 'items', 'object', 'array', 'description', 'format', 'schema', 'paths', 'get', 'post', 'put', 'patch', 'delete',
-])
-const TOKEN = /[A-Za-z_][A-Za-z0-9_]{2,}/g
-const PROSE_LINE = /^\s*(?:\/\/|#|--|\/\*|\*)/
-const PROSE_VALUE = /^(\s*["']?(?:description|summary|title)["']?\s*:).*$/i
-// Comment lines and the value of description/summary/title keys are prose, not identifiers.
-const code = (text: string): string => (PROSE_LINE.test(text) ? '' : text.replace(PROSE_VALUE, '$1'))
-const tokens = (lines: { text: string }[]): Set<string> => new Set(lines.flatMap(l => code(l.text).match(TOKEN) ?? []))
-const MAX_IDS = 50
 
-export function retiredIdentifiers(diffs: FileDiff[], cfg: SensorConfig, producerContractText: string): string[] {
-  const stillThere = new Set(producerContractText.match(TOKEN) ?? [])
-  const ids = new Set<string>()
-  for (const d of diffs.filter(f => matchesAny(f.file, cfg.contracts) && !f.binary)) {
-    const added = tokens(d.added)
-    for (const t of tokens(d.removed)) if (!added.has(t) && !stillThere.has(t)) ids.add(t)
-    for (const l of d.added) for (const re of RETIRE_PATTERNS) {
-      for (const m of l.text.matchAll(new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g'))) if (m[1]) ids.add(m[1])
-    }
-  }
-  return [...ids].filter(t => !STOP_WORDS.has(t.toLowerCase()) && !/^\d/.test(t)).slice(0, MAX_IDS)
-}
 
 export function contractsFromPlan(planText: string): string[] {
   const section = /^##\s+Contracts\s*\n([\s\S]*?)(?=^##\s|(?![\s\S]))/m.exec(planText)?.[1] ?? ''
@@ -232,90 +209,7 @@ const RULES = '.rig/rules.json'
 
 const removedFrom = (before: string[], after: string[]): string[] => before.filter(x => !after.includes(x))
 
-export function weakensConfig(beforeText: string, afterText: string): string[] {
-  if (isRegistryShape(afterText)) return weakensRegistry(beforeText, afterText)
-  const after = parseConfig(afterText)
-  if (after.errors.some(e => /not valid JSON|must be a JSON object/.test(e))) return ['sensors.json no longer parses']
-  const b = parseConfig(beforeText).config
-  const a = after.config
-  const reasons: string[] = []
-  for (const k of ['fileLines', 'diffLines', 'lineChars'] as const) {
-    if (a.limits[k] > b.limits[k]) reasons.push(`limits.${k} raised ${b.limits[k]} → ${a.limits[k]}`)
-  }
-  if (a.scopeLimit > b.scopeLimit) reasons.push(`scopeLimit raised ${b.scopeLimit} → ${a.scopeLimit}`)
-  if (b.ci.scope === 'all' && a.ci.scope === 'affected') reasons.push('ci.scope changed from "all" to "affected"')
-  for (const [glob, s] of Object.entries(b.scopes)) {
-    const now = a.scopes[glob]
-    if (!now) { reasons.push(`scope ${glob} removed`); continue }
-    for (const d of s.deps ?? []) if (!(now.deps ?? []).includes(d)) reasons.push(`scope ${glob} lost dependency ${d}`)
-    if (now.root !== s.root) reasons.push(`scope ${glob} root changed ${s.root} → ${now.root}`)
-    // Any edit to a command the base declared counts: adding commands does not.
-    for (const p of ['fast', 'full'] as const) for (const [name, cmd] of Object.entries(s[p] ?? {})) {
-      const to = now[p]?.[name]
-      if (!to?.trim()) reasons.push(`scope ${glob} ${p}.${name} removed`)
-      else if (to !== cmd) reasons.push(`scope ${glob} ${p}.${name} changed`)
-    }
-    for (const [cat, q] of Object.entries(s.quality ?? {})) {
-      const to = now.quality?.[cat as keyof typeof now.quality]
-      if (!to?.cmd.trim()) reasons.push(`scope ${glob} quality.${cat} removed`)
-      else if (to.cmd !== q?.cmd || to.count !== q?.count) reasons.push(`scope ${glob} quality.${cat} changed`)
-    }
-  }
-  // A new scope takes its files from the top-level (or a wider scope's) commands: each kind the base runs, it must run too.
-  const scopeList = Object.values(b.scopes)
-  const baseHas = { fast: Object.keys(b.fast).length > 0, full: Object.keys(b.full).length > 0, quality: Object.keys(b.quality).length > 0 }
-  for (const k of ['fast', 'full', 'quality'] as const) baseHas[k] ||= scopeList.some(s => Object.keys(s[k] ?? {}).length)
-  if (scopeList.length) for (const [glob, s] of Object.entries(a.scopes)) {
-    if (!(glob in b.scopes)) for (const k of ['fast', 'full', 'quality'] as const) if (baseHas[k] && !Object.keys(s[k] ?? {}).length) reasons.push(`scope ${glob} added with no ${k} command`)
-  }
-  for (const k of ['tests', 'contracts', 'testSupport'] as const) for (const g of removedFrom(b[k], a[k])) reasons.push(`${k} glob removed ${g}`)
-  for (const g of removedFrom(a.ignore, b.ignore)) reasons.push(`ignore added ${g}`)
-  for (const g of removedFrom(a.fixtures, b.fixtures)) reasons.push(`fixtures added ${g}`)
-  for (const k of removedFrom(a.knownRed, b.knownRed)) reasons.push(`knownRed added ${k}`)
-  for (const p of ['fast', 'full'] as const) for (const name of removedFrom(Object.keys(b[p]), Object.keys(a[p]))) reasons.push(`${p}.${name} removed`)
-  for (const c of removedFrom(b.consumers.map(x => x.name), a.consumers.map(x => x.name))) reasons.push(`consumer ${c} removed`)
-  for (const l of b.layers) {
-    const now = a.layers.find(x => x.from === l.from)
-    if (!now) reasons.push(`layer ${l.from} removed`)
-    else for (const t of removedFrom(l.mustNotImport, now.mustNotImport)) reasons.push(`layer ${l.from} now allows ${t}`)
-  }
-  for (const k of Object.keys(b.gates) as (keyof typeof b.gates)[]) for (const g of removedFrom(b.gates[k], a.gates[k])) reasons.push(`gate ${k} removed ${g}`)
-  for (const n of RATCHET_NODES) {
-    if (a.ratchet.rounds[n] > b.ratchet.rounds[n]) reasons.push(`ratchet.${n} raised ${b.ratchet.rounds[n]} → ${a.ratchet.rounds[n]}`)
-    if (a.ratchet.usd[n] > b.ratchet.usd[n]) reasons.push(`ratchet.usd.${n} raised ${b.ratchet.usd[n]} → ${a.ratchet.usd[n]}`)
-  }
-  if (b.githooks.prePush === 'ship' && a.githooks.prePush === 'off') reasons.push('githooks.prePush turned off')
-  if (a.githooks.budgetMs > b.githooks.budgetMs) reasons.push(`githooks.budgetMs raised ${b.githooks.budgetMs} → ${a.githooks.budgetMs}`)
-  // A soft budget weakens when it is raised or removed, or when downshift is turned off (spend governance spec §5, §12).
-  const tb = b.budget.teamMonthlyUsd, ta = a.budget.teamMonthlyUsd
-  if (tb !== null && ta === null) reasons.push('budget.teamMonthlyUsd removed')
-  else if (tb !== null && ta !== null && ta > tb) reasons.push(`budget.teamMonthlyUsd raised ${tb} → ${ta}`)
-  for (const t of ['S', 'M', 'L'] as const) {
-    const x = b.budget.changeUsd[t], y = a.budget.changeUsd[t]
-    if (x !== undefined && y === undefined) reasons.push(`budget.changeUsd.${t} removed`)
-    else if (x !== undefined && y !== undefined && y > x) reasons.push(`budget.changeUsd.${t} raised ${x} → ${y}`)
-  }
-  if (b.behavioral && !a.behavioral) reasons.push('behavioral removed')
-  if (b.behavioral && a.behavioral) {
-    for (const k of ['validate', 'run'] as const) if (b.behavioral[k] !== a.behavioral[k]) reasons.push(`behavioral.${k} changed`)
-    for (const g of removedFrom(b.behavioral.files, a.behavioral.files)) reasons.push(`behavioral.files removed ${g}`)
-    if (b.behavioral.cadence === 'continuous' && a.behavioral.cadence === 'final') reasons.push('behavioral.cadence changed from "continuous" to "final"')
-  }
-  if (a.budget.warnAt.some((v, i) => v > (b.budget.warnAt[i] ?? v))) reasons.push(`budget.warnAt raised ${b.budget.warnAt.join('/')} → ${a.budget.warnAt.join('/')}`)
-  if (b.budget.downshift && !a.budget.downshift) reasons.push('budget.downshift turned off')
-  for (const l of removedFrom(Object.keys(b.levels), Object.keys(a.levels))) reasons.push(`levels.${l} removed`)
-  for (const q of removedFrom(Object.keys(b.quality), Object.keys(a.quality))) reasons.push(`quality.${q} removed`)
-  for (const l of Object.keys(a.levels) as (keyof typeof a.levels)[]) {
-    if (!(l in b.levels)) reasons.push(`levels.${l} added`)
-    else if (a.levels[l] !== b.levels[l]) reasons.push(`levels.${l} changed`)
-  }
-  for (const q of Object.keys(a.quality) as (keyof typeof a.quality)[]) {
-    const x = a.quality[q], y = b.quality[q]
-    if (!y) reasons.push(`quality.${q} added`)
-    else if (x?.cmd !== y.cmd || x?.count !== y.count) reasons.push(`quality.${q} changed`)
-  }
-  return reasons
-}
+export const weakensConfig = (beforeText: string, afterText: string): string[] => weakensRegistry(beforeText, afterText)
 
 export function weakensRules(beforeText: string, afterText: string): string[] {
   const b = parseRules(beforeText).rules

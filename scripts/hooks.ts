@@ -11,21 +11,20 @@ import {
 import { activeSlug, status, nextStep, changeType } from './lifecycle.ts'
 import { snapshot, writeBaseline, readBaseline, turnDiff, showAt, diffHash } from './diffs.ts'
 import { isProtected } from './sensors.ts'
-import { loadConfig, runChecks, editFindings } from './check.ts'
-import { formatFindings, isSource, isTest, matchesAny, warnRow, type Finding, type SensorConfig } from './model.ts'
+import { loadConfig, runChecks, editFindings, declaresRegistry } from './check.ts'
+import { formatFindings, isSource, isTest, matchesAny, warnRow, type Finding } from './model.ts'
 import { sessionNote } from './githooks.ts'
 import { treeStamp } from './stamp.ts'
 import { runCommand } from './runs.ts'
-import { policyMode, activeSensors, commandFor, ALWAYS_ON, type Registry, type Mode } from './registry.ts'
-import { contractsTouched, contractGlobs } from './contracts.ts'
+import { policyMode, activeSensors, commandFor, contractGlobs, ALWAYS_ON, type Registry, type Mode } from './registry.ts'
+import { contractsTouched } from './contracts.ts'
 import { syncFindings } from './sync.ts'
 import { recordSessionModel, recordLaunch, recordResolved, sessionModel, readModelState, modelRoleFindings } from './modelstate.ts'
 
 const MODEL_STATE = path.join(SDLC, 'state', 'model.json')
 
-// The policy for this session's model (spec §3.3); a legacy config has no policy, so checks run as they always have.
-function modeNow(registry: Registry | null, input: HookInput): { mode: Mode; model: string | null } {
-  if (!registry) return { mode: 'continuous', model: null }
+// The policy for this session's model (spec §3.3).
+function modeNow(registry: Registry, input: HookInput): { mode: Mode; model: string | null } {
   const model = sessionModel(MODEL_STATE, input.session_id ?? 'default', input.transcript_path, ROOT)
   return { mode: policyMode(registry, model), model }
 }
@@ -72,22 +71,22 @@ function readStdin(): HookInput {
 
 type Guide = { name: string; globs: string[]; sourceOnly: boolean; body: string }
 
-export function listGuides(config: SensorConfig): Guide[] {
+export function listGuides(r: Registry): Guide[] {
   const dir = path.join(SDLC, 'guides')
   if (!exists(dir)) return []
   return fs.readdirSync(dir).filter(f => f.endsWith('.md')).sort().map(f => {
     const { data, body } = frontmatter(read(path.join(dir, f)))
     const tokens = (data.paths ?? '').split(',').map(s => s.trim()).filter(Boolean)
-    const globs = tokens.flatMap(t => (t === '@source' ? ['**'] : t === '@tests' ? config.tests : t === '@contracts' ? config.contracts : [t]))
+    const globs = tokens.flatMap(t => (t === '@source' ? ['**'] : t === '@tests' ? r.paths.tests : t === '@contracts' ? contractGlobs(r.contracts) : [t]))
     return { name: data.name || f.replace(/\.md$/, ''), globs, sourceOnly: tokens.includes('@source'), body: body.trim() }
   })
 }
 
 // Progressive disclosure: a guide enters the context the first time this session edits a matching file.
 function guidesFor(rel: string, session: string): string | undefined {
-  const { config } = loadConfig()
+  const { registry } = loadConfig()
   const seen = readGate().guides[session] ?? []
-  const fresh = listGuides(config).filter(g => !seen.includes(g.name) && matchesAny(rel, g.globs) && (!g.sourceOnly || (isSource(rel, config) && !isTest(rel, config))))
+  const fresh = listGuides(registry).filter(g => !seen.includes(g.name) && matchesAny(rel, g.globs) && (!g.sourceOnly || (isSource(rel, registry.paths) && !isTest(rel, registry.paths))))
   if (!fresh.length) return undefined
   updateGate(g => { g.guides[session] = [...(g.guides[session] ?? seen), ...fresh.map(f => f.name)] })
   return fresh.map(g => g.body).join('\n\n')
@@ -102,16 +101,16 @@ function hookSessionStart(input: HookInput): void {
   if (input.source === 'compact' || input.source === 'clear') {
     updateGate(g => { delete g.guides[input.session_id ?? 'default'] })
   }
-  const { config: cfg, registry } = loadConfig()
+  const { registry } = loadConfig()
   const { mode, model } = modeNow(registry, input)
-  const guides = listGuides(cfg).map(g => g.name)
+  const guides = listGuides(registry).map(g => g.name)
   const active = activeSlug()
-  const st = active ? status(active, registry?.gates ?? { plan: true, merge: true }, null) : null
+  const st = active ? status(active, registry.gates, null) : null
   const context = [
     'sdlc harness is active in this repo (artifacts in .rig/).',
     ROUTING_LINE,
-    registry ? `rig policy: ${mode} checks for ${model ?? 'an unknown model'} (build on ${registry.models.build}, evaluate on ${registry.models.evaluate}).` : '',
-    registry ? syncFindings(registry, [], 'warn').slice(0, 5).map(f => `rig sync: ${f.message}`).join('\n') : '',
+    `rig policy: ${mode} checks for ${model ?? 'an unknown model'} (build on ${registry.models.build}, evaluate on ${registry.models.evaluate}).`,
+    declaresRegistry() ? syncFindings(registry, [], 'warn').slice(0, 5).map(f => `rig sync: ${f.message}`).join('\n') : '',
     active && st ? `Active change: ${active} (${changeType(active)}, ${st}). Next: ${nextStep(active, st)}` : `No active change. Start one with ${skillRef('start')} "<request>".`,
     'Rules: plans hold interfaces and acceptance tests, never code; only the person writes .rig/changes/<slug>/approval.json; run subagents in the foreground and never end a turn while one is running; never sleep-poll; at ~150k context run /compact.',
     sessionNote(),
@@ -132,10 +131,10 @@ function hookPostEdit(input: HookInput): void {
   if (exists(SDLC)) {
     const rel = relPosix(file)
     updateGate(g => { g.tool = pushUnique(g.tool, rel) })
-    const { config, registry } = loadConfig()
+    const { registry } = loadConfig()
     if (modeNow(registry, input).mode === 'continuous') {
       edits = formatFindings(editFindings(rel).filter(f => f.severity === 'block' && f.sensor !== 'secrets'))
-      if (registry && isSource(rel, config)) edits = [edits, ...editSensorFailures(registry, rel)].filter(Boolean).join('\n')
+      if (isSource(rel, registry.paths)) edits = [edits, ...editSensorFailures(registry, rel)].filter(Boolean).join('\n')
     }
     if (!problems.length && !edits) guide = guidesFor(rel, input.session_id ?? 'default')
   }
@@ -227,10 +226,11 @@ function hookStop(input: HookInput = {}): { halt: boolean; warn?: string } {
   if (!exists(SDLC)) return { halt: false }
   const snap = readBaseline()
   if (!snap) return { halt: false }
-  const { config, rules, errors, registry } = loadConfig()
+  const { registry, rules, errors } = loadConfig()
+  const config = registry
   const { mode, model } = modeNow(registry, input)
   const gate = readGate()
-  const diffs = turnDiff(snap).filter(d => isSource(d.file, config) || isProtected(d.file) || matchesAny(d.file, registry ? contractGlobs(registry.contracts) : config.contracts))
+  const diffs = turnDiff(snap).filter(d => isSource(d.file, registry.paths) || isProtected(d.file) || matchesAny(d.file, contractGlobs(registry.contracts)))
   if (!diffs.length) return { halt: false }
   const hash = diffHash(diffs) + sha(read(path.join(SDLC, 'sensors.json')) + read(path.join(SDLC, 'rules.json'))) + mode
   if (gate.passed.main === hash) return { halt: false }
@@ -242,12 +242,12 @@ function hookStop(input: HookInput = {}): { halt: boolean; warn?: string } {
   const result = runChecks({
     point: 'stop', diffs, config, rules, slugs: slug ? [slug] : [], commands: treePassed || mode === 'final' ? 'none' : 'fast', budgetMs: STOP_BUDGET_MS,
     before: f => showAt(snap.sha, f) ?? '', toolEdited: new Set(gate.tool), base: null, ratchet: true,
-    contracts: mode === 'continuous' && registry !== null && contractsTouched(registry.contracts, diffs.map(d => d.file)),
+    contracts: mode === 'continuous' && contractsTouched(registry.contracts, diffs.map(d => d.file)),
   })
   const configBlocks: Finding[] = errors.map(e => ({ sensor: 'config', severity: 'block', file: '.rig/sensors.json', message: e, fix: 'fix the file' }))
   const kept = mode === 'final' ? result.findings.filter(f => (ALWAYS_ON as string[]).includes(f.sensor)) : result.findings
-  const roleOn = registry?.sensors.some(s => s.id === 'model-role' && s.enabled) ?? false
-  const roles = registry && roleOn ? modelRoleFindings(registry, model, readModelState(MODEL_STATE).launches.filter(l => l.session === (input.session_id ?? 'default'))) : []
+  const roleOn = registry.sensors.some(s => s.id === 'model-role' && s.enabled)
+  const roles = roleOn ? modelRoleFindings(registry, model, readModelState(MODEL_STATE).launches.filter(l => l.session === (input.session_id ?? 'default'))) : []
   const findings = [...configBlocks, ...kept, ...roles]
   const blocks = findings.filter(f => f.severity === 'block')
   gate.last = summarize(findings)

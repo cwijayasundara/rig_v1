@@ -125,14 +125,6 @@ export const optString = (args: Args, key: string): string | undefined => {
 }
 // ---------- changes ----------
 
-// Contract files frozen by an approval: contract globs plus `.rig/changes/<slug>/behavioral/**` (read raw here, no import cycle).
-export function behavioralFiles(slug: string): string[] {
-  let globs: string[] = []
-  try { const raw = JSON.parse(read(path.join(SDLC, 'sensors.json'))) as { sensors?: unknown; contracts?: { files?: unknown; validate?: unknown; run?: unknown }; behavioral?: { files?: unknown } }; const list = (v: unknown): string[] | null => (Array.isArray(v) && v.every(f => typeof f === 'string') ? (v as string[]) : null); globs = Array.isArray(raw.sensors) ? (list(raw.contracts?.files)?.length ? list(raw.contracts?.files) ?? [] : raw.contracts?.validate || raw.contracts?.run ? ['.rig/contracts/**'] : []) : raw.behavioral ? list(raw.behavioral.files) ?? ['.rig/contracts/**'] : [] } catch { /* no or unreadable sensors.json: nothing frozen by config */ }
-  if (!globs.length && !exists(path.join(CHANGES, slug, 'behavioral'))) return [] // no block and no local folder: nothing frozen, and no git call on the common path
-  return (git(['ls-files', '--cached', '--others', '--exclude-standard'])?.split('\n').filter(Boolean) ?? []).filter(f => f.startsWith(`.rig/changes/${slug}/behavioral/`) || globs.some(g => globToRegex(g).test(f))).sort()
-}
-
 export function listChanges(): string[] {
   if (!exists(CHANGES)) return []
   return fs

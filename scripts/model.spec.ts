@@ -1,7 +1,5 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import fs from 'node:fs'
-import path from 'node:path'
 import { parseUnifiedDiff, globToRegex, matchesAny, parseConfig, parseRules, formatFindings, warnRow, printable, DEFAULT_CONFIG, type Finding } from './model.ts'
 
 test('parses a modified file with added and removed line numbers', () => {
@@ -134,13 +132,6 @@ test('maskSecrets masks a whole private-key block through its END line', async (
   assert.equal(maskSecrets(['before', ...pem, 'after'].join('\n')), 'before\n[masked by sdlc]\n[masked by sdlc]\n[masked by sdlc]\nafter')
 })
 
-test('limits.lineChars is validated and raising it weakens the config', async () => {
-  const { parseConfig } = await import('./model.ts')
-  assert.deepEqual(parseConfig('{"limits":{"lineChars":0}}').errors, ['limits.lineChars must be a positive number'])
-  const { weakensConfig } = await import('./sensors.ts')
-  assert.deepEqual(weakensConfig('{"limits":{"lineChars":120}}', '{"limits":{"lineChars":200}}'), ['limits.lineChars raised 120 → 200'])
-})
-
 test('config build mode is native by default and only native or sdd', async () => {
   const { parseConfig } = await import('./model.ts')
   assert.equal(parseConfig('{}').config.build, 'native')
@@ -192,17 +183,6 @@ test('v0.4 keys ignore prototype names and reject blank quality commands', () =>
   assert.equal(({} as Record<string, unknown>).toString !== undefined, true)
   assert.match(errs('{"quality":{"lint":{"cmd":"  ","count":"exit"}}}'), /quality\.lint must be \{ cmd, count \}/)
   assert.match(errs('{"quality":{"lint":{"cmd":"","count":"exit"}}}'), /quality\.lint must be \{ cmd, count \}/)
-})
-
-test('every starter stack in templates/stacks.json is a valid sensors.json fragment', () => {
-  const stacks = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '../templates/stacks.json'), 'utf8')) as Record<string, unknown>
-  assert.ok(Object.keys(stacks).length >= 4)
-  for (const [name, frag] of Object.entries(stacks)) assert.deepEqual(parseConfig(JSON.stringify(frag)).errors, [], name)
-})
-
-test('every starter stack declares unit and integration levels', () => {
-  const stacks = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '../templates/stacks.json'), 'utf8')) as Record<string, { levels?: Record<string, string> }>
-  for (const [name, s] of Object.entries(stacks)) assert.ok(s.levels?.unit && s.levels.integration, `${name} needs unit and integration`)
 })
 
 const SPOOF = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/

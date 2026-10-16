@@ -5,10 +5,12 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { makeRepo, sdlc, hook, write, gitIn } from './testkit.ts'
+import { makeRepo, sdlc, hook, write, gitIn, fromOld } from './testkit.ts'
 
 const SECRET = 'const apikey = "abcdefghijklmnop12345678"\n'
 let repo: string
+// A registry-shaped sensors.json declares sensors, so its CLAUDE.md guides block is written too (sync, spec §5).
+const cfg = (v: Record<string, unknown>): void => { write(repo, '.rig/sensors.json', fromOld(v)); sdlc(repo, ['sync']) }
 beforeEach(() => {
   repo = makeRepo()
   write(repo, '.rig/sensors.json', '{}')
@@ -51,12 +53,12 @@ test('staged assertion removal blocks as test-tamper', () => {
 })
 
 test('a failing fast command blocks; a long-line warning prints but does not block', () => {
-  write(repo, '.rig/sensors.json', JSON.stringify({ fast: { test: 'node -e "process.exit(1)"' }, limits: { lineChars: 10 } }))
+  cfg({ fast: { test: 'node -e "process.exit(1)"' }, limits: { lineChars: 10 } })
   stage('src/a.js', 'export const a = 1\n')
   const red = commit()
   assert.equal(red.code, 1)
-  assert.match(red.stdout, /fast\.test/)
-  write(repo, '.rig/sensors.json', JSON.stringify({ limits: { lineChars: 10 } }))
+  assert.match(red.stdout, /test/)
+  cfg({ limits: { lineChars: 10 } })
   stage('src/big.js', Array.from({ length: 20 }, (_, i) => `export const g${i} = ${i}`).join('\n') + '\n')
   const warn = commit()
   assert.equal(warn.code, 0)
@@ -64,7 +66,7 @@ test('a failing fast command blocks; a long-line warning prints but does not blo
 })
 
 test('a staged file that crosses the line limit blocks at commit; one already over the limit does not', () => {
-  write(repo, '.rig/sensors.json', JSON.stringify({ limits: { fileLines: 10 } }))
+  cfg({ limits: { fileLines: 10 } })
   const lines = (n: number) => Array.from({ length: n }, (_, i) => `export const v${i} = ${i}`).join('\n') + '\n'
   stage('src/a.js', lines(8))
   stage('src/over.js', lines(30))
@@ -114,7 +116,7 @@ test('a merge or rebase is read from git state, not the environment; it skips on
   assert.match(merging.stdout, /secrets/)
   gitIn(repo, 'reset', '-q')
   fs.rmSync(path.join(repo, '.git/MERGE_HEAD'), { force: true })
-  write(repo, '.rig/sensors.json', JSON.stringify({ fast: { test: 'node -e "process.exit(1)"' } }))
+  cfg({ fast: { test: 'node -e "process.exit(1)"' } })
   stage('src/b.js', 'export const b = 1\n')
   assert.equal(commit().code, 1, 'no merge: the failing fast command blocks')
   fs.writeFileSync(path.join(repo, '.git/MERGE_HEAD'), gitIn(repo, 'rev-parse', 'HEAD') + '\n')
@@ -275,16 +277,6 @@ test('pushing another branch than HEAD uses that branch\'s merge-base, not HEAD\
 })
 
 
-test('an overrun push budget warns and lets the push through', () => {
-  write(repo, '.rig/sensors.json', JSON.stringify({ full: { slow: 'node -e "setTimeout(()=>{},3000)"' }, githooks: { budgetMs: 500 } }))
-  const base = head()
-  stage('src/a.js', 'export const a = 1\n')
-  gitIn(repo, 'commit', '-qm', 'x')
-  const r = push(head(), base)
-  assert.equal(r.code, 0, r.stdout)
-  assert.match(r.stdout, /^  ! commands: .*(?:budget|timed out).* → /m)
-})
-
 const pushRaw = (localRef: string, local: string, remoteRef: string, remote: string) => sdlc(repo, ['check', '--at', 'push'], { input: `${localRef} ${local} ${remoteRef} ${remote}\n` })
 
 test('push judges by the destination ref, whatever the local side is named', () => {
@@ -324,7 +316,7 @@ test('pushing a change branch after the change finished is judged as that change
 })
 
 test('a Stop that passes with a warning tells the person, and the next prompt tells the agent once', () => {
-  write(repo, '.rig/sensors.json', JSON.stringify({ limits: { lineChars: 10 } }))
+  cfg({ limits: { lineChars: 10 } })
   hook(repo, 'prompt-submit', { session_id: 's' })
   write(repo, 'src/big.js', Array.from({ length: 20 }, (_, i) => `export const g${i} = ${i}`).join('\n') + '\n')
   const stop = hook(repo, 'stop', { session_id: 's' })
@@ -384,7 +376,7 @@ test('an older vendored checker without githooks.ts is not wired: install and se
 })
 
 test('warnings at commit print with their fix text, five at most plus a count', () => {
-  write(repo, '.rig/sensors.json', JSON.stringify({ limits: { lineChars: 10 } }))
+  cfg({ limits: { lineChars: 10 } })
   const big = Array.from({ length: 20 }, (_, i) => `export const g${i} = ${i}`).join('\n') + '\n'
   stage('src/big.js', big)
   const one = commit()
@@ -476,7 +468,7 @@ test('push says when the commands judge the working tree, and names refs it skip
 const bigFile = Array.from({ length: 20 }, (_, i) => `export const g${i} = ${i}`).join('\n') + '\n'
 
 test('more than five warnings at Stop say how many more, to the person and to the agent', () => {
-  write(repo, '.rig/sensors.json', JSON.stringify({ limits: { lineChars: 10 } }))
+  cfg({ limits: { lineChars: 10 } })
   hook(repo, 'prompt-submit', { session_id: 's' })
   for (const n of [1, 2, 3, 4, 5, 6, 7]) write(repo, `src/big${n}.js`, bigFile)
   const stop = JSON.parse(hook(repo, 'stop', { session_id: 's' }).stdout).systemMessage
@@ -507,20 +499,20 @@ test('a real git push runs the installed pre-push hook: clean work goes, a secre
 })
 
 test('a failing full command still blocks at push; only a budget overrun is softened', () => {
-  write(repo, '.rig/sensors.json', JSON.stringify({ full: { test: 'node -e "process.exit(3)"' } }))
+  cfg({ full: { test: 'node -e "process.exit(3)"' } })
   const base = head()
   stage('src/a.js', 'export const a = 1\n')
   gitIn(repo, 'commit', '-qm', 'x')
   const r = push(head(), base)
   assert.equal(r.code, 1, r.stdout)
-  assert.match(r.stdout, /full\.test failed/)
+  assert.match(r.stdout, /test failed/)
 })
 
 test('pre-push skips the full commands for a change verified on exactly this tree', () => {
   const OK = 'node -e "process.exit(0)"'
   const m = path.join(os.tmpdir(), `rig-push-${process.pid}-${Math.random().toString(36).slice(2)}.txt`)
   const bump = `node -e "require('fs').appendFileSync('${m}','x')"`
-  write(repo, '.rig/sensors.json', JSON.stringify({ fast: { test: OK }, full: { mark: bump }, quality: { lint: { cmd: bump, count: 'exit' } } }))
+  cfg({ fast: { test: OK }, full: { mark: bump }, quality: { lint: { cmd: bump, count: 'exit' } } })
   gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'cfg')
   const base = gitIn(repo, 'rev-parse', 'HEAD')
   gitIn(repo, 'checkout', '-qb', 'sdlc/tiny')
@@ -543,7 +535,7 @@ test('pre-push does not skip when an untracked file was in the stamped tree, eve
   const m = path.join(os.tmpdir(), `rig-push-${process.pid}-${Math.random().toString(36).slice(2)}.txt`)
   const bump = `node -e "require('fs').appendFileSync('${m}','x')"`
   gitIn(repo, 'config', 'status.showUntrackedFiles', 'no')
-  write(repo, '.rig/sensors.json', JSON.stringify({ fast: { test: OK }, full: { mark: bump }, quality: { lint: { cmd: bump, count: 'exit' } } }))
+  cfg({ fast: { test: OK }, full: { mark: bump }, quality: { lint: { cmd: bump, count: 'exit' } } })
   gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'cfg')
   const base = gitIn(repo, 'rev-parse', 'HEAD')
   gitIn(repo, 'checkout', '-qb', 'sdlc/tiny')

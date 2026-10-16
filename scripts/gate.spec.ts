@@ -3,7 +3,7 @@ import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { makeRepo, sdlc, hook, write, gitIn } from './testkit.ts'
+import { makeRepo, sdlc, hook, write, gitIn, fromOld, registry } from './testkit.ts'
 
 let repo: string
 beforeEach(() => {
@@ -14,7 +14,7 @@ test('Stop is silent outside sdlc repos and on turns that changed no source', ()
   write(repo, 'src/x.js', 'x\n')
   assert.equal(stop().stdout, '')
   sdlc(repo, ['init'])
-  write(repo, '.rig/sensors.json', JSON.stringify({ fast: { test: 'node -e "require(\'fs\').writeFileSync(\'ran.txt\', \'1\')"' } }))
+  write(repo, '.rig/sensors.json', fromOld({ fast: { test: 'node -e "require(\'fs\').writeFileSync(\'ran.txt\', \'1\')"' } }))
   gitIn(repo, 'add', '.')
   gitIn(repo, 'commit', '-qm', 'cfg')
   hook(repo, 'prompt-submit', {})
@@ -42,14 +42,14 @@ test('Stop blocks twice, then lets the turn end with a system message and unreso
 
 test('a harness file changed by Bash blocks at Stop; the same change through Edit only warns', () => {
   sdlc(repo, ['new', 'xx', '--type', 'chore', '--tier', 'S'])
-  write(repo, '.rig/sensors.json', JSON.stringify({ limits: { diffLines: 500 } }))
+  write(repo, '.rig/sensors.json', fromOld({ limits: { diffLines: 500 } }))
   gitIn(repo, 'add', '.')
   gitIn(repo, 'commit', '-qm', 'cfg')
   hook(repo, 'prompt-submit', {})
-  write(repo, '.rig/sensors.json', JSON.stringify({ limits: { diffLines: 900 } }))
+  write(repo, '.rig/sensors.json', fromOld({ limits: { diffLines: 900 } }))
   assert.match(JSON.parse(stop().stdout).reason, /outside Write\/Edit/)
   hook(repo, 'prompt-submit', {})
-  write(repo, '.rig/sensors.json', JSON.stringify({ limits: { diffLines: 950 } }))
+  write(repo, '.rig/sensors.json', fromOld({ limits: { diffLines: 950 } }))
   hook(repo, 'post-edit', { tool_input: { file_path: path.join(repo, '.rig/sensors.json') } })
   const warned = JSON.parse(stop().stdout) as { decision?: string; systemMessage?: string }
   assert.equal(warned.decision, undefined, 'a warning does not block')
@@ -76,11 +76,11 @@ test('a corrupt gate file never wedges the session', () => {
 
 test('a protected-only diff creates no ad-hoc change; contract edits are tier M', () => {
   sdlc(repo, ['init'])
-  write(repo, '.rig/sensors.json', JSON.stringify({ limits: { diffLines: 500 } }))
+  write(repo, '.rig/sensors.json', fromOld({ limits: { diffLines: 500 } }))
   gitIn(repo, 'add', '.')
   gitIn(repo, 'commit', '-qm', 'cfg')
   hook(repo, 'prompt-submit', {})
-  write(repo, '.rig/sensors.json', JSON.stringify({ limits: { diffLines: 900 } }))
+  write(repo, '.rig/sensors.json', fromOld({ limits: { diffLines: 900 } }))
   stop()
   assert.ok(!fs.existsSync(path.join(repo, '.rig/changes')) || fs.readdirSync(path.join(repo, '.rig/changes')).length === 0)
 })
@@ -106,6 +106,7 @@ test('init copies the default guides into .rig/guides', () => {
 
 test('a guide is injected the first time a matching file is edited in a session, and again after compaction', () => {
   sdlc(repo, ['init'])
+  write(repo, '.rig/sensors.json', registry({ contracts: { files: ['schema/**'] } })) // @contracts guides follow the declared contract files
   assert.match(contextOf(edit('src/order.ts')) ?? '', /# Engineering rules/)
   assert.equal(contextOf(edit('src/other.ts')), undefined)
   assert.match(contextOf(edit('test/order.test.ts')) ?? '', /# Testing rules/)
@@ -126,7 +127,7 @@ test('session start lists guide names without their bodies', () => {
 test('I3: Stop ratchets a known-red command that now passes; it then blocks when it fails again', () => {
   sdlc(repo, ['new', 'xx', '--type', 'chore', '--tier', 'S'])
   const lint = 'node -e "process.exit(require(\'fs\').existsSync(\'bad.flag\') ? 1 : 0)"'
-  write(repo, '.rig/sensors.json', JSON.stringify({ fast: { lint }, knownRed: ['fast.lint'] }, null, 2) + '\n')
+  write(repo, '.rig/sensors.json', fromOld({ fast: { lint }, knownRed: ['fast.lint'] }) + '\n')
   gitIn(repo, 'add', '.')
   gitIn(repo, 'commit', '-qm', 'cfg')
   hook(repo, 'prompt-submit', {})
@@ -138,7 +139,7 @@ test('I3: Stop ratchets a known-red command that now passes; it then blocks when
   write(repo, 'bad.flag', 'x\n')
   const out = JSON.parse(stop().stdout)
   assert.equal(out.decision, 'block')
-  assert.match(out.reason, /\[commands\][\s\S]*fast\.lint failed/)
+  assert.match(out.reason, /\[commands\][\s\S]*lint failed/)
 })
 
 const stop = () => hook(repo, 'stop', { session_id: 's1' })
@@ -162,7 +163,7 @@ test('harness files untracked at turn start and committed unchanged in the turn 
 
 test('Stop skips the fast commands on a tree they already passed, and still judges the diff with the sensors', () => {
   sdlc(repo, ['init'])
-  write(repo, '.rig/sensors.json', JSON.stringify({ fast: { test: 'node -e "require(\'fs\').appendFileSync(\'ran.txt\', \'1\')"' } }))
+  write(repo, '.rig/sensors.json', fromOld({ fast: { test: 'node -e "require(\'fs\').appendFileSync(\'ran.txt\', \'1\')"' } }))
   // The marker is ignored, as a real test's scratch output would be: the stamp covers tracked and untracked files, not ignored ones.
   fs.appendFileSync(path.join(repo, '.gitignore'), 'ran.txt\n')
   gitIn(repo, 'add', '.')

@@ -21,7 +21,7 @@ test('Stop runs a registry turn sensor and blocks on its failure', () => {
   turn()
   const out = JSON.parse(stop().stdout)
   assert.equal(out.decision, 'block')
-  assert.match(out.reason, /fast\.unit failed \(exit 3\)/)
+  assert.match(out.reason, /unit failed \(exit 3\)/)
 })
 
 test('a non-blocking registry sensor warns instead of blocking', () => {
@@ -29,7 +29,7 @@ test('a non-blocking registry sensor warns instead of blocking', () => {
   turn()
   const r = stop()
   assert.doesNotMatch(r.stdout, /"decision":"block"/)
-  assert.match(r.stdout, /fast\.dup/)
+  assert.match(r.stdout, /dup/)
 })
 
 test('a disabled built-in does not judge the turn', () => {
@@ -54,8 +54,8 @@ test('baseline writes failing registry sensors as ids, and a passing known-red s
 test('a registry freezes contracts.files', () => {
   registry({ sensors: [], contracts: { files: ['api/**'] } })
   write(repo, 'api/openapi.yaml', 'openapi: 3.1.0\n')
-  const core = path.resolve(import.meta.dirname, 'core.ts')
-  const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', `import { behavioralFiles } from ${JSON.stringify(core)}; console.log(JSON.stringify(behavioralFiles('x')))`], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo } })
+  const core = path.resolve(import.meta.dirname, 'lifecycle.ts')
+  const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', `import { contractFiles } from ${JSON.stringify(core)}; console.log(JSON.stringify(contractFiles()))`], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo } })
   assert.deepEqual(JSON.parse(r.stdout), ['api/openapi.yaml'], r.stderr)
 })
 
@@ -72,31 +72,31 @@ test('under the final policy Stop skips command sensors', () => {
   failing()
   hook(repo, 'model-switch', { session_id: 's1', to_model: 'claude-opus-5-5' })
   turn()
-  assert.doesNotMatch(stop().stdout, /fast\.unit/)
+  assert.doesNotMatch(stop().stdout, /unit/)
 })
 
 test('the transcript gives the model when no hook recorded one', () => {
   failing()
   turn()
-  assert.doesNotMatch(stop({ transcript_path: transcript('claude-opus-5-5') }).stdout, /fast\.unit/)
+  assert.doesNotMatch(stop({ transcript_path: transcript('claude-opus-5-5') }).stdout, /unit/)
   turn()
-  assert.match(stop({ transcript_path: transcript('claude-sonnet-5-5') }).stdout, /fast\.unit failed/)
+  assert.match(stop({ transcript_path: transcript('claude-sonnet-5-5') }).stdout, /unit failed/)
 })
 
 test('a recorded switch beats the transcript', () => {
   failing()
   hook(repo, 'model-switch', { session_id: 's1', to_model: 'claude-sonnet-5-5' })
   turn()
-  assert.match(stop({ transcript_path: transcript('claude-opus-5-5') }).stdout, /fast\.unit failed/)
+  assert.match(stop({ transcript_path: transcript('claude-opus-5-5') }).stdout, /unit failed/)
 })
 
 test('a tree judged under the final policy is judged again with commands after a switch back', () => {
   failing()
   hook(repo, 'model-switch', { session_id: 's1', to_model: 'claude-opus-5-5' })
   turn()
-  assert.doesNotMatch(stop().stdout, /fast\.unit/)
+  assert.doesNotMatch(stop().stdout, /unit/)
   hook(repo, 'model-switch', { session_id: 's1', to_model: 'claude-sonnet-5-5' })
-  assert.match(stop().stdout, /fast\.unit failed/)
+  assert.match(stop().stdout, /unit failed/)
 })
 
 test('the final policy still blocks secrets at Stop', () => {
@@ -156,12 +156,12 @@ test('hooks.json registers the model and agent hooks, and gives PostToolUse room
   assert.equal(cmds('PostToolUse', 'Write|Edit|MultiEdit')[0]?.timeout, 75)
 })
 
-import { runDeclared } from './check.ts'
-import { registryConfig, parseRegistry } from './registry.ts'
+import { runSensors } from './check.ts'
+import { parseRegistry } from './registry.ts'
 
 test('an advisory sensor never blocks, even when it times out or the budget runs out', () => {
   const r = parseRegistry(JSON.stringify({ sensors: [sensor('slow', 'turn', 'node -e "setTimeout(() => {}, 5000)"', { blocks: false }), sensor('later', 'turn', 'node -e ""', { blocks: false })] })).registry
-  const findings = runDeclared('fast', registryConfig(r).config, null, 300)
+  const findings = runSensors(r, 'turn', null, 300)
   assert.ok(findings.length >= 1)
   assert.ok(findings.every(f => f.severity === 'warn'), JSON.stringify(findings))
 })
@@ -177,8 +177,8 @@ test('a passing advisory sensor leaves a hand-formatted registry byte-for-byte a
 test('contract commands with no files freeze .rig/contracts, as the check config does', () => {
   registry({ sensors: [], contracts: { validate: 'v' } })
   write(repo, '.rig/contracts/api.yaml', 'openapi: 3.1.0\n')
-  const core = path.resolve(import.meta.dirname, 'core.ts')
-  const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', `import { behavioralFiles } from ${JSON.stringify(core)}; console.log(JSON.stringify(behavioralFiles('x')))`], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo } })
+  const core = path.resolve(import.meta.dirname, 'lifecycle.ts')
+  const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', `import { contractFiles } from ${JSON.stringify(core)}; console.log(JSON.stringify(contractFiles()))`], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo } })
   assert.deepEqual(JSON.parse(r.stdout), ['.rig/contracts/api.yaml'], r.stderr)
 })
 
@@ -197,7 +197,7 @@ test('a model switch with no session id is still read back', () => {
   hook(repo, 'model-switch', { to_model: 'claude-opus-5-5' })
   hook(repo, 'prompt-submit', {})
   write(repo, 'src/x.js', `export const x = ${++n}\n`)
-  assert.doesNotMatch(hook(repo, 'stop', {}).stdout, /fast\.unit/)
+  assert.doesNotMatch(hook(repo, 'stop', {}).stdout, /unit/)
 })
 
 test('a Write/Edit that weakens a committed registry is labelled harness tamper at Stop', () => {

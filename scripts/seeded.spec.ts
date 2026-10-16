@@ -4,7 +4,7 @@ import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { makeRepo, sdlc, hook, write, gitIn } from './testkit.ts'
+import { makeRepo, sdlc, hook, write, gitIn, fromOld } from './testkit.ts'
 
 let repo: string
 let consumer: string
@@ -19,11 +19,11 @@ beforeEach(() => {
   gitIn(consumer, 'add', '.')
   gitIn(consumer, '-c', 'user.email=t@e', '-c', 'user.name=T', 'commit', '-qm', 'init')
   sdlc(repo, ['init'])
-  write(repo, '.rig/sensors.json', JSON.stringify({
+  write(repo, '.rig/sensors.json', fromOld({
     layers: [{ from: 'src/domain/**', mustNotImport: ['infra'], why: 'the domain stays framework-free' }],
-    consumers: [{ name: 'checkout-service', path: path.relative(repo, consumer).split(path.sep).join('/') }],
     limits: { diffLines: 500, fileLines: 400 },
-  }, null, 2))
+  }))
+  sdlc(repo, ['sync'])
   write(repo, 'package.json', '{ "type": "module" }\n')
   write(repo, 'src/add.js', 'export const add = (a, b) => a + b\n')
   write(repo, 'test/add.test.js', BASE_TEST)

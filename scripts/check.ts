@@ -6,14 +6,13 @@ import {
   ROOT, SDLC, CHANGES, WAIVERS, exists, read, out, fail, git, toPosix, optString, readJsonl, defaultBase, checkSlug,
   type Args, type Waiver,
 } from './core.ts'
-import { parseConfig, parseRules, formatFindings, warnLines, matchesAny, isTest, isSource, ghBin, type FileDiff, type Finding, type Rule, type SensorConfig } from './model.ts'
+import { parseRules, formatFindings, warnLines, matchesAny, isTest, ghBin, type FileDiff, type Finding, type Rule } from './model.ts'
 import { withoutFixtures, testTamper, suppressions, layering, size, secretsInDiff, rulesSensor, harnessTamper, isProtected, behaviourIds, behaviourText, missingBehaviours } from './sensors.ts'
 import { readBaseline, snapshot, turnDiff, fileDiff, branchDiff, showAt, fileLines, stagedDiff, showStaged } from './diffs.ts'
 import { runCommand, recordRun, normCmd } from './runs.ts'
-import { selectScopes, resolveCommands } from './scopes.ts'
 import { withBaseTree } from './basetree.ts'
 import { activeSlug, approvalState, changeType } from './lifecycle.ts'
-import { isRegistryShape, parseRegistry, registryConfig, updateKnownRed, type Registry } from './registry.ts'
+import { isRegistryShape, parseRegistry, defaultRegistry, updateKnownRed, activeSensors, commandFor, builtinOptions, type Registry, type Cadence } from './registry.ts'
 import { frozenFindings, runContracts } from './contracts.ts'
 import { syncFindings } from './sync.ts'
 
@@ -21,7 +20,7 @@ export type Point = 'stop' | 'commit' | 'ship' | 'ci'
 export type CheckInput = {
   point: Point
   diffs: FileDiff[]
-  config: SensorConfig
+  config: Registry
   rules: Rule[]
   slugs: string[]
   commands: 'fast' | 'full' | 'none'
@@ -39,21 +38,22 @@ export type CheckResult = { findings: Finding[]; blocks: Finding[]; warns: Findi
 const SENSORS_JSON = '.rig/sensors.json'
 const TAIL_IN_FINDING = 15
 
-// With a ref (CI), config comes from the base branch, so a PR cannot loosen the rules it is judged by.
-// A registry-shaped sensors.json (behavioural harness step 2) is read through registryConfig; registry is null otherwise.
-export function loadConfig(ref: string | null = null): { config: SensorConfig; rules: Rule[]; errors: string[]; registry: Registry | null } {
-  if (ref && git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]) === null) return { config: parseConfig('').config, rules: [], errors: [`config ref ${ref} does not exist`], registry: null }
+// `{}` (what init writes before a stack is chosen) is an empty registry, not the old format.
+const isEmptyObject = (raw: string): boolean => { try { const v: unknown = JSON.parse(raw); return typeof v === 'object' && v !== null && !Array.isArray(v) && !Object.keys(v).length } catch { return false } }
+// A repo that declares a registry keeps its CLAUDE.md guides in sync (spec §5); one with none declared has nothing to sync.
+export const declaresRegistry = (): boolean => isRegistryShape(read(path.join(ROOT, SENSORS_JSON)))
+const OLD_SHAPE = '.rig/sensors.json uses the pre-registry format; run sdlc.ts init --stack to write a registry (spec 2026-10-16 §3)'
+
+// With a ref (CI), the registry comes from the base branch, so a PR cannot loosen the rules it is judged by.
+export function loadConfig(ref: string | null = null): { registry: Registry; rules: Rule[]; errors: string[] } {
+  if (ref && git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]) === null) return { registry: defaultRegistry(), rules: [], errors: [`config ref ${ref} does not exist`] }
   const text = (rel: string): string => (ref ? git(['show', `${ref}:${rel}`]) ?? '' : read(path.join(ROOT, rel)))
   const r = parseRules(text('.rig/rules.json'))
-  const ruleErrors = r.errors.map(e => `rules.json: ${e}`)
   const raw = text(SENSORS_JSON)
-  if (isRegistryShape(raw)) {
-    const p = parseRegistry(raw)
-    const v = registryConfig(p.registry)
-    return { config: v.config, rules: r.rules, errors: [...p.errors, ...v.errors, ...ruleErrors], registry: p.registry }
-  }
-  const c = parseConfig(raw)
-  return { config: c.config, rules: r.rules, errors: [...c.errors, ...ruleErrors], registry: null }
+  const ruleErrors = r.errors.map(e => `rules.json: ${e}`)
+  if (raw.trim() && !isRegistryShape(raw) && !isEmptyObject(raw)) return { registry: defaultRegistry(), rules: r.rules, errors: [OLD_SHAPE, ...ruleErrors] }
+  const p = parseRegistry(raw)
+  return { registry: p.registry, rules: r.rules, errors: [...p.errors.map(e => `sensors: ${e}`), ...ruleErrors] }
 }
 
 // Once a known-red command passes, it blocks from then on: the only automatic edit to sensors.json, and it only tightens.
@@ -67,45 +67,36 @@ function ratchet(cleared: string[]): void {
   } catch { /* unparseable: leave it */ }
 }
 
-// A registry can turn a built-in off or make it advisory; secrets and harness-tamper always block (registry.ts).
-function builtinsApplied(findings: Finding[], config: SensorConfig): Finding[] {
-  const b = config.builtins
-  if (!b) return findings
-  return findings.filter(f => !b.off.includes(f.sensor)).map(f => (f.severity === 'block' && b.soft.includes(f.sensor) ? { ...f, severity: 'warn' as const } : f))
+// Built-ins a team turned off are dropped; built-ins it made advisory warn.
+function builtinsApplied(findings: Finding[], r: Registry): Finding[] {
+  const builtin = (id: string) => r.sensors.find(s => s.builtin && s.id === id)
+  return findings.filter(f => builtin(f.sensor)?.enabled !== false).map(f => (f.severity === 'block' && builtin(f.sensor)?.blocks === false ? { ...f, severity: 'warn' as const } : f))
 }
 
-// files: the changed source files select the scopes whose commands run; 'all' runs every scope's; undefined only the top-level ones.
-export function runDeclared(prefix: 'fast' | 'full', config: SensorConfig, slug: string | null, budgetMs: number, allowRatchet = false, files?: string[] | 'all', skip?: Set<string>): Finding[] {
+// The registry's command sensors due at this cadence (spec §3.1), in order, inside one time budget. A sensor with
+// "blocks": false warns; a knownRed one warns while it fails and leaves knownRed once it passes.
+export function runSensors(r: Registry, at: Cadence, slug: string | null, budgetMs: number, allowRatchet = false, skip?: Set<string>): Finding[] {
   const findings: Finding[] = []
   const cleared: string[] = []
   let left = budgetMs
-  const plan = resolveCommands(prefix, config, files, budgetMs, skip)
-  left -= plan.ms
-  if (plan.affectedFailed) findings.push({ sensor: 'unscoped', severity: 'warn', message: `the affected command failed, so every scope ran: ${config.affected}`, fix: 'run the affected command in .rig/sensors.json and fix it' })
-  for (const { key, cmd, dir, error } of plan.commands) {
-    const known = config.knownRed.includes(key)
-    const advisory = config.advisory?.includes(key) ?? false
-    if (error) {
-      findings.push({ sensor: 'commands', severity: 'block', message: `${key} not run: ${error}`, fix: `fix the scope's root in .rig/sensors.json` })
-      continue
-    }
+  for (const s of activeSensors(r, at, 'continuous')) {
+    const cmd = commandFor(s, null)
+    if (!cmd || skip?.has(normCmd(cmd))) continue
+    const known = r.knownRed.includes(s.id)
     if (left <= 0) {
-      findings.push({ sensor: 'commands', severity: advisory ? 'warn' : 'block', message: `${key} not run: the ${Math.round(budgetMs / 1000)} s budget ran out`, fix: `make the ${prefix} commands in .rig/sensors.json faster` })
+      findings.push({ sensor: 'commands', severity: s.blocks ? 'block' : 'warn', message: `${s.id} not run: the ${Math.round(budgetMs / 1000)} s budget ran out`, fix: `make ${s.id} faster or move it to a later cadence in .rig/sensors.json` })
       continue
     }
-    const row = runCommand(cmd, { timeoutMs: left, cwd: dir })
+    const row = runCommand(cmd, { timeoutMs: Math.min(left, s.timeoutMs ?? left) })
     left -= row.ms
-    if (slug) recordRun(slug, { ...row, source: prefix === 'fast' ? 'gate' : 'ship' })
-    if (row.exit === 0) {
-      if (known) cleared.push(key)
-      continue
-    }
+    if (slug) recordRun(slug, { ...row, source: at === 'turn' ? 'gate' : 'ship' })
+    if (row.exit === 0) { if (known) cleared.push(s.id); continue }
     const tail = row.tail.split('\n').slice(-TAIL_IN_FINDING).map(t => '      ' + t).join('\n')
     findings.push({
       sensor: 'commands',
-      severity: advisory || (known && !row.timedOut) ? 'warn' : 'block',
-      message: `${key} failed (exit ${row.exit}${row.timedOut ? ', timed out' : ''}): ${cmd}\n${tail}`,
-      fix: known && !row.timedOut ? 'known red before this change: fix it when you can' : `run \`${cmd}\` and fix what it reports`,
+      severity: !s.blocks || (known && !row.timedOut) ? 'warn' : 'block',
+      message: `${s.id} failed (exit ${row.exit}${row.timedOut ? ', timed out' : ''}): ${s.guide}\n${tail}`,
+      fix: known && !row.timedOut ? 'known red before this change: fix it when you can' : `fix what it reports, then rerun: ${cmd}`,
     })
   }
   if (cleared.length && allowRatchet) ratchet(cleared)
@@ -130,23 +121,25 @@ function applyWaivers(findings: Finding[], slugs: string[], ci?: { base: string 
 }
 
 // Only the tests this branch adds or changes can show a behaviour is covered: an old test naming B1 proves nothing new.
-function testCorpus(config: SensorConfig, diffs: FileDiff[]): string {
-  return diffs.filter(d => d.status !== 'D' && !d.binary && isTest(d.file, config)).map(d => read(path.join(ROOT, d.file))).join('\n')
+function testCorpus(config: Registry, diffs: FileDiff[]): string {
+  return diffs.filter(d => d.status !== 'D' && !d.binary && isTest(d.file, config.paths)).map(d => read(path.join(ROOT, d.file))).join('\n')
 }
 
 // Proof against the base, recomputed (no log entry can fake it): the branch's changed tests run on top of the base code.
 // 'red' (feature, bugfix, incident, greenfield): they must FAIL there, so they prove the change.
 // 'green' (refactor): they must PASS there, so they pin the old behaviour the refactor preserves.
-function proofOnBase(slug: string, config: SensorConfig, diffs: FileDiff[], base: string, mode: 'red' | 'green', budgetMs: number): Finding[] {
+function proofOnBase(slug: string, config: Registry, diffs: FileDiff[], base: string, mode: 'red' | 'green', budgetMs: number): Finding[] {
   const block = (message: string, fix: string): Finding[] => [{ sensor: 'red-proof', severity: 'block', message, fix }]
-  const cmd = config.full.test ?? config.fast.test
-  const tests = diffs.filter(d => d.status !== 'D' && !d.binary && isTest(d.file, config)).map(d => d.file)
+  const id = String(builtinOptions(config, 'red-proof').sensor ?? 'unit')
+  const unit = config.sensors.find(s => s.id === id && s.cmd && s.enabled)
+  const cmd = unit ? commandFor(unit, null) : null
+  const tests = diffs.filter(d => d.status !== 'D' && !d.binary && isTest(d.file, config.paths)).map(d => d.file)
   // Support files (fixtures, testdata) travel with the tests, or a test that needs them would fail on the base for the wrong reason.
-  const overlay = diffs.filter(d => d.status !== 'D' && !d.binary && (isTest(d.file, config) || matchesAny(d.file, config.testSupport))).map(d => d.file)
+  const overlay = diffs.filter(d => d.status !== 'D' && !d.binary && (isTest(d.file, config.paths) || matchesAny(d.file, config.paths.testSupport))).map(d => d.file)
   const t0 = Date.now()
   const left = (): number => Math.max(1000, budgetMs - (Date.now() - t0))
   if (!tests.length) return mode === 'red' ? block('no test file changed, so nothing proves this change', 'write the failing test first') : []
-  if (!cmd) return block('no test command declared (full.test or fast.test in .rig/sensors.json)', 'declare it so red can be proven')
+  if (!cmd) return [{ sensor: 'red-proof', severity: 'warn', message: `no unit sensor (${id}) to run the new tests on the base`, fix: 'add a command sensor with id "unit", or set red-proof options.sensor' }]
   const tree = withBaseTree(base, tmp => {
     const sanity = runCommand(cmd, { cwd: tmp, timeoutMs: left() })
     recordRun(slug, { ...sanity, source: 'ship' })
@@ -165,7 +158,7 @@ function proofOnBase(slug: string, config: SensorConfig, diffs: FileDiff[], base
   return tree.ok ? tree.value : block(tree.error, 'run `git worktree prune` and retry, check permissions for symlinks, or the person waives red-proof')
 }
 
-export function shipVerdicts(slug: string, config: SensorConfig, diffs: FileDiff[], base: string | null, budgetMs: number, planGate: boolean): Finding[] {
+export function shipVerdicts(slug: string, config: Registry, diffs: FileDiff[], base: string | null, budgetMs: number, planGate: boolean): Finding[] {
   const dir = path.join(CHANGES, slug)
   if (!exists(dir)) return [{ sensor: 'traceability', severity: 'block', message: `unknown change ${slug}`, fix: 'pass a slug that exists under .rig/changes/' }]
   const findings: Finding[] = []
@@ -206,13 +199,11 @@ export function runChecks(i: CheckInput): CheckResult {
     for (const f of findings) if (f.sensor === 'size' && !f.file) f.severity = 'warn'
   }
   if (point !== 'stop') for (const slug of i.slugs) findings.push(...shipVerdicts(slug, config, diffs, i.base, i.budgetMs, i.gates?.plan ?? true))
-  if (Object.keys(config.scopes).length) {
-    const unscoped = selectScopes(diffs.filter(d => isSource(d.file, config)).map(d => d.file), config).unscoped
-    if (unscoped.length) findings.push({ sensor: 'unscoped', severity: 'warn', message: `${unscoped.length} changed file(s) match no scope, so the top-level commands run for them: ${unscoped.slice(0, 5).join(', ')}`, fix: 'add a scope glob that covers them in .rig/sensors.json scopes' })
-  }
-  // Contracts (spec §6): ship and CI always, commit for a registry, a turn only when it reaches a contract. Validate gates run.
-  if ((i.contracts ?? (i.point === 'ship' || i.point === 'ci')) && config.behavioral) findings.push(...runContracts(config.behavioral, i.point === 'stop' ? i.budgetMs : Math.max(i.budgetMs, 600_000)))
-  if (i.commands !== 'none') findings.push(...runDeclared(i.commands, config, i.point === 'ci' ? null : i.slugs[0] ?? null, i.budgetMs, Boolean(i.ratchet) && i.point !== 'ci', i.point === 'ci' && config.ci.scope === 'all' ? 'all' : diffs.map(d => d.file).filter(f => isSource(f, config)), config.behavioral ? new Set([config.behavioral.validate ?? '', config.behavioral.run ?? ''].filter(Boolean).map(normCmd)) : undefined))
+  // Contracts (spec §6): ship and CI always, commit always, a turn only when it reaches a contract. Validate gates run.
+  const c = config.contracts
+  if ((i.contracts ?? (i.point === 'ship' || i.point === 'ci')) && (c.validate || c.run)) findings.push(...runContracts(c, i.point === 'stop' ? i.budgetMs : Math.max(i.budgetMs, 600_000)))
+  const at: Cadence = i.commands === 'fast' ? 'turn' : i.point === 'commit' ? 'commit' : 'ci'
+  if (i.commands !== 'none') findings.push(...runSensors(config, at, i.point === 'ci' ? null : i.slugs[0] ?? null, i.budgetMs, Boolean(i.ratchet) && i.point !== 'ci', new Set([c.validate, c.run].filter(Boolean).map(normCmd))))
   const result = applyWaivers(builtinsApplied(findings, config), i.slugs, i.point === 'ci' ? { base: i.base } : undefined)
   return result
 }
@@ -221,7 +212,7 @@ export function runChecks(i: CheckInput): CheckResult {
 export function editFindings(rel: string): Finding[] {
   const snap = readBaseline()
   if (!snap) return []
-  const { config, rules } = loadConfig()
+  const { registry: config, rules } = loadConfig()
   const diffs = fileDiff(snap, rel)
   const pattern = withoutFixtures(diffs, config)
   const slug = activeSlug()
@@ -288,11 +279,10 @@ function report(point: string, result: CheckResult, count: number, json: boolean
 export function cmdCheck(args: Args): void {
   const at = optString(args, 'at')
   if (at !== 'stop' && at !== 'commit' && at !== 'ship' && at !== 'ci') fail('usage: check --at stop|commit|ship|ci [--base <ref>] [--config-from <ref>] [--slug <s>] [--budget-ms <n>] [--json]')
-  const { config, rules, errors, registry } = loadConfig(optString(args, 'config-from') ?? null)
+  const { registry: config, rules, errors } = loadConfig(optString(args, 'config-from') ?? null)
   const baseRef = optString(args, 'base')
   const base = baseRef ? git(['merge-base', 'HEAD', baseRef]) : defaultBase()
   if (at === 'ci' && !base) fail('check --at ci needs --base <ref> with a merge-base (fetch with fetch-depth: 0)')
-  const partial = at === 'stop' || at === 'commit'
   let diffs: FileDiff[]
   let before: (f: string) => string
   let after: ((f: string) => string) | undefined
@@ -320,14 +310,14 @@ export function cmdCheck(args: Args): void {
   const slugArg = optString(args, 'slug')
   if (slugArg) checkSlug(slugArg)
   const slugs = slugArg ? [slugArg] : at === 'ci' ? slugsIn(diffs) : [activeSlug()].filter((s): s is string => Boolean(s))
-  const budgetMs = Number(optString(args, 'budget-ms') ?? (partial ? 60_000 : 1_800_000))
+  const budgetMs = Number(optString(args, 'budget-ms') ?? (at === 'stop' ? 60_000 : at === 'commit' ? 600_000 : 1_800_000))
   if (!Number.isFinite(budgetMs) || budgetMs <= 0) fail('--budget-ms must be a positive number')
   const humanRows = at === 'ci' && base ? humanRowsAdded(base) : []
   const why = humanRows.length ? independentApproval() : null // before runChecks: the PR's test commands could rewrite the event file or shadow gh
-  const result = runChecks({ point: at, diffs, config, rules, slugs, commands: replaying ? 'none' : partial ? 'fast' : 'full', budgetMs, before, after, base, ratchet: !optString(args, 'config-from') && at !== 'commit', contracts: at === 'commit' ? registry !== null && !replaying : undefined, gates: registry?.gates })
+  const result = runChecks({ point: at, diffs, config, rules, slugs, commands: replaying ? 'none' : at === 'stop' ? 'fast' : 'full', budgetMs, before, after, base, ratchet: !optString(args, 'config-from') && at !== 'commit', contracts: at === 'commit' ? !replaying : undefined, gates: config.gates })
   const configFindings: Finding[] = errors.map(e => ({ sensor: 'config', severity: 'block', file: SENSORS_JSON, message: e, fix: 'fix the file; see the sdlc README for its format' }))
   const humanFindings: Finding[] = why ? [{ sensor: 'human-approval', severity: 'block', message: `this PR adds ${humanRows.length} approval/waiver row(s): ${why}`, fix: 'a code owner other than the PR author reviews the rows below and approves the current head commit; pushing again needs a fresh approval' }] : []
-  const syncBlocks = registry && (at === 'commit' || at === 'ci') ? syncFindings(registry, [], 'block') : [] // config errors already block above
+  const syncBlocks = (at === 'commit' || at === 'ci') && declaresRegistry() ? syncFindings(config, [], 'block') : [] // config errors already block above
   const all = { ...result, findings: [...humanFindings, ...configFindings, ...syncBlocks, ...result.findings], blocks: [...humanFindings, ...configFindings, ...syncBlocks, ...result.blocks] }
   report(at, all, diffs.length, Boolean(args.opt.json), humanRows)
   process.exitCode = all.blocks.length ? 1 : 0

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { makeRepo, sdlc, hook, write, gitIn } from './testkit.ts'
+import { makeRepo, sdlc, hook, write, gitIn, fromOld } from './testkit.ts'
 
 let repo: string
 beforeEach(() => { repo = makeRepo(); sdlc(repo, ['init']) })
@@ -96,7 +96,7 @@ test('CI honours a contract waiver that is already on the base branch', () => {
 })
 
 test('a legacy behavioral repo freezes its contract files per file too (no digest staleness since 4b)', () => {
-  write(repo, '.rig/sensors.json', JSON.stringify({ behavioral: { validate: 'node -e 0' } }))
+  write(repo, '.rig/sensors.json', fromOld({ behavioral: { validate: 'node -e 0' } }))
   write(repo, '.rig/contracts/api.yaml', 'openapi: 3.1.0\n')
   gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'cfg')
   sdlc(repo, ['new', 'demo', '--type', 'feature'])

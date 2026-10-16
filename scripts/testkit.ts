@@ -50,3 +50,20 @@ export function approvedChange(repo: string, slug: string, type = 'feature'): vo
 export function verified(repo: string, slug: string): void {
   sdlc(repo, ['verify', slug])
 }
+
+// A registry-shaped sensors.json for fixtures: command maps per cadence, plus the few built-in options specs set.
+export function registry(v: { turn?: Record<string, string>; commit?: Record<string, string>; ci?: Record<string, string>; advisory?: string[]; knownRed?: string[]; contracts?: object; size?: object; layers?: unknown[]; paths?: object; extra?: { sensors?: object[] } & Record<string, unknown> } = {}): string {
+  const cmds = (cadence: string, m: Record<string, string> = {}) => Object.entries(m).map(([id, cmd]) => ({ id, cmd, cadence, blocks: !(v.advisory ?? []).includes(id), count: 'exit', guide: `${id} passes.` }))
+  const builtins = [...(v.size ? [{ id: 'size', builtin: true, blocks: true, options: v.size }] : []), ...(v.layers ? [{ id: 'layering', builtin: true, options: { layers: v.layers } }] : [])]
+  const { sensors: more = [], ...rest } = v.extra ?? {}
+  return JSON.stringify({ sensors: [...cmds('turn', v.turn), ...cmds('commit', v.commit), ...cmds('ci', v.ci), ...builtins, ...more], knownRed: v.knownRed ?? [], ...(v.contracts ? { contracts: v.contracts } : {}), ...(v.paths ? { paths: v.paths } : {}), ...rest })
+}
+
+// Specs written before step 4c describe sensors as fast/full command maps; this writes the registry they mean
+// (fast → turn, full → commit, limits → size options, behavioral → contracts, globs → paths). Test support only.
+export function fromOld(v: Record<string, unknown>): string {
+  const o = v as { fast?: Record<string, string>; full?: Record<string, string>; knownRed?: string[]; limits?: object; layers?: unknown[]; behavioral?: object; tests?: string[]; ignore?: string[]; fixtures?: string[]; testSupport?: string[]; policy?: object; stack?: string }
+  const commit = Object.fromEntries(Object.entries(o.full ?? {}).filter(([id, cmd]) => o.fast?.[id] !== cmd).map(([id, cmd]) => [o.fast?.[id] ? `${id}-full` : id, cmd]))
+  const paths = Object.fromEntries((['tests', 'ignore', 'fixtures', 'testSupport'] as const).filter(k => o[k]).map(k => [k, o[k]]))
+  return registry({ turn: o.fast, commit, knownRed: (o.knownRed ?? []).map(k => k.replace(/^(?:fast|full)\./, '')), size: o.limits, layers: o.layers, contracts: o.behavioral, paths: Object.keys(paths).length ? paths : undefined, extra: { ...(o.policy ? { policy: o.policy } : {}), ...(o.stack ? { stack: o.stack } : {}) } })
+}

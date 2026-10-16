@@ -1,7 +1,7 @@
 // Contracts (behavioural harness spec 2026-10-16 §6): frozen per file at plan approval (lifecycle.ts writes the freeze into
 // approval.json), validated before they run.
 import { readApproval, digest } from './lifecycle.ts'
-import { type Contracts } from './registry.ts'
+import { contractGlobs, type Contracts } from './registry.ts'
 import { matchesAny, type Finding } from './model.ts'
 import { runCommand, type RunRow } from './runs.ts'
 
@@ -21,8 +21,6 @@ export function frozenFindings(slugs: string[], touched: string[], after: (file:
 
 // A turn runs the contract commands only when its diff reaches a contract file or the source a contract covers.
 export const contractsTouched = (c: Contracts, files: string[]): boolean => files.some(f => matchesAny(f, [...contractGlobs(c), ...c.covers]))
-// The contract files, as the freeze sees them: commands with no files declared default to .rig/contracts/** (core.ts behavioralFiles).
-export const contractGlobs = (c: Contracts): string[] => (c.files.length ? c.files : c.validate || c.run ? ['.rig/contracts/**'] : [])
 
 const shown = (r: RunRow): string => r.tail.split('\n').slice(0, 20).join('\n')
 const how = (r: RunRow): string => `exited ${r.exit}${r.timedOut ? ', timed out' : ''}`

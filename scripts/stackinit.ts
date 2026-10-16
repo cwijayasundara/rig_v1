@@ -1,39 +1,11 @@
-// `init --stack`: onboarding-only sensor declarations, from a stack pack (new registry) or templates/stacks.json (legacy levels).
+// `init --stack`: onboarding-only sensor declarations: the detected stack pack written as the registry.
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { ROOT, SDLC, PLUGIN_ROOT, exists, read, git, listChanges, sanctionWrites } from './core.ts'
 import { loadPacks, detectStacks, packFile, packRegistry, PACKS_DIR } from './stackpacks.ts'
 import { writeSync, BRIEF } from './sync.ts'
-import type { Contracts } from './registry.ts'
-
-const STACK_MARKERS: [string, string][] = [['package.json', 'node'], ['go.mod', 'go'], ['pom.xml', 'java-maven'], ['pyproject.toml', 'python'], ['requirements.txt', 'python']]
-
-// `init --stack [name]`: declares sensors.json `levels` from the plugin's own templates/stacks.json, the one path that may do it
-// without a person's yes, because it takes commands only from that shipped template and never from arguments. The write guard
-// asks a person before a model adds a level (declared commands run unprompted). Onboarding only: it declares only while `levels`
-// is empty, no change exists yet and sensors.json is not committed, so it cannot launder an edit to a reviewed config.
-// acceptance and api are not in the template: both default to the unit command, so a change never blocks on an undeclared level.
-function declareStackLevels(opt: string | true): string {
-  const stacks = JSON.parse(read(path.join(PLUGIN_ROOT, 'templates', 'stacks.json'))) as Record<string, { levels: Record<string, string> }>
-  const name = typeof opt === 'string' ? opt : STACK_MARKERS.find(([f]) => exists(path.join(ROOT, f)))?.[1]
-  const stack = name ? stacks[name] : undefined
-  if (!name || !stack) return `no stack template for ${name ?? 'this directory'} (known: ${Object.keys(stacks).join(', ')}); declare levels in .rig/sensors.json yourself`
-  const file = path.join(SDLC, 'sensors.json')
-  if ((git(['ls-tree', '-r', '--name-only', 'HEAD']) ?? '').split('\n').includes('.rig/sensors.json')) return '.rig/sensors.json is committed; changing it is a reviewed harness edit, not onboarding'
-  if (listChanges().length) return 'a change already exists; --stack is for onboarding only'
-  let cfg: Record<string, unknown> = {}
-  if (exists(file)) {
-    try { cfg = JSON.parse(read(file)) as Record<string, unknown> } catch { return '.rig/sensors.json does not parse; not touching it' }
-  }
-  if (cfg.levels && Object.keys(cfg.levels as object).length) return 'levels already declared; left as they are'
-  const unit = stack.levels.unit ?? ''
-  cfg.levels = { ...stack.levels, acceptance: unit, api: unit }
-  if (!cfg.fast && !cfg.full && unit) { cfg.fast = { test: unit }; cfg.full = { test: unit } }
-  fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + '\n')
-  sanctionWrites(['.rig/sensors.json'])
-  return `declared levels for ${name}: ${Object.entries(cfg.levels as Record<string, string>).map(([k, v]) => `${k}=${v}`).join(', ')} (acceptance and api default to the unit command; point them at a real e2e or HTTP test when you have one)`
-}
+import { isRegistryShape, type Contracts } from './registry.ts'
 
 // Specmatic runs on Java (spec §4): without java on PATH its commands would fail every gate, so init leaves them empty and says why.
 export function packContracts(c: Contracts, javaOk: boolean): { contracts: Contracts; note: string } {
@@ -42,12 +14,12 @@ export function packContracts(c: Contracts, javaOk: boolean): { contracts: Contr
 }
 const javaOk = (): boolean => spawnSync('java', ['-version'], { stdio: 'ignore' }).status === 0
 
-// `init --stack [name]` (behavioural harness step 2): with no sensors.json yet, write the detected stack pack as a registry.
-// A hand-written sensors.json keeps the levels path above until step 4. Same onboarding-only guards as declareStackLevels.
+// `init --stack [name]`: with no sensors.json yet, write the detected stack pack as a registry. Onboarding only: it declares
+// only while sensors.json is absent or `{}`, uncommitted, and no change exists, so it cannot launder an edit to a reviewed config.
 export function declareStack(opt: string | true): string {
   const file = path.join(SDLC, 'sensors.json')
   const text = exists(file) ? read(file).trim() : ''
-  if (text && text !== '{}') return declareStackLevels(opt)
+  if (text && text !== '{}') return isRegistryShape(text) ? '.rig/sensors.json already exists; edit it' : '.rig/sensors.json uses the pre-registry format: move it aside, then run init --stack'
   if ((git(['ls-tree', '-r', '--name-only', 'HEAD']) ?? '').split('\n').includes('.rig/sensors.json')) return '.rig/sensors.json is committed; changing it is a reviewed harness edit, not onboarding'
   if (listChanges().length) return 'a change already exists; --stack is for onboarding only'
   const { packs } = loadPacks(PACKS_DIR)

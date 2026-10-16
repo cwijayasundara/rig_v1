@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { makeRepo, sdlc, hook, write, gitIn } from './testkit.ts'
+import { makeRepo, sdlc, hook, write, gitIn, fromOld } from './testkit.ts'
 
 let repo: string
 beforeEach(() => {
@@ -40,7 +40,7 @@ test('status reads shipped changes with one ls-tree, never a git log per change,
 // runs.jsonl is only Edit-protected: a shell append could forge a green row, so Stop runs its fast commands itself, always.
 test('Stop runs its fast commands even when a green run is recorded on this exact tree', () => {
   const cmd = `node -e "require('fs').appendFileSync('.rig/count.txt','x')"`
-  write(repo, '.rig/sensors.json', JSON.stringify({ fast: { test: cmd } }))
+  write(repo, '.rig/sensors.json', fromOld({ fast: { test: cmd } }))
   gitIn(repo, 'add', '.')
   gitIn(repo, 'commit', '-qm', 'cfg')
   sdlc(repo, ['new', 'xx', '--type', 'chore', '--tier', 'S'])

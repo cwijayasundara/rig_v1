@@ -72,7 +72,7 @@ function cmdActivate(args: Args): void {
 function cmdStatus(args: Args): void {
   const json = Boolean(args.opt.json)
   if (!exists(SDLC)) return out(json ? JSON.stringify({ initialised: false }) : `rig not initialised here: run ${skillRef('init')}`)
-  const gates = loadConfig().registry?.gates ?? { plan: true, merge: true }
+  const gates = loadConfig().registry.gates
   const tree = treeStamp()
   const active = activeSlug()
   const changes = listChanges().map(slug => { const s = status(slug, gates, tree); return { slug, type: changeType(slug), status: s, next: nextStep(slug, s) } })
@@ -169,7 +169,7 @@ function sensorStatus(): { blocks: number; warns: number; bySensor: Record<strin
   }
   return {
     blocks: last?.blocks ?? 0, warns: last?.warns ?? 0, bySensor: last?.bySensor ?? {}, unresolved,
-    knownRed: loadConfig().config.knownRed.length,
+    knownRed: loadConfig().registry.knownRed.length,
     waivers: readJsonl<Waiver>(WAIVERS).filter(w => w.slug === slug).length,
   }
 }
@@ -188,7 +188,7 @@ function cmdSensors(): void {
   out([
     `last gate: ${s.blocks} block(s), ${s.warns} warning(s)${Object.keys(s.bySensor).length ? ' · ' + Object.entries(s.bySensor).map(([k, v]) => `${k} ${v}`).join(', ') : ''}`,
     unresolved.length ? `unresolved:\n${formatFindings(unresolved)}` : 'unresolved: none',
-    `known red: ${loadConfig().config.knownRed.join(', ') || 'none'}`,
+    `known red: ${loadConfig().registry.knownRed.join(', ') || 'none'}`,
     `waivers (${slug ?? 'no change'}): ${waivers.map(w => `${w.sensor} ${w.file} ${w.reason}`).join('; ') || 'none'}`,
   ].join('\n'))
 }

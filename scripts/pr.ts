@@ -45,7 +45,7 @@ export function cmdPr(args: Args): void {
     if (followUp) fail(`not pushing: ${slug} already has a PR on ${branch}; check it out first (HEAD is ${head})`)
     if (!['main', 'master'].includes(head)) fail(`not shipping: HEAD is ${head}; a change ships from the trunk or from ${branch}, never on top of another branch`)
   }
-  const gates = loadConfig().registry?.gates ?? { plan: true, merge: true }
+  const gates = loadConfig().registry.gates
   if (gates.plan && approvalState(slug) !== 'approved') fail(`not shipping: ${slug}'s plan is not approved (a person runs /rig:approve ${slug})`)
   if (!verifyFresh(slug, treeStamp())) fail(`not shipping: verify.json is missing, failing or from another tree; run /rig:test ${slug}`)
   // Contract files can sit under .rig/, which the tree stamp leaves out: judge the freeze here, with the person's waivers.

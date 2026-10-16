@@ -126,11 +126,12 @@ export function pushBase(r: PushRef): string | null {
 
 const readStdin = (): string => { try { return fs.readFileSync(0, 'utf8') } catch { return '' } }
 // Running out of budget is a warning at push: CI still runs the commands.
+// Pre-push always runs, inside the commit-cadence budget (spec §3.1).
+const PUSH_BUDGET_MS = 600_000
 const soften = (f: Finding): Finding => (f.sensor === 'commands' && /budget ran out|timed out/.test(f.message) ? { ...f, severity: 'warn' } : f)
 
 export function cmdCheckPush(_args: Args): void {
-  const { config, rules, errors } = loadConfig()
-  if (config.githooks.prePush === 'off') return out('sdlc check push: off (githooks.prePush)')
+  const { registry: config, rules, errors } = loadConfig()
   const raw = readStdin()
   const judged = (r: PushRef): boolean => !ZERO.test(r.localSha) && r.remoteRef.startsWith('refs/heads/')
   const all = raw.trim() ? parsePushRefs(raw) : [{ localRef: 'refs/heads/HEAD', localSha: git(['rev-parse', 'HEAD']) ?? '', remoteRef: 'refs/heads/HEAD', remoteSha: '0' }]
@@ -151,7 +152,7 @@ export function cmdCheckPush(_args: Args): void {
     // A change verified on exactly this tree, pushed from a clean checkout of it, needs its full commands no second time.
     const covered = Boolean(slug) && r.localSha === head && !git(['status', '--porcelain', '--untracked-files=all', '--', '.', ':(exclude).rig']) && verifyFresh(slug as string, treeStamp())
     const result = runChecks({
-      point: 'ship', diffs, config, rules, slugs: [], commands: covered ? 'none' : 'full', budgetMs: config.githooks.budgetMs,
+      point: 'ship', diffs, config, rules, slugs: [], commands: covered ? 'none' : 'full', budgetMs: PUSH_BUDGET_MS,
       before: f => showAt(base, f) ?? '', after: f => showAt(r.localSha, f) ?? '', base, ratchet: false,
     })
     findings.push(...result.findings.map(soften))

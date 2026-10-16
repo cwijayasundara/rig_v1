@@ -4,32 +4,26 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { makeRepo, sdlc, write } from './testkit.ts'
+import { makeRepo, sdlc, write, registry } from './testkit.ts'
 
 const ok = 'node -e "process.exit(0)"'
 const bad = 'node -e "process.exit(3)"'
 
-test('baseline: runs fast and levels once with no change; failing fast commands go into knownRed', () => {
+test('baseline: runs each turn sensor once with no change; failing ones go into knownRed by id', () => {
   const repo = makeRepo()
   sdlc(repo, ['init'])
-  write(repo, '.rig/sensors.json', JSON.stringify({
-    fast: { test: ok, lint: bad },
-    levels: { unit: ok, integration: ok, acceptance: bad },
-    quality: { lint: { cmd: 'node -e "console.log(1); console.log(2)"', count: 'lines' }, deps: { cmd: 'no-such-tool-xyz', count: 'lines' } },
-  }))
+  write(repo, '.rig/sensors.json', registry({ turn: { test: ok, lint: bad }, commit: { slow: bad } }))
   const r = sdlc(repo, ['baseline'])
   assert.equal(r.code, 0, r.stderr)
-  assert.match(r.stdout, /fast\.test: pass/)
-  assert.match(r.stdout, /fast\.lint: fail \(exit 3\) → knownRed/)
-  assert.match(r.stdout, /levels unit, integration: pass/, 'one command serving two levels runs once')
-  assert.match(r.stdout, /levels acceptance: FAIL/)
-  assert.doesNotMatch(r.stdout, /quality/, 'quality counts are no longer measured here (step 4b)')
+  assert.match(r.stdout, /^test: pass/m)
+  assert.match(r.stdout, /^lint: fail \(exit 3\) → knownRed/m)
+  assert.doesNotMatch(r.stdout, /slow/, 'only turn-cadence sensors are measured')
   assert.ok(!fs.existsSync(path.join(repo, '.rig/changes')) || !fs.readdirSync(path.join(repo, '.rig/changes')).length, 'no change is created')
   const cfg = JSON.parse(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8'))
-  assert.deepEqual(cfg.knownRed, ['fast.lint'])
-  assert.deepEqual(cfg.fast, { test: ok, lint: bad }, 'the rest of sensors.json is kept')
-  assert.match(sdlc(repo, ['baseline']).stdout, /known red: fast\.lint$/m, 'a re-run adds nothing twice')
-  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8')).knownRed, ['fast.lint'])
+  assert.deepEqual(cfg.knownRed, ['lint'])
+  assert.equal(cfg.sensors.length, 3, 'the rest of sensors.json is kept')
+  assert.match(sdlc(repo, ['baseline']).stdout, /known red: lint$/m, 'a re-run adds nothing twice')
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8')).knownRed, ['lint'])
 })
 
 test('baseline: refuses without sensors.json', () => {

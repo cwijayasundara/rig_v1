@@ -191,7 +191,7 @@ export function modelFamily(model: string | null | undefined, policy: Policy): s
 
 export const policyMode = (r: Registry, model: string | null | undefined): Mode => r.policy[modelFamily(model, r.policy)] ?? r.policy.default
 
-const RANK: Record<Cadence, number> = { edit: 0, turn: 1, commit: 2, ci: 3, nightly: 4 }
+export const RANK: Record<Cadence, number> = { edit: 0, turn: 1, commit: 2, ci: 3, nightly: 4 }
 
 // A sensor runs at its own cadence and every later one; a nightly sensor only at nightly; nightly runs everything enabled.
 export function runsAt(s: RegistrySensor, at: Cadence): boolean {
@@ -344,3 +344,7 @@ export function weakensRegistry(beforeText: string, afterText: string): string[]
   for (const k of ['plan', 'merge'] as const) if (b.gates[k] && !a.gates[k]) out.push(`gates.${k} turned off`)
   return out
 }
+
+// The contract files, as the freeze sees them: commands with no files declared default to .rig/contracts/**.
+export const contractGlobs = (c: Contracts): string[] => (c.files.length ? c.files : c.validate || c.run ? ['.rig/contracts/**'] : [])
+export const builtinOptions = (r: Registry, id: BuiltinId): Record<string, unknown> => r.sensors.find(s => s.builtin && s.id === id)?.options ?? {}
