@@ -98,3 +98,27 @@ test('sync refuses a legacy config with a clear message', () => {
   assert.notEqual(r.code, 0)
   assert.match(r.stderr + r.stdout, /registry-shaped/)
 })
+
+const TEMPLATE = fs.readFileSync(path.join(import.meta.dirname, '..', 'templates', 'brief.md'), 'utf8')
+
+test('the brief template has the spec headings in order and passes sync --check as it stands', () => {
+  const heads = [...TEMPLATE.matchAll(/^## (.+)$/gm)].map(m => m[1])
+  assert.deepEqual(heads, ['Context and intent', 'Non-goals', 'Architecture', 'Constraints', 'Interfaces', 'Behaviours', 'Tests required'])
+  assert.deepEqual(problems(synced(), { brief: TEMPLATE }), [])
+})
+
+test('init --stack writes the brief from the template and a guides block that passes sync --check', () => {
+  write(repo, 'package.json', '{}\n')
+  const r = sdlc(repo, ['init', '--stack'])
+  assert.match(r.stdout, /wrote \.rig\/sensors\.json from the node pack/)
+  assert.equal(fs.readFileSync(path.join(repo, '.rig/product/brief.md'), 'utf8'), TEMPLATE)
+  const check = sdlc(repo, ['sync', '--check'])
+  assert.equal(check.code, 0, check.stdout)
+})
+
+test('init --stack leaves an existing brief alone', () => {
+  write(repo, 'package.json', '{}\n')
+  write(repo, '.rig/product/brief.md', '# Ours\n')
+  sdlc(repo, ['init', '--stack'])
+  assert.equal(fs.readFileSync(path.join(repo, '.rig/product/brief.md'), 'utf8'), '# Ours\n')
+})

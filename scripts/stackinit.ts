@@ -2,7 +2,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { ROOT, SDLC, PLUGIN_ROOT, exists, read, git, listChanges, sanctionWrites } from './core.ts'
-import { loadPacks, detectStacks, packFile, PACKS_DIR } from './stackpacks.ts'
+import { loadPacks, detectStacks, packFile, packRegistry, PACKS_DIR } from './stackpacks.ts'
+import { writeSync, BRIEF } from './sync.ts'
 
 const STACK_MARKERS: [string, string][] = [['package.json', 'node'], ['go.mod', 'go'], ['pom.xml', 'java-maven'], ['pyproject.toml', 'python'], ['requirements.txt', 'python']]
 
@@ -48,5 +49,8 @@ export function declareStack(opt: string | true): string {
   fs.mkdirSync(SDLC, { recursive: true })
   fs.writeFileSync(file, JSON.stringify(packFile(pack), null, 2) + '\n')
   sanctionWrites(['.rig/sensors.json'])
-  return `wrote .rig/sensors.json from the ${pack.stack} pack (${pack.sensors.length} sensors); edit the commands to fit this repo`
+  const brief = path.join(ROOT, BRIEF)
+  if (!exists(brief)) { fs.mkdirSync(path.dirname(brief), { recursive: true }); fs.copyFileSync(path.join(PLUGIN_ROOT, 'templates', 'brief.md'), brief) }
+  const synced = writeSync(packRegistry(pack))
+  return `wrote .rig/sensors.json from the ${pack.stack} pack (${pack.sensors.length} sensors); edit the commands to fit this repo. ${BRIEF} is ready to fill in. ${synced}`
 }
