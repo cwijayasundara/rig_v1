@@ -1,0 +1,15 @@
+{
+  "stack": "python",
+  "markers": ["pyproject.toml", "requirements.txt", "setup.py"],
+  "paths": { "tests": ["**/test_*.py", "**/*_test.py", "**/tests/**"], "testSupport": ["**/conftest.py", "**/fixtures/**"] },
+  "contracts": { "files": [], "validate": "", "run": "" },
+  "sensors": [
+    { "id": "lint", "cmd": "ruff check {files}", "cadence": "edit", "blocks": true, "count": "exit", "guide": "Ruff must pass on every file you touch; fix the code rather than the rule." },
+    { "id": "types", "cmd": "mypy .", "cadence": "turn", "blocks": true, "count": "exit", "guide": "The project must type-check with mypy before the turn ends." },
+    { "id": "unit", "cmd": "pytest -q", "cadence": "turn", "blocks": true, "count": "exit", "guide": "Run pytest before claiming done; fix the code, never the tests." },
+    { "id": "layers", "cmd": "lint-imports", "cadence": "commit", "blocks": true, "count": "exit", "guide": "Respect the import contracts in the import-linter config." },
+    { "id": "duplication", "cmd": "npx --yes jscpd@5 . --silent --threshold 5", "cadence": "commit", "blocks": false, "count": "exit", "guide": "Reuse existing code instead of copying it." },
+    { "id": "audit", "cmd": "pip-audit", "cadence": "ci", "blocks": false, "count": "exit", "guide": "Do not add dependencies with known vulnerabilities." },
+    { "id": "mutation", "cmd": "mutmut run", "cadence": "nightly", "blocks": false, "count": "exit", "guide": "Tests must assert behaviour so that changing the code makes them fail." }
+  ]
+}
