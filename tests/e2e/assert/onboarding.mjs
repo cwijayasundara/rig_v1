@@ -1,9 +1,8 @@
-// What `/rig:init --defaults` must leave in a repo: a compact CLAUDE.md, a valid sensors.json with every test level, the
-// standalone harness vendored at the plugin's version, the git hooks wired, a preflight report, all committed on main.
+// What `/rig:init --defaults` must leave in a repo: a compact CLAUDE.md with the guides block, a registry sensors.json, the
+// standalone harness vendored at the plugin's version and the git hooks wired, all committed on main.
 import fs from 'node:fs'
 import path from 'node:path'
 import { PLUGIN } from '../lib/sandbox.mjs'
-import { configOf } from '../lib/oracle.mjs'
 
 const json = text => JSON.parse(text)
 const pluginVersion = () => json(fs.readFileSync(path.join(PLUGIN, '.claude-plugin/plugin.json'), 'utf8')).version
@@ -17,21 +16,13 @@ export async function assertOnboarding(c, sb, { lane, modules = [] }) {
   await c.check('CLAUDE.md routes work to /rig:start', () =>
     /sdlc routes all work in this repo: start with \/rig:start;/.test(claudeMd) || 'routing line missing or names another start command')
 
-  const cfg = configOf(sb.dir)
-  await c.check('sensors.json parses with no config errors', () => cfg.errors.length === 0 || cfg.errors.join('; '))
-  await c.check('fast and full commands run the tests', () => {
-    const all = [...Object.values(cfg.config.fast ?? {}), ...Object.values(cfg.config.full ?? {})]
-    return all.some(cmd => /test/.test(cmd)) || JSON.stringify({ fast: cfg.config.fast, full: cfg.config.full })
-  })
-  await c.check('gates are the harness defaults', () =>
-    JSON.stringify(cfg.config.gates) === JSON.stringify(cfg.defaults.gates) || JSON.stringify(cfg.config.gates))
-  await c.check('every test level a change can require is declared', () => {
-    const missing = ['unit', 'integration', 'acceptance', 'api'].filter(l => !cfg.config.levels?.[l])
-    return missing.length === 0 || `undeclared: ${missing.join(', ')}`
-  })
+  const reg = (() => { try { return JSON.parse(sb.read('.rig/sensors.json')) } catch { return {} } })()
+  await c.check('sensors.json is a registry with a unit sensor', () => (Array.isArray(reg.sensors) && reg.sensors.some(s => s.id === 'unit' && /test/.test(s.cmd ?? ''))) || JSON.stringify(reg))
+  await c.check('sync --check is clean: CLAUDE.md carries the guides block', () => { const r = sb.sdlc(['sync', '--check']); return r.status === 0 || r.stdout.trim().split('\n').slice(0, 3).join(' | ') })
+  await c.check('status reads the registry with no config error', () => { const r = sb.sdlc(['status', '--json']); return (r.status === 0 && !/config/.test(r.stderr)) || r.stderr.trim() })
 
-  await c.check('standalone skills: every plugin skill plus rig-approve and rig-waive', () => {
-    const want = [...names('skills').map(n => `rig-${n}`), 'rig-approve', 'rig-waive']
+  await c.check('standalone skills: every plugin skill, approve and waive included', () => {
+    const want = names('skills').map(n => `rig-${n}`)
     const missing = want.filter(n => !sb.exists(`.claude/skills/${n}/SKILL.md`))
     return missing.length === 0 || `missing: ${missing.join(', ')}`
   })
@@ -54,7 +45,6 @@ export async function assertOnboarding(c, sb, { lane, modules = [] }) {
     const bad = ['pre-commit', 'pre-push'].filter(h => !sb.exists(`.rig/githooks/${h}`) || !(fs.statSync(sb.file(`.rig/githooks/${h}`)).mode & 0o111))
     return (hooksPath === '.rig/githooks' && bad.length === 0) || `hooksPath=${hooksPath || '(unset)'} not executable or missing: ${bad.join(', ')}`
   })
-  await c.check('preflight report written', () => /result:/.test(sb.read('.rig/PREFLIGHT.md')) || 'no .rig/PREFLIGHT.md')
 
   await c.check('onboarding committed on main', () => {
     const branch = sb.git('rev-parse', '--abbrev-ref', 'HEAD')

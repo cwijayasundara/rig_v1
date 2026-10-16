@@ -3,30 +3,16 @@ import { Checks } from '../lib/checks.mjs'
 import { assertChange } from '../assert/change.mjs'
 import { assertPrePushPasses, assertPreCommitRefusesSecret } from '../assert/hooks.mjs'
 import { assertShop } from '../acceptance/shop.mjs'
-import { runRoute } from '../lib/operator.mjs'
+import { runChange } from '../lib/flow.mjs'
 
 const fx = rel => path.join(import.meta.dirname, '../fixtures/shop', rel)
 
 export const PHASE = {
-  id: 'S2', slug: 'walking-skeleton-change', type: 'feature', tier: 'M', title: 'Walking skeleton: the whole shop',
-  source: '.rig/intent/walking-skeleton.md',
-  prompt: '/rig-start A feature, tier M (one change of about six files; the person has decided the tier). Build the shop described in .rig/product/prd/sprint-0.md (the charted, approved walking-skeleton intent): a Catalog, a Cart, checkout with the SAVE10 and SAVE20 discount codes, and a transport-agnostic HTTP-style handler, exactly as the PRD FRs state. Include tests. Money is integer cents; no dependencies. Keep the implementation compact — the harness size sensor caps one change at 500 changed lines, so write only the four PRD modules and their tests, with no extra helper files.',
-  intent: {
-    problem: 'There is no shop code at all.',
-    outcome: 'Catalog, cart, checkout and handler behave per the sprint-0 PRD; node --test passes.',
-    nonGoals: 'Deleting cart lines, payment, persistence, a real HTTP server.',
-    risks: 'First public API, so names are the contract.',
-  },
-  design: [
-    '# Shop walking skeleton', '', '## Contracts',
-    '- `Catalog` from src/catalog/products.js: add/get/list, invalid SKU and non-positive price throw.',
-    '- `Cart` from src/cart/cart.js: add/lines/subtotalCents, priced from the catalog.',
-    '- `checkout(cart, { code })` from src/orders/orders.js: SAVE10/SAVE20, unknown code and empty cart throw.',
-    '- `createHandler(catalog)` from src/http/handler.js: GET /products, POST /cart, POST /checkout; 400 on error, 404 unknown path.',
-    '', '## Files', '- src/catalog/products.js', '- src/cart/cart.js', '- src/orders/orders.js', '- src/http/handler.js', '- test/shop.test.js', '',
-    '## Slices', '1. The whole shop: catalog, cart, checkout, handler (test/shop.test.js)', '',
-    '## Verification', '- npm test', '',
-  ].join('\n'),
+  id: 'S2', slug: 'walking-skeleton', type: 'feature', title: 'Walking skeleton: the whole shop',
+  prompt: '/rig-start A feature: build the shop described in .rig/product/brief.md (behaviours B1–B4): a Catalog, a Cart, a checkout with SAVE10/SAVE20 and a request handler, in src/catalog, src/cart, src/orders and src/http, tested in test/shop.test.js with test names that start with their B-number.',
+  intent: { problem: 'There is no shop code at all.', outcome: 'B1–B4 of the brief hold and node --test passes.', nonGoals: 'Deleting cart lines, payment, persistence, a real HTTP server.' },
+  spec: '# Spec: walking skeleton\n\n## Behaviours\n- B1: the catalog rejects an invalid SKU and a non-positive price.\n- B2: the cart sums quantities and prices from the catalog.\n- B3: checkout applies SAVE10 and SAVE20 and rejects an unknown code or an empty cart.\n- B4: the handler serves GET /products, POST /cart and POST /checkout; 400 on error, 404 on an unknown path.\n\n## Out of scope\n- Deleting cart lines.\n\n## Open questions\nnone\n',
+  plan: '# Plan: walking skeleton\n\n## Files\n- src/catalog/products.js\n- src/cart/cart.js\n- src/orders/orders.js\n- src/http/handler.js\n- test/shop.test.js\n\n## Tests\n- B1–B4: test/shop.test.js (unit)\n\n## Contracts\nnone\n\n## Verification\n- npm test\n\n## Open questions\nnone\n',
   tests: [{ src: fx('test/shop.test.js'), dest: 'test/shop.test.js' }],
   impl: [
     { src: fx('src/catalog/products.js'), dest: 'src/catalog/products.js' },
@@ -38,20 +24,16 @@ export const PHASE = {
   acceptance: 'shop',
 }
 
-// Runs one change through the route and asserts it. `driver` is scripted or live.
-export async function runChange(sb, phase, driver, { operator = 'operator', first = false } = {}) {
-  const slug = await driver.begin()
-  const route = await runRoute({ sb, slug, driver, repeats: driver.sessions ? 2 : 1, maxSteps: driver.sessions ? 14 : 10 })
-  // A live session can end with its last evidence (review.md, STATE.md) uncommitted; the person commits it.
-  if (driver.sessions) sb.commitAll('chore: session leftovers')
+// Runs one change start to PR and asserts its evidence. `driver` is scripted or live.
+export async function runShopChange(sb, phase, driver, { first = false, afterApprove } = {}) {
+  const { slug, notes } = await runChange(sb, phase, driver, { afterApprove })
   const c = new Checks(`${phase.id} ${phase.title}`)
-  await assertChange(c, sb, slug, { operator, label: slug, strictSlices: !driver.sessions })
-  await c.check(`${phase.id}: the operator resolved ${route.resolvedConcerns} policy concern(s) the design gate listed`, () => true)
-  await c.check(`${phase.id}: approved at least one gate`, () => route.approved.length > 0 || 'no human gate was approved')
+  for (const n of notes) await c.check(n.title, () => n.ok || n.why)
+  await assertChange(c, sb, slug, phase)
   if (first) {
     await assertPrePushPasses(c, sb, slug)
     await assertPreCommitRefusesSecret(c, sb)
   }
   await assertShop(c, sb.dir, phase.acceptance)
-  return { slug, route, checks: c }
+  return { slug, checks: c }
 }
