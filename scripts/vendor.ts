@@ -12,13 +12,15 @@ type HookGroup = { matcher?: string; hooks: { type: string; command: string; tim
 // Plugin references rewritten for a project copy: script paths, /rig:x skills, rig:x agents and the skill's name.
 const AGENTS = ['architect', 'evaluator', 'implementer', 'researcher', 'reviewer', 'scout']
 
-// `kind` says what the file is named: a skill keeps the plugin's colon (`/rig:start`), an agent takes a hyphen (`rig-scout`).
+// A vendored skill is registered under its folder name, so `/rig:start` becomes `/rig-start` (the 2026-10-16 pilot's init events);
+// an agent takes a hyphen (`rig-scout`).
 function forProject(text: string, kind: 'skill' | 'agent' = 'skill'): string {
   return text
     .replaceAll('${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts', SDLC_HOOK)
     .replaceAll('<plugin>/scripts/sdlc.ts', SDLC_HOOK)
     .replaceAll('${CLAUDE_PLUGIN_ROOT}/templates/', '.rig/templates/')
     .replace(new RegExp(`(?<![/\\w])rig:(${AGENTS.join('|')})\\b`, 'g'), 'rig-$1')
+    .replace(/\/rig:([a-z]+)\b/g, '/rig-$1')
     .replace(/^name: (?!rig[-:])(\S+)$/m, kind === 'skill' ? 'name: rig:$1' : 'name: rig-$1')
 }
 

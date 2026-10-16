@@ -145,7 +145,7 @@ export function size(diffs: FileDiff[], r: Registry, fileLines: Record<string, n
       if (!long.length) continue
       findings.push({
         sensor: 'size', severity: 'warn', file: d.file, line: long[0]?.n,
-        message: `${long.length} added line(s) over ${limits.lineChars} characters`,
+        message: `${long.length} added line(s) over ${limits.lineChars} characters (lines ${long.slice(0, 5).map(l => l.n).join(', ')}${long.length > 5 ? ', …' : ''})`,
         fix: 'one idea per line: name intermediate values instead of nesting expressions',
       })
     }

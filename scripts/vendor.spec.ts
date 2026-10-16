@@ -34,6 +34,7 @@ test('vendor --cloud writes project skills, agents and hooks with no plugin refe
     const text = fs.readFileSync(f, 'utf8')
     assert.doesNotMatch(text, /CLAUDE_PLUGIN_ROOT|<plugin>\/scripts|(?<![/\w])rig:(?:architect|evaluator|implementer|researcher|reviewer|scout)\b/, path.relative(repo, f))
     assert.match(text, f.includes('/agents/') ? /^name: rig-/m : /^name: rig:[a-z]/m, path.relative(repo, f))
+    assert.doesNotMatch(text, /\/rig:[a-z]/, `${path.relative(repo, f)}: a vendored skill is invoked by its folder name, /rig-<name>`)
   }
   assert.ok(fs.existsSync(path.join(repo, '.rig/templates/rig-check.yml')), 'templates copied')
   const settings = JSON.parse(fs.readFileSync(path.join(repo, '.claude/settings.json'), 'utf8'))
@@ -51,7 +52,8 @@ test('the vendored copy points its skills at .rig/bin and the session start name
   sdlc(repo, ['init'])
   sdlc(repo, ['vendor', '--cloud'])
   vendored(repo, ['new', 'small-thing', '--type', 'chore'])
-  assert.match(vendored(repo, ['status']).stdout, /next: \/rig:start small-thing/)
+  // A vendored skill is registered under its folder name, so the vendored checker names it /rig-start (2026-10-16 pilot).
+  assert.match(vendored(repo, ['status']).stdout, /next: \/rig-start small-thing/)
   const skill = fs.readFileSync(path.join(repo, '.claude/skills/rig-plan/SKILL.md'), 'utf8')
   assert.match(skill, /\.rig\/bin\/sdlc\.ts/)
   assert.doesNotMatch(skill, /CLAUDE_PLUGIN_ROOT/)
@@ -155,7 +157,8 @@ test('init --full vendors, wires git hooks and merges the settings template with
   assert.equal(settings.env.CLAUDE_CODE_DISABLE_ADVISOR_TOOL, 'true')
   assert.equal(settings.env.ENABLE_STOP_REVIEW, '0', 'init turns off the security-guidance per-turn review (proposal 2026-10-08 §3.3.1)')
   const RECORDER = 'node --disable-warning=ExperimentalWarning .rig/bin/sdlc.ts'
-  assert.deepEqual(settings.permissions.allow, ['Bash(ls)', 'Edit(.rig/**)', `Bash(${RECORDER} *)`])
+  assert.deepEqual(settings.permissions.allow.slice(0, 3), ['Bash(ls)', 'Edit(.rig/**)', `Bash(${RECORDER} *)`])
+  assert.ok(settings.permissions.allow.includes('Skill(rig:test *)'), 'the skill-chaining rules come with the template')
   // Subagents get no skill allowed-tools: each sdlc.ts call their prompts spell out must be the form the allow rule matches.
   for (const agent of ['rig-evaluator.md']) {
     const calls = fs.readFileSync(path.join(repo, '.claude/agents', agent), 'utf8').match(/node [^`"]*sdlc\.ts/g) ?? []

@@ -47,3 +47,10 @@ test('final review: a bare session that fails still has its work committed, so t
   assert.ok(row.commits >= 1, JSON.stringify(row))
   assert.equal(typeof row.denials, 'number')
 })
+
+import { BARE_PROMPT } from './setup.mjs'
+
+test('final review (denials): the bare prompt gives the same tool advice rig sessions get', () => {
+  assert.match(BARE_PROMPT, /read files with Read, Grep and Glob and change them with Edit or Write/)
+  assert.match(BARE_PROMPT, /run each command as its own Bash call/)
+})

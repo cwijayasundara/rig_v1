@@ -230,7 +230,7 @@ test('size warns once per file on added lines over limits.lineChars, not at edit
   const added = [{ n: 3, text: 'x'.repeat(21) }, { n: 4, text: 'ok' }, { n: 9, text: 'y'.repeat(30) }]
   const d = { file: 'src/a.ts', status: 'M' as const, added, removed: [] }
   const f = size([d], cfg, { 'src/a.ts': 10 }, 'stop')
-  assert.deepEqual(f.map(x => [x.sensor, x.severity, x.line, x.message]), [['size', 'warn', 3, '2 added line(s) over 20 characters']])
+  assert.deepEqual(f.map(x => [x.sensor, x.severity, x.line, x.message]), [['size', 'warn', 3, '2 added line(s) over 20 characters (lines 3, 9)']])
   assert.deepEqual(size([d], cfg, { 'src/a.ts': 10 }, 'edit'), [])
 })
 
@@ -281,4 +281,27 @@ test('a file that was already over the limit is not blamed for growing', () => {
   const cfg = reg({ limits: { fileLines: 10 } })
   const d: FileDiff = { file: 'src/a.ts', status: 'M', added: [{ n: 1, text: 'x' }], removed: [] }
   assert.deepEqual(size([d], cfg, { 'src/a.ts': 30 }, 'edit').filter(f => f.message.includes('grew')), [])
+})
+
+// One diff adding these line numbers, each over the 160-character limit; returns the long-line finding.
+const longLineFinding = (lines: number[]) => {
+  const d: FileDiff = { file: 'src/long.js', status: 'M', added: lines.map(n => ({ n, text: 'x'.repeat(200) })), removed: [] }
+  const f = size([d], reg(), { 'src/long.js': lines.length }, 'stop').find(x => x.file === 'src/long.js' && /characters/.test(x.message))
+  assert.ok(f, 'no long-line finding')
+  return f
+}
+
+test('the size finding names the long lines', () => {
+  assert.match(longLineFinding([3, 7]).message, /2 added line\(s\) over 160 characters \(lines 3, 7\)/)
+})
+
+test('the size finding names at most five long lines', () => {
+  const f = longLineFinding(Array.from({ length: 300 }, (_, i) => i + 1))
+  assert.match(f.message, /\(lines 1, 2, 3, 4, 5, …\)/)
+  assert.equal(f.message.split('\n').length, 1)
+})
+
+test('the size guide says the finding names the lines, so there is nothing to search for', () => {
+  const g = defaultRegistry().sensors.find(s => s.id === 'size')?.guide ?? ''
+  assert.match(g, /names each file and line over the limit/)
 })

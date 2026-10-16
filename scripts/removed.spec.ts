@@ -108,7 +108,8 @@ test('4a: every /rig:<skill> and sdlc.ts <command> named in skills, agents, guid
 })
 
 test('every next step the lifecycle names is a skill that exists', () => {
-  const named = [...read('scripts/lifecycle.ts').matchAll(/\/rig:([a-z-]+)/g)].map(m => m[1]!)
+  // The lifecycle names its skills through skillRef (as `k('build')`), which picks /rig:x or /rig-x for plugin or vendored copy.
+  const named = [...read('scripts/lifecycle.ts').matchAll(/\bk\('([a-z-]+)'\)/g)].map(m => m[1]!)
   assert.ok(named.length >= 4)
   for (const s of named) assert.ok(fs.existsSync(path.join(ROOT, 'skills', s, 'SKILL.md')), `/rig:${s} has no skill`)
 })

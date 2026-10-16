@@ -112,7 +112,7 @@ function hookSessionStart(input: HookInput): void {
     `rig policy: ${mode} checks for ${model ?? 'an unknown model'} (build on ${registry.models.build}, evaluate on ${registry.models.evaluate}).`,
     declaresRegistry() ? syncFindings(registry, [], 'warn').slice(0, 5).map(f => `rig sync: ${f.message}`).join('\n') : '',
     active && st ? `Active change: ${active} (${changeType(active)}, ${st}). Next: ${nextStep(active, st)}` : `No active change. Start one with ${skillRef('start')} "<request>".`,
-    'Rules: plans hold interfaces and acceptance tests, never code; only the person writes .rig/changes/<slug>/approval.json; run subagents in the foreground and never end a turn while one is running; never sleep-poll; at ~150k context run /compact.',
+    'Rules: plans hold interfaces and acceptance tests, never code; only the person writes .rig/changes/<slug>/approval.json; run subagents in the foreground and never end a turn while one is running; never sleep-poll; read files with Read, Grep and Glob and change them with Edit or Write; run each command as its own Bash call (no `cd`, pipes, redirects, `&&`, `;` or heredocs): unattended runs deny compound commands; at ~150k context run /compact.',
     sessionNote(),
     guides.length ? `Guides (injected when you first touch matching files): ${guides.join(', ')}` : '',
   ].filter(Boolean)
@@ -196,7 +196,7 @@ function approveTyped(typedArgs: string): void {
   const say = (text: string): void => out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: text } }))
   if (!slug) return say('rig: the person typed /rig:approve but there is no active change. Tell them so in one line and stop.')
   const r = runSdlc(['approve', slug], true)
-  say(`rig: the person typed /rig:approve and rig ${r.code === 0 ? 'recorded it' : 'refused it'}:\n${r.text}\nTell them the result in one line${r.code === 0 ? `, then continue with /rig:build ${slug}` : ' and stop'}. Do not run /rig:approve or sdlc.ts approve yourself.`)
+  say(`rig: the person typed /rig:approve and rig ${r.code === 0 ? 'recorded it' : 'refused it'}:\n${r.text}\nTell them the result in one line${r.code === 0 ? `, then continue with ${skillRef('build')} ${slug}` : ' and stop'}. Do not run /rig:approve or sdlc.ts approve yourself.`)
 }
 
 // Each prompt starts a turn: record the tree and reset the per-turn gate, so Stop diffs exactly this turn's changes.
