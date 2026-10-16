@@ -9,15 +9,15 @@ import { makeRepo, sdlc, write, registry } from './testkit.ts'
 const ok = 'node -e "process.exit(0)"'
 const bad = 'node -e "process.exit(3)"'
 
-test('baseline: runs each turn sensor once with no change; failing ones go into knownRed by id', () => {
+test('baseline: runs each sensor up to the commit cadence once with no change; failing ones go into knownRed by id', () => {
   const repo = makeRepo()
   sdlc(repo, ['init'])
-  write(repo, '.rig/sensors.json', registry({ turn: { test: ok, lint: bad }, commit: { slow: bad } }))
+  write(repo, '.rig/sensors.json', registry({ turn: { test: ok, lint: bad }, ci: { slow: bad } }))
   const r = sdlc(repo, ['baseline'])
   assert.equal(r.code, 0, r.stderr)
   assert.match(r.stdout, /^test: pass/m)
   assert.match(r.stdout, /^lint: fail \(exit 3\) → knownRed/m)
-  assert.doesNotMatch(r.stdout, /slow/, 'only turn-cadence sensors are measured')
+  assert.doesNotMatch(r.stdout, /slow/, 'ci-cadence sensors are not measured: the pre-commit hook does not run them')
   assert.ok(!fs.existsSync(path.join(repo, '.rig/changes')) || !fs.readdirSync(path.join(repo, '.rig/changes')).length, 'no change is created')
   const cfg = JSON.parse(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8'))
   assert.deepEqual(cfg.knownRed, ['lint'])

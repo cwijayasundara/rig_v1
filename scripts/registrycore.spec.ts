@@ -104,3 +104,52 @@ test('a resumed session after a passing verify is told to open the PR', () => {
   const ctx = JSON.parse(hook(repo, 'session-start', { session_id: 's1' }).stdout).hookSpecificOutput.additionalContext as string
   assert.match(ctx, /Next: \/rig:pr demo/)
 })
+
+// Final review fixes.
+test('a malformed layering or size option is a config error, never a crash', () => {
+  commit(JSON.stringify({ sensors: [{ id: 'layering', builtin: true, options: { layers: [{ from: 'src/ui/**', why: 'x' }] } }, { id: 'size', builtin: true, options: { fileLines: 'abc' } }] }))
+  write(repo, 'src/ui/a.js', "import x from '../db.js'\n")
+  gitIn(repo, 'add', '.')
+  const r = sdlc(repo, ['check', '--at', 'commit'])
+  assert.doesNotMatch(r.stderr + r.stdout, /checker crashed|Cannot read properties/)
+  assert.match(r.stdout, /\[config\][\s\S]*layers/)
+  assert.match(r.stdout, /\[config\][\s\S]*fileLines/)
+})
+
+test('broken JSON is a parse error and a registry without a sensors list is a registry, not the old format', () => {
+  commit('{ "sensors": [], }')
+  write(repo, 'src/b.js', 'export const b = 1\n')
+  gitIn(repo, 'add', '.')
+  const broken = sdlc(repo, ['check', '--at', 'commit'])
+  assert.doesNotMatch(broken.stdout, /pre-registry format/)
+  assert.match(broken.stdout, /\[config\]/)
+  commit(JSON.stringify({ gates: { plan: false } }))
+  write(repo, 'src/a.js', 'export const a = 1\n')
+  gitIn(repo, 'add', '.')
+  assert.doesNotMatch(sdlc(repo, ['check', '--at', 'commit']).stdout, /pre-registry format|\[config\]/)
+})
+
+test('init --stack on a committed old-shape file prints the stack pack registry to copy in, and writes nothing', () => {
+  write(repo, 'package.json', '{}\n')
+  commit(JSON.stringify({ fast: { test: 'node -e 0' } }))
+  const r = sdlc(repo, ['init', '--stack'])
+  assert.match(r.stdout, /pre-registry format/)
+  assert.match(r.stdout, /"sensors"/)
+  assert.match(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8'), /"fast"/)
+})
+
+test('baseline measures every sensor the pre-commit runs: a red commit sensor goes into knownRed', () => {
+  write(repo, '.rig/sensors.json', registry({ turn: { t: 'node -e 0' }, commit: { lint: 'node -e "process.exit(2)"' } }))
+  sdlc(repo, ['baseline'])
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8')).knownRed, ['lint'])
+})
+
+test('a commit sensor that runs out of time warns at commit instead of blocking (CI runs it again)', () => {
+  commit(registry({ commit: { slow: 'node -e "setTimeout(() => {}, 3000)"' } }))
+  sdlc(repo, ['sync'])
+  write(repo, 'src/a.js', 'export const a = 1\n')
+  gitIn(repo, 'add', '.')
+  const r = sdlc(repo, ['check', '--at', 'commit', '--budget-ms', '300'])
+  assert.equal(r.code, 0, r.stdout)
+  assert.match(r.stdout, /slow/)
+})

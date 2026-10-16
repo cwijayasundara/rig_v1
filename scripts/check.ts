@@ -38,11 +38,13 @@ type CheckResult = { findings: Finding[]; blocks: Finding[]; warns: Finding[]; w
 const SENSORS_JSON = '.rig/sensors.json'
 const TAIL_IN_FINDING = 15
 
-// `{}` (what init writes before a stack is chosen) is an empty registry, not the old format.
-const isEmptyObject = (raw: string): boolean => { try { const v: unknown = JSON.parse(raw); return typeof v === 'object' && v !== null && !Array.isArray(v) && !Object.keys(v).length } catch { return false } }
+// The pre-registry format is recognised by its keys; anything else (`{}`, a registry missing its sensors list, broken
+// JSON) goes to parseRegistry, which reports a parse error as one.
+const OLD_KEYS = ['fast', 'full', 'levels', 'quality', 'scopes', 'behavioral', 'limits', 'layers', 'githooks', 'consumers', 'scopeLimit', 'affected', 'sparseBase', 'budget', 'routing', 'points', 'value', 'ratchet', 'evals', 'bands', 'build', 'ci', 'idleGapMs']
+export const isOldShape = (raw: string): boolean => { try { const v: unknown = JSON.parse(raw); return typeof v === 'object' && v !== null && !Array.isArray((v as { sensors?: unknown }).sensors) && Object.keys(v).some(k => OLD_KEYS.includes(k)) } catch { return false } }
 // A repo that declares a registry keeps its CLAUDE.md guides in sync (spec §5); one with none declared has nothing to sync.
 export const declaresRegistry = (): boolean => isRegistryShape(read(path.join(ROOT, SENSORS_JSON)))
-const OLD_SHAPE = '.rig/sensors.json uses the pre-registry format; run sdlc.ts init --stack to write a registry (spec 2026-10-16 §3)'
+const OLD_SHAPE = '.rig/sensors.json uses the pre-registry format; run sdlc.ts init --stack to print a registry for this repo, then land it on the trunk as a reviewed harness change (spec 2026-10-16 §3)'
 
 // With a ref (CI), the registry comes from the base branch, so a PR cannot loosen the rules it is judged by.
 export function loadConfig(ref: string | null = null): { registry: Registry; rules: Rule[]; errors: string[] } {
@@ -51,7 +53,7 @@ export function loadConfig(ref: string | null = null): { registry: Registry; rul
   const r = parseRules(text('.rig/rules.json'))
   const raw = text(SENSORS_JSON)
   const ruleErrors = r.errors.map(e => `rules.json: ${e}`)
-  if (raw.trim() && !isRegistryShape(raw) && !isEmptyObject(raw)) return { registry: defaultRegistry(), rules: r.rules, errors: [OLD_SHAPE, ...ruleErrors] }
+  if (isOldShape(raw)) return { registry: defaultRegistry(), rules: r.rules, errors: [OLD_SHAPE, ...ruleErrors] }
   const p = parseRegistry(raw)
   return { registry: p.registry, rules: r.rules, errors: [...p.errors.map(e => `sensors: ${e}`), ...ruleErrors] }
 }
@@ -317,6 +319,9 @@ export function cmdCheck(args: Args): void {
   const humanRows = at === 'ci' && base ? humanRowsAdded(base) : []
   const why = humanRows.length ? independentApproval() : null // before runChecks: the PR's test commands could rewrite the event file or shadow gh
   const result = runChecks({ point: at, diffs, config, rules, slugs, commands: replaying ? 'none' : at === 'stop' ? 'fast' : 'full', budgetMs, before, after, base, ratchet: !optString(args, 'config-from') && at !== 'commit', contracts: at === 'commit' ? !replaying : undefined, gates: config.gates })
+  // At commit, like at push, a sensor out of time warns: CI runs it again, and a hanging tool must not hold git commit hostage.
+  if (at === 'commit') for (const f of result.findings) if (f.sensor === 'commands' && /budget ran out|timed out/.test(f.message)) f.severity = 'warn'
+  result.blocks = result.findings.filter(f => f.severity === 'block')
   const configFindings: Finding[] = errors.map(e => ({ sensor: 'config', severity: 'block', file: SENSORS_JSON, message: e, fix: 'fix the file; see the sdlc README for its format' }))
   const humanFindings: Finding[] = why ? [{ sensor: 'human-approval', severity: 'block', message: `this PR adds ${humanRows.length} approval/waiver row(s): ${why}`, fix: 'a code owner other than the PR author reviews the rows below and approves the current head commit; pushing again needs a fresh approval' }] : []
   const syncBlocks = (at === 'commit' || at === 'ci') && declaresRegistry() ? syncFindings(config, [], 'block') : [] // config errors already block above

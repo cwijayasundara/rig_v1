@@ -1,5 +1,5 @@
-// `sdlc.ts baseline`: /rig:init's measurement of the repo as it is, before any change exists. Each turn-cadence command sensor
-// runs once; a failing one goes into knownRed by its id (the gate never blocks on debt it did not create, and the ratchet
+// `sdlc.ts baseline`: /rig:init's measurement of the repo as it is, before any change exists. Each command sensor up to the commit
+// cadence (what the pre-commit hook runs) runs once; a failing one goes into knownRed by its id (the gate never blocks on debt it did not create, and the ratchet
 // tightens it once it passes).
 import fs from 'node:fs'
 import path from 'node:path'
@@ -18,7 +18,7 @@ export function cmdBaseline(): void {
   if (errors.length) fail(`fix .rig/sensors.json first:\n${errors.map(e => `- ${e}`).join('\n')}`)
   const rows: string[] = []
   const red: string[] = []
-  for (const s of activeSensors(registry, 'turn', 'continuous')) {
+  for (const s of activeSensors(registry, 'commit', 'continuous')) {
     const cmd = commandFor(s, null)
     if (!cmd) continue
     const r = runCommand(cmd, { timeoutMs: BUDGET_MS })

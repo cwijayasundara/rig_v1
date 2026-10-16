@@ -84,6 +84,9 @@ function parseSensor(raw: unknown, at: string, errors: string[]): RegistrySensor
   if (blocks === false && (ALWAYS_ON as string[]).includes(id)) errors.push(`${at}: ${id} must block`)
   if ('options' in raw && !builtin) errors.push(`${at}: only built-in sensors take options`)
   else if ('options' in raw && !isObject(raw.options)) errors.push(`${at}.options must be an object`)
+  const opts = isObject(raw.options) ? raw.options : {}
+  if (id === 'layering' && 'layers' in opts && !(Array.isArray(opts.layers) && opts.layers.every(l => isObject(l) && typeof l.from === 'string' && isStringList(l.mustNotImport) && typeof l.why === 'string'))) errors.push(`${at}.options.layers must be a list of { from, mustNotImport: [...], why }`)
+  if (id === 'size') for (const [k, v] of Object.entries(opts)) if (!['fileLines', 'diffLines', 'lineChars'].includes(k) || !posInt(v)) errors.push(`${at}.options.${k} must be one of fileLines, diffLines, lineChars with a positive integer`)
   for (const k of Object.keys(raw)) if (!SENSOR_KEYS.includes(k)) errors.push(`${at}: unknown key "${k}"`)
   if (errors.length !== before) return null
   const timeout = raw.timeoutMs
