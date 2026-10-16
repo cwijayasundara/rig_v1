@@ -5,7 +5,7 @@ import path from 'node:path'
 import { ROOT, SDLC, PLUGIN_ROOT, IS_VENDORED, read, out, fail, sanctionWrites, type Args } from './core.ts'
 import { writeHookScripts, installHooks } from './githooks.ts'
 
-export const VENDORED = ['core', 'graph', 'model', 'sensors', 'diffs', 'runs', 'check', 'ratchet', 'stamp', 'slicecheck', 'checkpoint', 'slices', 'stale', 'shards', 'quality', 'basetree', 'configparse', 'routing', 'context', 'brainsource', 'scopes', 'toolchain', 'preflight', 'levels', 'verify', 'hooks', 'metrics', 'evals', 'inbox', 'chart', 'chartcheck', 'watch', 'scorecard', 'points', 'timing', 'flow', 'pr', 'spend', 'sdlc', 'githooks', 'vendor', 'initbaseline']
+export const VENDORED = ['core', 'graph', 'model', 'sensors', 'diffs', 'runs', 'check', 'ratchet', 'stamp', 'slicecheck', 'checkpoint', 'slices', 'stale', 'shards', 'quality', 'basetree', 'configparse', 'routing', 'context', 'brainsource', 'scopes', 'toolchain', 'preflight', 'levels', 'verify', 'hooks', 'metrics', 'evals', 'inbox', 'chart', 'chartcheck', 'watch', 'scorecard', 'points', 'timing', 'flow', 'pr', 'spend', 'sdlc', 'githooks', 'vendor', 'initbaseline', 'registry', 'stackpacks']
 const SDLC_HOOK = '.rig/bin/sdlc.ts'
 type HookGroup = { matcher?: string; hooks: { type: string; command: string; timeout?: number; async?: boolean }[] }
 
@@ -89,8 +89,9 @@ function vendorStandalone(written: string[], version: string): void {
   for (const file of fs.readdirSync(path.join(PLUGIN_ROOT, 'agents')).filter(f => f.endsWith('.md'))) {
     writeFile(`.claude/agents/rig-${file}`, forProject(read(path.join(PLUGIN_ROOT, 'agents', file)), 'agent'), written)
   }
-  for (const file of fs.readdirSync(path.join(PLUGIN_ROOT, 'templates'))) {
-    writeFile(`.rig/templates/${file}`, read(path.join(PLUGIN_ROOT, 'templates', file)), written)
+  const templates = path.join(PLUGIN_ROOT, 'templates')
+  for (const file of (fs.readdirSync(templates, { recursive: true }) as string[]).filter(f => fs.statSync(path.join(templates, f)).isFile()).sort()) {
+    writeFile(`.rig/templates/${file}`, read(path.join(templates, file)), written)
   }
   for (const file of fs.readdirSync(path.join(PLUGIN_ROOT, 'workflows')).filter(f => f.endsWith('.js'))) {
     writeFile(`.claude/workflows/${file}`, read(path.join(PLUGIN_ROOT, 'workflows', file)), written)

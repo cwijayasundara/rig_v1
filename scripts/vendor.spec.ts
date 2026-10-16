@@ -118,7 +118,7 @@ test('the plugin hooks step aside only in a standalone repo, so no hook runs twi
 
 test('the settings template is portable: no personal plugins, absolute paths or no-op Write(path) rules', () => {
   const dir = path.join(import.meta.dirname, '..', 'templates')
-  for (const f of fs.readdirSync(dir)) {
+  for (const f of (fs.readdirSync(dir, { recursive: true }) as string[]).filter(f => fs.statSync(path.join(dir, f)).isFile())) {
     const text = fs.readFileSync(path.join(dir, f), 'utf8')
     assert.doesNotMatch(text, /Write\([^)]*[./*][^)]*\)/, `${f}: path-scoped write rules must be Edit(...)`)
     assert.doesNotMatch(text, /"\/(Users|home)\/|ABSOLUTE\/PATH/, `${f}: no machine-specific paths`)
