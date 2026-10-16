@@ -14,7 +14,7 @@ import { selectScopes, resolveCommands } from './scopes.ts'
 import { withBaseTree } from './basetree.ts'
 import { loadChange, activeSlug } from './graph.ts'
 import { isRegistryShape, parseRegistry, registryConfig, updateKnownRed, type Registry } from './registry.ts'
-import { frozenFindings } from './contracts.ts'
+import { frozenFindings, runContracts } from './contracts.ts'
 
 export type Point = 'stop' | 'commit' | 'ship' | 'ci'
 export type CheckInput = {
@@ -30,6 +30,7 @@ export type CheckInput = {
   base: string | null
   ratchet?: boolean
   after?: (file: string) => string // the text being judged; defaults to the working tree (commit passes the index)
+  contracts?: boolean // run the contract commands (validate, then run); absent: at ship and ci only
 }
 export type CheckResult = { findings: Finding[]; blocks: Finding[]; warns: Finding[]; waived: number }
 
@@ -333,16 +334,8 @@ export function runChecks(i: CheckInput): CheckResult {
     const unscoped = selectScopes(diffs.filter(d => isSource(d.file, config)).map(d => d.file), config).unscoped
     if (unscoped.length) findings.push({ sensor: 'unscoped', severity: 'warn', message: `${unscoped.length} changed file(s) match no scope, so the top-level commands run for them: ${unscoped.slice(0, 5).join(', ')}`, fix: 'add a scope glob that covers them in .rig/sensors.json scopes' })
   }
-  // Behavioural commands re-run at ship/CI from this (base) config: validate gates run, verdicts from exit codes.
-  if ((i.point === 'ship' || i.point === 'ci') && config.behavioral) {
-    const b = config.behavioral
-    const v = b.validate ? runCommand(b.validate, { timeoutMs: i.budgetMs }) : null
-    if (v && v.exit !== 0) findings.push({ sensor: 'behavioral', severity: 'block', message: `examples do not match the specs (validate exited ${v.exit})`, fix: 'fix the examples or the specs; a specs change needs a person to re-approve the design' })
-    else if (b.run) {
-      const r = runCommand(b.run, { timeoutMs: i.budgetMs })
-      if (r.exit !== 0) findings.push({ sensor: 'behavioral', severity: 'block', message: `the behavioural suite failed (exited ${r.exit})`, fix: 'fix the implementation or the execution setup, never the examples or specs' })
-    }
-  }
+  // Contracts (spec §6): ship and CI always, commit for a registry, a turn only when it reaches a contract. Validate gates run.
+  if ((i.contracts ?? (i.point === 'ship' || i.point === 'ci')) && config.behavioral) findings.push(...runContracts(config.behavioral, i.point === 'stop' ? i.budgetMs : Math.max(i.budgetMs, 600_000)))
   if (i.commands !== 'none') findings.push(...runDeclared(i.commands, config, i.point === 'ci' ? null : i.slugs[0] ?? null, i.budgetMs, Boolean(i.ratchet) && i.point !== 'ci', i.point === 'ci' && config.ci.scope === 'all' ? 'all' : diffs.map(d => d.file).filter(f => isSource(f, config)), config.behavioral ? new Set([config.behavioral.validate ?? '', config.behavioral.run ?? ''].filter(Boolean).map(normCmd)) : undefined))
   const result = applyWaivers(builtinsApplied(findings, config), i.slugs, i.point === 'ci' ? { base: i.base } : undefined)
   logRuleFires(result.findings, i.point)
@@ -415,7 +408,7 @@ export function cmdCheck(args: Args): void {
   if (optString(args, 'at') === 'plan') return cmdCheckPlan(args)
   const at = optString(args, 'at')
   if (at !== 'stop' && at !== 'commit' && at !== 'ship' && at !== 'ci') fail('usage: check --at stop|commit|ship|ci|plan [--base <ref>] [--config-from <ref>] [--slug <s>] [--budget-ms <n>] [--json]')
-  const { config, rules, errors } = loadConfig(optString(args, 'config-from') ?? null)
+  const { config, rules, errors, registry } = loadConfig(optString(args, 'config-from') ?? null)
   const baseRef = optString(args, 'base')
   const base = baseRef ? git(['merge-base', 'HEAD', baseRef]) : defaultBase()
   if (at === 'ci' && !base) fail('check --at ci needs --base <ref> with a merge-base (fetch with fetch-depth: 0)')
@@ -451,7 +444,7 @@ export function cmdCheck(args: Args): void {
   if (!Number.isFinite(budgetMs) || budgetMs <= 0) fail('--budget-ms must be a positive number')
   const humanRows = at === 'ci' && base ? humanRowsAdded(base) : []
   const why = humanRows.length ? independentApproval() : null // before runChecks: the PR's test commands could rewrite the event file or shadow gh
-  const result = runChecks({ point: at, diffs, config, rules, slugs, commands: replaying ? 'none' : partial ? 'fast' : 'full', budgetMs, before, after, base, ratchet: !optString(args, 'config-from') && at !== 'commit' })
+  const result = runChecks({ point: at, diffs, config, rules, slugs, commands: replaying ? 'none' : partial ? 'fast' : 'full', budgetMs, before, after, base, ratchet: !optString(args, 'config-from') && at !== 'commit', contracts: at === 'commit' ? registry !== null && !replaying : undefined })
   const configFindings: Finding[] = errors.map(e => ({ sensor: 'config', severity: 'block', file: SENSORS_JSON, message: e, fix: 'fix the file; see the sdlc README for its format' }))
   const humanFindings: Finding[] = why ? [{ sensor: 'human-approval', severity: 'block', message: `this PR adds ${humanRows.length} approval/waiver row(s): ${why}`, fix: 'a code owner other than the PR author reviews the rows below and approves the current head commit; pushing again needs a fresh approval' }] : []
   const all = { ...result, findings: [...humanFindings, ...configFindings, ...result.findings], blocks: [...humanFindings, ...configFindings, ...result.blocks] }

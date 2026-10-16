@@ -28,7 +28,7 @@ export function parsePack(text: string, file: string): { pack: StackPack | null;
     stack: name,
     markers: v.markers as string[],
     paths: isObject(v.paths) ? (v.paths as Partial<Paths>) : {},
-    contracts: isObject(v.contracts) ? (v.contracts as Contracts) : { files: [], validate: '', run: '' },
+    contracts: isObject(v.contracts) ? { covers: [], ...(v.contracts as Partial<Contracts>) } as Contracts : { files: [], covers: [], validate: '', run: '' },
     sensors: v.sensors as unknown[],
   }
   const parsed = parseRegistry(registryText(pack))

@@ -103,3 +103,65 @@ test('a legacy behavioral repo keeps digest staleness and records no per-file fr
   write(repo, '.rig/contracts/api.yaml', 'openapi: 3.1.0\npaths: {}\n')
   assert.equal(designState(), 'stale')
 })
+
+import os from 'node:os'
+
+// Each command appends its name to a marker outside the repo, so the turn diff never sees it.
+const marker = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rig-c-')), 'ran.txt')
+const mark = (file: string, name: string, exit = 0) => `node -e "require('fs').appendFileSync('${file}', '${name}\\n'); process.exit(${exit})"`
+const ran = (file: string) => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8').trim().split('\n') : [])
+
+test('at commit, validate runs first and a failing validate skips run', () => {
+  const m = marker()
+  registry({ contracts: { files: ['api/**'], validate: mark(m, 'validate', 1), run: mark(m, 'run') } })
+  write(repo, 'src/a.js', 'export const a = 1\n')
+  const r = commitCheck()
+  assert.equal(r.code, 1)
+  assert.match(r.stdout, /\[behavioral\][\s\S]*examples do not match the specs/)
+  assert.deepEqual(ran(m), ['validate'])
+})
+
+test('at commit, a passing validate is followed by run', () => {
+  const m = marker()
+  registry({ contracts: { files: ['api/**'], validate: mark(m, 'validate'), run: mark(m, 'run', 4) } })
+  write(repo, 'src/a.js', 'export const a = 1\n')
+  assert.match(commitCheck().stdout, /the behavioural suite failed \(exited 4/)
+  assert.deepEqual(ran(m), ['validate', 'run'])
+})
+
+const turnAt = (rel: string) => { hook(repo, 'prompt-submit', {}); write(repo, rel, `x ${Math.random()}\n`); return hook(repo, 'stop', { session_id: 's1' }) }
+
+test('a turn that touches no contract runs no contract command', () => {
+  const m = marker()
+  registry({ contracts: { files: ['api/**'], run: mark(m, 'run') } })
+  turnAt('src/a.js')
+  assert.deepEqual(ran(m), [])
+})
+
+test('a turn that edits a contract file runs validate then run', () => {
+  const m = marker()
+  registry({ contracts: { files: ['api/**'], validate: mark(m, 'validate'), run: mark(m, 'run') } })
+  turnAt('api/openapi.yaml')
+  assert.deepEqual(ran(m), ['validate', 'run'])
+})
+
+test('a turn that edits only a .rig/contracts file still runs the contract commands', () => {
+  const m = marker()
+  registry({ contracts: { files: ['.rig/contracts/**'], run: mark(m, 'run') } })
+  turnAt('.rig/contracts/api.yaml')
+  assert.deepEqual(ran(m), ['run'])
+})
+
+test('a turn that edits source under contracts.covers runs the contract commands', () => {
+  const m = marker()
+  registry({ contracts: { files: ['api/**'], covers: ['src/http/**'], run: mark(m, 'run') } })
+  turnAt('src/http/orders.js')
+  assert.deepEqual(ran(m), ['run'])
+})
+
+test('under final policy a turn never runs the contract commands', () => {
+  const m = marker()
+  registry({ policy: { default: 'final', haiku: 'final', sonnet: 'final', opus: 'final' }, contracts: { files: ['api/**'], run: mark(m, 'run') } })
+  turnAt('api/openapi.yaml')
+  assert.deepEqual(ran(m), [])
+})

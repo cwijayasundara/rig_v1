@@ -129,7 +129,7 @@ test('a legacy sensors.json loads with its commands, contracts and paths', () =>
   assert.deepEqual([by('fast-unit-tests')?.cmd, by('fast-unit-tests')?.cadence, by('fast-unit-tests')?.blocks], ['npm test', 'turn', true])
   assert.deepEqual([by('full-e2e')?.cadence, by('full-e2e')?.blocks], ['commit', false])
   assert.deepEqual([by('quality-lint')?.cmd, by('quality-lint')?.count], ['eslint . -f unix', 'lines'])
-  assert.deepEqual(registry.contracts, { files: ['api/**'], validate: 'v', run: 'r' })
+  assert.deepEqual(registry.contracts, { files: ['api/**'], covers: [], validate: 'v', run: 'r' })
   assert.deepEqual(registry.paths.tests, ['**/*.t.js'])
   assert.equal((by('size')?.options as { fileLines?: number } | undefined)?.fileLines, 300)
   assert.equal(((by('layering')?.options as { layers?: unknown[] } | undefined)?.layers ?? []).length, 1)
@@ -161,7 +161,7 @@ test('legacy knownRed entries use the prefix.name key, so only that command stop
 })
 
 test('legacy contract globs are not frozen; only behavioral.files become contract files', () => {
-  assert.deepEqual(loadRegistry(JSON.stringify({ fast: { t: 'x' } })).registry.contracts, { files: [], validate: '', run: '' })
+  assert.deepEqual(loadRegistry(JSON.stringify({ fast: { t: 'x' } })).registry.contracts, { files: [], covers: [], validate: '', run: '' })
   assert.deepEqual(loadRegistry(JSON.stringify({ contracts: ['api/**'] })).registry.contracts.files, [])
 })
 
@@ -270,4 +270,12 @@ test('tightening or leaving a registry alone is not weakening; an unparseable on
   assert.deepEqual(weakensRegistry(base, base), [])
   assert.deepEqual(weakensRegistry(base, JSON.stringify({ sensors: [cmd('unit', 'turn', 'npm test'), cmd('extra', 'edit', 'x')] })), [])
   assert.deepEqual(weakensRegistry(base, '{'), ['sensors.json no longer parses'])
+})
+
+test('contracts.covers parses as globs, defaults to empty, and losing one weakens the harness', () => {
+  assert.deepEqual(reg({ sensors: [] }).registry.contracts.covers, [])
+  assert.deepEqual(reg({ sensors: [], contracts: { covers: ['src/http/**'] } }).registry.contracts.covers, ['src/http/**'])
+  assert.match(reg({ sensors: [], contracts: { covers: 'src' } }).errors.join(), /contracts\.covers must be a list of globs/)
+  const before = JSON.stringify({ sensors: [], contracts: { covers: ['src/http/**'] } })
+  assert.deepEqual(weakensRegistry(before, JSON.stringify({ sensors: [] })), ['contracts.covers lost src/http/**'])
 })

@@ -12,7 +12,7 @@ export const ALWAYS_ON: BuiltinId[] = ['secrets', 'harness-tamper']
 
 export type RegistrySensor = { id: string; cmd?: string; builtin?: true; cadence: Cadence; blocks: boolean; count?: Count; guide: string; timeoutMs?: number; enabled: boolean; options?: Record<string, unknown> }
 export type Paths = { tests: string[]; testSupport: string[]; fixtures: string[]; ignore: string[] }
-export type Contracts = { files: string[]; validate: string; run: string }
+export type Contracts = { files: string[]; covers: string[]; validate: string; run: string }
 export type Policy = Record<string, Mode> & { default: Mode }
 export type Registry = { stack: string | null; gates: { plan: boolean; merge: boolean }; contracts: Contracts; models: { build: string; evaluate: string }; paths: Paths; sensors: RegistrySensor[]; knownRed: string[]; policy: Policy }
 
@@ -48,7 +48,7 @@ export function defaultRegistry(): Registry {
   return {
     stack: null,
     gates: { plan: true, merge: true },
-    contracts: { files: [], validate: '', run: '' },
+    contracts: { files: [], covers: [], validate: '', run: '' },
     models: { build: 'sonnet', evaluate: 'opus' },
     paths: { tests: [...GENERIC_TESTS], testSupport: [], fixtures: [], ignore: ['**/*.md', '**/*.lock'] },
     sensors: BUILTIN_IDS.map(builtinSensor),
@@ -127,9 +127,10 @@ function parseSections(value: Record<string, unknown>, r: Registry, errors: stri
   }
   if ('contracts' in value) {
     const c = value.contracts
-    if (!isObject(c)) errors.push('contracts must be { files?: [globs], validate?: string, run?: string }')
+    if (!isObject(c)) errors.push('contracts must be { files?: [globs], covers?: [globs], validate?: string, run?: string }')
     else for (const [k, v] of Object.entries(c)) {
       if (k === 'files') { if (isStringList(v)) r.contracts.files = v; else errors.push('contracts.files must be a list of globs') }
+      else if (k === 'covers') { if (isStringList(v)) r.contracts.covers = v; else errors.push('contracts.covers must be a list of globs') }
       else if (k === 'validate' || k === 'run') { const s = strings(v, `contracts.${k}`, errors); if (s !== null) r.contracts[k] = s.trim() }
       else errors.push(`contracts: unknown key "${k}"`)
     }
@@ -250,7 +251,7 @@ export function fromLegacy(cfg: SensorConfig): Registry {
   // Legacy `contracts` globs only marked contract-touching diffs; frozen contract files come from `behavioral.files` alone.
   // A legacy continuous contract cadence asked for in-session checks on every model.
   if (cfg.behavioral?.cadence === 'continuous') for (const k of Object.keys(r.policy)) r.policy[k] = 'continuous'
-  if (cfg.behavioral) r.contracts = { files: [...cfg.behavioral.files], validate: cfg.behavioral.validate ?? '', run: cfg.behavioral.run ?? '' }
+  if (cfg.behavioral) r.contracts = { files: [...cfg.behavioral.files], covers: [], validate: cfg.behavioral.validate ?? '', run: cfg.behavioral.run ?? '' }
   r.paths = { tests: [...cfg.tests], testSupport: [...cfg.testSupport], fixtures: [...cfg.fixtures], ignore: [...cfg.ignore] }
   return r
 }
@@ -338,6 +339,7 @@ export function weakensRegistry(beforeText: string, afterText: string): string[]
     if ((a.policy[fam] ?? a.policy.default) === 'final' && (b.policy[fam] ?? b.policy.default) === 'continuous') out.push(`policy.${fam} moved to final`)
   }
   for (const g of b.contracts.files) if (!a.contracts.files.includes(g)) out.push(`contracts.files lost ${g}`)
+  for (const g of b.contracts.covers) if (!a.contracts.covers.includes(g)) out.push(`contracts.covers lost ${g}`)
   for (const k of ['validate', 'run'] as const) if (b.contracts[k] && a.contracts[k] !== b.contracts[k]) out.push(`contracts.${k} changed`)
   for (const k of ['plan', 'merge'] as const) if (b.gates[k] && !a.gates[k]) out.push(`gates.${k} turned off`)
   return out

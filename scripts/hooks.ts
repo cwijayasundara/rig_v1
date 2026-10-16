@@ -18,6 +18,7 @@ import { appendEvent, readEvents } from './ratchet.ts'
 import { treeStamp } from './stamp.ts'
 import { runCommand } from './runs.ts'
 import { policyMode, activeSensors, commandFor, ALWAYS_ON, type Registry, type Mode } from './registry.ts'
+import { contractsTouched } from './contracts.ts'
 import { recordSessionModel, recordLaunch, recordResolved, sessionModel, readModelState, modelRoleFindings } from './modelstate.ts'
 
 const MODEL_STATE = path.join(SDLC, 'state', 'model.json')
@@ -266,7 +267,7 @@ function hookStop(input: HookInput = {}): { halt: boolean; warn?: string } {
   const { config, rules, errors, registry } = loadConfig()
   const { mode, model } = modeNow(registry, input)
   const gate = readGate()
-  const diffs = turnDiff(snap).filter(d => isSource(d.file, config) || isProtected(d.file))
+  const diffs = turnDiff(snap).filter(d => isSource(d.file, config) || isProtected(d.file) || matchesAny(d.file, config.contracts))
   if (!diffs.length) return { halt: false }
   const hash = diffHash(diffs) + sha(read(path.join(SDLC, 'sensors.json')) + read(path.join(SDLC, 'rules.json'))) + mode
   if (gate.passed.main === hash) return { halt: false }
@@ -282,6 +283,7 @@ function hookStop(input: HookInput = {}): { halt: boolean; warn?: string } {
   const result = runChecks({
     point: 'stop', diffs, config, rules, slugs: slug ? [slug] : [], commands: treePassed || mode === 'final' ? 'none' : 'fast', budgetMs: STOP_BUDGET_MS,
     before: f => showAt(snap.sha, f) ?? '', toolEdited: new Set(gate.tool), base: null, ratchet: true,
+    contracts: mode === 'continuous' && registry !== null && contractsTouched(registry.contracts, diffs.map(d => d.file)),
   })
   const configBlocks: Finding[] = errors.map(e => ({ sensor: 'config', severity: 'block', file: '.rig/sensors.json', message: e, fix: 'fix the file' }))
   const kept = mode === 'final' ? result.findings.filter(f => (ALWAYS_ON as string[]).includes(f.sensor)) : result.findings

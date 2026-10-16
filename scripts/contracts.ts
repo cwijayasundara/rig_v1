@@ -2,8 +2,9 @@
 // Registry repos only: a legacy `behavioral` repo keeps the approval digest over its contract files (core.ts).
 import path from 'node:path'
 import { ROOT, SDLC, APPROVALS, behavioralFiles, read, readJsonl, sha, type Approval } from './core.ts'
-import { isRegistryShape } from './registry.ts'
-import type { Finding } from './model.ts'
+import { isRegistryShape, type Contracts } from './registry.ts'
+import { matchesAny, type Finding } from './model.ts'
+import { runCommand, type RunRow } from './runs.ts'
 
 const FREEZING = ['spec', 'plan', 'design']
 // Trailing whitespace is left out: git's readers (the staged text at commit) return trimmed output.
@@ -27,4 +28,21 @@ export function frozenFindings(slugs: string[], after: (file: string) => string)
     out.push({ sensor: 'harness-tamper', severity: 'block', file, message: `${file} is a contract frozen by the approval of ${slug} and has changed since`, fix: `revert it (git checkout -- ${file}); if the contract must change, ask the person to run /rig:waive harness-tamper ${file} <reason> or to re-approve the plan` })
   }
   return out
+}
+
+// A turn runs the contract commands only when its diff reaches a contract file or the source a contract covers.
+export const contractsTouched = (c: Contracts, files: string[]): boolean => files.some(f => matchesAny(f, [...c.files, ...c.covers]))
+
+const shown = (r: RunRow): string => r.tail.split('\n').slice(0, 20).join('\n')
+const how = (r: RunRow): string => `exited ${r.exit}${r.timedOut ? ', timed out' : ''}`
+
+// Validate gates run: when the examples do not match the specs, the suite's verdict would mean nothing.
+export function runContracts(c: { validate?: string; run?: string }, timeoutMs: number): Finding[] {
+  if (c.validate) {
+    const v = runCommand(c.validate, { timeoutMs })
+    if (v.exit !== 0) return [{ sensor: 'behavioral', severity: 'block', message: `examples do not match the specs (validate ${how(v)})\n${shown(v)}`, fix: `fix the examples or the specs; a specs change needs a person to re-approve the plan. Rerun: ${c.validate}` }]
+  }
+  if (!c.run) return []
+  const r = runCommand(c.run, { timeoutMs })
+  return r.exit === 0 ? [] : [{ sensor: 'behavioral', severity: 'block', message: `the behavioural suite failed (${how(r)})\n${shown(r)}`, fix: `fix the implementation or the execution setup, never the examples or specs. Rerun: ${c.run}` }]
 }
