@@ -1,9 +1,11 @@
 // `init --stack`: onboarding-only sensor declarations, from a stack pack (new registry) or templates/stacks.json (legacy levels).
 import fs from 'node:fs'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { ROOT, SDLC, PLUGIN_ROOT, exists, read, git, listChanges, sanctionWrites } from './core.ts'
 import { loadPacks, detectStacks, packFile, packRegistry, PACKS_DIR } from './stackpacks.ts'
 import { writeSync, BRIEF } from './sync.ts'
+import type { Contracts } from './registry.ts'
 
 const STACK_MARKERS: [string, string][] = [['package.json', 'node'], ['go.mod', 'go'], ['pom.xml', 'java-maven'], ['pyproject.toml', 'python'], ['requirements.txt', 'python']]
 
@@ -33,6 +35,13 @@ function declareStackLevels(opt: string | true): string {
   return `declared levels for ${name}: ${Object.entries(cfg.levels as Record<string, string>).map(([k, v]) => `${k}=${v}`).join(', ')} (acceptance and api default to the unit command; point them at a real e2e or HTTP test when you have one)`
 }
 
+// Specmatic runs on Java (spec §4): without java on PATH its commands would fail every gate, so init leaves them empty and says why.
+export function packContracts(c: Contracts, javaOk: boolean): { contracts: Contracts; note: string } {
+  if (javaOk || !/\bspecmatic\b/.test(`${c.validate} ${c.run}`)) return { contracts: c, note: '' }
+  return { contracts: { ...c, validate: '', run: '' }, note: ' Contract commands left empty: java is not on PATH, and Specmatic runs on Java. Install a JRE, then set contracts.validate and contracts.run.' }
+}
+const javaOk = (): boolean => spawnSync('java', ['-version'], { stdio: 'ignore' }).status === 0
+
 // `init --stack [name]` (behavioural harness step 2): with no sensors.json yet, write the detected stack pack as a registry.
 // A hand-written sensors.json keeps the levels path above until step 4. Same onboarding-only guards as declareStackLevels.
 export function declareStack(opt: string | true): string {
@@ -47,10 +56,11 @@ export function declareStack(opt: string | true): string {
   const pack = packs.find(p => p.stack === found[0])
   if (!pack) return `no stack pack for ${found[0] ?? 'this directory'} (known: ${packs.map(p => p.stack).join(', ')}); write .rig/sensors.json yourself`
   fs.mkdirSync(SDLC, { recursive: true })
-  fs.writeFileSync(file, JSON.stringify(packFile(pack), null, 2) + '\n')
+  const pc = packContracts(pack.contracts, javaOk())
+  fs.writeFileSync(file, JSON.stringify({ ...packFile(pack), contracts: pc.contracts }, null, 2) + '\n')
   sanctionWrites(['.rig/sensors.json'])
   const brief = path.join(ROOT, BRIEF)
   if (!exists(brief)) { fs.mkdirSync(path.dirname(brief), { recursive: true }); fs.copyFileSync(path.join(PLUGIN_ROOT, 'templates', 'brief.md'), brief) }
   const synced = writeSync(packRegistry(pack))
-  return `wrote .rig/sensors.json from the ${pack.stack} pack (${pack.sensors.length} sensors); edit the commands to fit this repo. ${BRIEF} is ready to fill in. ${synced}`
+  return `wrote .rig/sensors.json from the ${pack.stack} pack (${pack.sensors.length} sensors); edit the commands to fit this repo. ${BRIEF} is ready to fill in. ${synced}${pc.note}`
 }

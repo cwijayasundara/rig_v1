@@ -56,3 +56,17 @@ test('the dotnet audit counts only vulnerable package rows, not its header', () 
   assert.equal(audit?.count, 'lines')
   assert.match(audit?.cmd ?? '', /\| grep '\^ \*>' \|\| true$/)
 })
+
+import { packContracts } from './stackinit.ts'
+
+test('Specmatic contract commands are blanked when java is missing, and init says why', () => {
+  const c = { files: ['api/openapi.yaml'], covers: [], validate: 'npx -y specmatic@2.55.3 examples validate', run: 'npx -y specmatic@2.55.3 test' }
+  assert.deepEqual(packContracts(c, true), { contracts: c, note: '' })
+  const off = packContracts(c, false)
+  assert.equal(off.contracts.validate, '')
+  assert.equal(off.contracts.run, '')
+  assert.deepEqual(off.contracts.files, ['api/openapi.yaml'], 'the files still freeze')
+  assert.match(off.note, /java is not on PATH/)
+  const own = { files: [], covers: [], validate: 'make contracts', run: '' }
+  assert.deepEqual(packContracts(own, false), { contracts: own, note: '' }, 'a non-Specmatic command needs no java')
+})
