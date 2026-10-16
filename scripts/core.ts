@@ -61,13 +61,7 @@ export type HookInput = {
   agent_id?: string
   agent_type?: string
   source?: string
-  prompt?: string
-  transcript_path?: string
-  model?: string
-  to_model?: string
-  from_model?: string
-  tool_use_id?: string
-  tool_response?: { resolvedModel?: string; model?: string }
+  prompt?: string; transcript_path?: string; model?: string; to_model?: string; from_model?: string; tool_use_id?: string; tool_response?: { resolvedModel?: string; model?: string }
   tool_input?: {
     command?: string
     file_path?: string
@@ -78,9 +72,7 @@ export type HookInput = {
     replace_all?: boolean
     edits?: { old_string?: string; new_string?: string; replace_all?: boolean }[]
     skill?: string
-    args?: string
-    subagent_type?: string
-    model?: string
+    args?: string; subagent_type?: string; model?: string
   }
 }
 
@@ -198,12 +190,7 @@ export const optString = (args: Args, key: string): string | undefined => {
 // Behavioural files frozen by an approval: `behavioral.files` matches plus `.rig/changes/<slug>/behavioral/**` (read raw here, no import cycle).
 export function behavioralFiles(slug: string): string[] {
   let globs: string[] = []
-  try {
-    const raw = JSON.parse(read(path.join(SDLC, 'sensors.json'))) as { sensors?: unknown; contracts?: { files?: unknown }; behavioral?: { files?: unknown } }
-    const list = (v: unknown): string[] | null => (Array.isArray(v) && v.every(f => typeof f === 'string') ? (v as string[]) : null)
-    if (Array.isArray(raw.sensors)) globs = list(raw.contracts?.files) ?? []
-    else if (raw.behavioral) globs = list(raw.behavioral.files) ?? ['.rig/contracts/**']
-  } catch { /* no or unreadable sensors.json: nothing frozen by config */ }
+  try { const raw = JSON.parse(read(path.join(SDLC, 'sensors.json'))) as { sensors?: unknown; contracts?: { files?: unknown }; behavioral?: { files?: unknown } }; const list = (v: unknown): string[] | null => (Array.isArray(v) && v.every(f => typeof f === 'string') ? (v as string[]) : null); globs = Array.isArray(raw.sensors) ? list(raw.contracts?.files) ?? [] : raw.behavioral ? list(raw.behavioral.files) ?? ['.rig/contracts/**'] : [] } catch { /* no or unreadable sensors.json: nothing frozen by config */ }
   if (!globs.length && !exists(path.join(CHANGES, slug, 'behavioral'))) return [] // no block and no local folder: nothing frozen, and no git call on the common path
   return (git(['ls-files', '--cached', '--others', '--exclude-standard'])?.split('\n').filter(Boolean) ?? []).filter(f => f.startsWith(`.rig/changes/${slug}/behavioral/`) || globs.some(g => globToRegex(g).test(f))).sort()
 }
