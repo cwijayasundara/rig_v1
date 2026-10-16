@@ -217,6 +217,8 @@ Deleted elsewhere: `brain/`, `hooks/` mod UI, `agents/` (all five; replaced by o
 - Run by hand; estimated $100 to $300 per pass. Not in CI.
 - Rule: a sensor, guide or gate that shows no lift over Haiku bare, after two passes, is a candidate for removal.
 
+Step 6 notes: a rig arm runs the brief as two rig changes (S2, S3) with the operator approving; a bare arm gets BRIEF.md and one session. Checks passed = npm test + hidden acceptance (import) + hidden acceptance (HTTP); tamper findings = test-tamper + suppression, judged commit by commit over the run. Arms measure rig as a whole; per-component lift needs ablation arms.
+
 ## 10. Tests
 
 ### 10.1 Specs (`npm test`)

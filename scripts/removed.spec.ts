@@ -151,3 +151,14 @@ test('per-sensor ids: no shipped text or e2e helper still speaks of a commands s
     assert.doesNotMatch(fs.readFileSync(f, 'utf8'), /sensorOf|plus commands and config findings/, f)
   }
 })
+
+test('6: the eval runner is wired: dry in CI, live by hand, results committed under eval/results', () => {
+  const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
+  assert.match(pkg.scripts.eval, /eval\/run\.mjs/)
+  assert.match(pkg.scripts['eval:dry'], /--dry/)
+  assert.match(pkg.scripts['test:e2e:unit'], /eval\/\*\.test\.mjs/)
+  const ci = fs.readFileSync('.github/workflows/ci.yml', 'utf8')
+  assert.match(ci, /npm run eval:dry/)
+  assert.doesNotMatch(ci, /npm run eval(?!:dry)\b/, 'live evals never run in CI (spec §9)')
+  assert.ok(fs.existsSync('eval/results/.gitkeep'))
+})
