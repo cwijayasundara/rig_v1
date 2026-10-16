@@ -50,3 +50,9 @@ test('a layers command that targets one test class passes when the class does no
     assert.ok(/failIfNoSpecifiedTests=false|grep -rqs ArchitectureTest/.test(cmd), `${p.stack} layers fails in a repo without ArchitectureTest: ${cmd}`)
   }
 })
+
+test('the dotnet audit counts only vulnerable package rows, not its header', () => {
+  const audit = packRegistry(loadPacks(PACKS_DIR).packs.find(p => p.stack === 'dotnet')!).sensors.find(s => s.id === 'audit')
+  assert.equal(audit?.count, 'lines')
+  assert.match(audit?.cmd ?? '', /\| grep '\^ \*>' \|\| true$/)
+})

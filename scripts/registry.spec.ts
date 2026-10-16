@@ -164,3 +164,27 @@ test('legacy contract globs are not frozen; only behavioral.files become contrac
   assert.deepEqual(loadRegistry(JSON.stringify({ fast: { t: 'x' } })).registry.contracts, { files: [], validate: '', run: '' })
   assert.deepEqual(loadRegistry(JSON.stringify({ contracts: ['api/**'] })).registry.contracts.files, [])
 })
+
+test('legacy names that kebab to the same id get distinct ids', () => {
+  const { registry, errors } = loadRegistry(JSON.stringify({ fast: { 'a b': 'x', 'a-b': 'y' } }))
+  assert.deepEqual(errors, [])
+  const ids = registry.sensors.filter(s => !s.builtin).map(s => s.id)
+  assert.deepEqual(ids, ['fast-a-b', 'fast-a-b-2'])
+})
+
+test('a file name starting with a dash is passed as a path, not a flag', () => {
+  const s = cmd('lint', 'edit', 'eslint {files}')
+  assert.equal(commandFor(s, ['-rf', 'src/-x.ts']), 'eslint ./-rf src/-x.ts')
+})
+
+test('a whole-repo run drops the whole argument that holds {files}', () => {
+  assert.equal(commandFor(cmd('lint', 'edit', 'eslint --files={files} --quiet'), null), 'eslint --quiet')
+  assert.equal(commandFor(cmd('lint', 'edit', 'eslint --files={files} --quiet'), ['a.ts']), 'eslint --files=a.ts --quiet')
+})
+
+test('a legacy continuous contract cadence makes every model continuous', () => {
+  const b = { behavioral: { run: 'r', cadence: 'continuous' } }
+  const { registry } = loadRegistry(JSON.stringify(b))
+  assert.equal(policyMode(registry, 'claude-opus-5-5'), 'continuous')
+  assert.equal(policyMode(loadRegistry(JSON.stringify({ behavioral: { run: 'r', cadence: 'final' } })).registry, 'claude-opus-5-5'), 'final')
+})

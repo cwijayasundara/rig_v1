@@ -199,14 +199,18 @@ export function activeSensors(r: Registry, at: Cadence, mode: Mode): RegistrySen
   return due.filter(s => (ALWAYS_ON as string[]).includes(s.id))
 }
 
-const shq = (s: string): string => (/^[A-Za-z0-9_./:@%+=,-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`)
+// A leading dash would read as a flag, so such a relative path gets ./ in front before quoting.
+const shq = (f: string): string => {
+  const s = f.startsWith('-') ? `./${f}` : f
+  return /^[A-Za-z0-9_./:@%+=,-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`
+}
 
-// null files: whole repo, so {files} is dropped. An empty list with {files}: nothing to check, skip (null).
+// null files: whole repo, so the argument holding {files} is dropped. An empty list with {files}: nothing to check, skip (null).
 export function commandFor(s: RegistrySensor, files: string[] | null): string | null {
   if (!s.cmd) return null
   if (!s.cmd.includes('{files}')) return s.cmd
   if (files && !files.length) return null
-  if (!files) return s.cmd.replace(/\s*\{files\}/g, '').trim()
+  if (!files) return s.cmd.replace(/\s*\S*\{files\}\S*/g, '').trim()
   return s.cmd.replaceAll('{files}', files.map(shq).join(' '))
 }
 
@@ -217,8 +221,13 @@ const kebab = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, '-')
 export function fromLegacy(cfg: SensorConfig): Registry {
   const r = defaultRegistry()
   const extra: RegistrySensor[] = []
+  const unique = (id: string): string => {
+    let out = id
+    for (let n = 2; extra.some(s => s.id === out); n++) out = `${id}-${n}`
+    return out
+  }
   const declared = (prefix: 'fast' | 'full', cadence: Cadence): void => {
-    for (const [name, c] of Object.entries(cfg[prefix])) extra.push({ id: `${prefix}-${kebab(name)}`, cmd: c, cadence, blocks: !cfg.knownRed.includes(`${prefix}.${name}`), count: 'exit', guide: `"${name}" must pass before the ${cadence === 'turn' ? 'turn ends' : 'change is committed'}.`, enabled: true })
+    for (const [name, c] of Object.entries(cfg[prefix])) extra.push({ id: unique(`${prefix}-${kebab(name)}`), cmd: c, cadence, blocks: !cfg.knownRed.includes(`${prefix}.${name}`), count: 'exit', guide: `"${name}" must pass before the ${cadence === 'turn' ? 'turn ends' : 'change is committed'}.`, enabled: true })
   }
   declared('fast', 'turn')
   declared('full', 'commit')
@@ -232,6 +241,8 @@ export function fromLegacy(cfg: SensorConfig): Registry {
   const layering = r.sensors.find(s => s.id === 'layering')
   if (layering && cfg.layers.length) layering.options = { layers: cfg.layers }
   // Legacy `contracts` globs only marked contract-touching diffs; frozen contract files come from `behavioral.files` alone.
+  // A legacy continuous contract cadence asked for in-session checks on every model.
+  if (cfg.behavioral?.cadence === 'continuous') for (const k of Object.keys(r.policy)) r.policy[k] = 'continuous'
   if (cfg.behavioral) r.contracts = { files: [...cfg.behavioral.files], validate: cfg.behavioral.validate ?? '', run: cfg.behavioral.run ?? '' }
   r.paths = { tests: [...cfg.tests], testSupport: [...cfg.testSupport], fixtures: [...cfg.fixtures], ignore: [...cfg.ignore] }
   return r
