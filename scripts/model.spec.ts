@@ -116,6 +116,7 @@ test('every sensor name emitted by the scripts is waivable', async () => {
     for (const m of fs.readFileSync(path.join(import.meta.dirname, f), 'utf8').matchAll(/(?:sensor: |\bwarn\()'([a-z-]+)'/g)) emitted.add(m[1]!)
   }
   emitted.delete('human-approval') // deliberately not waivable: it asks CI for an independent reviewer
+  emitted.delete('sync') // deliberately not waivable: the fix is always `rig sync` or a test that names the behaviour
   assert.deepEqual([...emitted].filter(n => !SENSOR_NAMES.includes(n)), [])
   assert.deepEqual(SENSOR_NAMES.filter(n => !emitted.has(n)), [])
 })
