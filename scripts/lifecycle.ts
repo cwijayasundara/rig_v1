@@ -1,0 +1,88 @@
+// The slim lifecycle (behavioural harness spec 2026-10-16 §8): a change is a folder under .rig/changes/<slug>/ and its
+// status is which files it has. Only a person writes approval.json; verify writes verify.json for the tree it judged.
+import fs from 'node:fs'
+import path from 'node:path'
+import { ROOT, SDLC, CHANGES, read, exists, sha, now, git, defaultBase, frontmatter, behavioralFiles } from './core.ts'
+import { openQuestions } from './model.ts'
+
+export const TYPES = ['feature', 'bugfix', 'refactor', 'chore'] as const
+export type ChangeType = typeof TYPES[number]
+export type Status = 'spec' | 'plan' | 'approve' | 'build' | 'pr' | 'review' | 'shipped'
+export type Approval = { by: string; at: string; hashes: Record<string, string>; contracts: Record<string, string> }
+export type Verify = { at: string; tree: string | null; base: string | null; pass: boolean; blocks: string[] }
+
+const ACTIVE = path.join(SDLC, 'state', 'active')
+const APPROVED = ['spec.md', 'plan.md']
+// Types earlier rig versions wrote, folded into the four the proof rules need.
+const LEGACY: Record<string, ChangeType> = { greenfield: 'feature', incident: 'bugfix', migration: 'chore', spike: 'chore' }
+
+export const changeDir = (slug: string): string => path.join(CHANGES, slug)
+const file = (slug: string, name: string): string => path.join(CHANGES, slug, name)
+// Trailing whitespace is left out: git's readers (the staged text at commit) return trimmed output.
+export const digest = (text: string): string => sha(text.replace(/\s+$/, ''))
+const json = <T>(p: string): T | null => { try { return JSON.parse(read(p)) as T } catch { return null } }
+
+export function activeSlug(): string | null {
+  const s = read(ACTIVE).trim()
+  return s && exists(changeDir(s)) ? s : null
+}
+export function setActive(slug: string | null): void {
+  fs.mkdirSync(path.dirname(ACTIVE), { recursive: true })
+  if (slug) fs.writeFileSync(ACTIVE, `${slug}\n`)
+  else fs.rmSync(ACTIVE, { force: true })
+}
+
+export const toType = (raw: string | undefined): ChangeType => ((TYPES as readonly string[]).includes(raw ?? '') ? (raw as ChangeType) : LEGACY[raw ?? ''] ?? 'feature')
+export const changeType = (slug: string): ChangeType => toType(frontmatter(read(file(slug, 'intent.md'))).data.type)
+
+export function newChange(slug: string, type: ChangeType, title: string): void {
+  fs.mkdirSync(changeDir(slug), { recursive: true })
+  fs.writeFileSync(file(slug, 'intent.md'), `---\nslug: ${slug}\ntype: ${type}\n---\n# ${title}\n\n## Intent\n\n## Open questions\nnone\n`)
+  setActive(slug)
+}
+
+// Contract files frozen by an approval, hashed one by one so a later edit names the file (spec §6).
+export const freezeRecord = (slug: string): Record<string, string> => Object.fromEntries(behavioralFiles(slug).map(f => [f, digest(read(path.join(ROOT, f)))]))
+const hashes = (slug: string): Record<string, string> => Object.fromEntries(APPROVED.filter(n => exists(file(slug, n))).map(n => [n, digest(read(file(slug, n)))]))
+export const readApproval = (slug: string): Approval | null => json<Approval>(file(slug, 'approval.json'))
+export function approvalState(slug: string): 'missing' | 'stale' | 'approved' {
+  const a = readApproval(slug)
+  if (!a?.hashes) return 'missing'
+  return JSON.stringify(a.hashes) === JSON.stringify(hashes(slug)) ? 'approved' : 'stale'
+}
+// Why a person cannot approve yet, or null.
+export function approvalRefusal(slug: string): string | null {
+  const missing = APPROVED.filter(n => !exists(file(slug, n)))
+  if (missing.length) return `nothing to approve yet: ${slug} has no ${missing.join(' or ')}`
+  const open = APPROVED.flatMap(n => openQuestions(read(file(slug, n))).map(q => `${n}: ${q}`))
+  return open.length ? `resolve the open question(s) first: answer each, or record the default under ## Decisions, and leave "## Open questions" as none:\n${open.map(q => `  - ${q}`).join('\n')}` : null
+}
+export function writeApproval(slug: string, by: string): Approval {
+  const a: Approval = { by, at: now(), hashes: hashes(slug), contracts: freezeRecord(slug) }
+  fs.writeFileSync(file(slug, 'approval.json'), JSON.stringify(a, null, 2) + '\n')
+  return a
+}
+
+export const readVerify = (slug: string): Verify | null => json<Verify>(file(slug, 'verify.json'))
+export const writeVerify = (slug: string, v: Verify): void => fs.writeFileSync(file(slug, 'verify.json'), JSON.stringify(v, null, 2) + '\n')
+export const verifyFresh = (slug: string, tree: string | null): boolean => { const v = readVerify(slug); return Boolean(v?.pass && tree && v.tree === tree) }
+
+// Shipped: its pr.md is on the trunk (HEAD itself when the trunk is checked out, where defaultBase has nothing to compare).
+export function isShipped(slug: string): boolean {
+  const base = defaultBase() ?? (['main', 'master'].includes(git(['rev-parse', '--abbrev-ref', 'HEAD']) ?? '') ? 'HEAD' : null)
+  return base !== null && git(['cat-file', '-e', `${base}:.rig/changes/${slug}/pr.md`]) !== null
+}
+
+export function status(slug: string, gates: { plan: boolean }, tree: string | null): Status {
+  if (isShipped(slug)) return 'shipped'
+  if (exists(file(slug, 'pr.md'))) return 'review'
+  if (!exists(file(slug, 'spec.md'))) return 'spec'
+  if (!exists(file(slug, 'plan.md'))) return 'plan'
+  if (gates.plan && approvalState(slug) !== 'approved') return 'approve'
+  return verifyFresh(slug, tree) ? 'pr' : 'build'
+}
+
+export const nextStep = (slug: string, s: Status): string => ({
+  spec: `/rig:start ${slug}`, plan: `/rig:plan ${slug}`, approve: `a person reviews spec.md and plan.md, then runs /rig:approve ${slug}`,
+  build: `/rig:build ${slug}`, pr: `/rig:pr ${slug}`, review: 'a person reviews and merges the PR', shipped: 'done',
+})[s]
