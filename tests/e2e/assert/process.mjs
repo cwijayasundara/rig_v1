@@ -3,7 +3,7 @@
 import fs from 'node:fs'
 
 export function readSession(file) {
-  const s = { file, costUsd: 0, turns: 0, ms: 0, isError: true, denials: [], skills: [], agents: [], ended: false }
+  const s = { file, costUsd: 0, turns: 0, ms: 0, isError: true, denials: [], skills: [], agents: [], ended: false, inputTokens: 0, outputTokens: 0, models: {} }
   if (!fs.existsSync(file)) return s
   for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
     if (!line.trim()) continue
@@ -23,6 +23,17 @@ export function readSession(file) {
       s.ms = ev.duration_ms ?? 0
       s.isError = Boolean(ev.is_error)
       s.denials = ev.permission_denials ?? []
+      // modelUsage covers every model the session used, subagents included; usage alone is the main thread's.
+      const mu = ev.modelUsage && typeof ev.modelUsage === 'object' ? ev.modelUsage : null
+      if (mu) {
+        s.models = Object.fromEntries(Object.entries(mu).map(([m, v]) => [m, { inputTokens: (v.inputTokens ?? 0) + (v.cacheReadInputTokens ?? 0) + (v.cacheCreationInputTokens ?? 0), outputTokens: v.outputTokens ?? 0, costUsd: v.costUSD ?? 0 }]))
+        s.inputTokens = Object.values(s.models).reduce((n, v) => n + v.inputTokens, 0)
+        s.outputTokens = Object.values(s.models).reduce((n, v) => n + v.outputTokens, 0)
+      } else {
+        const u = ev.usage ?? {}
+        s.inputTokens = (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0)
+        s.outputTokens = u.output_tokens ?? 0
+      }
     }
   }
   return s
@@ -32,6 +43,15 @@ export const totals = sessions => ({
   costUsd: sessions.reduce((n, s) => n + s.costUsd, 0),
   turns: sessions.reduce((n, s) => n + s.turns, 0),
   ms: sessions.reduce((n, s) => n + s.ms, 0),
+  inputTokens: sessions.reduce((n, s) => n + (s.inputTokens ?? 0), 0),
+  outputTokens: sessions.reduce((n, s) => n + (s.outputTokens ?? 0), 0),
+  models: sessions.reduce((acc, s) => {
+    for (const [m, v] of Object.entries(s.models ?? {})) {
+      const a = (acc[m] ??= { inputTokens: 0, outputTokens: 0, costUsd: 0 })
+      a.inputTokens += v.inputTokens; a.outputTokens += v.outputTokens; a.costUsd = Number((a.costUsd + v.costUsd).toFixed(6))
+    }
+    return acc
+  }, {}),
   denials: sessions.flatMap(s => s.denials),
 })
 

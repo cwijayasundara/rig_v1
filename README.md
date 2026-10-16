@@ -357,3 +357,11 @@ npm run test:e2e:unit    # the route runner, the contract tool, the stack probe 
 npm run test:e2e:stacks  # stack fixtures: onboard a tiny repo per pack, check --at commit blocks a broken edit; skips a missing toolchain
 node tests/e2e/run.mjs --driver live --phase S3 --cap 20   # one phase (its prerequisites run first)
 ```
+
+**Evaluation** (`eval/`, spec §9). Does rig lift a model? Five arms build the shop brief: Haiku with rig (continuous policy), Haiku bare, Sonnet bare, Opus bare, Haiku with rig (final policy). A bare arm gets `BRIEF.md` and one session; a rig arm runs the brief as two rig changes with the runner approving each plan. Every run is scored the same way: `npm test`, the hidden acceptance (import and HTTP), and rig's tamper sensors over the run's commits. Each run records accepted, checks passed, tokens, USD, minutes and tamper findings. Live evals cost money and are run by hand, never in CI. A sensor, guide or gate with no lift over Haiku bare after two passes is a candidate for removal.
+
+```bash
+npm run eval:dry                                            # the whole pipeline replayed from fixtures: $0; runs in CI
+npm run eval -- --arms all --runs 10 --cap-total 300        # a full pass: 50 runs, $100-300; --arms a,b and --results FILE split it across processes
+node eval/report.mjs eval/results/<date>.jsonl --out eval/results/<date>.md   # the committed results table
+```

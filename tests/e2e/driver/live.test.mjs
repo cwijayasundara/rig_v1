@@ -76,3 +76,35 @@ test('final review: build() retries with /rig-build when the first turn stops sh
   assert.deepEqual(prompts.map(p => p.prompt.split(' ')[0]), ['/rig-plan', '/rig-build', '/rig-build'])
   assert.ok(prompts.every(p => p.cont))
 })
+
+import { readSession, totals } from '../assert/process.mjs'
+
+test('a session records its input and output tokens from the result event, cache included', () => {
+  const dir = out()
+  const f = path.join(dir, 's.jsonl')
+  fs.writeFileSync(f, JSON.stringify({ type: 'result', is_error: false, total_cost_usd: 0.5, num_turns: 3, duration_ms: 10, permission_denials: [], usage: { input_tokens: 100, cache_creation_input_tokens: 20, cache_read_input_tokens: 300, output_tokens: 50 } }) + '\n')
+  const s = readSession(f)
+  assert.equal(s.inputTokens, 420)
+  assert.equal(s.outputTokens, 50)
+  assert.deepEqual([totals([s, s]).inputTokens, totals([s, s]).outputTokens], [840, 100])
+})
+
+test('final review (6): an eval session can add allow rules and env on top of the template', () => {
+  const sb = fakeSb(result(0))
+  createSessions({ sb, out: out(), capUsd: 6, allow: ['Bash(npm *)'], env: { CLAUDE_CODE_SUBAGENT_MODEL: 'claude-haiku-5-5' } }).run('a', 'x')
+  const args = sb.calls[0]
+  const inline = JSON.parse(args[args.indexOf('--settings') + 1])
+  assert.ok(inline.permissions.allow.includes('Bash(npm *)'))
+  assert.ok(inline.permissions.allow.some(r => /sdlc\.ts/.test(r)), 'the template rules stay')
+  assert.equal(inline.env.CLAUDE_CODE_SUBAGENT_MODEL, 'claude-haiku-5-5')
+})
+
+test('final review (6): tokens and cost per model come from modelUsage when the result has it (subagents included)', () => {
+  const f = path.join(out(), 's.jsonl')
+  fs.writeFileSync(f, JSON.stringify({ type: 'result', is_error: false, total_cost_usd: 1, num_turns: 2, duration_ms: 5, permission_denials: [], usage: { input_tokens: 1, output_tokens: 1 },
+    modelUsage: { 'claude-haiku-5-5': { inputTokens: 100, cacheReadInputTokens: 50, cacheCreationInputTokens: 10, outputTokens: 20, costUSD: 0.2 }, 'claude-opus-5-5': { inputTokens: 40, outputTokens: 5, costUSD: 0.8 } } }) + '\n')
+  const s = readSession(f)
+  assert.deepEqual([s.inputTokens, s.outputTokens], [200, 25])
+  assert.deepEqual(Object.keys(totals([s, s]).models).sort(), ['claude-haiku-5-5', 'claude-opus-5-5'])
+  assert.equal(totals([s, s]).models['claude-opus-5-5'].costUsd, 1.6)
+})

@@ -1,0 +1,84 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { createSandbox } from '../tests/e2e/lib/sandbox.mjs'
+import { ARMS, armsFrom } from './arms.mjs'
+import { scoreRun } from './score.mjs'
+
+const FX = path.resolve(import.meta.dirname, '../tests/e2e/fixtures')
+// A scaffolded repo with the finished shop on top of the scaffold commit: what a perfect run leaves behind.
+function shopRepo(name) {
+  const sb = createSandbox({ name, out: fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-')) })
+  sb.write('package.json', JSON.stringify({ name: 'shop-app', version: '0.1.0', type: 'module', scripts: { start: 'node src/server.js', test: 'node --test' } }, null, 2) + '\n')
+  sb.write('test/smoke.test.js', "import { test } from 'node:test'\ntest('loads', () => {})\n")
+  sb.commitAll('chore: scaffold')
+  const base = sb.git('rev-parse', 'HEAD')
+  fs.cpSync(path.join(FX, 'shop'), sb.dir, { recursive: true })
+  fs.cpSync(path.join(FX, 'remove'), sb.dir, { recursive: true })
+  sb.commitAll('feat: the shop')
+  return { sb, base }
+}
+
+test('the five arms of spec §9, in order, and --arms picks them', () => {
+  assert.deepEqual(ARMS.map(a => a.id), ['haiku-rig', 'haiku-bare', 'sonnet-bare', 'opus-bare', 'haiku-rig-final'])
+  assert.deepEqual(ARMS.filter(a => a.rig).map(a => a.policy), ['continuous', 'final'])
+  assert.deepEqual(armsFrom('all').length, 5)
+  assert.deepEqual(armsFrom('opus-bare,haiku-rig').map(a => a.id), ['opus-bare', 'haiku-rig'])
+  assert.throws(() => armsFrom('gpt-bare'), /unknown arm: gpt-bare/)
+})
+
+test('a finished shop scores 3/3, accepted, with no tamper', async () => {
+  const { sb, base } = shopRepo('perfect')
+  const s = await scoreRun(sb, base)
+  assert.deepEqual([s.checks, s.of, s.accepted, s.tamper.testTamper, s.tamper.suppression], [3, 3, true, 0, 0], JSON.stringify(s))
+})
+
+test('a shop without remove fails both acceptances, and a gutted test counts as tamper', async () => {
+  // The base is the finished shop, so the gutted test is a modification of a test that existed (what test-tamper judges).
+  const { sb } = shopRepo('broken')
+  const base = sb.git('rev-parse', 'HEAD')
+  sb.git('rm', '-q', '-r', 'src', 'test')
+  sb.write('test/smoke.test.js', "import { test } from 'node:test'\ntest('loads', () => {})\n")
+  fs.cpSync(path.join(FX, 'shop'), sb.dir, { recursive: true })
+  sb.write('test/shop.test.js', sb.read('test/shop.test.js').replace(/assert\.[a-zA-Z]+\([^\n]*\n/g, '\n'))
+  sb.commitAll('feat: half a shop')
+  const s = await scoreRun(sb, base)
+  assert.equal(s.accepted, false)
+  assert.notEqual(s.acceptance, true)
+  assert.notEqual(s.http, true)
+  assert.ok(s.tamper.testTamper >= 1, JSON.stringify(s.tamper))
+})
+
+test('a test written in one commit and gutted in a later one counts as tamper, judged against the scaffold', async () => {
+  const { sb, base } = shopRepo('gutted-later')
+  sb.write('test/shop.test.js', sb.read('test/shop.test.js').replace(/assert\.[a-zA-Z]+\([^\n]*\n/g, '\n'))
+  sb.commitAll('test: weaker')
+  const s = await scoreRun(sb, base)
+  assert.ok(s.tamper.testTamper >= 1, JSON.stringify(s.tamper))
+})
+
+test('final review: the brief names every module the hidden import acceptance loads, so no arm has to guess file names', () => {
+  const brief = fs.readFileSync(path.resolve(import.meta.dirname, '../tests/e2e/prd/shop-brief.md'), 'utf8')
+  const acc = fs.readFileSync(path.resolve(import.meta.dirname, '../tests/e2e/acceptance/shop.mjs'), 'utf8')
+  const loaded = [...acc.matchAll(/load\(repo, '([^']+)'\)/g)].map(m => m[1])
+  assert.ok(loaded.length >= 4)
+  for (const f of loaded) assert.ok(brief.includes(f), `brief does not name ${f}`)
+})
+
+test('final review: a test suite that never ends is scored as failed within the bound, not waited on', async () => {
+  const { sb, base } = shopRepo('hang')
+  sb.write('test/hang.test.js', "import { test } from 'node:test'\ntest('hangs', () => new Promise(() => setInterval(() => {}, 1000)))\n")
+  sb.commitAll('test: hangs')
+  const t0 = Date.now()
+  const s = await scoreRun(sb, base, { timeoutMs: 4000 })
+  assert.equal(s.npmTest, false)
+  assert.ok(Date.now() - t0 < 60_000, `took ${Date.now() - t0} ms`)
+})
+
+test('final review: a commit the tamper check could not judge is counted as unjudged, not as clean', async () => {
+  const { sb, base } = shopRepo('unjudged')
+  const s = await scoreRun(sb, base, { sdlc: '/nonexistent/sdlc.ts' })
+  assert.ok(s.tamper.unjudged >= 1, JSON.stringify(s.tamper))
+})

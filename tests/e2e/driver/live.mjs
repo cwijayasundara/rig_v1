@@ -7,13 +7,14 @@ import { PLUGIN } from '../lib/sandbox.mjs'
 // `claude -p` never trusts the workspace, and an untrusted workspace's permissions.allow in .claude/settings.json is ignored
 // ("Ignoring N permissions.allow entries ... has not been trusted"). The template's allow rules and env (foreground subagents,
 // model pins) go in on --settings, which has no trust step.
-const templateSettings = () => {
+// An eval adds its own allow rules and env on top (the same for every arm).
+const templateSettings = ({ allow = [], env = {} } = {}) => {
   const t = JSON.parse(fs.readFileSync(path.join(PLUGIN, 'templates/settings.json'), 'utf8'))
-  return JSON.stringify({ permissions: { allow: t.permissions.allow }, env: t.env })
+  return JSON.stringify({ permissions: { allow: [...t.permissions.allow, ...allow] }, env: { ...t.env, ...env } })
 }
 
 // One shared session log per run, so the spend cap covers every phase.
-export function createSessions({ sb, out, capUsd = 6, model = 'claude-haiku-5-5' }) {
+export function createSessions({ sb, out, capUsd = 6, model = 'claude-haiku-5-5', allow = [], env = {} }) {
   if (!(capUsd > 0)) throw new Error(`spend cap must be a positive number of dollars, got ${capUsd}`)
   const sessions = []
   const run = (label, prompt, { withPlugin = false, cont = false } = {}) => {
@@ -23,7 +24,7 @@ export function createSessions({ sb, out, capUsd = 6, model = 'claude-haiku-5-5'
     fs.mkdirSync(path.dirname(file), { recursive: true })
     const budget = Math.min(6, capUsd - spent)
     const args = ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits',
-      '--model', model, '--settings', templateSettings(), '--max-budget-usd', budget.toFixed(2), '--setting-sources', 'project,local',
+      '--model', model, '--settings', templateSettings({ allow, env }), '--max-budget-usd', budget.toFixed(2), '--setting-sources', 'project,local',
       ...(withPlugin ? ['--plugin-dir', PLUGIN] : []), ...(cont ? ['--continue'] : [])]
     const r = sb.run('claude', args, { timeout: 18 * 60_000 })
     fs.writeFileSync(file, r.stdout ?? '')
