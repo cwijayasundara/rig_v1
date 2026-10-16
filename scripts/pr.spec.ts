@@ -35,10 +35,53 @@ test('with no remote, pr commits on sdlc/<slug>, writes pr.md as local-only and 
   assert.match(sdlc(repo, ['status']).stdout, /demo\s+feature\s+review/)
 })
 
-test('a second pr is a no-op that names the existing pr.md', () => {
+test('a second pr with nothing new to commit names the existing pr.md', () => {
   approvedChange(repo, 'demo')
   write(repo, 'test/a.test.js', '// B1\n')
   verified(repo, 'demo')
   pr()
   assert.match(pr().stdout, /already has a PR/)
+})
+
+// Final review fixes.
+const shipReady = () => { approvedChange(repo, 'demo'); write(repo, 'test/a.test.js', '// B1\n'); verified(repo, 'demo') }
+
+test('pr refuses when a frozen contract under .rig changed after verify', () => {
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], contracts: { files: ['.rig/contracts/**'] } }))
+  write(repo, '.rig/contracts/api.yaml', 'openapi: 3.1.0\n')
+  gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'cfg')
+  shipReady()
+  write(repo, '.rig/contracts/api.yaml', 'openapi: 3.1.0\npaths: {}\n')
+  const r = pr()
+  assert.notEqual(r.code, 0)
+  assert.match(r.stderr, /frozen/)
+})
+
+test('pr commits only this change\'s folder: another change in progress stays out', () => {
+  sdlc(repo, ['new', 'other'])
+  shipReady()
+  assert.equal(pr().code, 0)
+  assert.match(gitIn(repo, 'status', '--porcelain'), /\.rig\/changes\/other\//)
+  assert.doesNotMatch(gitIn(repo, 'show', '--name-only', '--format=', 'HEAD'), /\.rig\/changes\/other\//)
+})
+
+test('pr refuses to branch off another feature branch', () => {
+  gitIn(repo, 'checkout', '-qb', 'sdlc/older')
+  shipReady()
+  const r = pr()
+  assert.notEqual(r.code, 0)
+  assert.match(r.stderr, /HEAD is sdlc\/older/)
+})
+
+test('a second pr after a fix and a fresh verify commits the follow-up on the same branch', () => {
+  approvedChange(repo, 'demo', 'chore') // a chore: no red-proof once the branch has a base to diff against
+  write(repo, 'test/a.test.js', '// B1\n')
+  verified(repo, 'demo')
+  pr()
+  write(repo, 'src/fix.js', 'export const fix = 1\n')
+  verified(repo, 'demo')
+  const r = sdlc(repo, ['pr', 'demo', '--message', 'fix: review findings'])
+  assert.equal(r.code, 0, r.stderr)
+  assert.match(gitIn(repo, 'log', '-1', '--format=%s'), /fix: review findings/)
+  assert.equal(gitIn(repo, 'rev-parse', '--abbrev-ref', 'HEAD').trim(), 'sdlc/demo')
 })
