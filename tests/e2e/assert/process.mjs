@@ -3,7 +3,7 @@
 import fs from 'node:fs'
 
 export function readSession(file) {
-  const s = { file, costUsd: 0, turns: 0, ms: 0, isError: true, denials: [], skills: [], agents: [], ended: false }
+  const s = { file, costUsd: 0, turns: 0, ms: 0, isError: true, denials: [], skills: [], agents: [], ended: false, inputTokens: 0, outputTokens: 0 }
   if (!fs.existsSync(file)) return s
   for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
     if (!line.trim()) continue
@@ -23,6 +23,9 @@ export function readSession(file) {
       s.ms = ev.duration_ms ?? 0
       s.isError = Boolean(ev.is_error)
       s.denials = ev.permission_denials ?? []
+      const u = ev.usage ?? {}
+      s.inputTokens = (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0)
+      s.outputTokens = u.output_tokens ?? 0
     }
   }
   return s
@@ -32,6 +35,8 @@ export const totals = sessions => ({
   costUsd: sessions.reduce((n, s) => n + s.costUsd, 0),
   turns: sessions.reduce((n, s) => n + s.turns, 0),
   ms: sessions.reduce((n, s) => n + s.ms, 0),
+  inputTokens: sessions.reduce((n, s) => n + (s.inputTokens ?? 0), 0),
+  outputTokens: sessions.reduce((n, s) => n + (s.outputTokens ?? 0), 0),
   denials: sessions.flatMap(s => s.denials),
 })
 

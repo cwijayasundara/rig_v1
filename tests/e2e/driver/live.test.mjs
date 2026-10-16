@@ -76,3 +76,15 @@ test('final review: build() retries with /rig-build when the first turn stops sh
   assert.deepEqual(prompts.map(p => p.prompt.split(' ')[0]), ['/rig-plan', '/rig-build', '/rig-build'])
   assert.ok(prompts.every(p => p.cont))
 })
+
+import { readSession, totals } from '../assert/process.mjs'
+
+test('a session records its input and output tokens from the result event, cache included', () => {
+  const dir = out()
+  const f = path.join(dir, 's.jsonl')
+  fs.writeFileSync(f, JSON.stringify({ type: 'result', is_error: false, total_cost_usd: 0.5, num_turns: 3, duration_ms: 10, permission_denials: [], usage: { input_tokens: 100, cache_creation_input_tokens: 20, cache_read_input_tokens: 300, output_tokens: 50 } }) + '\n')
+  const s = readSession(f)
+  assert.equal(s.inputTokens, 420)
+  assert.equal(s.outputTokens, 50)
+  assert.deepEqual([totals([s, s]).inputTokens, totals([s, s]).outputTokens], [840, 100])
+})
