@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import {
-  ROOT, SDLC, CHANGES, git, STATE, USAGE, PLUGIN_ROOT, IS_VENDORED, skillRef, agentRef, now, exists, read, out, fail, frontmatter, toPosix,
+  ROOT, SDLC, git, STATE, PLUGIN_ROOT, IS_VENDORED, skillRef, agentRef, now, exists, read, out, fail, frontmatter, toPosix,
   managedSettings, scanSecrets, planProblems, relPosix, sha, withLock, writeAtomic, onboarding, type Args, type HookInput,
 } from './core.ts'
 import { activeSlug, loadChange, nextCommand, createAdhoc, step } from './graph.ts'
@@ -14,7 +14,6 @@ import { isProtected, tierFromDiff } from './sensors.ts'
 import { loadConfig, runChecks, editFindings } from './check.ts'
 import { formatFindings, isSource, isTest, matchesAny, warnRow, type Finding, type SensorConfig } from './model.ts'
 import { sessionNote } from './githooks.ts'
-import { appendEvent, readEvents } from './ratchet.ts'
 import { treeStamp } from './stamp.ts'
 import { runCommand } from './runs.ts'
 import { policyMode, activeSensors, commandFor, ALWAYS_ON, type Registry, type Mode } from './registry.ts'
@@ -151,31 +150,6 @@ function hookPostEdit(input: HookInput): void {
     return
   }
   if (guide) out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: guide } }))
-}
-
-// A stage skill that fails to load leaves the model to improvise. Hand it the exact instructions instead.
-// Skills sdlc delegates to but does not own: what to do when one fails to load.
-const EXTERNAL_FALLBACKS: Record<string, string> = {
-  'superpowers:subagent-driven-development': 'superpowers SDD is unavailable. Continue with the "Large builds: orchestrate" section of '
-    + '/rig:build (rig:implementer subagents). Say "skill fallback: native build" in your reply.',
-  'code-review': 'The built-in code-review skill is unavailable. Launch rig:reviewer (Opus) with the change folder and the diff base '
-    + 'instead, as /rig:pr-review step 2 says. Say "skill fallback: rig reviewer" in your reply.',
-}
-
-function hookSkillFailed(input: HookInput): void {
-  if (!exists(SDLC)) return
-  const skill = String(input.tool_input?.skill ?? '')
-  const external = EXTERNAL_FALLBACKS[skill]
-  if (external) {
-    fs.appendFileSync(USAGE, JSON.stringify({ at: now(), kind: 'event', event: 'skill-load-failed', skill }) + '\n')
-    return out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUseFailure', additionalContext: external } }))
-  }
-  const m = /^rig[:-]([a-z-]+)$/.exec(skill)
-  if (!m) return
-  fs.appendFileSync(USAGE, JSON.stringify({ at: now(), kind: 'event', event: 'skill-load-failed', skill }) + '\n')
-  const cmd = `node --disable-warning=ExperimentalWarning "${SCRIPT()}" skill ${m[1]} ${input.tool_input?.args ?? ''}`.trim()
-  const context = `The ${skill} skill failed to load. Run \`${cmd}\` and follow the printed steps exactly, as if the skill had loaded. Say "skill fallback: ${skill}" in your reply.`
-  out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUseFailure', additionalContext: context } }))
 }
 
 export type GateSummary = { at: string; blocks: number; warns: number; bySensor: Record<string, number>; warnRows?: string[]; shown?: boolean }
@@ -340,46 +314,8 @@ function continueChange(): { decision: 'block'; reason: string } | null {
   if (s.verdict !== 'continue' || !s.node || !AUTO_NODES.has(s.node)) return null
   const gate = readGate()
   if (gate.turnStep === undefined || gate.turnStep === key || gate.cont === key) return null
-  // A turn that ended with subagents still running (backgrounded lanes) is mid-node: offering the node again would restart it.
-  if (openLanes(slug)) return null
   updateGate(g => { g.cont = key })
   return { decision: 'block', reason: `rig: the design is approved, so ${s.node} runs next without waiting for the person. Run \`node --disable-warning=ExperimentalWarning ${process.argv[1]} skill ${s.node} ${slug}\` and follow the printed steps for this node, then stop (the next node is offered when you do).` }
-}
-
-// Subagent lanes, for the work/span/idle numbers. Observational only: they never block and write nothing without an active change.
-function laneEvent(input: HookInput, phase: 'start' | 'stop'): void {
-  try {
-    if (!exists(SDLC)) return
-    const slug = activeSlug()
-    if (!slug || !exists(path.join(CHANGES, slug))) return
-    const id = String(input.agent_id ?? '').slice(0, 80)
-    const agent = String(input.agent_type ?? 'unknown').slice(0, 60)
-    if (phase === 'start') return appendEvent(slug, { node: 'lane', verdict: 'start', kind: 'lane', agent, id })
-    const started = readEvents(slug).findLast(e => e.kind === 'lane' && e.verdict === 'start' && e.id === id)
-    appendEvent(slug, { node: 'lane', verdict: 'stop', kind: 'lane', agent, id, ms: started ? Math.max(0, Date.now() - Date.parse(started.at)) || 0 : 0 })
-  } catch { /* observational: a failure must never wedge a session */ }
-}
-
-// A subagent that started and has not stopped. A start older than LANE_STALE_MS is a lost stop event (a crashed
-// session), so it never holds the continuation back for good.
-const LANE_STALE_MS = 30 * 60_000
-// SubagentStop is async, so a foreground subagent that just finished may not have written its stop yet: wait up to
-// LANE_SETTLE_MS for it. One still open after that is backgrounded; its completion starts a turn whose Stop continues.
-const LANE_SETTLE_MS = 3_000
-function openLanes(slug: string): boolean {
-  const open = (): boolean => {
-    try {
-      const lanes = readEvents(slug).filter(e => e.kind === 'lane')
-      const stopped = new Set(lanes.filter(e => e.verdict === 'stop').map(e => e.id))
-      return lanes.some(e => e.verdict === 'start' && !stopped.has(e.id) && Date.now() - Date.parse(e.at) < LANE_STALE_MS)
-    } catch { return false }
-  }
-  const until = Date.now() + LANE_SETTLE_MS
-  while (open()) {
-    if (Date.now() >= until) return true
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200)
-  }
-  return false
 }
 
 const HOOKS: Record<string, (input: HookInput) => void> = {
@@ -388,7 +324,6 @@ const HOOKS: Record<string, (input: HookInput) => void> = {
   'model-switch': hookModelSwitch,
   'agent-launch': hookAgentLaunch,
   'agent-done': hookAgentDone,
-  'skill-failed': hookSkillFailed,
   'prompt-submit': i => hookPromptSubmit(i),
   stop: i => {
     const r = hookStop(i)
@@ -396,8 +331,6 @@ const HOOKS: Record<string, (input: HookInput) => void> = {
     const cont = continueChange()
     if (r.warn || cont) out(JSON.stringify({ ...(r.warn ? { systemMessage: r.warn } : {}), ...cont }))
   },
-  'subagent-start': i => laneEvent(i, 'start'),
-  'subagent-stop': i => laneEvent(i, 'stop'),
 }
 
 // A standalone repo registers its own copy's hooks in .claude/settings.json. The plugin's copy of a hook steps aside only
@@ -417,7 +350,11 @@ export function runsOwnHook(name: string): boolean {
   }
 }
 
+// Hooks rig no longer registers (spec §7): a settings file vendored before step 4a may still call them.
+export const RETIRED_HOOKS = ['subagent-start', 'subagent-stop', 'skill-failed']
+
 export function cmdHook(args: Args): void {
+  if (RETIRED_HOOKS.includes(args.pos[0] ?? '')) return
   const handler = HOOKS[args.pos[0] ?? '']
   if (!handler) fail(`unknown hook ${args.pos[0]}`)
   if (runsOwnHook(args.pos[0] ?? '')) return

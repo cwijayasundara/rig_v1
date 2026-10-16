@@ -1,8 +1,5 @@
 {
-  "description": "rig: session context, turn baselines, the end-of-turn quality gate, a slim per-edit check, the skill-load fallback, and async subagent lane events for work/span/idle timing. It also records the running model (session start, /model switches) and each agent launch's model. No hook runs on Bash. The mod adds usage capture, the band and zero-token commands",
-  "modules": [
-    "./register.ts"
-  ],
+  "description": "rig: session context, turn baselines, the end-of-turn quality gate, the per-edit check, and model recording (session start, /model switches, agent launches). No hook runs on Bash.",
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -55,42 +52,6 @@
           {
             "type": "command",
             "command": "node --disable-warning=ExperimentalWarning \"${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts\" hook agent-done",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "SubagentStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "async": true,
-            "command": "node --disable-warning=ExperimentalWarning \"${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts\" hook subagent-start",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "async": true,
-            "command": "node --disable-warning=ExperimentalWarning \"${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts\" hook subagent-stop",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "PostToolUseFailure": [
-      {
-        "matcher": "Skill",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node --disable-warning=ExperimentalWarning \"${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts\" hook skill-failed",
             "timeout": 10
           }
         ]

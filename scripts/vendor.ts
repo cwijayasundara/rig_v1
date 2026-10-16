@@ -51,19 +51,13 @@ function mergeHooks(written: string[]): void {
   }
   // The template's permissions too (deny and ask rules guard the evidence), merged under the project's own.
   mergeMissing(settings, { permissions: (JSON.parse(read(path.join(PLUGIN_ROOT, 'templates', 'settings.json'))) as { permissions: object }).permissions })
-  const merged = {
-    ...settings, hooks,
-    extraKnownMarketplaces: { ...settings.extraKnownMarketplaces, 'rig-local': { source: { source: 'directory', path: '.' } } },
-    enabledPlugins: { ...withoutStaleMod(settings.enabledPlugins), 'rig@rig-local': true },
-  }
+  // Step 4a deleted the mod: drop the local marketplace and plugin entries an older vendoring added for it.
+  const { 'rig-local': _market, ...markets } = (settings.extraKnownMarketplaces ?? {}) as Record<string, unknown>
+  const { 'rig@rig-local': _mod, 'rig-mod@rig-local': _oldMod, ...enabled } = settings.enabledPlugins ?? {}
+  const merged: Record<string, unknown> = { ...settings, hooks, extraKnownMarketplaces: markets, enabledPlugins: enabled }
+  if (!Object.keys(markets).length) delete merged.extraKnownMarketplaces
+  if (!Object.keys(enabled).length) delete merged.enabledPlugins
   writeFile('.claude/settings.json', JSON.stringify(merged, null, 2) + '\n', written)
-}
-
-// The mod's state atoms are owned by plugin 'rig', so the vendored copy must be named 'rig' too or the host refuses its
-// state writes. Repos vendored earlier enabled it as rig-mod: drop that entry so the old copy is not loaded twice.
-function withoutStaleMod(enabled: Record<string, unknown> | undefined): Record<string, unknown> {
-  const { 'rig-mod@rig-local': _stale, ...rest } = enabled ?? {}
-  return rest
 }
 
 // Human-only gates without the mod: the person invokes these, the model cannot (disable-model-invocation), and
@@ -80,7 +74,7 @@ function humanSkill(cmd: 'approve' | 'waive', hint: string, what: string): strin
 }
 
 function vendorStandalone(written: string[], version: string): void {
-  for (const name of fs.readdirSync(path.join(PLUGIN_ROOT, 'skills'))) {
+  for (const name of fs.readdirSync(path.join(PLUGIN_ROOT, 'skills')).filter(n => n !== 'approve' && n !== 'waive')) {
     const src = path.join(PLUGIN_ROOT, 'skills', name, 'SKILL.md')
     if (fs.existsSync(src)) writeFile(`.claude/skills/rig-${name}/SKILL.md`, forProject(read(src)), written)
   }
@@ -96,11 +90,10 @@ function vendorStandalone(written: string[], version: string): void {
   for (const file of fs.readdirSync(path.join(PLUGIN_ROOT, 'workflows')).filter(f => f.endsWith('.js'))) {
     writeFile(`.claude/workflows/${file}`, read(path.join(PLUGIN_ROOT, 'workflows', file)), written)
   }
-  for (const f of fs.readdirSync(path.join(PLUGIN_ROOT, 'hooks')).filter(f => /\.(?:ts|tsx)$/.test(f))) writeFile(`.rig/mod/hooks/${f}`, read(path.join(PLUGIN_ROOT, 'hooks', f)), written)
-  writeFile('.rig/mod/hooks/hooks.json', JSON.stringify({ modules: ['./register.ts'] }, null, 2) + '\n', written)
-  writeFile('.rig/mod/.claude-plugin/plugin.json', JSON.stringify({ name: 'rig', version }, null, 2) + '\n', written)
-  writeFile('.rig/mod/types/index.d.ts', read(path.join(PLUGIN_ROOT, 'types', 'index.d.ts')), written)
-  writeFile('.claude-plugin/marketplace.json', JSON.stringify({ name: 'rig-local', owner: { name: 'sdlc' }, plugins: [{ name: 'rig', source: './.rig/mod' }] }, null, 2) + '\n', written)
+  // An older vendoring installed the mod as a local plugin; remove that copy and its marketplace file (only rig's own).
+  fs.rmSync(path.join(ROOT, '.rig', 'mod'), { recursive: true, force: true })
+  const market = path.join(ROOT, '.claude-plugin', 'marketplace.json')
+  try { if ((JSON.parse(read(market) || '{}') as { name?: string }).name === 'rig-local') fs.rmSync(market) } catch { /* not ours to remove */ }
   mergeHooks(written)
 }
 
@@ -126,7 +119,7 @@ export function cmdVendor(args: Args): void {
   if (standalone) vendorStandalone(written, version)
   sanctionWrites(written)
   out(standalone
-    ? `vendored sdlc ${version} standalone: .rig/bin, .claude/skills/rig-*, .claude/agents/rig-*, the mod in .rig/mod, hooks in .claude/settings.json. Commit .rig/ and .claude/; re-run from the plugin to upgrade.`
+    ? `vendored sdlc ${version} standalone: .rig/bin, .claude/skills/rig-*, .claude/agents/rig-*, hooks in .claude/settings.json. Commit .rig/ and .claude/; re-run from the plugin to upgrade.`
     : `vendored sdlc ${version} into ${path.relative(ROOT, path.join(SDLC, 'bin'))} (${VENDORED.length} files). Commit it; CI runs the base branch's copy.`)
 }
 

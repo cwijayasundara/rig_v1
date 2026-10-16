@@ -57,8 +57,6 @@ test('the vendored copy names project skills and agents, and prints its own skil
   const ctx = JSON.parse(vendored(repo, ['hook', 'session-start'], '{}').stdout).hookSpecificOutput.additionalContext as string
   assert.match(ctx, /rig-scout/)
   assert.doesNotMatch(ctx, /(?<!\/)rig:scout/)
-  const failed = JSON.parse(vendored(repo, ['hook', 'skill-failed'], JSON.stringify({ tool_input: { skill: 'rig-verify', args: 'small-thing' } })).stdout)
-  assert.match(failed.hookSpecificOutput.additionalContext, /\.rig\/bin\/sdlc\.ts" skill verify small-thing/)
 })
 
 test('the PR review may write its two files through Edit rules; a Write(path) rule grants nothing', () => {
@@ -136,17 +134,18 @@ test('standalone vendoring ships the v0.4 skills and REVIEW.md template', () => 
   assert.ok(fs.existsSync(path.join(repo, '.rig/templates/REVIEW.md')))
 })
 
-test('standalone vendoring installs the mod as a project plugin', () => {
+test('standalone vendoring installs no mod; re-vendoring drops an old mod copy and its local marketplace', () => {
   const repo = makeRepo()
-  sdlc(repo, ['vendor', '--standalone'])
-  assert.ok(fs.existsSync(path.join(repo, '.rig/mod/hooks/register.ts')))
-  assert.ok(fs.existsSync(path.join(repo, '.rig/mod/types/index.d.ts')))
-  assert.equal(JSON.parse(fs.readFileSync(path.join(repo, '.rig/mod/.claude-plugin/plugin.json'), 'utf8')).name, 'rig')
-  assert.equal(JSON.parse(fs.readFileSync(path.join(repo, '.claude-plugin/marketplace.json'), 'utf8')).plugins[0].source, './.rig/mod')
+  write(repo, '.rig/mod/hooks/register.ts', 'old\n')
+  write(repo, '.claude-plugin/marketplace.json', JSON.stringify({ name: 'rig-local', plugins: [{ name: 'rig', source: './.rig/mod' }] }))
+  write(repo, '.claude/settings.json', JSON.stringify({ extraKnownMarketplaces: { 'rig-local': {}, mine: {} }, enabledPlugins: { 'rig@rig-local': true, 'rig-mod@rig-local': true, 'x@mine': true } }))
+  assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
+  assert.ok(!fs.existsSync(path.join(repo, '.rig/mod')))
+  assert.ok(!fs.existsSync(path.join(repo, '.claude-plugin/marketplace.json')))
   const settings = JSON.parse(fs.readFileSync(path.join(repo, '.claude/settings.json'), 'utf8'))
-  assert.equal(settings.enabledPlugins['rig@rig-local'], true)
-  assert.equal(settings.enabledPlugins['rig-mod@rig-local'], undefined)
-  assert.ok(settings.extraKnownMarketplaces['rig-local'])
+  assert.deepEqual(settings.enabledPlugins, { 'x@mine': true })
+  assert.deepEqual(Object.keys(settings.extraKnownMarketplaces), ['mine'])
+  for (const cmd of ['approve', 'waive']) assert.doesNotMatch(fs.readFileSync(path.join(repo, `.claude/skills/rig-${cmd}/SKILL.md`), 'utf8'), /CLAUDE_PLUGIN_ROOT/)
 })
 
 test('init --full vendors, wires git hooks and merges the settings template without overriding the project', () => {
@@ -216,7 +215,7 @@ test('init --full merges the evidence rules into an existing settings file witho
   assert.ok(merged.permissions.deny.includes('Edit(/.rig/approvals.jsonl)'))
 })
 
-test('re-vendoring over an older standalone install drops the retired sdlc hooks, keeps the async lane hooks once, and keeps the project\'s own', () => {
+test('re-vendoring over an older standalone install drops the retired sdlc hooks, the lane hooks included, and keeps the project\'s own', () => {
   const repo = makeRepo()
   const cmd = (name: string) => `node --disable-warning=ExperimentalWarning "$CLAUDE_PROJECT_DIR/.rig/bin/sdlc.ts" hook ${name}`
   const group = (name: string, matcher?: string) => ({ ...(matcher ? { matcher } : {}), hooks: [{ type: 'command', command: cmd(name), timeout: 10 }] })
@@ -237,13 +236,8 @@ test('re-vendoring over an older standalone install drops the retired sdlc hooks
   for (const gone of ['pre-bash', 'pre-edit']) assert.ok(!commands.some(c => c.endsWith(`hook ${gone}`)), gone)
   assert.deepEqual(hooks.PreToolUse?.filter(g => g.matcher === 'Bash'), [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'echo mine' }] }], 'the project\'s own hook is kept untouched')
   assert.equal(hooks.PreToolUse?.filter(g => g.matcher === 'Agent' && g.hooks.some(h => h.command.endsWith('hook agent-launch'))).length, 1, 'the agent-launch hook is registered once')
-  for (const [event, name] of [['SubagentStart', 'subagent-start'], ['SubagentStop', 'subagent-stop']] as const) {
-    const lane = hooks[event]?.flatMap(g => g.hooks) as { command: string; async?: boolean }[] | undefined
-    assert.equal(lane?.length, 1, `${event} registered exactly once`)
-    assert.equal(lane?.[0]?.async, true, `${event} is async`)
-    assert.ok(lane?.[0]?.command.endsWith(`hook ${name}`), `${event} runs hook ${name}`)
-  }
-  for (const [event, name] of [['UserPromptSubmit', 'prompt-submit'], ['Stop', 'stop'], ['SessionStart', 'session-start'], ['PostToolUse', 'post-edit'], ['PostToolUseFailure', 'skill-failed']]) {
+  for (const event of ['SubagentStart', 'SubagentStop', 'PostToolUseFailure']) assert.equal(hooks[event], undefined, `${event} is no longer registered`)
+  for (const [event, name] of [['UserPromptSubmit', 'prompt-submit'], ['Stop', 'stop'], ['SessionStart', 'session-start'], ['PostToolUse', 'post-edit']]) {
     assert.equal(hooks[event as string]?.filter(g => g.hooks.some(h => h.command.endsWith(`hook ${name}`))).length, 1, `${event} registered once`)
   }
   assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)

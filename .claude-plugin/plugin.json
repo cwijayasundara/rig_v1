@@ -1,9 +1,15 @@
 {
   "name": "rig",
   "version": "0.6.0",
-  "description": "Thin AI-native SDLC harness: type x tier routing, file-based artifacts, human gates, cheap-by-default model routing, context budgets and playbook + cost metrics.",
-  "author": { "name": "Chaminda Wijayasundara" },
+  "description": "Behavioural harness for Claude Code: one sensor registry, contracts frozen at plan approval, guides kept in sync, human gates.",
+  "author": {
+    "name": "Chaminda Wijayasundara"
+  },
   "license": "MIT",
-  "keywords": ["rig", "harness", "metrics", "workflow"],
-  "types": "./types/index.d.ts"
+  "keywords": [
+    "rig",
+    "harness",
+    "metrics",
+    "workflow"
+  ]
 }

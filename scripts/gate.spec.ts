@@ -10,19 +10,6 @@ beforeEach(() => {
   repo = makeRepo()
 })
 
-test('a failed sdlc skill load injects the deterministic fallback command and logs the event', () => {
-  sdlc(repo, ['init'])
-  const r = hook(repo, 'skill-failed', { tool_input: { skill: 'rig:pr-review', args: 'add-login' } })
-  const ctx = JSON.parse(r.stdout).hookSpecificOutput.additionalContext
-  assert.match(ctx, /sdlc\.ts" skill pr-review add-login/)
-  assert.match(ctx, /skill fallback: rig:pr-review/)
-  assert.match(fs.readFileSync(path.join(repo, '.rig/usage.jsonl'), 'utf8'), /skill-load-failed/)
-  assert.equal(hook(repo, 'skill-failed', { tool_input: { skill: 'superpowers:brainstorming' } }).stdout, '')
-})
-
-const stop = () => hook(repo, 'stop', { session_id: 's1' })
-const tamper = () => write(repo, 'test/a.test.js', "it.only('x', () => {})\n")
-
 test('Stop is silent outside sdlc repos and on turns that changed no source', () => {
   write(repo, 'src/x.js', 'x\n')
   assert.equal(stop().stdout, '')
@@ -179,19 +166,8 @@ test('I3: Stop ratchets a known-red command that now passes; it then blocks when
   assert.match(out.reason, /\[commands\][\s\S]*fast\.lint failed/)
 })
 
-test('a failed built-in code-review load falls back to the sdlc reviewer agent', () => {
-  const repo = makeRepo(); sdlc(repo, ['init'])
-  const r = JSON.parse(hook(repo, 'skill-failed', { tool_input: { skill: 'code-review' } }).stdout)
-  assert.match(r.hookSpecificOutput.additionalContext, /rig:reviewer/)
-})
-
-test('a failed superpowers SDD load sends the model back to native orchestration and logs it', () => {
-  const repo = makeRepo(); sdlc(repo, ['init'])
-  const r = JSON.parse(hook(repo, 'skill-failed', { tool_input: { skill: 'superpowers:subagent-driven-development' } }).stdout)
-  assert.match(r.hookSpecificOutput.additionalContext, /Large builds: orchestrate/)
-  assert.match(fs.readFileSync(path.join(repo, '.rig/usage.jsonl'), 'utf8'), /"skill":"superpowers:subagent-driven-development"/)
-  assert.equal(hook(repo, 'skill-failed', { tool_input: { skill: 'other:thing' } }).stdout, '')
-})
+const stop = () => hook(repo, 'stop', { session_id: 's1' })
+const tamper = () => write(repo, 'test/a.test.js', "it.only('x', () => {})\n")
 
 test('harness files untracked at turn start and committed unchanged in the turn are not harness-tamper', () => {
   sdlc(repo, ['new', 'xx', '--type', 'chore', '--tier', 'S'])
@@ -325,16 +301,6 @@ test('a turn that only warned and is also continued prints one JSON object carry
   assert.match(out.systemMessage ?? '', /warning.*harness-tamper/)
   assert.equal(out.decision, 'block')
   assert.match(out.reason ?? '', /skill test tiny/)
-})
-
-test('Stop does not continue a node while one of its subagents is still running', () => {
-  sdlc(repo, ['new', 'tiny', '--type', 'chore', '--tier', 'S'])
-  hook(repo, 'prompt-submit', {})
-  buildDone(repo, 'tiny')
-  hook(repo, 'subagent-start', { agent_id: 'lane-1', agent_type: 'rig:implementer' })
-  assert.equal(stop().stdout, '', 'a backgrounded implementer means the node is mid-way')
-  hook(repo, 'subagent-stop', { agent_id: 'lane-1', agent_type: 'rig:implementer' })
-  assert.match(JSON.parse(stop().stdout).reason, /skill test tiny/)
 })
 
 test('Stop does not continue a change that waits at a human gate or has no active change', () => {
