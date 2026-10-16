@@ -153,6 +153,9 @@ Unknown stacks get an empty `sensors` list plus built-ins, and init tells the pe
 4. a behaviour in the brief (section 6) has no test named for it (the traceability sensor).
 
 It runs at SessionStart as a warning, at commit as a block, and in CI from the base branch.
+Finding 4 is the exception (step 5a): a brief behaviour with no test is always a warning, so a product can ship one change at a time.
+What blocks is the change's own traceability: every B-number in the change's `spec.md` needs a test, at commit, verify and CI.
+The cost: a brief behaviour no change spec ever claims can stay untested, visible only as a warning.
 Text outside the block belongs to the team and is never touched.
 The three long guides in `guides/` stay as path-triggered, once-per-session injections.
 

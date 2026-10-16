@@ -136,3 +136,9 @@ test('a brief behaviour with no test warns at commit and in sync --check; it nev
   assert.equal(check.code, 0, check.stdout)
   assert.match(check.stdout, /B2 has no test/)
 })
+
+test('final review: the traceability guide names what blocks (the change spec), not the brief, which only warns', () => {
+  const g = parseRegistry('').registry.sensors.find(s => s.id === 'traceability')?.guide ?? ''
+  assert.match(g, /spec\.md/)
+  assert.doesNotMatch(g, /^Every behaviour in the brief/)
+})

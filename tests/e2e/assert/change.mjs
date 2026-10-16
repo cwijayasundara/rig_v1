@@ -20,6 +20,9 @@ export async function assertChange(c, sb, slug, phase) {
   await c.check(`${id}: a failing test run is recorded before a passing one`, () => (red >= 0 && green > red) || `${runs.length} run(s), red at ${red}, green at ${green}`)
   const v = json(sb.read(`${dir}/verify.json`))
   await c.check(`${id}: verify.json passed`, () => v?.pass === true || (v?.blocks ?? ['no verify.json']).join('; '))
+  // Without a base, verify's red-proof is only a warning and pass stays true: prove it judged against the trunk.
+  await c.check(`${id}: verify judged red-proof against a base on the trunk`, () =>
+    (!!v?.base && sb.run('git', ['merge-base', '--is-ancestor', v.base, 'HEAD']).status === 0) || `base ${v?.base}`)
   const pr = sb.read(`${dir}/pr.md`)
   await c.check(`${id}: pr.md records an open PR on sdlc/${slug}`, () => (/state: open/.test(pr) && new RegExp(`branch: sdlc/${slug}`).test(pr)) || pr.split('\n').slice(0, 3).join(' | '))
   await c.check(`${id}: the PR was opened through gh, once, with this change's pr.md`, () => {
@@ -34,6 +37,12 @@ export async function assertChange(c, sb, slug, phase) {
   await sb.inWorktree(async ({ sdlc }) => {
     const ci = json(sdlc(['check', '--at', 'ci', '--base', 'main', '--json']).stdout) ?? {}
     await c.check(`${id}: CI lists the approval as a human row`, () => (ci.humanRows ?? []).some(r => r.startsWith(`approval ${slug}`)) || JSON.stringify(ci.humanRows))
+    // The only thing CI may block on is the independent approval, and that block must be there.
+    await c.check(`${id}: CI blocks on the human approval and nothing else`, () => {
+      const blocks = ci.blocks ?? []
+      const human = blocks.filter(b => b.sensor === 'human-approval').length
+      return (human === 1 && blocks.length === 1) || `blocks: ${blocks.map(b => `${b.sensor}: ${b.message}`).join(' | ') || 'none'}`
+    })
   })
   await c.check(`${id}: npm test passes on the PR commit`, () => { const r = sb.run('npm', ['test', '--silent']); return r.status === 0 || (r.stdout + r.stderr).trim().split('\n').slice(-3).join(' ') })
 }

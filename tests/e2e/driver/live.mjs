@@ -56,7 +56,7 @@ export function liveDriver(sb, phase, { sessions }) {
     async build(slug) {
       sessions.run(`${phase.id}-build`, `/rig-build ${slug}. The person approved the plan: build test-first, then /rig-test and /rig-pr in this turn.`, { cont: true })
       const st = () => (JSON.parse(sb.sdlc(['status', '--json']).stdout || '{}').changes ?? []).find(c => c.slug === slug)?.status
-      if (st() !== 'review') sessions.run(`${phase.id}-build-2`, `/rig-start ${slug}. Continue from where it stopped until the PR is open.`, { cont: true })
+      if (st() !== 'review') sessions.run(`${phase.id}-build-2`, `/rig-build ${slug}. Continue from where it stopped: finish the tests, then /rig-test and /rig-pr until the PR is open.`, { cont: true })
     },
   }
 }
