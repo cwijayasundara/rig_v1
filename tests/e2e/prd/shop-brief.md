@@ -19,8 +19,18 @@ Node 22 ESM, `node --test`, no dependencies, integer cents throughout.
 
 ## Interfaces
 
-- `Catalog` (`add`, `get`, `list`) exported from `src/catalog/products.js`; `Cart` (`add`, `remove`, `lines`, `subtotalCents`) from `src/cart/cart.js`; `checkout(cart, { code })` from `src/orders/orders.js`; `createHandler(catalog)` from `src/http/handler.js`, returning a synchronous `handle({ method, path, body })` that returns `{ status, body }`.
-- `npm start` serves the handler on `$PORT` (0 picks a free port), prints `listening on <port>`, and seeds the catalog with TEA-001 (Green tea, 450) and MUG-002 (Mug, 1200). The HTTP contract is `api/openapi.yaml` with examples in `contracts/examples/`.
+Modules (every arm builds these paths):
+- `src/catalog/products.js` exports `Catalog`. `add({ sku, name, priceCents })`: a SKU is three capital letters, a hyphen and three digits (`TEA-001`); anything else throws `invalid sku: <sku>`. `priceCents` must be a positive integer, or `add` throws. `get(sku)` returns the product or `null`; `list()` returns every product as `{ sku, name, priceCents }`.
+- `src/cart/cart.js` exports `Cart`, constructed with a catalog. `add(sku, qty)`: `qty` defaults to 1 and must be a positive integer; a SKU not in the catalog throws `unknown sku: <sku>`; adding a SKU again adds to its quantity. `lines()` returns one `{ sku, qty, unitCents }` per SKU, priced from the catalog. `subtotalCents()` is the sum of `qty × unitCents`. `remove(sku)` deletes the whole line and throws when the SKU is not in the cart.
+- `src/orders/orders.js` exports `checkout(cart, { code })`. It returns the order `{ lines, subtotalCents, discountCents, totalCents }` and does not change the cart. No code means no discount; `SAVE10` takes 10% off and `SAVE20` 20%; `discountCents` is rounded to the nearest cent and `totalCents = subtotalCents − discountCents`. Any other code throws `unknown discount code: <code>`; an empty cart throws `cart is empty`.
+- `src/http/handler.js` exports `createHandler(catalog)`, which returns a synchronous `handle({ method, path, body })` returning `{ status, body }`, with one cart per handler:
+  - `GET /products` → 200 with the products as a bare JSON array (`[{ sku, name, priceCents }]`, not wrapped in an object);
+  - `POST /cart` with `{ sku, qty }` → 201 with the cart lines as a JSON array;
+  - `DELETE /cart/<sku>` → 200 with the remaining lines as a JSON array; 400 when the SKU is not in the cart;
+  - `POST /checkout` with `{ code }` (optional) → 201 with the order;
+  - any error → 400 with `{ error: <message> }`; an unknown path → 404.
+- `src/server.js`: `npm start` serves the handler over `node:http` on `$PORT` (0 picks a free port), prints `listening on <port>`, keeps one cart per running server, and seeds the catalog with TEA-001 (Green tea, 450) and MUG-002 (Mug, 1200). Request and response bodies are JSON.
+- The HTTP contract is `api/openapi.yaml` with examples in `contracts/examples/`.
 
 ## Behaviours
 
