@@ -545,3 +545,26 @@ test('a timed-out command at commit warns under its own id', () => {
   assert.ok(!out.findings.some(f => f.sensor === 'test' && f.severity === 'block'), JSON.stringify(out.findings))
   assert.ok(out.findings.some(f => f.sensor === 'test' && f.severity === 'warn' && f.outOfTime === true), JSON.stringify(out.findings))
 })
+
+test('waiving lint leaves unit blocking', () => {
+  sensors({ fast: { lint: 'node -e "process.exit(1)"', unit: 'node -e "process.exit(1)"' } })
+  sdlc(repo, ['new', 'xx', '--type', 'chore'])
+  sdlc(repo, ['waive', 'lint', '*', 'style debt'], { env: { SDLC_HUMAN: '1' } })
+  hook(repo, 'prompt-submit', {})
+  write(repo, 'src/app.js', 'export const a = 9\n')
+  const r = check('--at', 'stop')
+  assert.equal(r.code, 1)
+  assert.match(r.stdout, /\[unit\]/)
+  assert.doesNotMatch(r.stdout, /\[lint\]/)
+})
+
+test('an old commands waiver no longer silences a command sensor', () => {
+  sensors({ fast: { unit: 'node -e "process.exit(1)"' } })
+  sdlc(repo, ['new', 'xx', '--type', 'chore'])
+  fs.appendFileSync(path.join(repo, '.rig/waivers.jsonl'), JSON.stringify({ slug: 'xx', sensor: 'commands', file: '*', reason: 'before per-sensor ids', by: 'someone', at: '2026-10-01T00:00:00Z' }) + '\n')
+  hook(repo, 'prompt-submit', {})
+  write(repo, 'src/app.js', 'export const a = 10\n')
+  const r = check('--at', 'stop')
+  assert.equal(r.code, 1)
+  assert.match(r.stdout, /\[unit\]/)
+})
