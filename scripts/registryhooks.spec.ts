@@ -155,3 +155,56 @@ test('hooks.json registers the model and agent hooks, and gives PostToolUse room
   assert.match(cmds('PostToolUse', 'Agent')[0]?.command ?? '', /hook agent-done$/)
   assert.equal(cmds('PostToolUse', 'Write|Edit|MultiEdit')[0]?.timeout, 75)
 })
+
+import { runDeclared } from './check.ts'
+import { registryConfig, parseRegistry } from './registry.ts'
+
+test('an advisory sensor never blocks, even when it times out or the budget runs out', () => {
+  const r = parseRegistry(JSON.stringify({ sensors: [sensor('slow', 'turn', 'node -e "setTimeout(() => {}, 5000)"', { blocks: false }), sensor('later', 'turn', 'node -e ""', { blocks: false })] })).registry
+  const findings = runDeclared('fast', registryConfig(r).config, null, 300)
+  assert.ok(findings.length >= 1)
+  assert.ok(findings.every(f => f.severity === 'warn'), JSON.stringify(findings))
+})
+
+test('a passing advisory sensor leaves a hand-formatted registry byte-for-byte alone', () => {
+  const text = '{\n    "sensors": [ { "id": "dup", "cmd": "node -e \\"\\"", "cadence": "turn", "blocks": false, "count": "exit", "guide": "g" } ]\n}\n'
+  write(repo, '.rig/sensors.json', text); gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'cfg')
+  turn()
+  stop()
+  assert.equal(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8'), text)
+})
+
+test('contract commands with no files freeze .rig/contracts, as the check config does', () => {
+  registry({ sensors: [], contracts: { validate: 'v' } })
+  write(repo, '.rig/contracts/api.yaml', 'openapi: 3.1.0\n')
+  const core = path.resolve(import.meta.dirname, 'core.ts')
+  const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', `import { behavioralFiles } from ${JSON.stringify(core)}; console.log(JSON.stringify(behavioralFiles('x')))`], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo } })
+  assert.deepEqual(JSON.parse(r.stdout), ['.rig/contracts/api.yaml'], r.stderr)
+})
+
+test('edit sensors share one budget, so slow ones cannot outrun the hook', () => {
+  registry({ sensors: [sensor('a', 'edit', 'node -e "setTimeout(() => {}, 4000)" {files}'), sensor('b', 'edit', 'node -e "setTimeout(() => {}, 4000)" {files}')] })
+  turn()
+  const started = Date.now()
+  const r = sdlc(repo, ['hook', 'post-edit'], { input: JSON.stringify({ session_id: 's1', tool_input: { file_path: path.join(repo, 'src/x.js') } }), env: { RIG_EDIT_BUDGET_MS: '800' } })
+  assert.ok(Date.now() - started < 3500, `took ${Date.now() - started} ms`)
+  assert.equal(r.code, 2)
+  assert.match(r.stderr, /b: not run, the edit sensors' 1 s budget ran out/)
+})
+
+test('a model switch with no session id is still read back', () => {
+  failing()
+  hook(repo, 'model-switch', { to_model: 'claude-opus-5-5' })
+  hook(repo, 'prompt-submit', {})
+  write(repo, 'src/x.js', `export const x = ${++n}\n`)
+  assert.doesNotMatch(hook(repo, 'stop', {}).stdout, /fast\.unit/)
+})
+
+test('a Write/Edit that weakens a committed registry is labelled harness tamper at Stop', () => {
+  registry({ sensors: [sensor('unit', 'turn', 'node -e ""')] })
+  hook(repo, 'prompt-submit', {})
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [sensor('unit', 'turn', 'node -e ""', { blocks: false })] }))
+  hook(repo, 'post-edit', { session_id: 's1', tool_input: { file_path: path.join(repo, '.rig/sensors.json') } })
+  write(repo, 'src/x.js', `export const x = ${++n}\n`)
+  assert.match(stop().stdout, /harness-tamper[\s\S]*sensor unit no longer blocks/)
+})

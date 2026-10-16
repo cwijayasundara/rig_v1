@@ -105,7 +105,7 @@ test('final mode keeps only secrets and harness-tamper at edit and turn, everyth
 test('{files} is shell-quoted, removed for whole-repo runs, and an empty list skips', () => {
   const s = cmd('lint', 'edit', 'eslint {files}')
   assert.equal(commandFor(s, ['src/a.ts', 'my dir/b.ts', "it's.ts"]), `eslint src/a.ts 'my dir/b.ts' 'it'\\''s.ts'`)
-  assert.equal(commandFor(s, null), 'eslint')
+  assert.equal(commandFor(s, null), 'eslint .')
   assert.equal(commandFor(s, []), null)
   assert.equal(commandFor(cmd('unit', 'turn', 'make test'), []), 'make test')
   assert.equal(commandFor({ id: 'secrets', builtin: true, cadence: 'edit', blocks: true, guide: 'g', enabled: true }, null), null)
@@ -177,8 +177,9 @@ test('a file name starting with a dash is passed as a path, not a flag', () => {
   assert.equal(commandFor(s, ['-rf', 'src/-x.ts']), 'eslint ./-rf src/-x.ts')
 })
 
-test('a whole-repo run drops the whole argument that holds {files}', () => {
-  assert.equal(commandFor(cmd('lint', 'edit', 'eslint --files={files} --quiet'), null), 'eslint --quiet')
+test('a whole-repo run passes "." for {files}, so tools that need a path still get one', () => {
+  assert.equal(commandFor(cmd('fmt', 'edit', 'prettier --check {files}'), null), 'prettier --check .')
+  assert.equal(commandFor(cmd('lint', 'edit', 'eslint --files={files} --quiet'), null), 'eslint --files=. --quiet')
   assert.equal(commandFor(cmd('lint', 'edit', 'eslint --files={files} --quiet'), ['a.ts']), 'eslint --files=a.ts --quiet')
 })
 
@@ -197,12 +198,12 @@ test('the config view maps edit and turn sensors to fast, every live sensor to f
   const r = regOf({ sensors: [cmd('lint', 'edit', 'eslint {files}'), cmd('unit', 'turn', 'make test'), cmd('arch', 'commit', 'make arch'), cmd('mut', 'nightly', 'make mut'), { ...cmd('off', 'turn', 'x'), enabled: false }] })
   const { config, errors } = registryConfig(r)
   assert.deepEqual(errors, [])
-  assert.deepEqual(config.fast, { lint: 'eslint', unit: 'make test' })
-  assert.deepEqual(config.full, { lint: 'eslint', unit: 'make test', arch: 'make arch' })
+  assert.deepEqual(config.fast, { lint: 'eslint .', unit: 'make test' })
+  assert.deepEqual(config.full, { lint: 'eslint .', unit: 'make test', arch: 'make arch' })
   assert.deepEqual(config.levels, { unit: 'make test', integration: 'make test', acceptance: 'make test', api: 'make test' })
 })
 
-test('advisory sensors and knownRed ids become known-red keys; paths, limits, layers and contracts carry over', () => {
+test('knownRed ids become known-red keys and advisory sensors advisory keys; paths, limits, layers and contracts carry over', () => {
   const r = regOf({
     sensors: [{ ...cmd('dup', 'commit', 'jscpd .'), blocks: false }, cmd('unit', 'turn', 'make test'),
       { id: 'size', builtin: true, options: { fileLines: 300 } },
@@ -212,7 +213,8 @@ test('advisory sensors and knownRed ids become known-red keys; paths, limits, la
   })
   const { config, errors } = registryConfig(r)
   assert.deepEqual(errors, [])
-  assert.deepEqual([...config.knownRed].sort(), ['fast.dup', 'fast.unit', 'full.dup', 'full.unit'])
+  assert.deepEqual([...config.knownRed].sort(), ['fast.unit', 'full.unit'])
+  assert.deepEqual([...(config.advisory ?? [])].sort(), ['fast.dup', 'full.dup'])
   assert.deepEqual(config.tests, ['**/*.t.js'])
   assert.equal(config.limits.fileLines, 300)
   assert.equal(config.layers.length, 1)
@@ -248,4 +250,24 @@ test('updateKnownRed writes command keys in a legacy file and sensor ids in a re
   const reg = JSON.parse(updateKnownRed(JSON.stringify({ sensors: [], knownRed: ['b'] }), ['fast.a', 'full.a', 'web:fast.c'], ['full.b']))
   assert.deepEqual(reg.knownRed, ['a', 'c'])
   assert.deepEqual(Object.keys(reg), ['sensors', 'knownRed'])
+})
+
+import { weakensRegistry } from './registry.ts'
+
+test('weakening a registry is named: removed, disabled, softened, changed or later sensors, wider ignores, new known red, final policy, raised limits', () => {
+  const before = JSON.stringify({ sensors: [cmd('unit', 'turn', 'npm test'), cmd('lint', 'edit', 'eslint {files}'), cmd('arch', 'commit', 'make arch'), { id: 'size', builtin: true, options: { fileLines: 300 } }], contracts: { files: ['api/**'], run: 'r' } })
+  const after = JSON.stringify({
+    sensors: [{ ...cmd('unit', 'turn', 'true'), blocks: false }, { ...cmd('lint', 'nightly', 'eslint {files}') }, { id: 'size', builtin: true, options: { fileLines: 900 } }, { id: 'test-tamper', builtin: true, enabled: false }],
+    paths: { ignore: ['**/*.md', '**/*.lock', 'src/**'] }, knownRed: ['unit'], policy: { sonnet: 'final' }, contracts: { files: [], run: '' },
+  })
+  const reasons = weakensRegistry(before, after).join('\n')
+  for (const part of ['sensor unit no longer blocks', 'sensor unit command changed', 'sensor lint moved from edit to nightly', 'sensor arch removed', 'sensor test-tamper disabled', 'size.fileLines raised 300 → 900', 'paths.ignore added src/**', 'knownRed added unit', 'policy.sonnet moved to final', 'contracts.files lost api/**', 'contracts.run changed'])
+    assert.ok(reasons.includes(part), `missing: ${part}\n${reasons}`)
+})
+
+test('tightening or leaving a registry alone is not weakening; an unparseable one is', () => {
+  const base = JSON.stringify({ sensors: [{ ...cmd('unit', 'commit', 'npm test'), blocks: false }] })
+  assert.deepEqual(weakensRegistry(base, base), [])
+  assert.deepEqual(weakensRegistry(base, JSON.stringify({ sensors: [cmd('unit', 'turn', 'npm test'), cmd('extra', 'edit', 'x')] })), [])
+  assert.deepEqual(weakensRegistry(base, '{'), ['sensors.json no longer parses'])
 })

@@ -2,6 +2,7 @@
 // Language knowledge lives in the pattern tables below, never in code paths per language.
 import { RATCHET_NODES, parseConfig, parseRules, type FileDiff, type Finding, type SensorConfig, isTest, isSource, matchesAny, globToRegex, SECRET_PATTERNS } from './model.ts'
 import { selectScopes } from './scopes.ts'
+import { isRegistryShape, weakensRegistry } from './registry.ts'
 
 export const TAMPER_PATTERNS: { id: string; re: RegExp; what: string }[] = [
   { id: 'skip-or-only', re: /\b(?:it|describe|test|context|suite)\.(?:skip|only|todo)\s*[.(]/, what: 'test skipped or focused' },
@@ -233,6 +234,7 @@ const RULES = '.rig/rules.json'
 const removedFrom = (before: string[], after: string[]): string[] => before.filter(x => !after.includes(x))
 
 export function weakensConfig(beforeText: string, afterText: string): string[] {
+  if (isRegistryShape(afterText)) return weakensRegistry(beforeText, afterText)
   const after = parseConfig(afterText)
   if (after.errors.some(e => /not valid JSON|must be a JSON object/.test(e))) return ['sensors.json no longer parses']
   const b = parseConfig(beforeText).config

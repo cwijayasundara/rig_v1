@@ -212,12 +212,12 @@ const shq = (f: string): string => {
   return /^[A-Za-z0-9_./:@%+=,-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`
 }
 
-// null files: whole repo, so the argument holding {files} is dropped. An empty list with {files}: nothing to check, skip (null).
+// null files: whole repo, so {files} becomes "." (tools that need a path still get one). An empty list with {files}: nothing to check, skip (null).
 export function commandFor(s: RegistrySensor, files: string[] | null): string | null {
   if (!s.cmd) return null
   if (!s.cmd.includes('{files}')) return s.cmd
   if (files && !files.length) return null
-  if (!files) return s.cmd.replace(/\s*\S*\{files\}\S*/g, '').trim()
+  if (!files) return s.cmd.replaceAll('{files}', '.')
   return s.cmd.replaceAll('{files}', files.map(shq).join(' '))
 }
 
@@ -276,14 +276,13 @@ export function registryConfig(r: Registry): { config: SensorConfig; errors: str
   const unit = live.find(s => s.id === 'unit')
   const size = r.sensors.find(s => s.id === 'size')?.options
   const layers = r.sensors.find(s => s.id === 'layering')?.options?.layers
-  const red = [...new Set([...r.knownRed, ...live.filter(s => !s.blocks).map(s => s.id)])]
   const { validate, run, files } = r.contracts
   const view: Record<string, unknown> = {
     fast: Object.fromEntries(live.filter(s => s.cadence === 'edit' || s.cadence === 'turn').map(s => [s.id, whole(s)])),
     full: Object.fromEntries(live.map(s => [s.id, whole(s)])),
     tests: r.paths.tests, testSupport: r.paths.testSupport, fixtures: r.paths.fixtures, ignore: r.paths.ignore,
     contracts: files,
-    knownRed: red.flatMap(id => [`fast.${id}`, `full.${id}`]),
+    knownRed: r.knownRed.flatMap(id => [`fast.${id}`, `full.${id}`]),
   }
   if (size) view.limits = size
   if (layers !== undefined) view.layers = layers
@@ -291,6 +290,7 @@ export function registryConfig(r: Registry): { config: SensorConfig; errors: str
   if (validate || run) view.behavioral = { ...(validate ? { validate } : {}), ...(run ? { run } : {}), files: files.length ? files : ['.rig/contracts/**'], cadence: 'final' }
   const { config, errors } = parseConfig(JSON.stringify(view))
   const builtins = r.sensors.filter(s => s.builtin)
+  config.advisory = live.filter(s => !s.blocks).flatMap(s => [`fast.${s.id}`, `full.${s.id}`])
   config.builtins = { off: builtins.filter(s => !s.enabled).map(s => s.id), soft: builtins.filter(s => s.enabled && !s.blocks).map(s => s.id) }
   return { config, errors: errors.map(e => `sensors: ${e}`) }
 }
@@ -304,4 +304,41 @@ export function updateKnownRed(text: string, add: string[], remove: string[]): s
   for (const k of add.map(key)) if (!now.includes(k)) now.push(k)
   raw.knownRed = now
   return JSON.stringify(raw, null, 2) + '\n'
+}
+
+// ---------- harness tamper for a registry (sensors.ts weakensConfig delegates here) ----------
+
+const LATER: Record<Cadence, number> = { edit: 0, turn: 1, commit: 2, ci: 3, nightly: 4 }
+const LIMIT_DEFAULTS: Record<string, number> = { fileLines: 400, diffLines: 500, lineChars: 160 }
+
+// What an edit loosens: a sensor removed, disabled, made advisory, re-commanded or moved later; wider ignores; fewer
+// test globs; new known red; a family moved to "final"; raised size limits; lost contract files or commands; a gate off.
+export function weakensRegistry(beforeText: string, afterText: string): string[] {
+  const now = loadRegistry(afterText)
+  if (now.errors.some(e => /does not parse|must be a JSON object|not valid JSON/.test(e))) return ['sensors.json no longer parses']
+  const b = loadRegistry(beforeText).registry
+  const a = now.registry
+  const out: string[] = []
+  for (const s of b.sensors) {
+    const n = a.sensors.find(x => x.id === s.id)
+    if (!n) { out.push(`sensor ${s.id} removed`); continue }
+    if (s.enabled && !n.enabled) out.push(`sensor ${s.id} disabled`)
+    if (s.blocks && !n.blocks) out.push(`sensor ${s.id} no longer blocks`)
+    if ((s.cmd ?? '') !== (n.cmd ?? '')) out.push(`sensor ${s.id} command changed`)
+    if (LATER[n.cadence] > LATER[s.cadence]) out.push(`sensor ${s.id} moved from ${s.cadence} to ${n.cadence}`)
+    if (s.id === 'size') for (const k of Object.keys(LIMIT_DEFAULTS)) {
+      const from = Number(s.options?.[k] ?? LIMIT_DEFAULTS[k]), to = Number(n.options?.[k] ?? LIMIT_DEFAULTS[k])
+      if (to > from) out.push(`size.${k} raised ${from} → ${to}`)
+    } else if (s.builtin && JSON.stringify(s.options ?? {}) !== JSON.stringify(n.options ?? {})) out.push(`sensor ${s.id} options changed`)
+  }
+  for (const k of ['ignore', 'fixtures', 'testSupport'] as const) for (const g of a.paths[k]) if (!b.paths[k].includes(g)) out.push(`paths.${k} added ${g}`)
+  for (const g of b.paths.tests) if (!a.paths.tests.includes(g)) out.push(`paths.tests lost ${g}`)
+  for (const id of a.knownRed) if (!b.knownRed.includes(id)) out.push(`knownRed added ${id}`)
+  for (const fam of new Set([...Object.keys(b.policy), ...Object.keys(a.policy)])) {
+    if ((a.policy[fam] ?? a.policy.default) === 'final' && (b.policy[fam] ?? b.policy.default) === 'continuous') out.push(`policy.${fam} moved to final`)
+  }
+  for (const g of b.contracts.files) if (!a.contracts.files.includes(g)) out.push(`contracts.files lost ${g}`)
+  for (const k of ['validate', 'run'] as const) if (b.contracts[k] && a.contracts[k] !== b.contracts[k]) out.push(`contracts.${k} changed`)
+  for (const k of ['plan', 'merge'] as const) if (b.gates[k] && !a.gates[k]) out.push(`gates.${k} turned off`)
+  return out
 }

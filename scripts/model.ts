@@ -63,6 +63,7 @@ export type SensorConfig = {
   budget: BudgetConfig
   // Set only by registryConfig (registry.ts): built-ins a registry turned off, and built-ins it made advisory.
   builtins?: { off: string[]; soft: string[] }
+  advisory?: string[] // command keys (fast.<id>, full.<id>) of registry sensors with blocks: false: they warn, never block
 }
 
 export const DEFAULT_CONFIG: SensorConfig = {

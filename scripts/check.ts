@@ -56,7 +56,11 @@ export function loadConfig(ref: string | null = null): { config: SensorConfig; r
 function ratchet(cleared: string[]): void {
   const file = path.join(ROOT, SENSORS_JSON)
   if (!exists(file)) return
-  try { fs.writeFileSync(file, updateKnownRed(read(file), [], cleared)) } catch { /* unparseable: leave it */ }
+  try {
+    const text = read(file)
+    const next = updateKnownRed(text, [], cleared)
+    if (JSON.stringify((JSON.parse(next) as { knownRed?: unknown }).knownRed) !== JSON.stringify((JSON.parse(text) as { knownRed?: unknown }).knownRed ?? [])) fs.writeFileSync(file, next)
+  } catch { /* unparseable: leave it */ }
 }
 
 // A registry can turn a built-in off or make it advisory; secrets and harness-tamper always block (registry.ts).
@@ -76,12 +80,13 @@ export function runDeclared(prefix: 'fast' | 'full', config: SensorConfig, slug:
   if (plan.affectedFailed) findings.push({ sensor: 'unscoped', severity: 'warn', message: `the affected command failed, so every scope ran: ${config.affected}`, fix: 'run the affected command in .rig/sensors.json and fix it' })
   for (const { key, cmd, dir, error } of plan.commands) {
     const known = config.knownRed.includes(key)
+    const advisory = config.advisory?.includes(key) ?? false
     if (error) {
       findings.push({ sensor: 'commands', severity: 'block', message: `${key} not run: ${error}`, fix: `fix the scope's root in .rig/sensors.json` })
       continue
     }
     if (left <= 0) {
-      findings.push({ sensor: 'commands', severity: 'block', message: `${key} not run: the ${Math.round(budgetMs / 1000)} s budget ran out`, fix: `make the ${prefix} commands in .rig/sensors.json faster` })
+      findings.push({ sensor: 'commands', severity: advisory ? 'warn' : 'block', message: `${key} not run: the ${Math.round(budgetMs / 1000)} s budget ran out`, fix: `make the ${prefix} commands in .rig/sensors.json faster` })
       continue
     }
     const row = runCommand(cmd, { timeoutMs: left, cwd: dir })
@@ -94,7 +99,7 @@ export function runDeclared(prefix: 'fast' | 'full', config: SensorConfig, slug:
     const tail = row.tail.split('\n').slice(-TAIL_IN_FINDING).map(t => '      ' + t).join('\n')
     findings.push({
       sensor: 'commands',
-      severity: known && !row.timedOut ? 'warn' : 'block',
+      severity: advisory || (known && !row.timedOut) ? 'warn' : 'block',
       message: `${key} failed (exit ${row.exit}${row.timedOut ? ', timed out' : ''}): ${cmd}\n${tail}`,
       fix: known && !row.timedOut ? 'known red before this change: fix it when you can' : `run \`${cmd}\` and fix what it reports`,
     })

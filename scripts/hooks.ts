@@ -25,18 +25,23 @@ const MODEL_STATE = path.join(SDLC, 'state', 'model.json')
 // The policy for this session's model (spec §3.3); a legacy config has no policy, so checks run as they always have.
 function modeNow(registry: Registry | null, input: HookInput): { mode: Mode; model: string | null } {
   if (!registry) return { mode: 'continuous', model: null }
-  const model = sessionModel(MODEL_STATE, input.session_id, input.transcript_path, ROOT)
+  const model = sessionModel(MODEL_STATE, input.session_id ?? 'default', input.transcript_path, ROOT)
   return { mode: policyMode(registry, model), model }
 }
 
 // Edit-cadence command sensors on the edited file (spec §7 feedback shape): id, guide, output tail, rerun command.
+// One budget for all of them, inside the 75 s PostToolUse timeout (RIG_EDIT_BUDGET_MS overrides it in specs).
 function editSensorFailures(registry: Registry, rel: string): string[] {
   const out: string[] = []
+  const budget = Number(process.env.RIG_EDIT_BUDGET_MS) || 60_000
+  let left = budget
   for (const s of activeSensors(registry, 'edit', 'continuous')) {
     if (!s.cmd || s.cadence !== 'edit' || !s.blocks) continue
     const cmd = commandFor(s, [rel])
     if (!cmd) continue
-    const r = runCommand(cmd, { timeoutMs: s.timeoutMs ?? 60_000 })
+    if (left <= 0) { out.push(`${s.id}: not run, the edit sensors' ${Math.round(budget / 1000)} s budget ran out\nrerun: ${cmd}`); continue }
+    const r = runCommand(cmd, { timeoutMs: Math.min(s.timeoutMs ?? left, left) })
+    left -= r.ms
     if (r.exit !== 0) out.push(`${s.id}: ${s.guide}\n${r.tail.split('\n').slice(-20).join('\n')}\nrerun: ${cmd}`)
   }
   return out

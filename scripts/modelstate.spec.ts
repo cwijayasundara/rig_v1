@@ -80,3 +80,16 @@ test('model-role warns when the main thread is off the build model or the evalua
   assert.equal(f.length, 1)
   assert.match(f[0]?.message ?? '', /rig:evaluator ran on claude-sonnet-5-5/)
 })
+
+import { spawn } from 'node:child_process'
+
+test('parallel launch records are all kept', async () => {
+  const state = path.join(tmp(), 'model.json')
+  const mod = path.resolve(import.meta.dirname, 'modelstate.ts')
+  const run = (tag: string) => new Promise<void>(done => {
+    const code = `import { recordLaunch } from ${JSON.stringify(mod)}; for (let i = 0; i < 15; i++) recordLaunch(${JSON.stringify(state)}, { session: 's', id: '${tag}' + i, agent: 'x', requested: null, resolved: null, at: 'now' })`
+    spawn('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', code], { stdio: 'ignore' }).on('exit', () => done())
+  })
+  await Promise.all([run('a'), run('b'), run('c')])
+  assert.equal(readModelState(state).launches.length, 45)
+})

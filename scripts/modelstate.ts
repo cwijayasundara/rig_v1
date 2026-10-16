@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { modelFamily, type Registry } from './registry.ts'
 import type { Finding } from './model.ts'
+import { withLock } from './core.ts'
 
 export type Launch = { session: string; id: string; agent: string; requested: string | null; resolved: string | null; at: string }
 export type ModelState = { sessions: Record<string, { model: string; source: string; at: string }>; launches: Launch[] }
@@ -18,29 +19,29 @@ export function readModelState(file: string): ModelState {
 }
 
 function save(file: string, s: ModelState): void {
+  const tmp = `${file}.${process.pid}.tmp`
+  fs.writeFileSync(tmp, JSON.stringify(s, null, 2) + '\n')
+  fs.renameSync(tmp, file)
+}
+
+// Parallel hooks (agent launches) share this file: every read-modify-write holds its lock.
+function update(file: string, fn: (s: ModelState) => boolean): void {
   fs.mkdirSync(path.dirname(file), { recursive: true })
-  fs.writeFileSync(file, JSON.stringify(s, null, 2) + '\n')
+  withLock(file, () => { const s = readModelState(file); if (fn(s)) save(file, s) })
 }
 
 export function recordSessionModel(file: string, session: string, model: string, source: string, at: string): void {
   if (!model.trim()) return
-  const s = readModelState(file)
-  s.sessions[session] = { model: model.trim(), source, at }
-  save(file, s)
+  update(file, s => { s.sessions[session] = { model: model.trim(), source, at }; return true })
 }
 
 export function recordLaunch(file: string, l: Launch): void {
-  const s = readModelState(file)
-  s.launches = [...s.launches.filter(x => x.id !== l.id), l].slice(-MAX_LAUNCHES)
-  save(file, s)
+  update(file, s => { s.launches = [...s.launches.filter(x => x.id !== l.id), l].slice(-MAX_LAUNCHES); return true })
 }
 
 export function recordResolved(file: string, id: string, resolved: string): void {
-  const s = readModelState(file)
-  const l = s.launches.find(x => x.id === id)
-  if (!l || !resolved.trim()) return
-  l.resolved = resolved.trim()
-  save(file, s)
+  if (!resolved.trim()) return
+  update(file, s => { const l = s.launches.find(x => x.id === id); if (l) l.resolved = resolved.trim(); return Boolean(l) })
 }
 
 // The model of the last assistant message in a Claude Code transcript (JSONL), read from the file's tail only.
