@@ -51,11 +51,13 @@ export function syncProblems(i: { registry: Registry; errors: string[]; claude: 
 const testsText = (r: Registry): string => (git(['ls-files', '--cached', '--others', '--exclude-standard']) ?? '').split('\n')
   .filter(f => f && matchesAny(f, r.paths.tests)).map(f => read(path.join(ROOT, f))).join('\n')
 
+// A brief behaviour with no test yet is a warning: the brief is written before the code, and each change's own spec.md is
+// what verify and CI hold to its tests.
 export function syncFindings(registry: Registry, errors: string[], severity: Severity): Finding[] {
   const brief = read(path.join(ROOT, BRIEF))
   return syncProblems({ registry, errors, claude: read(path.join(ROOT, CLAUDE_MD)), brief, tests: brief ? testsText(registry) : '' }).map(message => {
     const ofBrief = message.startsWith(BRIEF)
-    return { sensor: 'sync', severity, file: ofBrief ? BRIEF : CLAUDE_MD, message, fix: ofBrief ? 'add a test whose name or comment says the B-number and proves it' : 'run rig sync (sdlc.ts sync); never edit the block by hand' }
+    return { sensor: 'sync', severity: ofBrief ? 'warn' : severity, file: ofBrief ? BRIEF : CLAUDE_MD, message, fix: ofBrief ? 'add a test whose name or comment says the B-number and proves it' : 'run rig sync (sdlc.ts sync); never edit the block by hand' }
   })
 }
 
@@ -76,6 +78,6 @@ export function cmdSync(args: Args): void {
   if (!args.opt.check) return out(writeSync(registry))
   const found = syncFindings(registry, errors, 'block')
   if (!found.length) return out('sync --check: guides match the registry')
-  out(found.map(f => `[sync] ${f.message}\n  fix: ${f.fix}`).join('\n'))
-  process.exitCode = 1
+  out(found.map(f => `[sync] ${f.severity === 'warn' ? '(warning) ' : ''}${f.message}\n  fix: ${f.fix}`).join('\n'))
+  process.exitCode = found.some(f => f.severity === 'block') ? 1 : 0
 }
