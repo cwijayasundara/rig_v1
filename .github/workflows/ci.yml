@@ -20,7 +20,7 @@ jobs:
       - run: node --disable-warning=ExperimentalWarning --test scripts/*.spec.ts
   e2e-fast:
     # The e2e unit tests and the scripted acceptance flow (a fake model, $0): install, brief, two changes through approval,
-    # verify and PR, and the deploy gate. The real-model run is `npm run test:e2e`, by a person.
+    # verify and PR (with the contract stage and an HTTP acceptance), the deploy gate and the policy stage. The real-model run is `npm run test:e2e`, by a person.
     strategy:
       fail-fast: false
       matrix:
@@ -34,6 +34,28 @@ jobs:
       - run: npm ci || npm install
       - run: npm run test:e2e:unit
       - run: npm run test:e2e:fast
+  e2e-stacks:
+    # Stack fixtures: each pack onboards a tiny repo and check --at commit blocks a broken edit on its core sensor.
+    # Every toolchain is installed explicitly and --require all fails the job if one still cannot run: no silent skips here.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci || npm install
+      - run: npm run test:e2e:stacks -- --require all
   dogfood:
     if: false # off for now: the harness is not run on its own repo; to re-enable: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest

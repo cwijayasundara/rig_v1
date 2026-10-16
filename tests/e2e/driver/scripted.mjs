@@ -23,6 +23,7 @@ export function scriptedDriver(sb, phase) {
     async plan() {
       sb.write(`${dir}/spec.md`, phase.spec)
       sb.write(`${dir}/plan.md`, phase.plan)
+      copy(sb, phase.contracts ?? [])
     },
     // /rig:build, /rig:test and /rig:pr: red, green, verify, PR.
     async build() {
@@ -30,7 +31,11 @@ export function scriptedDriver(sb, phase) {
       must(sb.sdlc(['run', '--slug', phase.slug, '--expect-fail', '--', 'npm test']), 'red run')
       copy(sb, phase.impl)
       must(sb.sdlc(['run', '--slug', phase.slug, '--', 'npm test']), 'green run')
+      // verify's own contract log, kept apart from the hooks' runs that follow (assert/change.mjs reads it).
+      const log = sb.env.CONTRACT_LOG
+      if (log) fs.writeFileSync(log, '')
       must(sb.sdlc(['verify', phase.slug]), 'verify')
+      if (log) fs.copyFileSync(log, `${log}.verify`)
       must(sb.sdlc(['pr', phase.slug, '--message', phase.commit]), 'pr')
     },
   }

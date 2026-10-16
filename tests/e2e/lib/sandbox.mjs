@@ -34,7 +34,7 @@ export function createSandbox({ name, out }) {
 
   // RIG_GH points at the stub by absolute path: a headless agent session rebuilds PATH, so a PATH-only stub
   // would silently resolve to the machine's real gh (which then refuses the local bare origin).
-  const env = { ...CLEAN_ENV, PATH: `${bin}${path.delimiter}${process.env.PATH}`, RIG_GH: path.join(bin, 'gh'), RIG_GH_LOG: path.join(logs, 'gh.log') }
+  const env = { ...CLEAN_ENV, PATH: `${bin}${path.delimiter}${process.env.PATH}`, RIG_GH: path.join(bin, 'gh'), RIG_GH_LOG: path.join(logs, 'gh.log'), CONTRACT_LOG: path.join(logs, 'contract.log') }
   const run = (cmd, args, opts = {}) =>
     spawnSync(cmd, args, { cwd: dir, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, ...opts, env: { ...env, ...opts.env } })
   const git = (...args) => {
@@ -59,11 +59,11 @@ export function createSandbox({ name, out }) {
       fs.writeFileSync(path.join(dir, rel), text)
     },
     // The repo's vendored checker once onboarded, the plugin's before: a teammate only ever has the vendored one.
-    sdlc(args, { human = false } = {}) {
+    sdlc(args, { human = false, input } = {}) {
       const vendored = path.join(dir, '.rig/bin/sdlc.ts')
       const script = fs.existsSync(vendored) ? vendored : path.join(PLUGIN, 'scripts/sdlc.ts')
       const who = human ? { SDLC_HUMAN: '1' } : {}
-      return run('node', ['--disable-warning=ExperimentalWarning', script, ...args], { env: { CLAUDE_PROJECT_DIR: dir, ...who } })
+      return run('node', ['--disable-warning=ExperimentalWarning', script, ...args], { env: { CLAUDE_PROJECT_DIR: dir, ...who }, ...(input === undefined ? {} : { input }) })
     },
     commitAll(message) {
       git('add', '-A')

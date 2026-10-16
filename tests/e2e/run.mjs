@@ -1,8 +1,9 @@
-// The one integration test: node tests/e2e/run.mjs [--driver scripted|live] [--phase S0|S1|S2|S3|S4]
+// The one integration test: node tests/e2e/run.mjs [--driver scripted|live] [--phase S0|S1|S2|S3|S4|S5]
 // [--cap USD] [--model MODEL] [--minutes N] [--out DIR]
 // S0 installs the harness into a throwaway shop-app repo, S1 writes the product brief, S2 builds the shop greenfield
 // through approval, verify and PR, S3 lands the delete-item change on top (with a stale-approval check), S4 exercises
-// the local deploy gate. Scripted is $0 and gates CI; live drives real `claude -p` sessions (default model
+// the local deploy gate, S5 runs one change under the continuous and the final policy (scripted only). S2 and S3 also
+// write and freeze the HTTP contract and pass the hidden HTTP acceptance. Scripted is $0 and gates CI; live drives real `claude -p` sessions (default model
 // claude-haiku-5-5) and fails when the whole run takes longer than --minutes (default 20) of wall clock.
 import fs from 'node:fs'
 import os from 'node:os'
@@ -11,11 +12,12 @@ import { createSandbox } from './lib/sandbox.mjs'
 import { writeReport } from './lib/report.mjs'
 import { mergeToMain } from './lib/merge.mjs'
 import { Checks } from './lib/checks.mjs'
-import { install, SCAFFOLD_PROMPT } from './phases/s0-install.mjs'
+import { install, SCAFFOLD_PROMPT, copyContractTool } from './phases/s0-install.mjs'
 import { runBrief } from './phases/s1-brief.mjs'
 import { PHASE as S2, runShopChange } from './phases/s2-greenfield.mjs'
-import { PHASE as S3, assertDelete, staleCheck } from './phases/s3-delete.mjs'
+import { PHASE as S3, assertDelete, staleCheck, contractChecks } from './phases/s3-delete.mjs'
 import { runDeploy } from './phases/s4-deploy.mjs'
+import { runPolicy } from './phases/s5-policy.mjs'
 import { scriptedDriver } from './driver/scripted.mjs'
 import { createSessions, liveDriver } from './driver/live.mjs'
 import { assertOnboarding } from './assert/onboarding.mjs'
@@ -42,14 +44,14 @@ const timed = async (id, fn) => {
 }
 const fmt = m => `${m.toFixed(1)} min`
 // A phase runs when it is the requested one or a prerequisite of it.
-const NEEDS = { S2: ['S1'], S3: ['S1', 'S2'], S4: ['S1', 'S2', 'S3'] }
+const NEEDS = { S2: ['S1'], S3: ['S1', 'S2'], S4: ['S1', 'S2', 'S3'], S5: ['S1', 'S2', 'S3', 'S4'] }
 const want = id => !only || only === id || (NEEDS[only] ?? []).includes(id)
 const ensureMain = slug => {
   const b = sb.git('rev-parse', '--abbrev-ref', 'HEAD')
   if (b !== 'main') mergeToMain(sb, slug)
 }
 // A group that ran fewer checks than this lost coverage silently (an assertion call deleted or skipped): fail the scripted run.
-const FLOOR = { 'S0 install': 14, 'S1 brief': 3, 'S2 ': 19, 'S3 ': 21, 'S4 deploy': 9 }
+const FLOOR = { 'S0 install': 14, 'S1 brief': 3, 'S2 ': 22, 'S3 ': 27, 'S4 deploy': 9, 'S5 policy': 6 }
 const lostCoverage = () => (live || only ? [] : Object.entries(FLOOR).filter(([k, n]) => {
   const g = results.find(c => c.title.startsWith(k))
   return !g || g.results.length < n
@@ -67,6 +69,7 @@ try {
   if (live) {
     sb.git('commit', '-q', '--allow-empty', '-m', 'chore: empty start')
     sb.isolate()
+    copyContractTool(sb)
     sessions.run('S0-init', `/rig:init --defaults greenfield "${SCAFFOLD_PROMPT}"`, { withPlugin: true })
     sb.commitAll('chore: onboarding leftovers')
     const p0 = new Checks('S0 install (live)')
@@ -87,7 +90,7 @@ try {
   if (want('S3')) {
     const { slug, checks } = await timed('S3', () => {
       ensureMain(s2slug)
-      return runShopChange(sb, S3, driverFor(S3), { afterApprove: live ? undefined : slug => staleCheck(sb, slug) })
+      return runShopChange(sb, S3, driverFor(S3), { afterApprove: live ? undefined : async slug => [...await staleCheck(sb, slug), ...await contractChecks(sb, slug)] })
     })
     await assertDelete(checks, sb, slug)
     results.push(checks)
@@ -96,6 +99,10 @@ try {
   if (want('S4')) {
     ensureMain(s3slug ?? S3.slug)
     results.push(...await timed('S4', () => runDeploy(sb)))
+  }
+  if (want('S5') && !live) {
+    ensureMain(s3slug ?? S3.slug)
+    results.push(await timed('S5', () => runPolicy(sb)))
   }
   if (live) {
     const pc = new Checks('process (all live sessions)')

@@ -1,5 +1,6 @@
 // Per-change evidence on the slim lifecycle (spec §8): intent, spec with B-numbers, a person's approval that still matches,
 // red before green, a passing verify on the PR tree, the PR, and what CI will see.
+import fs from 'node:fs'
 import { createHash } from 'node:crypto'
 
 const json = t => { try { return JSON.parse(t) } catch { return null } }
@@ -14,6 +15,19 @@ export async function assertChange(c, sb, slug, phase) {
   await c.check(`${id}: approval.json is the person's (by the operator)`, () => a?.by === 'rig operator' || `by ${a?.by}`)
   await c.check(`${id}: the approval hashes the spec.md and plan.md that shipped`, () =>
     (a?.hashes?.['spec.md'] === digest(sb.read(`${dir}/spec.md`)) && a?.hashes?.['plan.md'] === digest(sb.read(`${dir}/plan.md`))) || JSON.stringify(a?.hashes))
+  const declared = (json(sb.read('.rig/sensors.json'))?.contracts?.files ?? []).length > 0
+  if (phase.contracts?.length && declared) {
+    await c.check(`${id}: the approval froze every contract file that shipped`, () => {
+      const bad = phase.contracts.map(f => f.dest).filter(f => a?.contracts?.[f] !== digest(sb.read(f)))
+      return !bad.length || `not frozen as shipped: ${bad.join(', ')} (${JSON.stringify(a?.contracts)})`
+    })
+    await c.check(`${id}: verify ran the contract validate before the contract run`, () => {
+      // Only verify's own lines: the pr commit and push run the contracts again afterwards (the scripted driver keeps verify's lines apart).
+      const file = `${sb.env.CONTRACT_LOG}.verify`
+      const log = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').trim() : '(no log of verify)'
+      return log === 'validate\nrun' || `verify logged: ${log.split('\n').join(', ')}`
+    })
+  }
   const runs = sb.read(`${dir}/evidence/runs.jsonl`).trim().split('\n').filter(Boolean).map(json)
   const red = runs.findIndex(r => r?.expectFail && r.exit !== 0)
   const green = runs.findIndex((r, i) => i > red && !r?.expectFail && r?.exit === 0)

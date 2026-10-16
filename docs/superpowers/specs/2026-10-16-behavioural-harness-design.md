@@ -242,6 +242,8 @@ Deleted elsewhere: `brain/`, `hooks/` mod UI, `agents/` (all five; replaced by o
 - **Add** stack fixtures: tiny repos for node, go, java-maven, dotnet, rust under `tests/e2e/fixtures/stacks/`. Each runs `rig init` and `rig check commit`; skipped when the toolchain is absent.
 - Budgets unchanged: scripted e2e free; live e2e under 20 minutes and $6.
 
+Step 5b notes: the shop's contract commands are its own zero-dependency script (Specmatic waits on Java and its licence, §14); stack fixtures run as `npm run test:e2e:stacks` and their own CI job, not in `npm test`.
+
 ## 11. Rollout
 
 Each step lands with `npm test` green.

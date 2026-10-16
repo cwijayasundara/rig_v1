@@ -1,0 +1,17 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/checkout",
+    "body": {
+      "code": "SAVE10"
+    }
+  },
+  "response": {
+    "status": 201,
+    "body": {
+      "subtotalCents": 900,
+      "discountCents": 90,
+      "totalCents": 810
+    }
+  }
+}
