@@ -167,3 +167,10 @@ test('contracts.covers parses as globs, defaults to empty, and losing one weaken
   const before = JSON.stringify({ sensors: [], contracts: { covers: ['src/http/**'] } })
   assert.deepEqual(weakensRegistry(before, JSON.stringify({ sensors: [] })), ['contracts.covers lost src/http/**'])
 })
+
+test('a command sensor may not take a harness finding\'s name', () => {
+  for (const id of ['commands', 'config', 'contracts', 'unscanned', 'plan-gate', 'human-approval', 'sync']) {
+    const { errors } = parseRegistry(JSON.stringify({ sensors: [{ id, cmd: 'true', cadence: 'turn', blocks: true, count: 'exit', guide: 'g' }] }))
+    assert.ok(errors.some(e => e.includes(`"${id}" is reserved for a harness finding`)), `${id}: ${errors.join('; ')}`)
+  }
+})

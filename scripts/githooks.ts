@@ -128,7 +128,7 @@ const readStdin = (): string => { try { return fs.readFileSync(0, 'utf8') } catc
 // Running out of budget is a warning at push: CI still runs the commands.
 // Pre-push always runs, inside the commit-cadence budget (spec §3.1).
 const PUSH_BUDGET_MS = 600_000
-const soften = (f: Finding): Finding => (f.sensor === 'commands' && /budget ran out|timed out/.test(f.message) ? { ...f, severity: 'warn' } : f)
+const soften = (f: Finding): Finding => (f.outOfTime ? { ...f, severity: 'warn' } : f)
 
 export function cmdCheckPush(_args: Args): void {
   const { registry: config, rules, errors } = loadConfig()

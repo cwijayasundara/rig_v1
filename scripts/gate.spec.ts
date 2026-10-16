@@ -139,7 +139,7 @@ test('I3: Stop ratchets a known-red command that now passes; it then blocks when
   write(repo, 'bad.flag', 'x\n')
   const out = JSON.parse(stop().stdout)
   assert.equal(out.decision, 'block')
-  assert.match(out.reason, /\[commands\][\s\S]*lint failed/)
+  assert.match(out.reason, /\[lint\][\s\S]*lint failed/)
 })
 
 const stop = () => hook(repo, 'stop', { session_id: 's1' })

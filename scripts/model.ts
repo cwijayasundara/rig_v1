@@ -4,13 +4,13 @@ export type Line = { n: number; text: string }
 type FileStatus = 'A' | 'M' | 'D' | 'R'
 export type FileDiff = { file: string; from?: string; status: FileStatus; added: Line[]; removed: Line[]; binary?: true; oversize?: true }
 export type Severity = 'block' | 'warn'
-// Every sensor name a Finding can carry; /rig:waive accepts exactly these (a test keeps this in step with the sources).
+// Every built-in and harness finding name; /rig:waive accepts these plus the registry's command sensor ids (a test keeps this in step with the sources).
 export const SENSOR_NAMES = [
   'test-tamper', 'suppression', 'layering', 'size', 'secrets', 'rules', 'harness-tamper',
-  'traceability', 'red-proof', 'unscanned', 'commands', 'config', 'contracts', 'model-role',
+  'traceability', 'red-proof', 'unscanned', 'config', 'contracts', 'model-role',
 ]
 
-export type Finding = { sensor: string; severity: Severity; file?: string; line?: number; message: string; fix: string; labels?: string[] }
+export type Finding = { sensor: string; severity: Severity; file?: string; line?: number; message: string; fix: string; labels?: string[]; outOfTime?: true }
 export type Layer = { from: string; mustNotImport: string[]; why: string }
 export type Rule = { id: string; pattern: string; paths?: string[]; message: string; why: string; action: Severity }
 
