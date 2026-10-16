@@ -11,21 +11,23 @@ beforeEach(() => { repo = makeRepo(); sdlc(repo, ['init']) })
 
 const HUMAN = { env: { SDLC_HUMAN: '1' } }
 const registry = (v: object) => { write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], ...v })); gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'cfg') }
-const approvals = () => fs.readFileSync(path.join(repo, '.rig/approvals.jsonl'), 'utf8').trim().split('\n').map(l => JSON.parse(l))
+// The change's approval.json, as a one-item list so tests read the latest with .at(-1).
+const approvals = () => [JSON.parse(fs.readFileSync(path.join(repo, '.rig/changes/demo/approval.json'), 'utf8'))]
+const PLANNED = (slug: string) => { write(repo, `.rig/changes/${slug}/spec.md`, '# Spec\n\n## Behaviours\n- B1: x\n\n## Open questions\nnone\n'); write(repo, `.rig/changes/${slug}/plan.md`, '# Plan\n\n## Open questions\nnone\n') }
 // A feature change whose design the person approves, with api/openapi.yaml as its frozen contract.
 const approved = () => {
   registry({ contracts: { files: ['api/**'] } })
   write(repo, 'api/openapi.yaml', 'openapi: 3.1.0\n')
-  sdlc(repo, ['new', 'demo', '--type', 'feature', '--tier', 'M'])
-  write(repo, '.rig/changes/demo/design.md', '# Design\n\n## Open questions\nnone\n')
-  const r = sdlc(repo, ['approve', 'demo', 'design'], HUMAN)
+  sdlc(repo, ['new', 'demo', '--type', 'feature'])
+  PLANNED('demo')
+  const r = sdlc(repo, ['approve', 'demo'], HUMAN)
   assert.equal(r.code, 0, r.stderr)
 }
 const commitCheck = () => { gitIn(repo, 'add', '.'); return sdlc(repo, ['check', '--at', 'commit']) }
-// The design approval's state, read through core.ts (status text also depends on the tier's other gates).
+// The approval's state, read through lifecycle.ts.
 const designState = () => {
-  const core = path.resolve(import.meta.dirname, 'core.ts')
-  const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', `import { approvalOf } from ${JSON.stringify(core)}; console.log(approvalOf('demo', 'design'))`], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo } })
+  const lib = path.resolve(import.meta.dirname, 'lifecycle.ts')
+  const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', `import { approvalState } from ${JSON.stringify(lib)}; console.log(approvalState('demo'))`], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo } })
   return r.stdout.trim()
 }
 
@@ -73,7 +75,7 @@ test('re-approving after a contract edit records fresh hashes and clears the blo
   approved()
   const first = approvals().at(-1).contracts['api/openapi.yaml']
   write(repo, 'api/openapi.yaml', 'openapi: 3.1.0\npaths: {}\n')
-  const r = sdlc(repo, ['approve', 'demo', 'design'], HUMAN)
+  const r = sdlc(repo, ['approve', 'demo'], HUMAN)
   assert.doesNotMatch(r.stdout, /already approved/)
   assert.notEqual(approvals().at(-1).contracts['api/openapi.yaml'], first)
   assert.doesNotMatch(commitCheck().stdout, /\[harness-tamper\]/)
@@ -93,16 +95,16 @@ test('CI honours a contract waiver that is already on the base branch', () => {
   assert.doesNotMatch(r.stdout, /\[harness-tamper\][^\n]*api\/openapi\.yaml/)
 })
 
-test('a legacy behavioral repo keeps digest staleness and records no per-file freeze', () => {
+test('a legacy behavioral repo freezes its contract files per file too (no digest staleness since 4b)', () => {
   write(repo, '.rig/sensors.json', JSON.stringify({ behavioral: { validate: 'node -e 0' } }))
   write(repo, '.rig/contracts/api.yaml', 'openapi: 3.1.0\n')
   gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'cfg')
-  sdlc(repo, ['new', 'demo', '--type', 'feature', '--tier', 'M'])
-  write(repo, '.rig/changes/demo/design.md', '# Design\n\n## Open questions\nnone\n')
-  sdlc(repo, ['approve', 'demo', 'design'], HUMAN)
-  assert.equal(approvals().at(-1).contracts, undefined)
+  sdlc(repo, ['new', 'demo', '--type', 'feature'])
+  PLANNED('demo')
+  sdlc(repo, ['approve', 'demo'], HUMAN)
+  assert.deepEqual(Object.keys(approvals().at(-1).contracts), ['.rig/contracts/api.yaml'])
   write(repo, '.rig/contracts/api.yaml', 'openapi: 3.1.0\npaths: {}\n')
-  assert.equal(designState(), 'stale')
+  assert.equal(designState(), 'approved', 'the approval covers spec and plan; the edit is a frozen-file block instead')
 })
 
 import os from 'node:os'
@@ -193,9 +195,9 @@ test('an untracked frozen contract that is not staged does not block a commit of
 test('re-approving after every contract file is gone clears the freeze, and a second approve adds no row', () => {
   approved()
   fs.rmSync(path.join(repo, 'api/openapi.yaml'))
-  sdlc(repo, ['approve', 'demo', 'design'], HUMAN)
+  sdlc(repo, ['approve', 'demo'], HUMAN)
   const rows = approvals().length
-  sdlc(repo, ['approve', 'demo', 'design'], HUMAN)
+  sdlc(repo, ['approve', 'demo'], HUMAN)
   assert.equal(approvals().length, rows)
   assert.doesNotMatch(commitCheck().stdout, /\[harness-tamper\]/)
 })

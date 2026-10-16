@@ -1,305 +1,56 @@
-// The PR node: ship's gates, then pr.md, one commit, push of sdlc/<slug> only, and gh pr create. Plus follow-ups and CI checks.
-// The model writes only the commit message; commit, push and PR are deterministic.
+// `pr` (behavioural harness spec 2026-10-16 §8): a change whose plan a person approved and whose verify.json is fresh for
+// this tree is committed on sdlc/<slug>, pushed, and gets a PR, or stays local-only without a remote.
 import fs from 'node:fs'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
-import {
-  ROOT, CHANGES, SDLC, STATE, exists, read, git, gitIn, out, fail, now, optString, toPosix, defaultBase, scopeDrift, ensureGitignore, checkSlug,
-  planFiles, planName, isPlanned, frontmatter, clearState, type Args,
-} from './core.ts'
-import { loadChange, nextCommand, activeSlug, prRecorded, prDone } from './graph.ts'
-import { loadConfig, runChecks } from './check.ts'
-import { branchDiff, showAt } from './diffs.ts'
-import { runCommand, recordRun } from './runs.ts'
-import { formatFindings, SENSOR_NAMES, ghBin, type SensorConfig } from './model.ts'
-import { appendEvent, block, unblock, readRatchet, readEvents } from './ratchet.ts'
-import { runQuality } from './quality.ts'
-import { verificationFresh, sensorsFresh } from './stamp.ts'
-import { publishQuietly } from './spend.ts'
-
-type ShippedRepo = { name: string; branch: string; commit: string }
-
-type Consumer = { name: string; dir: string; test?: string; files: string[]; branch: string | null }
-
-// Changed paths (untracked included) in a checkout, relative to it.
-function dirtyPaths(dir: string): string[] {
-  const parts = (gitIn(dir, ['status', '--porcelain', '-uall', '-z']) ?? '').split('\0').filter(Boolean)
-  const files: string[] = []
-  for (let i = 0; i < parts.length; i++) {
-    const row = parts[i] ?? ''
-    files.push(row.replace(/^[ MADRCUT?!]{1,2} /, '')) // gitIn trims, so the first row may have lost a leading space
-    if (/^[RC]/.test(row)) i++ // a rename/copy row is followed by its source path
-  }
-  return files
-}
-
-// Consumers with uncommitted work in this change: every changed file must be planned before anything runs or is committed.
-function changedConsumers(slug: string, config: SensorConfig): Consumer[] {
-  const planned = planFiles(slug)
-  const found: Consumer[] = []
-  for (const c of config.consumers) {
-    const dir = path.resolve(ROOT, c.path)
-    if (!exists(dir)) continue
-    const dirty = dirtyPaths(dir)
-    if (!dirty.length) continue
-    const rel = toPosix(path.normalize(c.path)).replace(/\/+$/, '')
-    const stray = dirty.filter(f => !isPlanned(`${rel}/${f}`, planned))
-    if (stray.length) fail(`${c.name} has changes outside ${slug}/${planName(slug)} ## Files: ${stray.join(', ')}`)
-    found.push({ name: c.name, dir, test: c.test, files: dirty, branch: gitIn(dir, ['rev-parse', '--abbrev-ref', 'HEAD']) })
-  }
-  return found
-}
-
-const branchExists = (dir: string, branch: string): boolean => gitIn(dir, ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]) !== null
-const onTrunk = (b: string | null): boolean => b === 'main' || b === 'master'
-
-// Another change's branch with commits of its own: a change started or shipped here would carry them into its PR.
-export function otherChangeBranch(slug: string): string | null {
-  const head = git(['rev-parse', '--abbrev-ref', 'HEAD'])
-  const base = defaultBase()
-  if (!head?.startsWith('sdlc/') || head === `sdlc/${slug}` || !base || git(['rev-parse', 'HEAD']) === base) return null
-  return `HEAD is on ${head}, which has commits not on the trunk; ${slug} would be stacked on them. `
-    + `Move this change onto the trunk first: git stash -u && git checkout -b sdlc/${slug} ${base.slice(0, 12)} && git stash pop`
-}
-
-function commitConsumer(c: Consumer, slug: string, message: string): ShippedRepo {
-  const branch = `sdlc/${slug}`
-  if (onTrunk(c.branch)) {
-    if (gitIn(c.dir, ['checkout', '-b', branch]) === null) fail(`could not create ${branch} in ${c.name}`)
-  } else process.stderr.write(`${c.name} is on ${c.branch}, committing there, not ${branch}\n`)
-  if (!c.test) process.stderr.write(`${c.name} has no test declared; committed unverified\n`)
-  if (gitIn(c.dir, ['add', '--', ...c.files]) === null) fail(`git add failed in ${c.name}`)
-  const body = `${message}\n\nPart of ${path.basename(ROOT)}@${branch}`
-  // The consumer's own identity first; a checkout with none configured gets a neutral one.
-  const ok = gitIn(c.dir, ['commit', '-q', '-m', body]) !== null
-    || gitIn(c.dir, ['-c', 'user.name=sdlc', '-c', 'user.email=sdlc@localhost', 'commit', '-q', '-m', body]) !== null
-  if (!ok) fail(`commit failed in ${c.name}`)
-  return { name: c.name, branch: gitIn(c.dir, ['rev-parse', '--abbrev-ref', 'HEAD']) ?? branch, commit: gitIn(c.dir, ['rev-parse', 'HEAD']) ?? '' }
-}
-
-// Ships a change to its PR deterministically: preconditions, scope gate, branch, pr.md, one commit, push and gh pr create.
-// --followup commits review fixes on the same branch instead. The model only writes the message.
-export function cmdPr(args: Args): void {
-  const slug = args.pos[0] ?? activeSlug()
-  const message = optString(args, 'message')
-  if (!slug) fail('usage: pr <slug> --message "<conventional commit message>" [--followup]')
-  checkSlug(slug)
-  if (!message) fail('pr needs --message "<type(scope): summary>"')
-  if (args.opt.followup) return followup(slug, message)
-  const change = loadChange(slug)
-  const pending = change.stages.filter(s => s !== 'pr' && !(change.next && change.stages.indexOf(s) < change.stages.indexOf(change.next.stage)))
-  if (change.next && change.next.stage !== 'pr') fail(`not ready to ship (pr): next is ${nextCommand(change)} (pending: ${pending.join(', ')})`)
-  if (!change.next) return out(`${slug} is already shipped`)
-
-  if (prRecorded(slug)) return resume(slug, message)
-  const head = git(['rev-parse', '--abbrev-ref', 'HEAD'])
-  const stacked = otherChangeBranch(slug)
-  if (stacked) fail(`not shipping: ${stacked}`)
-  const base = defaultBase() ?? (head && ['main', 'master'].includes(head) ? git(['rev-parse', 'HEAD']) : null)
-  const r = scopeDrift(slug, base)
-  if (r.drift.length) fail(`scope drift, not shipping. Out-of-plan files:\n${r.drift.map(f => '  ' + f).join('\n')}\nAdd them to ${planName(slug)} ## Files (and re-approve if gated) or revert them.`)
-  const sensorsBefore = read(path.join(SDLC, 'sensors.json'))
-  // verify ran the declared full commands on this exact tree: judging the tree again would only repeat them.
-  const covered = verificationFresh(slug).fullCovered // the knownRed ratchet is not tightened on this path; it tightens at the next Stop
-  const { config, errors, gate } = shipGate(slug, base, covered ? 'none' : 'full', true)
-  const ratcheted = read(path.join(SDLC, 'sensors.json')) !== sensorsBefore
-  if (errors.length || gate.blocks.length) refuse(slug, 'pr', errors, gate, 'not shipping')
-
-  if (readRatchet(slug).blocked?.node === 'pr') unblock(slug, 'ship gate passed', 'gate')
-  const consumers = changedConsumers(slug, config)
-  const trunk = onTrunk(head)
-  if (trunk && branchExists(ROOT, `sdlc/${slug}`)) fail(`not shipping: branch sdlc/${slug} already exists in this repo`)
-  for (const c of consumers) {
-    if (onTrunk(c.branch) && branchExists(c.dir, `sdlc/${slug}`)) fail(`not shipping: branch sdlc/${slug} already exists in ${c.name}`)
-  }
-  if (!git(['status', '--porcelain'])) fail('not shipping: nothing to commit in this repo')
-  for (const c of consumers) {
-    if (!c.test) continue
-    const row = runCommand(c.test, { cwd: c.dir })
-    recordRun(slug, { ...row, source: 'ship' })
-    if (row.exit !== 0) fail(`not shipping: ${c.name} tests failed (exit ${row.exit}):\n${row.tail}`)
-  }
-  const shipFile = path.join(CHANGES, slug, 'ship.json')
-  const repos: ShippedRepo[] = []
-  const record = (): void => fs.writeFileSync(shipFile, JSON.stringify({ at: now(), base, changed: r.changed.length, drift: [], matchRatio: 1, repos }, null, 2) + '\n')
-  for (const c of consumers) {
-    repos.push(commitConsumer(c, slug, message))
-    record() // a later failure still leaves what was committed on record
-  }
-
-  if (trunk) {
-    if (git(['checkout', '-b', `sdlc/${slug}`]) === null) fail(`could not create branch sdlc/${slug}`)
-  }
-  const branch = `sdlc/${slug}`
-  const remote = git(['remote', 'get-url', 'origin']) !== null
-  if (remote && git(['rev-parse', '--abbrev-ref', 'HEAD']) !== branch) fail(`not shipping: only ${branch} is pushed and HEAD is ${git(['rev-parse', '--abbrev-ref', 'HEAD'])}; nothing was committed`)
-  const title = (message.split('\n')[0] ?? slug).slice(0, 200)
-  // pr.md is evidence (written only here) and lands in the same commit as ship.json: a committed ship.json alone reads as a v0.1 change, done.
-  fs.writeFileSync(path.join(CHANGES, slug, 'pr.md'), `---\nstate: ${remote ? 'open' : 'local-only'}\nbranch: ${branch}\n---\n${title}\n`)
-  // Without a remote the event is complete now, so it lands in the commit; with one it needs the PR url, after the push.
-  if (!remote) appendEvent(slug, { node: 'pr', verdict: 'done', kind: 'pr', target: 'local-only' })
-  record()
-  ensureGitignore()
-  const changeDir = toPosix(path.relative(ROOT, path.join(CHANGES, slug)))
-  const extras = ['.rig/approvals.jsonl', '.rig/waivers.jsonl', '.rig/.gitignore', '.rig/STATE.md', '.rig/guides', ...(ratcheted ? ['.rig/sensors.json'] : [])].filter(f => exists(path.join(ROOT, f)))
-  const code = r.changed.filter(f => !f.startsWith('.rig/'))
-  if (git(['add', '--', changeDir, ...extras, ...code]) === null) fail('git add failed')
-  // The ship gate just judged this tree with waivers applied: the git hooks would only re-run it (and could time out).
-  if (git(['commit', '-q', '--no-verify', '-m', message]) === null) fail('git commit failed (nothing staged)')
-  let target = 'local-only'
-  if (remote) {
-    // Only sdlc/<slug> is ever pushed: never the trunk, never forced.
-    if (git(['rev-parse', '--abbrev-ref', 'HEAD']) !== branch) { block(slug, 'pr', `HEAD is not ${branch}; not pushing`); fail(`not pushing: HEAD is not ${branch} (blocked)`) }
-    if (git(['push', '--no-verify', '-u', 'origin', branch]) === null) { block(slug, 'pr', 'git push failed'); fail('pushed nothing: git push failed (blocked)') }
-    publishQuietly()
-    target = openPr(slug, title)
-  }
-  out(`pr ${slug} on ${git(['rev-parse', '--abbrev-ref', 'HEAD'])} at ${git(['rev-parse', '--short', 'HEAD'])}: ${code.length} code file(s) + artifacts; ${remote ? `PR ${target}` : 'no origin remote, local only'}. The change stays active for pr-review.`)
-}
+import { ROOT, CHANGES, exists, out, fail, git, checkSlug, optString, ensureGitignore, type Args } from './core.ts'
+import { loadConfig } from './check.ts'
+import { ghBin } from './model.ts'
+import { treeStamp } from './stamp.ts'
+import { activeSlug, setActive, approvalState, verifyFresh } from './lifecycle.ts'
 
 const ghLast = (text: string): string => text.trim().split('\n').at(-1) ?? ''
 const URL_RE = /^https?:\/\//
 
-// gh pr create; records the pr event only for a real URL. Anything else blocks with the manual command.
-function openPr(slug: string, title: string): string {
-  const file = toPosix(path.relative(ROOT, path.join(CHANGES, slug, 'pr.md')))
+function openPr(slug: string, branch: string, title: string): string | null {
   const body = path.join(CHANGES, slug, 'pr.md')
-  let url = ''
-  try { url = ghLast(execFileSync(ghBin(), ['pr', 'create', '--title', title, '--body-file', body], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 })) } catch (e) {
+  const gh = (argv: string[]): string => execFileSync(ghBin(), argv, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 })
+  try { return URL_RE.test(ghLast(gh(['pr', 'create', '--title', title, '--body-file', body]))) ? ghLast(gh(['pr', 'view', branch, '--json', 'url', '-q', '.url'])) : null } catch (e) {
     const x = e as { stdout?: unknown; stderr?: unknown }
-    // The PR already exists (a rerun, or opened by hand): record its url instead of blocking.
-    if (/already exists/i.test(`${String(x.stdout ?? '')}${String(x.stderr ?? '')}`)) url = ghLast(ghRun(['pr', 'view', `sdlc/${slug}`, '--json', 'url', '-q', '.url']) ?? '')
+    // The PR already exists (a rerun, or opened by hand): report its url.
+    if (!/already exists/i.test(`${String(x.stdout ?? '')}${String(x.stderr ?? '')}`)) return null
+    try { const url = ghLast(gh(['pr', 'view', branch, '--json', 'url', '-q', '.url'])); return URL_RE.test(url) ? url : null } catch { return null }
   }
-  if (!URL_RE.test(url)) {
-    block(slug, 'pr', `the branch is pushed but gh pr create printed no PR url; run: gh pr create --title ${JSON.stringify(title)} --body-file ${file}, or rerun sdlc.ts pr ${slug} --message ...`)
-    fail('the branch is pushed but gh pr create failed (blocked)')
-  }
-  appendEvent(slug, { node: 'pr', verdict: 'done', kind: 'pr', target: url })
-  return url
 }
 
-// pr.md is committed but no PR was recorded (gh failed after the push): finish the push and the PR, never a second commit.
-function resume(slug: string, message: string): void {
+export function cmdPr(args: Args): void {
+  const given = args.pos[0]
+  const slug = given ? checkSlug(given) : activeSlug()
+  const message = optString(args, 'message')
+  if (!slug || !message) fail('usage: pr [<slug>] --message "<type(scope): summary>"')
+  if (!exists(path.join(CHANGES, slug))) fail(`no such change: ${slug}`)
+  if (exists(path.join(CHANGES, slug, 'pr.md'))) return out(`${slug} already has a PR (.rig/changes/${slug}/pr.md)`)
+  const gates = loadConfig().registry?.gates ?? { plan: true, merge: true }
+  if (gates.plan && approvalState(slug) !== 'approved') fail(`not shipping: ${slug}'s plan is not approved (a person runs /rig:approve ${slug})`)
+  if (!verifyFresh(slug, treeStamp())) fail(`not shipping: verify.json is missing, failing or from another tree; run /rig:test ${slug}`)
+  if (!git(['status', '--porcelain'])) fail('not shipping: nothing to commit')
   const branch = `sdlc/${slug}`
-  if (git(['rev-parse', '--abbrev-ref', 'HEAD']) !== branch) fail(`resuming ${slug} needs HEAD on ${branch}`)
-  if (git(['remote', 'get-url', 'origin']) === null) fail(`cannot resume ${slug}: no origin remote`)
-  if (git(['push', '--no-verify', '-u', 'origin', branch]) === null) { block(slug, 'pr', 'git push failed'); fail('git push failed (blocked)') }
-  publishQuietly()
-  const url = openPr(slug, (message.split('\n')[0] ?? slug).slice(0, 200))
-  unblock(slug, 'pr created', 'other')
-  out(`resumed ${slug}: PR ${url}`)
-}
-
-function ghRun(argv: string[], keepStdoutOnFailure = false): string | null {
-  try { return execFileSync(ghBin(), argv, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 }) } catch (e) {
-    // gh pr checks exits non-zero for failing or pending checks but still prints the JSON.
-    const stdout = (e as { stdout?: unknown }).stdout
-    return keepStdoutOnFailure && typeof stdout === 'string' && stdout.trim() ? stdout : null
+  if (git(['rev-parse', '--abbrev-ref', 'HEAD']) !== branch) {
+    if (git(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]) !== null) fail(`not shipping: branch ${branch} already exists; check it out first`)
+    if (git(['checkout', '-b', branch]) === null) fail(`could not create branch ${branch}`)
   }
-}
-
-// No gate ran before a follow-up, so the git hooks judge it: their reasons reach the person, within the push budget.
-function gitLoud(argv: string[]): boolean {
-  try {
-    execFileSync('git', argv, { cwd: ROOT, stdio: ['ignore', 'ignore', 'inherit'], timeout: loadConfig().config.githooks.budgetMs + 60_000 })
-    return true
-  } catch { return false }
-}
-
-// The ship gate pr and pr --followup both judge. Defence in depth: when the tree changed after the sensors node, quality is measured
-// again (the base counts are cached per base SHA) so a lint or quality regression cannot ship. No round is recorded.
-function shipGate(slug: string, base: string | null, commands: 'none' | 'full', ratchet: boolean): { config: SensorConfig; errors: string[]; gate: ReturnType<typeof runChecks> } {
-  const { config, rules, errors } = loadConfig()
-  const gate = runChecks({ point: 'ship', diffs: branchDiff(base ?? 'HEAD'), config, rules, slugs: [slug], commands, budgetMs: 1_800_000, before: f => showAt(base ?? 'HEAD', f) ?? '', base, ratchet })
-  if (Object.values(config.quality).some(Boolean) && !sensorsFresh(slug)) {
-    const q = runQuality(slug).blocks.filter(b => b.sensor.startsWith('quality.') || b.sensor === 'invariant')
-    gate.blocks.push(...q)
-    gate.findings.push(...q)
-  }
-  return { config, errors, gate }
-}
-
-// A refused ship gate: a gate-kind block on `node` that names the waiver a person gives (R46: the node resumes once it is given).
-function refuse(slug: string, node: 'pr' | 'pr-review', errors: string[], gate: ReturnType<typeof runChecks>, what: string): never {
-  const configFindings = errors.map(e => `[config] ${e}`)
-  const q = (f: string): string => (/\s/.test(f) ? JSON.stringify(f) : f)
-  const waives = [...new Set(gate.blocks.filter(f => SENSOR_NAMES.includes(f.sensor)).map(f => `/rig:waive ${f.sensor} ${q(f.file ?? '*')} <reason>`))]
-  const summary = [...configFindings, ...gate.blocks.map(f => `${f.sensor}${f.file ? ` ${f.file}` : ''}: ${f.message}`)].join('; ').replace(/\s+/g, ' ').slice(0, 400)
-  block(slug, node, `${waives.length && !errors.length ? `the ship gate refused; a person waives with ${waives.join(' ; ')}, or fix` : 'fix'}: ${summary}; then /rig:next resumes`, 'gate')
-  fail(`${what}: the ship gate found problems\n${[...configFindings, formatFindings(gate.findings)].filter(Boolean).join('\n')}\nFix them (one implementer round), or the person waives with /rig:waive <sensor> <file|*> <reason>.`)
-}
-
-const FOLLOWUP_CAP = 4
-const PUSH_FAILED = 'git push of the follow-up failed'
-function followup(slug: string, message: string): void {
-  const head = git(['rev-parse', '--abbrev-ref', 'HEAD'])
-  if (!prDone(slug)) fail(`no follow-up yet: the pr node of ${slug} is not done (run pr ${slug} --message ... first)`)
-  // The review's fix round plus three sweep rounds, counted since a person last approved more budget (sdlc.ts approve writes that
-  // reason; no other unblock resets it): a bound that holds across reruns.
-  const events = readEvents(slug)
-  const since = events.map(e => e.verdict === 'unblocked' && e.reason === 'person approved more budget').lastIndexOf(true)
-  const used = events.slice(since + 1).filter(e => e.kind === 'followup').length
-  if (used >= FOLLOWUP_CAP) { block(slug, 'pr-review', `cap: ${used} follow-up pushes used`, 'cap'); fail(`blocked: ${used} follow-up pushes used on ${slug}; a person decides, and /rig:approve ${slug} budget allows more`) }
-  if (head !== `sdlc/${slug}`) fail(`follow-ups go on sdlc/${slug}; HEAD is ${head}`)
-  const base = defaultBase()
-  const r = scopeDrift(slug, base)
-  if (r.drift.length) fail(`scope drift, not committing: ${r.drift.join(', ')}`)
-  // Judged before the commit (verify ran the commands): the pre-push hook would only say "push failed", with no waiver named.
-  const { errors, gate } = shipGate(slug, base, 'none', false)
-  if (errors.length || gate.blocks.length) refuse(slug, 'pr-review', errors, gate, 'not committing the follow-up')
-  if (readRatchet(slug).blocked?.node === 'pr-review') unblock(slug, 'ship gate passed', 'gate')
-  const code = r.changed.filter(f => !f.startsWith('.rig/'))
-  if (git(['add', '--', toPosix(path.relative(ROOT, path.join(CHANGES, slug))), ...code]) === null) fail('git add failed')
-  if (!gitLoud(['commit', '-q', '-m', message])) fail('git commit failed (nothing staged, or a commit hook refused it)')
-  appendEvent(slug, { node: 'pr-review', verdict: 'followup', kind: 'followup' })
-  if (git(['remote', 'get-url', 'origin']) !== null && !gitLoud(['push', 'origin', `sdlc/${slug}`])) { block(slug, 'pr-review', PUSH_FAILED); fail('push failed (blocked)') }
-  if (readRatchet(slug).blocked?.reason === PUSH_FAILED) unblock(slug, 'follow-up pushed', 'other')
-  publishQuietly()
-  out(`follow-up committed on sdlc/${slug} at ${git(['rev-parse', '--short', 'HEAD'])}`)
-}
-
-// Fails closed: only known-good states pass; unknown states, no checks or unparseable output never read as pass.
-const OK = /^(SUCCESS|SKIPPED|NEUTRAL)$/i
-const PENDING = /^(PENDING|QUEUED|IN_PROGRESS|EXPECTED|WAITING|REQUESTED)$/i
-export const checksVerdict = (states: string[] | null): string =>
-  states === null || states.length === 0 ? 'unknown' : states.some(s => PENDING.test(s)) ? 'pending' : states.every(s => OK.test(s)) ? 'pass' : 'fail'
-
-// pr-review writes review.md, review-pr.md and its ratchet and event rows after the PR commit. Closing the node commits that
-// evidence (this change's folder only, never code) so a shipped change leaves a clean tree. Local commit only, so it never pushes;
-// the next `pr --followup` (or a person) pushes the branch.
-function commitReviewEvidence(slug: string): void {
-  if (git(['rev-parse', '--abbrev-ref', 'HEAD']) !== `sdlc/${slug}` || !prDone(slug)) return
-  const dir = toPosix(path.relative(ROOT, path.join(CHANGES, slug)))
-  // A change this review finishes leaves a tracked STATE.md in the same commit, so status and next have nothing left to clear.
-  const state = toPosix(path.relative(ROOT, STATE))
-  const finished = frontmatter(read(STATE)).data.change === slug && loadChange(slug).next === null && git(['ls-files', '--error-unmatch', state]) !== null
-  if (finished) clearState(slug)
-  const paths = finished ? [dir, state] : [dir]
-  if (!git(['status', '--porcelain', '--', ...paths])) return
-  if (git(['add', '--', ...paths]) === null) return
-  if (git(['commit', '-q', '--no-verify', '-m', `chore(sdlc): pr-review evidence for ${slug}`, '--', ...paths]) === null) return
-  out(`pr-review evidence committed on sdlc/${slug} at ${git(['rev-parse', '--short', 'HEAD'])}`)
-}
-
-export function cmdPrChecks(args: Args): void {
-  const slug = args.pos[0]
-  if (!slug) fail('usage: pr-checks <slug>')
-  checkSlug(slug)
-  if (git(['remote', 'get-url', 'origin']) === null) {
-    appendEvent(slug, { node: 'pr-review', verdict: 'local-only', kind: 'checks' })
-    out('checks: local-only (no origin remote)')
-    return commitReviewEvidence(slug)
-  }
-  const raw = ghRun(['pr', 'checks', `sdlc/${slug}`, '--json', 'state'], true)
-  let states: string[] | null = null
-  try {
-    const parsed: unknown = raw === null ? null : JSON.parse(raw)
-    if (Array.isArray(parsed)) states = parsed.map(s => String((s as { state?: unknown } | null)?.state ?? ''))
-  } catch { /* unparseable output stays unknown */ }
-  const workflows = exists(path.join(ROOT, '.github/workflows')) && fs.readdirSync(path.join(ROOT, '.github/workflows')).some(f => /\.ya?ml$/.test(f))
-  const verdict = states?.length === 0 ? (workflows ? 'pending' : 'no-ci') : checksVerdict(states)
-  appendEvent(slug, { node: 'pr-review', verdict, kind: 'checks' })
-  out(`checks: ${verdict}`)
-  commitReviewEvidence(slug)
-  if (verdict === 'fail') process.exitCode = 2
+  const remote = git(['remote', 'get-url', 'origin']) !== null
+  const title = (message.split('\n')[0] ?? slug).slice(0, 200)
+  fs.writeFileSync(path.join(CHANGES, slug, 'pr.md'), `---\nstate: ${remote ? 'open' : 'local-only'}\nbranch: ${branch}\n---\n${title}\n`)
+  ensureGitignore()
+  if (git(['add', '-A']) === null) fail('git add failed')
+  // verify judged this tree with waivers applied: the git hooks would only run the same checks again.
+  if (git(['commit', '-q', '--no-verify', '-m', message]) === null) fail('git commit failed')
+  setActive(null)
+  if (!remote) return out(`pr ${slug}: committed on ${branch}; no origin remote, local only`)
+  const retry = `gh pr create --title ${JSON.stringify(title)} --body-file .rig/changes/${slug}/pr.md`
+  if (git(['push', '--no-verify', '-u', 'origin', branch]) === null) fail(`committed on ${branch} but git push failed: push it, then run ${retry}`)
+  const url = openPr(slug, branch, title)
+  if (!url) fail(`pushed ${branch} but gh pr create printed no PR url: run ${retry}`)
+  out(`pr ${slug}: ${url}`)
 }

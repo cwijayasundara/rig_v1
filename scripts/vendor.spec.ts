@@ -27,9 +27,9 @@ test('vendor --cloud writes project skills, agents and hooks with no plugin refe
   assert.equal(sdlc(repo, ['vendor', '--cloud']).code, 0)
   const skills = walk(path.join(repo, '.claude/skills')).filter(f => f.endsWith('SKILL.md'))
   const agents = walk(path.join(repo, '.claude/agents'))
-  assert.ok(skills.some(f => f.endsWith('rig-next/SKILL.md')) && skills.length >= 10, `${skills.length} skills`)
+  assert.ok(skills.some(f => f.endsWith('rig-start/SKILL.md')) && skills.length === 9, `${skills.length} skills`)
   for (const s of ['start', 'plan', 'approve', 'waive']) assert.ok(skills.some(f => f.endsWith(`rig-${s}/SKILL.md`)), `rig-${s} is vendored`)
-  assert.ok(agents.some(f => f.endsWith('rig-scout.md')), 'scout agent')
+  assert.deepEqual(agents.map(f => path.basename(f)), ['rig-evaluator.md'], 'the evaluator is the one agent')
   for (const f of [...skills, ...agents]) {
     const text = fs.readFileSync(f, 'utf8')
     assert.doesNotMatch(text, /CLAUDE_PLUGIN_ROOT|<plugin>\/scripts|(?<![/\w])rig:(?:architect|evaluator|implementer|researcher|reviewer|scout)\b/, path.relative(repo, f))
@@ -46,17 +46,17 @@ test('vendor --cloud writes project skills, agents and hooks with no plugin refe
   assert.equal(again.hooks.Stop.length, settings.hooks.Stop.length, 're-running replaces sdlc hooks instead of duplicating them')
 })
 
-test('the vendored copy names project skills and agents, and prints its own skills', () => {
+test('the vendored copy points its skills at .rig/bin and the session start names the active change', () => {
   const repo = makeRepo()
   sdlc(repo, ['init'])
   sdlc(repo, ['vendor', '--cloud'])
-  vendored(repo, ['new', 'small-thing', '--type', 'chore', '--tier', 'S'])
-  assert.match(vendored(repo, ['status']).stdout, /next: \/rig:build small-thing/)
-  const skill = vendored(repo, ['skill', 'next']).stdout
-  assert.match(skill, /\.rig\/bin\/sdlc\.ts status --json/)
+  vendored(repo, ['new', 'small-thing', '--type', 'chore'])
+  assert.match(vendored(repo, ['status']).stdout, /next: \/rig:start small-thing/)
+  const skill = fs.readFileSync(path.join(repo, '.claude/skills/rig-plan/SKILL.md'), 'utf8')
+  assert.match(skill, /\.rig\/bin\/sdlc\.ts/)
+  assert.doesNotMatch(skill, /CLAUDE_PLUGIN_ROOT/)
   const ctx = JSON.parse(vendored(repo, ['hook', 'session-start'], '{}').stdout).hookSpecificOutput.additionalContext as string
-  assert.match(ctx, /rig-scout/)
-  assert.doesNotMatch(ctx, /(?<!\/)rig:scout/)
+  assert.match(ctx, /Active change: small-thing/)
 })
 
 const humanCommand = (cmd: string): string => `SDLC_HUMAN=1 node --disable-warning=ExperimentalWarning .rig/bin/sdlc.ts ${cmd}`
@@ -76,13 +76,14 @@ test('a quoted argument string is split: /rig:approve and /rig:waive work from a
   const repo = makeRepo()
   sdlc(repo, ['init'])
   sdlc(repo, ['vendor', '--standalone'])
-  vendored(repo, ['new', 'demo', '--type', 'feature', '--tier', 'L'])
+  vendored(repo, ['new', 'demo', '--type', 'feature'])
   write(repo, '.rig/changes/demo/spec.md', '# Spec\n\n## Open questions\nnone\n')
-  assert.equal(vendored(repo, ['approve', 'demo spec'], undefined, '1').code, 0)
-  assert.match(fs.readFileSync(path.join(repo, '.rig/approvals.jsonl'), 'utf8'), /"slug":"demo","stage":"spec"/)
+  write(repo, '.rig/changes/demo/plan.md', '# Plan\n\n## Open questions\nnone\n')
+  assert.equal(vendored(repo, ['approve', 'demo plan'], undefined, '1').code, 0, 'the old stage word is ignored')
+  assert.ok(fs.existsSync(path.join(repo, '.rig/changes/demo/approval.json')))
   assert.equal(vendored(repo, ['waive', 'size * too big for one PR'], undefined, '1').code, 0)
   assert.match(fs.readFileSync(path.join(repo, '.rig/waivers.jsonl'), 'utf8'), /"file":"\*","reason":"too big for one PR"/)
-  assert.equal(vendored(repo, ['approve', 'demo spec']).code, 3, 'still human-only')
+  assert.equal(vendored(repo, ['approve', 'demo']).code, 3, 'still human-only')
 })
 
 test('the plugin hooks step aside only in a standalone repo, so no hook runs twice', () => {
@@ -122,7 +123,7 @@ test('the settings template is portable: no personal plugins, absolute paths or 
 test('standalone vendoring ships the v0.4 skills and REVIEW.md template', () => {
   const repo = makeRepo()
   sdlc(repo, ['vendor', '--standalone'])
-  for (const s of ['rig-test', 'rig-pr', 'rig-pr-review'])
+  for (const s of ['rig-test', 'rig-pr', 'rig-build'])
     assert.ok(fs.existsSync(path.join(repo, `.claude/skills/${s}/SKILL.md`)), s)
   assert.ok(!fs.existsSync(path.join(repo, '.claude/skills/rig-verify/SKILL.md')), 'old names are gone')
   assert.ok(fs.existsSync(path.join(repo, '.rig/templates/REVIEW.md')))
@@ -156,7 +157,7 @@ test('init --full vendors, wires git hooks and merges the settings template with
   const RECORDER = 'node --disable-warning=ExperimentalWarning .rig/bin/sdlc.ts'
   assert.deepEqual(settings.permissions.allow, ['Bash(ls)', 'Edit(.rig/**)', `Bash(${RECORDER} *)`])
   // Subagents get no skill allowed-tools: each sdlc.ts call their prompts spell out must be the form the allow rule matches.
-  for (const agent of ['rig-implementer.md', 'rig-reviewer.md']) {
+  for (const agent of ['rig-evaluator.md']) {
     const calls = fs.readFileSync(path.join(repo, '.claude/agents', agent), 'utf8').match(/node [^`"]*sdlc\.ts/g) ?? []
     assert.ok(calls.length && calls.every(c => c === RECORDER), `${agent}: ${calls.join(', ')}`)
   }

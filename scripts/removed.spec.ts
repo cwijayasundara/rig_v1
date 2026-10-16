@@ -41,7 +41,7 @@ test('4a: a retired hook name from an old vendored settings file exits quietly',
 })
 
 test('4a: the plugin ships human-only approve and waive skills that run sdlc with SDLC_HUMAN=1', () => {
-  for (const [cmd, hint] of [['approve', '<slug> <design|spec|plan|impact|budget|full-route|tier S|M|L [type]>'], ['waive', '<sensor> <file|*> <reason>']] as const) {
+  for (const [cmd, hint] of [['approve', '<slug>'], ['waive', '<sensor> <file|*> <reason>']] as const) {
     const text = read(`skills/${cmd}/SKILL.md`)
     assert.match(text, /^disable-model-invocation: true$/m)
     assert.ok(text.includes(`argument-hint: ${hint}\n`), `${cmd} argument-hint`)
@@ -52,18 +52,19 @@ test('4a: the plugin ships human-only approve and waive skills that run sdlc wit
 test('4a: a typed /rig:approve records one row even when the skill runs the same approve', () => {
   const repo = makeRepo()
   sdlc(repo, ['init'])
-  sdlc(repo, ['new', 'demo', '--type', 'feature', '--tier', 'M'])
-  write(repo, '.rig/changes/demo/design.md', '# Design\n\n## Open questions\nnone\n')
-  hook(repo, 'prompt-submit', { prompt: '/rig:approve demo design' })
-  sdlc(repo, ['approve', 'demo design'], { env: { SDLC_HUMAN: '1' } }) // what the skill's !`...` line runs: one quoted argument
-  const rows = fs.readFileSync(path.join(repo, '.rig/approvals.jsonl'), 'utf8').trim().split('\n')
-  assert.equal(rows.length, 1)
+  sdlc(repo, ['new', 'demo', '--type', 'feature'])
+  write(repo, '.rig/changes/demo/spec.md', '# Spec\n\n## Behaviours\n- B1 x\n\n## Open questions\nnone\n')
+  write(repo, '.rig/changes/demo/plan.md', '# Plan\n\n## Open questions\nnone\n')
+  hook(repo, 'prompt-submit', { prompt: '/rig:approve demo' })
+  const first = fs.readFileSync(path.join(repo, '.rig/changes/demo/approval.json'), 'utf8')
+  const again = sdlc(repo, ['approve', 'demo'], { env: { SDLC_HUMAN: '1' } }) // what the skill's !`...` line runs: one quoted argument
+  assert.match(again.stdout, /already approved/)
+  assert.equal(fs.readFileSync(path.join(repo, '.rig/changes/demo/approval.json'), 'utf8'), first)
 })
 
 test('4a: chart, watch, metrics, scorecard, points and timing are gone', () => {
   gone(...['chart', 'chartcheck', 'watch', 'metrics', 'scorecard', 'points', 'timing'].map(m => `scripts/${m}.ts`), 'skills/chart', 'skills/decompose', 'skills/metrics', 'templates/prd-format.md', 'templates/rig-watch.yml', 'templates/rig-triage.yml', 'templates/rig-rehearse.yml')
   for (const c of ['chart', 'watch', 'metrics', 'scorecard', 'points']) assert.ok(!commands().includes(c), c)
-  assert.ok(commands().includes('inbox'), 'the intent inbox stays')
 })
 
 test('4a: status and status --json no longer carry points or story', () => {
@@ -76,22 +77,12 @@ test('4a: status and status --json no longer carry points or story', () => {
   assert.ok(json.changes.every(c => !('points' in c)))
 })
 
-test('4a: new --source still refuses an intent whose dependency has not shipped, with no chart involved', () => {
-  const repo = makeRepo()
-  sdlc(repo, ['init'])
-  write(repo, '.rig/intent/one.md', '---\nstatus: accepted\n---\n# One\n')
-  write(repo, '.rig/intent/two.md', '---\nstatus: accepted\ndepends: one\n---\n# Two\n')
-  const r = sdlc(repo, ['new', 'two', '--type', 'feature', '--tier', 'M', '--source', '.rig/intent/two.md'])
-  assert.notEqual(r.code, 0)
-  assert.match(r.stderr + r.stdout, /blocked by: one/)
-})
-
 test('4a: the review workflow, the rig-spec CI template and four non-lifecycle skills are gone', () => {
   gone('workflows', 'templates/rig-review.yml', 'templates/rig-spec.yml', ...['architecture', 'codebase-design', 'prototype', 'testplan'].map(s => `skills/${s}`))
   const ci = fs.readdirSync(path.join(ROOT, 'templates')).filter(f => /^rig-.*\.yml$/.test(f))
   assert.deepEqual(ci, ['rig-check.yml'])
   const kept = fs.readdirSync(path.join(ROOT, 'skills')).sort()
-  assert.deepEqual(kept, ['approve', 'build', 'design', 'diagnose', 'incident', 'init', 'intent', 'next', 'plan', 'pr', 'pr-review', 'rule', 'sensors', 'spec', 'start', 'test', 'waive'])
+  assert.deepEqual(kept, ['approve', 'build', 'init', 'plan', 'pr', 'rule', 'start', 'test', 'waive'])
 })
 
 test('4a: the scripted e2e suite is out of npm test until step 5 rewrites it; the e2e unit tests stay', () => {
@@ -116,8 +107,15 @@ test('4a: every /rig:<skill> and sdlc.ts <command> named in skills, agents, guid
   assert.deepEqual(bad, [])
 })
 
-test('4a: every stage the lifecycle graph can route to has a skill', () => {
-  const graph = fs.readFileSync(path.join(ROOT, 'scripts/graph.ts'), 'utf8')
-  const stages = new Set([...graph.matchAll(/'([a-z-]+)'/g)].map(m => m[1]!).filter(s => ['intent', 'spec', 'plan', 'design', 'build', 'diagnose', 'test', 'sensors', 'pr', 'pr-review'].includes(s)))
-  for (const s of stages) assert.ok(fs.existsSync(path.join(ROOT, 'skills', s, 'SKILL.md')), `stage ${s} has no skill`)
+test('every next step the lifecycle names is a skill that exists', () => {
+  const named = [...read('scripts/lifecycle.ts').matchAll(/\/rig:([a-z-]+)/g)].map(m => m[1]!)
+  assert.ok(named.length >= 4)
+  for (const s of named) assert.ok(fs.existsSync(path.join(ROOT, 'skills', s, 'SKILL.md')), `/rig:${s} has no skill`)
+})
+
+test('4b: seven workflow skills plus the two human gates, and one agent', () => {
+  assert.deepEqual(fs.readdirSync(path.join(ROOT, 'skills')).sort(), ['approve', 'build', 'init', 'plan', 'pr', 'rule', 'start', 'test', 'waive'])
+  assert.deepEqual(fs.readdirSync(path.join(ROOT, 'agents')), ['evaluator.md'])
+  gone('templates/design-format.md')
+  for (const s of ['start', 'plan', 'build', 'test', 'pr']) assert.doesNotMatch(read(`skills/${s}/SKILL.md`), /tier|ratchet|slice|next --json|rig:(scout|implementer|reviewer|architect)/i, s)
 })

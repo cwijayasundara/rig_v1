@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { parseConfig } from './model.ts'
-import { tierFromDiff, weakensConfig } from './sensors.ts'
+import { weakensConfig } from './sensors.ts'
 import { scopeOf, selectScopes, closureRoots, extraScopes, scopeCommands } from './scopes.ts'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -45,13 +45,6 @@ test('extra scope names from the affected command are added; unknown names are i
   const c = cfg({ affected: 'node -e "console.log(\'tools\\nnonesuch\\n\')"' })
   assert.deepEqual(extraScopes(c), ['tools'])
   assert.deepEqual(selectScopes(['packages/web/x.ts'], c, extraScopes(c)).affected, ['tools', 'web'])
-})
-
-test('a diff touching more scopes than scopeLimit is tier L', () => {
-  const c = cfg({ scopeLimit: 2 })
-  const d = (file: string) => ({ file, status: 'M' as const, added: [{ n: 1, text: 'x' }], removed: [] })
-  assert.equal(tierFromDiff([d('packages/web/a.ts'), d('tools/b.sh')], c), 'S')
-  assert.equal(tierFromDiff([d('packages/web/a.ts'), d('tools/b.sh'), d('packages/shared/c.ts')], c), 'L')
 })
 
 test('removing a scope or a dependency edge, or raising scopeLimit, is a weakening edit', () => {
@@ -254,20 +247,6 @@ const scoped = (scopes: object, extra: object = {}) => {
   return repo
 }
 
-test('verify with no base to diff against runs every scope\'s full commands rather than none', () => {
-  const m = mark('nobase')
-  const repo = makeRepo()
-  gitIn(repo, 'branch', '-m', 'trunk')
-  write(repo, '.rig/sensors.json', JSON.stringify({ scopes: { 'pkg/**': { name: 'pkg', root: 'pkg', full: { t: m.cmd } } } }))
-  write(repo, 'pkg/a.js', 'export {}\n')
-  gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'cfg')
-  gitIn(repo, 'checkout', '-qb', 'sdlc/nb')
-  sdlc(repo, ['new', 'nb', '--type', 'chore', '--tier', 'S'])
-  write(repo, '.rig/changes/nb/plan.md', '## Files\n- pkg/a.js\n## Verification\n- `node -e "process.exit(0)"`\n')
-  sdlc(repo, ['verify', 'nb'])
-  assert.equal(ran(m), 1)
-})
-
 test('the same command in the same resolved directory runs once, even across two scopes', () => {
   const m = mark('same')
   const repo = scoped({ 'a/**': { name: 'a', root: 'shared', fast: { t: m.cmd } }, 'b/**': { name: 'b', root: 'shared/', fast: { t: m.cmd } } })
@@ -333,19 +312,6 @@ test('with scopes declared, an empty source diff plans nothing; verify alone fal
   const c = parseConfig(JSON.stringify({ full: { t: 'npm test' }, scopes: { 'pkg/**': { name: 'pkg', root: 'pkg', full: { u: 'npm run u' } } } })).config
   assert.deepEqual(scopeCommands('full', c, []), [])
   assert.deepEqual(scopeCommands('full', c, 'all').map(x => x.key), ['full.t', 'pkg:full.u'], "'all' is unchanged")
-})
-
-test('verify on a branch with no source changes runs the top-level full commands instead of stamping pass with none', () => {
-  const m = mark('empty')
-  const repo = makeRepo()
-  write(repo, '.rig/sensors.json', JSON.stringify({ full: { t: m.cmd }, scopes: { 'pkg/**': { name: 'pkg', root: 'pkg', full: { u: 'node -e "0"' } } } }))
-  write(repo, 'pkg/a.js', 'export {}\n')
-  gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'cfg')
-  gitIn(repo, 'checkout', '-qb', 'sdlc/em')
-  sdlc(repo, ['new', 'em', '--type', 'chore', '--tier', 'S'])
-  write(repo, '.rig/changes/em/plan.md', '## Files\n- .rig/sensors.json\n## Verification\n- `node -e "process.exit(0)"`\n')
-  sdlc(repo, ['verify', 'em'])
-  assert.equal(ran(m), 1)
 })
 
 test('a docs-only diff in CI with ci.scope affected plans no commands, scoped or top-level', () => {

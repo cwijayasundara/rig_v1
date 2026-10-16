@@ -1,24 +1,12 @@
-// Contracts (behavioural harness spec 2026-10-16 §6): frozen per file at plan approval, validated before they run.
-// Registry repos only: a legacy `behavioral` repo keeps the approval digest over its contract files (core.ts).
-import path from 'node:path'
-import { ROOT, SDLC, APPROVALS, behavioralFiles, read, readJsonl, sha, type Approval } from './core.ts'
-import { isRegistryShape, type Contracts } from './registry.ts'
+// Contracts (behavioural harness spec 2026-10-16 §6): frozen per file at plan approval (lifecycle.ts writes the freeze into
+// approval.json), validated before they run.
+import { readApproval, digest } from './lifecycle.ts'
+import { type Contracts } from './registry.ts'
 import { matchesAny, type Finding } from './model.ts'
 import { runCommand, type RunRow } from './runs.ts'
 
-const FREEZING = ['spec', 'plan', 'design']
-// Trailing whitespace is left out: git's readers (the staged text at commit) return trimmed output.
-const digest = (text: string): string => sha(text.replace(/\s+$/, ''))
-
-// The per-file hashes an approval of the spec or plan records, so an edit made after it names the file it touched.
-export function freezeRecord(slug: string, stage: string): Record<string, string> | undefined {
-  if (!FREEZING.includes(stage) || !isRegistryShape(read(path.join(SDLC, 'sensors.json')))) return undefined
-  // Always a record (empty when no contract file is left), so a re-approval can lift an old freeze.
-  return Object.fromEntries(behavioralFiles(slug).map(f => [f, digest(read(path.join(ROOT, f)))]))
-}
-
-// The freeze in force: the latest approval row of the change that recorded one.
-export const frozenFor = (slug: string): Record<string, string> => readJsonl<Approval>(APPROVALS).filter(a => a.slug === slug && a.contracts).at(-1)?.contracts ?? {}
+// The freeze in force: the contracts the change's approval recorded.
+export const frozenFor = (slug: string): Record<string, string> => readApproval(slug)?.contracts ?? {}
 
 // A frozen file this diff touches whose text differs from its approved hash (deleted counts) blocks, until a person waives it
 // or re-approves. Only the diff's files: a frozen file changed on the trunk and merged in is not this change's edit.

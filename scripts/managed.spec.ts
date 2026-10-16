@@ -139,15 +139,6 @@ test('preflight managed warns when the managed file would switch rig off or prot
   assert.match(anchored.line, /Edit\(\/\.rig\/approvals\.jsonl\) anchors at the managed settings folder: use \.\//)
 })
 
-test('preflight reports the managed row from RIG_MANAGED_DIR, skipping when there is none', () => {
-  const repo = makeRepo()
-  sdlc(repo, ['init'])
-  assert.match(sdlc(repo, ['preflight'], { env: { RIG_MANAGED_DIR: tmpDir() } }).stdout, /\| managed \| skip \|/)
-  const dir = tmpDir()
-  fs.copyFileSync(path.join(ROOT, 'templates', 'managed-settings.json'), path.join(dir, 'managed-settings.json'))
-  assert.match(sdlc(repo, ['preflight'], { env: { RIG_MANAGED_DIR: dir } }).stdout, /\| managed \| warn \| 16\/16 [^|]*production-gate\.sh is missing or not executable/, 'the gate script is not installed on this machine')
-})
-
 test('SECURITY.md documents the managed rollout, the gate install path and its limits', () => {
   const sec = fs.readFileSync(path.join(ROOT, 'SECURITY.md'), 'utf8')
   assert.match(sec, /templates\/managed-settings\.json/)

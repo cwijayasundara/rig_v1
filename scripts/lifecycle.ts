@@ -42,7 +42,7 @@ export function newChange(slug: string, type: ChangeType, title: string): void {
 }
 
 // Contract files frozen by an approval, hashed one by one so a later edit names the file (spec §6).
-export const freezeRecord = (slug: string): Record<string, string> => Object.fromEntries(behavioralFiles(slug).map(f => [f, digest(read(path.join(ROOT, f)))]))
+export const freezeRecord = (slug: string): Record<string, string> => Object.fromEntries(behavioralFiles(slug).filter(f => exists(path.join(ROOT, f))).map(f => [f, digest(read(path.join(ROOT, f)))]))
 const hashes = (slug: string): Record<string, string> => Object.fromEntries(APPROVED.filter(n => exists(file(slug, n))).map(n => [n, digest(read(file(slug, n)))]))
 export const readApproval = (slug: string): Approval | null => json<Approval>(file(slug, 'approval.json'))
 export function approvalState(slug: string): 'missing' | 'stale' | 'approved' {
@@ -68,9 +68,15 @@ export const writeVerify = (slug: string, v: Verify): void => fs.writeFileSync(f
 export const verifyFresh = (slug: string, tree: string | null): boolean => { const v = readVerify(slug); return Boolean(v?.pass && tree && v.tree === tree) }
 
 // Shipped: its pr.md is on the trunk (HEAD itself when the trunk is checked out, where defaultBase has nothing to compare).
+// One ls-tree per process, however many changes status walks.
+let shippedOnTrunk: Set<string> | null = null
 export function isShipped(slug: string): boolean {
-  const base = defaultBase() ?? (['main', 'master'].includes(git(['rev-parse', '--abbrev-ref', 'HEAD']) ?? '') ? 'HEAD' : null)
-  return base !== null && git(['cat-file', '-e', `${base}:.rig/changes/${slug}/pr.md`]) !== null
+  if (!shippedOnTrunk) {
+    const base = defaultBase() ?? (['main', 'master'].includes(git(['rev-parse', '--abbrev-ref', 'HEAD']) ?? '') ? 'HEAD' : null)
+    const files = base ? (git(['ls-tree', '-r', '--name-only', base, '--', '.rig/changes']) ?? '').split('\n') : []
+    shippedOnTrunk = new Set(files.filter(f => f.endsWith('/pr.md')).map(f => f.split('/')[2] ?? ''))
+  }
+  return shippedOnTrunk.has(slug)
 }
 
 export function status(slug: string, gates: { plan: boolean }, tree: string | null): Status {

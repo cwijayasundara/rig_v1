@@ -3,7 +3,7 @@ import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { makeRepo, sdlc, hook, write, gitIn, buildDone, verified, ratcheted } from './testkit.ts'
+import { makeRepo, sdlc, hook, write, gitIn } from './testkit.ts'
 
 let repo: string
 beforeEach(() => {
@@ -38,31 +38,6 @@ test('Stop blocks twice, then lets the turn end with a system message and unreso
   write(repo, 'test/a.test.js', "it('x', () => {})\n")
   assert.equal(stop().stdout, '')
   assert.ok(!fs.existsSync(path.join(repo, '.rig/unresolved.json')))
-})
-
-test('a vibe-coded turn with no active change records an ad-hoc change with a computed tier', () => {
-  sdlc(repo, ['init'])
-  hook(repo, 'prompt-submit', {})
-  for (const f of ['a', 'b', 'c', 'd', 'e']) write(repo, `src/${f}.js`, `export const ${f} = 1\n`)
-  stop()
-  const status = sdlc(repo, ['status']).stdout
-  assert.match(status, /▶ adhoc-\d{8}-\d{4}\s+chore\s+M/)
-})
-
-test('a turn that shipped (committed a ship.json) records no ad-hoc change; a plain commit still does', () => {
-  sdlc(repo, ['init'])
-  gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'init sdlc')
-  hook(repo, 'prompt-submit', {})
-  for (const f of ['a', 'b', 'c', 'd', 'e']) write(repo, `src/${f}.js`, `export const ${f} = 1\n`)
-  write(repo, '.rig/changes/done-thing/ship.json', '{}\n')
-  gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'shipped')
-  stop()
-  assert.doesNotMatch(sdlc(repo, ['status']).stdout, /adhoc-/)
-  hook(repo, 'prompt-submit', {})
-  for (const f of ['f', 'g', 'h', 'i', 'j']) write(repo, `src/${f}.js`, `export const ${f} = 1\n`)
-  gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'committed to dodge the record')
-  stop()
-  assert.match(sdlc(repo, ['status']).stdout, /adhoc-/)
 })
 
 test('a harness file changed by Bash blocks at Stop; the same change through Edit only warns', () => {
@@ -185,55 +160,6 @@ test('harness files untracked at turn start and committed unchanged in the turn 
   assert.match(out.reason, /harness-tamper[\s\S]*CLAUDE\.md/, 'changing one in the same turn still blocks')
 })
 
-test('a turn that only writes harness files (onboarding) opens no ad-hoc change', () => {
-  sdlc(repo, ['init'])
-  gitIn(repo, 'add', '.')
-  gitIn(repo, 'commit', '-qm', 'cfg')
-  hook(repo, 'prompt-submit', {})
-  write(repo, '.github/workflows/rig-check.yml', 'name: rig-check\n')
-  write(repo, '.github/workflows/rig-review.yml', `name: rig-review\n# ${'x'.repeat(200)}\n`)
-  write(repo, 'REVIEW.md', '# Review\n')
-  write(repo, '.claude/settings.json', '{}\n')
-  stop()
-  assert.ok(!fs.existsSync(path.join(repo, '.rig/changes')) || !fs.readdirSync(path.join(repo, '.rig/changes')).some(d => d.startsWith('adhoc-')))
-  write(repo, 'src/a.js', 'export const a = 1\n')
-  stop()
-  assert.ok(fs.readdirSync(path.join(repo, '.rig/changes')).some(d => d.startsWith('adhoc-')), 'real source work still opens one')
-})
-
-test('init --onboarding: source written during /rig:init opens no ad-hoc change; the Stop after preflight closes the window', () => {
-  const adhoc = () => fs.existsSync(path.join(repo, '.rig/changes')) && fs.readdirSync(path.join(repo, '.rig/changes')).some(d => d.startsWith('adhoc-'))
-  sdlc(repo, ['init', '--onboarding'])
-  gitIn(repo, 'add', '.')
-  gitIn(repo, 'commit', '-qm', 'cfg')
-  hook(repo, 'prompt-submit', {})
-  write(repo, 'src/skeleton.js', 'export const a = 1\n')
-  stop()
-  assert.ok(!adhoc(), 'a greenfield scaffold written by init is not ad-hoc work')
-  write(repo, '.rig/PREFLIGHT.md', '# Preflight\n')
-  const later = new Date(Date.now() + 1000)
-  fs.utimesSync(path.join(repo, '.rig/PREFLIGHT.md'), later, later)
-  stop()
-  assert.ok(!adhoc(), 'the turn that ran preflight is still init')
-  assert.ok(!fs.existsSync(path.join(repo, '.rig/.onboarding')), 'that Stop closed the window, though the turn wrote no new source')
-  hook(repo, 'prompt-submit', {})
-  write(repo, 'src/b.js', 'export const b = 1\n')
-  stop()
-  assert.ok(adhoc(), 'source work after init opens one again')
-})
-
-test('init --onboarding: a window left by an abandoned init lapses after two hours', () => {
-  sdlc(repo, ['init', '--onboarding'])
-  const old = new Date(Date.now() - 3 * 60 * 60 * 1000)
-  fs.utimesSync(path.join(repo, '.rig/.onboarding'), old, old)
-  gitIn(repo, 'add', '.')
-  gitIn(repo, 'commit', '-qm', 'cfg')
-  hook(repo, 'prompt-submit', {})
-  write(repo, 'src/a.js', 'export const a = 1\n')
-  stop()
-  assert.ok(fs.readdirSync(path.join(repo, '.rig/changes')).some(d => d.startsWith('adhoc-')))
-})
-
 test('Stop skips the fast commands on a tree they already passed, and still judges the diff with the sensors', () => {
   sdlc(repo, ['init'])
   write(repo, '.rig/sensors.json', JSON.stringify({ fast: { test: 'node -e "require(\'fs\').appendFileSync(\'ran.txt\', \'1\')"' } }))
@@ -264,60 +190,21 @@ test('Stop skips the fast commands on a tree they already passed, and still judg
 
 test('a typed /rig:approve (either spelling, with or without arguments) records the approval and tells the model to carry on', () => {
   sdlc(repo, ['init'])
-  sdlc(repo, ['new', 'demo', '--type', 'feature', '--tier', 'L'])
-  write(repo, '.rig/changes/demo/design.md', '# Design\n\n## Open questions\nnone\n')
-  const approvals = () => (fs.existsSync(path.join(repo, '.rig/approvals.jsonl')) ? fs.readFileSync(path.join(repo, '.rig/approvals.jsonl'), 'utf8') : '')
+  sdlc(repo, ['new', 'demo', '--type', 'feature'])
+  write(repo, '.rig/changes/demo/spec.md', '# Spec\n\n## Behaviours\n- B1 x\n\n## Open questions\nnone\n')
+  write(repo, '.rig/changes/demo/plan.md', '# Plan\n\n## Open questions\nnone\n')
+  const approval = path.join(repo, '.rig/changes/demo/approval.json')
   const ask = (prompt: string) => JSON.parse(hook(repo, 'prompt-submit', { prompt }).stdout).hookSpecificOutput.additionalContext as string
-  assert.match(ask('/rig:approve'), /recorded it/, 'a bare command approves the gate the active change waits at')
-  assert.match(approvals(), /"slug":"demo","stage":"design"/)
-  assert.match(ask('/rig-approve demo design'), /already approved/)
-  assert.equal(approvals().trim().split('\n').length, 1, 'a repeat adds no row')
-  assert.equal(hook(repo, 'prompt-submit', { prompt: 'please /rig:approve demo plan' }).stdout, '', 'only a prompt that starts with the command counts')
-  assert.doesNotMatch(approvals(), /"stage":"plan"/)
-})
-
-test('Stop sends a change with a node left on to it once, and never loops on a node that did not move', () => {
-  sdlc(repo, ['new', 'tiny', '--type', 'chore', '--tier', 'S'])
-  hook(repo, 'prompt-submit', {})
-  assert.equal(stop().stdout, '', 'a turn that moved nothing (a question mid-change) is left alone')
-  buildDone(repo, 'tiny')
-  const first = JSON.parse(stop().stdout)
-  assert.equal(first.decision, 'block')
-  assert.match(first.reason, /sdlc\.ts skill test tiny/)
-  assert.match(first.reason, /without waiting for the person/)
-  assert.equal(stop().stdout, '', 'the same node is offered once: a turn that moved nothing ends')
-})
-
-test('a turn that only warned and is also continued prints one JSON object carrying both', () => {
-  sdlc(repo, ['new', 'tiny', '--type', 'chore', '--tier', 'S'])
-  write(repo, '.rig/sensors.json', JSON.stringify({ limits: { diffLines: 500 } }))
-  gitIn(repo, 'add', '.')
-  gitIn(repo, 'commit', '-qm', 'cfg')
-  hook(repo, 'prompt-submit', {})
-  buildDone(repo, 'tiny')
-  write(repo, '.rig/sensors.json', JSON.stringify({ limits: { diffLines: 950 } }))
-  hook(repo, 'post-edit', { tool_input: { file_path: path.join(repo, '.rig/sensors.json') } })
-  const out = JSON.parse(stop().stdout) as { decision?: string; reason?: string; systemMessage?: string }
-  assert.match(out.systemMessage ?? '', /warning.*harness-tamper/)
-  assert.equal(out.decision, 'block')
-  assert.match(out.reason ?? '', /skill test tiny/)
+  assert.equal(hook(repo, 'prompt-submit', { prompt: 'please /rig:approve demo' }).stdout, '', 'only a prompt that starts with the command counts')
+  assert.ok(!fs.existsSync(approval))
+  assert.match(ask('/rig:approve'), /recorded it/, 'a bare command approves the active change')
+  const first = fs.readFileSync(approval, 'utf8')
+  assert.match(ask('/rig-approve demo design'), /already approved/, 'the old stage word is ignored')
+  assert.equal(fs.readFileSync(approval, 'utf8'), first, 'a repeat writes nothing')
 })
 
 test('Stop does not continue a change that waits at a human gate or has no active change', () => {
   assert.equal(stop().stdout, '')
   sdlc(repo, ['new', 'gated', '--type', 'feature', '--tier', 'M'])
   assert.equal(stop().stdout, '', 'a feature before its design approval is a person step, not an auto step')
-})
-
-test('Stop continues from pr to pr-review: the only human step left is the merge', () => {
-  sdlc(repo, ['new', 'tiny', '--type', 'feature', '--tier', 'S'])
-  hook(repo, 'prompt-submit', {})
-  verified(repo, 'tiny')
-  ratcheted(repo, 'tiny')
-  write(repo, '.rig/changes/tiny/plan.md', '---\nslug: tiny\n---\n# Plan\n\n## Files\n- src/a.js\n\n## Verification\n- npm test\n')
-  write(repo, '.rig/changes/tiny/pr.md', '---\nstate: local-only\n---\n')
-  gitIn(repo, 'add', '-A')
-  gitIn(repo, 'commit', '-qm', 'pr')
-  assert.equal(JSON.parse(sdlc(repo, ['next', 'tiny', '--json']).stdout).node, 'pr-review', 'fixture reaches pr-review')
-  assert.match(JSON.parse(stop().stdout).reason, /skill pr-review tiny/)
 })

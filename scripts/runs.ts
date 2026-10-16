@@ -45,7 +45,7 @@ export function runCommand(cmd: string, opts: { cwd?: string; timeoutMs?: number
   return row
 }
 
-export const runsFile = (slug: string): string => path.join(CHANGES, slug, 'runs.jsonl')
+export const runsFile = (slug: string): string => path.join(CHANGES, slug, 'evidence', 'runs.jsonl')
 export const readRuns = (slug: string): RunRow[] => readJsonl<RunRow>(runsFile(slug))
 
 export function recordRun(slug: string, row: RunRow): void {

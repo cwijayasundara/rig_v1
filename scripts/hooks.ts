@@ -1,16 +1,16 @@
 // sdlc settings hooks: read the hook event JSON on stdin, decide, and print the hook's JSON answer.
-// Five events, none on Bash: session start, turn start (the baseline), post-edit (a slim per-file check), the Stop gate,
-// and the skill-load fallback. Evidence is protected by settings deny rules and by CI, not by parsing shell commands.
+// None on Bash: session start, turn start (the baseline), post-edit (a slim per-file check), the Stop gate and model
+// recording. Evidence is protected by settings deny rules and by CI, not by parsing shell commands.
 import fs from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import {
-  ROOT, SDLC, git, STATE, PLUGIN_ROOT, IS_VENDORED, skillRef, agentRef, now, exists, read, out, fail, frontmatter, toPosix,
-  managedSettings, scanSecrets, planProblems, relPosix, sha, withLock, writeAtomic, onboarding, type Args, type HookInput,
+  ROOT, SDLC, IS_VENDORED, skillRef, now, exists, read, out, fail, frontmatter,
+  managedSettings, scanSecrets, relPosix, sha, withLock, writeAtomic, type Args, type HookInput,
 } from './core.ts'
-import { activeSlug, loadChange, nextCommand, createAdhoc, step } from './graph.ts'
+import { activeSlug, status, nextStep, changeType } from './lifecycle.ts'
 import { snapshot, writeBaseline, readBaseline, turnDiff, showAt, diffHash } from './diffs.ts'
-import { isProtected, tierFromDiff } from './sensors.ts'
+import { isProtected } from './sensors.ts'
 import { loadConfig, runChecks, editFindings } from './check.ts'
 import { formatFindings, isSource, isTest, matchesAny, warnRow, type Finding, type SensorConfig } from './model.ts'
 import { sessionNote } from './githooks.ts'
@@ -95,8 +95,6 @@ function guidesFor(rel: string, session: string): string | undefined {
 
 export const ROUTING_LINE = `sdlc routes all work in this repo: start with ${skillRef('start')}; use superpowers skills only when an sdlc skill names one.`
 
-// The sdlc script as the model should call it: the plugin's copy, or the project's own in a standalone repo.
-const SCRIPT = () => (IS_VENDORED ? '.rig/bin/sdlc.ts' : `${toPosix(PLUGIN_ROOT)}/scripts/sdlc.ts`)
 
 function hookSessionStart(input: HookInput): void {
   if (!exists(SDLC)) return
@@ -108,18 +106,16 @@ function hookSessionStart(input: HookInput): void {
   const { mode, model } = modeNow(registry, input)
   const guides = listGuides(cfg).map(g => g.name)
   const active = activeSlug()
-  const c = active ? loadChange(active) : null
-  const state = frontmatter(read(STATE)).body.trim().split('\n').slice(0, 15).join('\n')
+  const st = active ? status(active, registry?.gates ?? { plan: true, merge: true }, null) : null
   const context = [
     'sdlc harness is active in this repo (artifacts in .rig/).',
     ROUTING_LINE,
     registry ? `rig policy: ${mode} checks for ${model ?? 'an unknown model'} (build on ${registry.models.build}, evaluate on ${registry.models.evaluate}).` : '',
     registry ? syncFindings(registry, [], 'warn').slice(0, 5).map(f => `rig sync: ${f.message}`).join('\n') : '',
-    c ? `Active change: ${c.slug} (${c.type}, tier ${c.tier}). Next: ${nextCommand(c)}` : `No active change. Start one with ${skillRef('start')} "<request>".`,
-    `Rules: plans hold interfaces + acceptance tests, never code; delegate searches to ${agentRef('scout')} and slices to ${agentRef('implementer')}; read .rig/approvals.jsonl with the Read tool (only the person writes it); run subagents in the foreground and never end a turn while one is running; never sleep-poll; at ~150k context run /compact (the active change lives in .rig/STATE.md). If an sdlc skill fails to load, run \`node "${SCRIPT()}" skill <stage> <slug>\` and follow it exactly.`,
+    active && st ? `Active change: ${active} (${changeType(active)}, ${st}). Next: ${nextStep(active, st)}` : `No active change. Start one with ${skillRef('start')} "<request>".`,
+    'Rules: plans hold interfaces and acceptance tests, never code; only the person writes .rig/changes/<slug>/approval.json; run subagents in the foreground and never end a turn while one is running; never sleep-poll; at ~150k context run /compact.',
     sessionNote(),
     guides.length ? `Guides (injected when you first touch matching files): ${guides.join(', ')}` : '',
-    state && state !== '# State' ? `STATE.md:\n${state}` : '',
   ].filter(Boolean)
   out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context.join('\n') } }))
 }
@@ -131,7 +127,6 @@ function hookPostEdit(input: HookInput): void {
   const file = String(input.tool_input?.file_path ?? '')
   if (!file || !exists(file)) return
   const problems = scanSecrets(file)
-  if (exists(SDLC) && /\.rig\/changes\/[^/]+\/(?:plan|design)\.md$/.test(toPosix(file))) problems.push(...planProblems(file).map(p => `${file}: ${p}`))
   let edits = ''
   let guide: string | undefined
   if (exists(SDLC)) {
@@ -154,7 +149,7 @@ function hookPostEdit(input: HookInput): void {
 
 export type GateSummary = { at: string; blocks: number; warns: number; bySensor: Record<string, number>; warnRows?: string[]; shown?: boolean }
 // trees: stamps of working trees on which the fast commands passed, kept across turns (the per-turn fields reset at each prompt).
-export type Gate = { turn: string; blocks: Record<string, number>; passed: Record<string, string>; tool: string[]; guides: Record<string, string[]>; trees: string[]; cont?: string; turnStep?: string; last?: GateSummary }
+export type Gate = { turn: string; blocks: Record<string, number>; passed: Record<string, string>; tool: string[]; guides: Record<string, string[]>; trees: string[]; last?: GateSummary }
 
 const GATE = path.join(SDLC, '.gate')
 const UNRESOLVED = path.join(SDLC, 'unresolved.json')
@@ -171,7 +166,6 @@ export function readGate(): Gate {
     return {
       turn: typeof g.turn === 'string' ? g.turn : d.turn, blocks: obj(g.blocks, d.blocks), passed: obj(g.passed, d.passed),
       tool: Array.isArray(g.tool) ? g.tool.map(String) : d.tool, guides: obj(g.guides, d.guides), trees: Array.isArray(g.trees) ? g.trees.map(String) : d.trees,
-      ...(typeof g.cont === 'string' ? { cont: g.cont } : {}), ...(typeof g.turnStep === 'string' ? { turnStep: g.turnStep } : {}),
       ...(g.last && typeof g.last === 'object' ? { last: g.last as GateSummary } : {}),
     }
   } catch {
@@ -199,16 +193,11 @@ function runSdlc(args: string[], human = false): { code: number; text: string } 
   return { code: r.status ?? 1, text: `${r.stdout}${r.stderr}`.trim() }
 }
 function approveTyped(typedArgs: string): void {
-  let args = typedArgs
-  if (!args) {
-    const next = runSdlc(['next', '--json'])
-    try { args = (/\/rig[:-]approve (.+)$/.exec((JSON.parse(next.text) as { command?: string }).command ?? '')?.[1] ?? '').trim() } catch { /* unreadable: say so below */ }
-    if (!args) return out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: 'rig: the person typed /rig:approve but no gate is waiting for approval. Tell them so in one line (run /rig:next for the next step) and stop.' } }))
-  }
-  const r = runSdlc(['approve', ...args.split(/\s+/)], true)
-  const done = r.code === 0
-  const follow = done && /^\S+ (?:intent|spec|plan|design)\b/.test(args) ? ' Then run /rig:next in this turn: the build, tests, sensors and PR run on their own from here.' : ''
-  out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: `rig: the person typed /rig:approve ${args}. The hook ${done ? 'recorded it' : 'refused it'}: ${r.text}\nDo not run /rig:approve or sdlc.ts approve yourself.${done ? follow : ' Tell the person the reason in one line and stop.'}` } }))
+  const slug = typedArgs.trim().split(/\s+/).filter(Boolean)[0] ?? activeSlug()
+  const say = (text: string): void => out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: text } }))
+  if (!slug) return say('rig: the person typed /rig:approve but there is no active change. Tell them so in one line and stop.')
+  const r = runSdlc(['approve', slug], true)
+  say(`rig: the person typed /rig:approve and rig ${r.code === 0 ? 'recorded it' : 'refused it'}:\n${r.text}\nTell them the result in one line${r.code === 0 ? `, then continue with /rig:build ${slug}` : ' and stop'}. Do not run /rig:approve or sdlc.ts approve yourself.`)
 }
 
 // Each prompt starts a turn: record the tree and reset the per-turn gate, so Stop diffs exactly this turn's changes.
@@ -221,7 +210,7 @@ function hookPromptSubmit(input: HookInput = {}): void {
   const snap = snapshot()
   if (snap) writeBaseline(snap)
   updateGate(g => {
-    Object.assign(g, { turn: snap?.at ?? now(), blocks: {}, passed: {}, tool: [], turnStep: stepKeyNow()?.key })
+    Object.assign(g, { turn: snap?.at ?? now(), blocks: {}, passed: {}, tool: [] })
     if (carry && g.last) g.last.shown = true
   })
   if (typed) approveTyped(typed[1] ?? '')
@@ -230,14 +219,12 @@ function hookPromptSubmit(input: HookInput = {}): void {
   }
 }
 
-// The end-of-turn gate: every built-in sensor on this turn's diff, then the fast commands. Work with no active change is
-// adopted as an ad-hoc change and judged the same way.
+// The end-of-turn gate: every built-in sensor on this turn's diff, then the fast commands. Work with no active change gets
+// the same sensors; it is not recorded as a change.
 // halt: the gate printed a block (or gave up) and the turn is not continued. warn: a systemMessage the caller prints, so
 // a turn that only warned and is also continued emits one JSON object, not two.
 function hookStop(input: HookInput = {}): { halt: boolean; warn?: string } {
   if (!exists(SDLC)) return { halt: false }
-  // Before any early return, so the Stop after preflight closes the window even on a turn with no source diff.
-  const initRunning = onboarding()
   const snap = readBaseline()
   if (!snap) return { halt: false }
   const { config, rules, errors, registry } = loadConfig()
@@ -247,11 +234,7 @@ function hookStop(input: HookInput = {}): { halt: boolean; warn?: string } {
   if (!diffs.length) return { halt: false }
   const hash = diffHash(diffs) + sha(read(path.join(SDLC, 'sensors.json')) + read(path.join(SDLC, 'rules.json'))) + mode
   if (gate.passed.main === hash) return { halt: false }
-  let slug = activeSlug()
-  // A turn that shipped (its commits add a change's ship.json) is recorded already; any other commit is still ad hoc.
-  const shipped = (git(['diff', '--name-only', snap.sha, 'HEAD']) ?? '').split('\n').some(f => /^\.rig\/changes\/[^/]+\/ship\.json$/.test(f))
-  // Harness files alone (onboarding writes CI workflows and settings) are not ad-hoc work, nor is anything written while /rig:init runs.
-  if (!slug && !shipped && !initRunning && diffs.some(d => isSource(d.file, config) && !isProtected(d.file))) slug = createAdhoc(tierFromDiff(diffs, config))
+  const slug = activeSlug()
   // The fast commands are keyed by the whole tree, not this turn's diff: a tree that already passed them (an edit undone, a
   // file touched and restored, the same state reached from another turn) skips them, and only the sensors judge the diff.
   const stamp = treeStamp()
@@ -291,33 +274,6 @@ function hookStop(input: HookInput = {}): { halt: boolean; warn?: string } {
   return { halt: true }
 }
 
-// After approval the rest of the lifecycle is automatic: a turn that ends with a node still to run (build, test, sensors, pr)
-// and no person-gate waiting is sent on to the next node, so nobody types /rig:test. Each node is offered once: a turn that
-// ends on the same node, round and slice count as the last offer moved nothing, so it stops instead of looping.
-const AUTO_NODES = new Set(['build', 'test', 'sensors', 'pr', 'pr-review'])
-function stepKeyNow(): { key: string; s: ReturnType<typeof step> } | null {
-  try {
-    const slug = exists(SDLC) ? activeSlug() : null
-    if (!slug) return null
-    const s = step(slug)
-    return { key: `${slug}:${s.node}:${s.round}:${s.progress ?? 0}`, s }
-  } catch { return null }
-}
-
-// Only a turn that moved the change (its step differs from the one the turn started on) is continued: a question asked
-// mid-change, or an approval turn that has not begun a node, is left alone.
-function continueChange(): { decision: 'block'; reason: string } | null {
-  const now_ = stepKeyNow()
-  if (!now_) return null
-  const { key, s } = now_
-  const slug = s.slug
-  if (s.verdict !== 'continue' || !s.node || !AUTO_NODES.has(s.node)) return null
-  const gate = readGate()
-  if (gate.turnStep === undefined || gate.turnStep === key || gate.cont === key) return null
-  updateGate(g => { g.cont = key })
-  return { decision: 'block', reason: `rig: the design is approved, so ${s.node} runs next without waiting for the person. Run \`node --disable-warning=ExperimentalWarning ${process.argv[1]} skill ${s.node} ${slug}\` and follow the printed steps for this node, then stop (the next node is offered when you do).` }
-}
-
 const HOOKS: Record<string, (input: HookInput) => void> = {
   'session-start': hookSessionStart,
   'post-edit': hookPostEdit,
@@ -327,9 +283,7 @@ const HOOKS: Record<string, (input: HookInput) => void> = {
   'prompt-submit': i => hookPromptSubmit(i),
   stop: i => {
     const r = hookStop(i)
-    if (r.halt) return
-    const cont = continueChange()
-    if (r.warn || cont) out(JSON.stringify({ ...(r.warn ? { systemMessage: r.warn } : {}), ...cont }))
+    if (!r.halt && r.warn) out(JSON.stringify({ systemMessage: r.warn }))
   },
 }
 

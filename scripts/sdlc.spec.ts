@@ -5,8 +5,6 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync, execFileSync } from 'node:child_process'
-import crypto from 'node:crypto'
-import { verified, ratcheted, buildDone } from './testkit.ts'
 
 const SCRIPT = path.resolve(import.meta.dirname, 'sdlc.ts')
 let repo: string
@@ -23,17 +21,6 @@ const write = (rel: string, text: string) => {
 }
 const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, stdio: 'ignore' })
 
-const PLAN = `# Plan
-## Approach
-Small.
-## Files
-- src/app.js
-- tests/**
-## Slices
-1. do it
-## Verification
-- npm test
-`
 
 beforeEach(() => {
   repo = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-test-'))
@@ -50,95 +37,13 @@ test('new creates intent and makes the change active; status prints next command
   assert.ok(fs.existsSync(path.join(repo, '.rig/changes/add-login/intent.md')))
   const status = run(['status']).stdout
   assert.match(status, /▶ add-login/)
-  assert.match(status, /next: \/rig:design add-login/)
-})
-
-test('tier L plan needs approval; approval is human-only and goes stale on edit', () => {
-  run(['new', 'add-login', '--type', 'refactor', '--tier', 'L'])
-  write('.rig/changes/add-login/plan.md', PLAN)
-  assert.match(run(['status']).stdout, /awaiting approval/)
-
-  const byModel = run(['approve', 'add-login', 'plan'])
-  assert.equal(byModel.code, 3)
-  assert.match(byModel.stderr, /human-only/)
-
-  assert.equal(run(['approve', 'add-login', 'plan'], { env: { SDLC_HUMAN: '1' } }).code, 0)
-  assert.match(run(['status']).stdout, /next: \/rig:build add-login/)
-
-  write('.rig/changes/add-login/plan.md', PLAN + '\n- extra\n')
-  assert.match(run(['status']).stdout, /stale/)
+  assert.match(status, /next: \/rig:start add-login/)
 })
 
 test('new writes .rig/.gitignore even when .rig already exists', () => {
   fs.mkdirSync(path.join(repo, '.rig'))
   run(['new', 'x-change', '--type', 'chore', '--tier', 'S'])
-  assert.equal(fs.readFileSync(path.join(repo, '.rig/.gitignore'), 'utf8'), 'usage.jsonl\n.baseline\n.gate\nunresolved.json\ngates.jsonl\nspend-cache.json\nspend-fetched\nbudget-seen.json\n.onboarding\nchanges/*/prototype/\n')
-})
-
-test('tier S chore has no gates and skips spec and plan', () => {
-  run(['new', 'bump-deps', '--type', 'chore', '--tier', 'S'])
-  assert.match(run(['status']).stdout, /next: \/rig:build bump-deps/)
-})
-
-test('tier S feature reviews in session only where a PR review cannot run; a local-only change that gains an origin goes back to pr (resume)', () => {
-  run(['new', 'tiny', '--type', 'feature', '--tier', 'S'])
-  verified(repo, 'tiny')
-  ratcheted(repo, 'tiny')
-  write('.rig/changes/tiny/plan.md', PLAN)
-  write('.rig/changes/tiny/pr.md', '---\nstate: local-only\n---\n')
-  git('add', '-A'); git('commit', '-qm', 'pr')
-  assert.match(run(['status']).stdout, /next: \/rig:pr-review tiny/, 'no PR review workflow and no remote: review in session')
-  write('.github/workflows/rig-review.yml', 'name: rig-review\n')
-  assert.match(run(['status']).stdout, /next: \/rig:pr-review tiny/, 'a workflow without a remote still cannot review')
-  git('remote', 'add', 'origin', 'https://example.com/x.git')
-  assert.match(run(['status']).stdout, /next: \/rig:pr tiny/, 'a local-only change that gained an origin has no PR yet: pr resumes it (and CI then reviews, so no pr-review node)')
-})
-
-test('a legacy sdlc-review.yml workflow still counts as PR review being available', () => {
-  run(['new', 'tiny', '--type', 'feature', '--tier', 'S'])
-  verified(repo, 'tiny')
-  ratcheted(repo, 'tiny')
-  write('.rig/changes/tiny/plan.md', PLAN)
-  write('.rig/changes/tiny/pr.md', '---\nstate: opened\n---\n')
-  write('.rig/changes/tiny/events.jsonl', JSON.stringify({ kind: 'pr', target: 'https://example.com/x/pull/1' }) + '\n')
-  git('add', '-A'); git('commit', '-qm', 'pr')
-  git('remote', 'add', 'origin', 'https://example.com/x.git')
-  assert.match(run(['status']).stdout, /next: \/rig:pr-review tiny/, 'no review workflow: reviewed in session')
-  write('.github/workflows/sdlc-review.yml', 'name: sdlc-review\n')
-  assert.doesNotMatch(run(['status']).stdout, /next: \/rig:pr-review/, 'the legacy workflow reviews in CI, so the in-session node is dropped')
-})
-
-test('log-usage keeps the change and stage captured at turn start', () => {
-  run(['new', 'a-change', '--type', 'feature', '--tier', 'M'])
-  run(['log-usage', JSON.stringify({ kind: 'main', usd: 0.1, change: 'a-change', stage: 'intent' })])
-  const row = JSON.parse(fs.readFileSync(path.join(repo, '.rig/usage.jsonl'), 'utf8').trim())
-  assert.equal(row.stage, 'intent')
-})
-
-test('ship is done only once the scope record is committed', () => {
-  run(['new', 'tiny', '--type', 'chore', '--tier', 'S'])
-  verified(repo, 'tiny')
-  ratcheted(repo, 'tiny')
-  run(['scope-drift', 'tiny', '--record'])
-  assert.match(run(['status']).stdout, /next: \/rig:pr tiny/)
-  git('add', '-A')
-  git('commit', '-qm', 'chore: tiny')
-  assert.match(run(['status']).stdout, /done/)
-})
-
-test('scope-drift flags files outside plan ## Files and records ship.json', () => {
-  run(['new', 'add-login', '--type', 'feature', '--tier', 'S'])
-  write('.rig/changes/add-login/plan.md', PLAN)
-  write('src/app.js', 'x\n')
-  write('tests/app.test.js', 'x\n')
-  assert.equal(run(['scope-drift', 'add-login']).code, 0)
-
-  write('src/other.js', 'y\n')
-  const r = run(['scope-drift', 'add-login', '--record'])
-  assert.equal(r.code, 1)
-  assert.match(r.stdout, /src\/other\.js/)
-  const ship = JSON.parse(fs.readFileSync(path.join(repo, '.rig/changes/add-login/ship.json'), 'utf8'))
-  assert.deepEqual(ship.drift, ['src/other.js'])
+  assert.equal(fs.readFileSync(path.join(repo, '.rig/.gitignore'), 'utf8'), 'state/\nusage.jsonl\n.baseline\n.gate\nunresolved.json\ngates.jsonl\nspend-cache.json\nspend-fetched\nbudget-seen.json\n.onboarding\nchanges/*/prototype/\n')
 })
 
 test('hooks are silent in repos that never opted in', () => {
@@ -147,31 +52,12 @@ test('hooks are silent in repos that never opted in', () => {
   assert.equal(hook('stop', {}).stdout, '')
 })
 
-test('post-edit blocks secrets and code-heavy plans with exit 2', () => {
+test('post-edit blocks secrets with exit 2', () => {
   run(['new', 'add-login', '--type', 'feature', '--tier', 'S'])
   write('src/config.js', 'const key = "AKIAABCDEFGHIJKLMNOP"\n')
   const secret = hook('post-edit', { tool_input: { file_path: path.join(repo, 'src/config.js') } })
   assert.equal(secret.code, 2)
   assert.match(secret.stderr, /AWS access key/)
-
-  const code = '```js\n' + 'line\n'.repeat(15) + '```\n'
-  write('.rig/changes/add-login/plan.md', PLAN + code)
-  const plan = hook('post-edit', { tool_input: { file_path: path.join(repo, '.rig/changes/add-login/plan.md') } })
-  assert.equal(plan.code, 2)
-  assert.match(plan.stderr, /not implementation code/)
-})
-
-test('F1: a new change replaces the template STATE body; a written body is kept', () => {
-  run(['init'])
-  run(['new', 'first', '--type', 'chore', '--tier', 'S'])
-  const state = fs.readFileSync(path.join(repo, '.rig/STATE.md'), 'utf8')
-  assert.doesNotMatch(state, /No active change/)
-  assert.match(state, /Active change: first/)
-  const ctx = JSON.parse(hook('session-start', {}).stdout).hookSpecificOutput.additionalContext
-  assert.doesNotMatch(ctx, /No active change/)
-  fs.writeFileSync(path.join(repo, '.rig/STATE.md'), '---\nchange: first\n---\n# State\n\nslice 2 of 3 done\n')
-  run(['new', 'second', '--type', 'chore', '--tier', 'S'])
-  assert.match(fs.readFileSync(path.join(repo, '.rig/STATE.md'), 'utf8'), /slice 2 of 3 done/)
 })
 
 test('session-start tells the model that sdlc routes work, not superpowers', () => {
@@ -184,82 +70,7 @@ test('session-start injects the active change and next command', () => {
   run(['new', 'add-login', '--type', 'bugfix', '--tier', 'S'])
   const ctx = JSON.parse(hook('session-start', {}).stdout).hookSpecificOutput.additionalContext
   assert.match(ctx, /add-login/)
-  assert.match(ctx, /\/rig:diagnose add-login/)
-})
-
-test('log-usage tags rows with the active change', () => {
-  run(['new', 'add-login', '--type', 'feature', '--tier', 'S'])
-  run(['log-usage', JSON.stringify({ kind: 'main', model: 'claude-sonnet-5-5', in: 10, out: 100, cr: 1000, cw: 50, usd: 0.12, ctx: 160000 })])
-  run(['log-usage', JSON.stringify({ kind: 'agent', agentType: 'implementer', model: 'claude-sonnet-5-5', in: 5, out: 50, cr: 500, cw: 20 })])
-  const row = JSON.parse(fs.readFileSync(path.join(repo, '.rig/usage.jsonl'), 'utf8').split('\n')[0] ?? '{}')
-  assert.equal(row.change, 'add-login')
-})
-
-test('status warns when there is no origin remote to open a PR on', () => {
-  run(['new', 'tiny', '--type', 'chore', '--tier', 'S'])
-  assert.match(run(['status']).stdout, /warn: no origin remote/)
-  git('remote', 'add', 'origin', 'https://example.com/x.git')
-  assert.doesNotMatch(run(['status']).stdout, /no origin remote/)
-})
-
-test('skill prints a stage skill with plugin root and arguments substituted', () => {
-  const r = run(['skill', 'test', 'add-login'])
-  assert.equal(r.code, 0, r.stderr)
-  assert.match(r.stdout, /# Test add-login/)
-  assert.doesNotMatch(r.stdout, /\$\{CLAUDE_PLUGIN_ROOT\}/)
-  assert.doesNotMatch(r.stdout, /^---\nname:/)
-  assert.notEqual(run(['skill', 'no-such-skill']).code, 0)
-})
-
-test('run records exit codes; verify-report generates verification.md; a hand-written pass does not count', () => {
-  run(['new', 'tiny', '--type', 'chore', '--tier', 'S'])
-  buildDone(repo, 'tiny')
-  write('.rig/changes/tiny/verification.md', '---\nresult: pass\n---\n')
-  assert.match(run(['status']).stdout, /next: \/rig:test tiny/)
-
-  const red = run(['run', '--expect-fail', '--', 'node -e "process.exit(3)"'])
-  assert.equal(red.code, 0)
-  const TOGGLE = `node -e "process.exit(require('fs').existsSync('ok') ? 0 : 2)"`
-  const bad = run(['run', '--', TOGGLE])
-  assert.equal(bad.code, 2)
-  const rows = fs.readFileSync(path.join(repo, '.rig/changes/tiny/runs.jsonl'), 'utf8').trim().split('\n').map(r => JSON.parse(r))
-  assert.deepEqual(rows.map(r => [r.exit, Boolean(r.expectFail)]), [[3, true], [2, false]])
-
-  const report = () => fs.readFileSync(path.join(repo, '.rig/changes/tiny/verification.md'), 'utf8')
-  run(['verify-report', 'tiny'])
-  assert.match(report(), /result: fail/)
-  run(['run', '--', 'node -e "process.exit(0)"'])
-  run(['verify-report', 'tiny'])
-  assert.match(report(), /result: fail/, 'a different passing command must not mask a failing one')
-
-  write('ok', '1')
-  run(['run', '--', TOGGLE])
-  run(['verify-report', 'tiny'])
-  assert.match(report(), /result: pass/)
-  assert.match(run(['status']).stdout, /next: \/rig:sensors tiny/)
-
-  run(['run', '--', 'node -e "process.exit(1)"'])
-  assert.match(run(['status']).stdout, /next: \/rig:sensors tiny/, 'runs appended after the report do not invalidate it')
-})
-
-test('verification judges only the plan commands, ignoring gate rows and abandoned exploratory runs', () => {
-  run(['new', 'tiny', '--type', 'chore', '--tier', 'S'])
-  write('.rig/changes/tiny/plan.md', '## Files\n- src/**\n## Verification\n- `node -e "process.exit(0)"`\n')
-  write('.rig/changes/tiny/runs.jsonl', JSON.stringify({ at: 'x', cmd: 'eslint .', exit: 1, ms: 1, tail: '', source: 'gate' }) + '\n')
-  run(['run', '--', 'node -e "process.exit(4)"'])
-  run(['verify-report', 'tiny'])
-  assert.match(fs.readFileSync(path.join(repo, '.rig/changes/tiny/verification.md'), 'utf8'), /result: fail[\s\S]*Not run/)
-  run(['run', '--', 'node -e "process.exit(0)"'])
-  run(['verify-report', 'tiny'])
-  assert.match(fs.readFileSync(path.join(repo, '.rig/changes/tiny/verification.md'), 'utf8'), /result: pass/)
-})
-
-test('a forged verification.md with runs: 0 does not make the change shippable', () => {
-  run(['new', 'tiny', '--type', 'chore', '--tier', 'S'])
-  buildDone(repo, 'tiny')
-  const digest = crypto.createHash('sha256').update('').digest('hex').slice(0, 16)
-  write('.rig/changes/tiny/verification.md', `---\ngenerated: sdlc\nresult: pass\nruns: 0\ndigest: ${digest}\n---\n`)
-  assert.match(run(['status']).stdout, /next: \/rig:test tiny/)
+  assert.match(ctx, /Active change: add-login \(bugfix, spec\)\. Next: \/rig:start add-login/)
 })
 
 test('run rejects a slug with no change folder and creates nothing', () => {
@@ -267,11 +78,6 @@ test('run rejects a slug with no change folder and creates nothing', () => {
   const r = run(['run', '--slug', 'nope', '--', 'node -e 0'])
   assert.notEqual(r.code, 0)
   assert.equal(fs.existsSync(path.join(repo, '.rig/changes/nope')), false)
-})
-
-test('a new intent has a Decisions section for explicit defaults', () => {
-  run(['new', 'add-login', '--type', 'feature', '--tier', 'M'])
-  assert.match(fs.readFileSync(path.join(repo, '.rig/changes/add-login/intent.md'), 'utf8'), /## Decisions\n<!-- skipped optional steps and defaults taken, one line each -->/)
 })
 
 test('check --at ci logs no rule fires', () => {
@@ -299,17 +105,6 @@ test('waive is human-only, records the waiver for the active change, and status 
   assert.match(run(['sensors']).stdout, /waivers \(xx\): size \* generated file/)
 })
 
-test('impact-status holds edits to consumer files while the impact is unapproved', () => {
-  run(['new', 'rate', '--type', 'feature', '--tier', 'L'])
-  write('.rig/sensors.json', JSON.stringify({ consumers: [{ name: 'checkout', path: '../checkout' }] }))
-  write('.rig/changes/rate/impact.json', JSON.stringify({ at: 'x', ids: ['discount_rate'], hits: [{ consumer: 'checkout', file: 'a', line: 1, id: 'discount_rate' }], missing: [] }))
-  write('.rig/changes/rate/plan.md', '## Files\n- ../checkout/**\n')
-  const consumerFile = path.join(path.dirname(repo), 'checkout', 'a.ts')
-  assert.deepEqual(JSON.parse(run(['impact-status', consumerFile, '--json']).stdout), { hold: true, slug: 'rate', consumers: ['checkout'], hits: 1 })
-  run(['approve', 'rate', 'impact'], { env: { SDLC_HUMAN: '1' } })
-  assert.equal(JSON.parse(run(['impact-status', consumerFile, '--json']).stdout).hold, false)
-})
-
 test('waive rejects an unknown sensor name', () => {
   run(['new', 'xx', '--type', 'chore', '--tier', 'S'])
   const r = run(['waive', 'nonsense', '*', 'because'], { env: { SDLC_HUMAN: '1' } })
@@ -317,160 +112,21 @@ test('waive rejects an unknown sensor name', () => {
   assert.match(r.stderr, /test-tamper/)
 })
 
-test('impact-status holds for a missing-only impact', () => {
-  run(['new', 'rate', '--type', 'feature', '--tier', 'L'])
-  write('.rig/sensors.json', JSON.stringify({ consumers: [{ name: 'checkout', path: '../checkout' }] }))
-  write('.rig/changes/rate/impact.json', JSON.stringify({ at: 'x', ids: ['discount_rate'], hits: [], missing: ['discount_rate'] }))
-  assert.equal(JSON.parse(run(['impact-status', path.join(path.dirname(repo), 'checkout', 'a.ts'), '--json']).stdout).hold, true)
-})
-
-test('impact-status recognises a consumer declared with an absolute path', () => {
-  run(['new', 'rate', '--type', 'feature', '--tier', 'L'])
-  const consumerDir = path.join(path.dirname(repo), 'checkout')
-  write('.rig/sensors.json', JSON.stringify({ consumers: [{ name: 'checkout', path: consumerDir }] }))
-  write('.rig/changes/rate/impact.json', JSON.stringify({ at: 'x', ids: ['d'], hits: [{ consumer: 'checkout', file: 'a', line: 1, id: 'd' }], missing: [] }))
-  assert.equal(JSON.parse(run(['impact-status', path.join(consumerDir, 'a.ts'), '--json']).stdout).hold, true)
-})
-
-// Real artifacts from the 2026-10-03 live trial: the architect's labelled bullets and the runs the build agent recorded.
-const TRIAL = path.resolve(import.meta.dirname, '../tests/fixtures/live-trial')
-const reportFor = (verification: string, rows: object[]) => {
-  if (!fs.existsSync(path.join(repo, '.rig/changes/tiny'))) run(['new', 'tiny', '--type', 'chore', '--tier', 'S'])
-  write('.rig/changes/tiny/plan.md', `## Files\n- src/**\n${verification}`)
-  write('.rig/changes/tiny/runs.jsonl', rows.map(r => JSON.stringify(r)).join('\n') + '\n')
-  run(['verify-report', 'tiny'])
-  return fs.readFileSync(path.join(repo, '.rig/changes/tiny/verification.md'), 'utf8')
-}
-const ok = (cmd: string, extra: object = {}) => ({ at: 'x', cmd, exit: 0, ms: 1, tail: '', ...extra })
-
-test('verify-report passes on the live trial plan: labelled bullets, prose notes and a red run (regression)', () => {
-  const rows = fs.readFileSync(path.join(TRIAL, 'runs.jsonl'), 'utf8').trim().split('\n').map(r => JSON.parse(r))
-  const text = reportFor(fs.readFileSync(path.join(TRIAL, 'plan-verification.md'), 'utf8'), rows)
-  assert.match(text, /result: pass/)
-  assert.doesNotMatch(text, /Not run/)
-})
-
-test('a labelled bullet "- Label: `cmd` prose" requires cmd, not the label or the prose', () => {
-  const plan = '## Verification\n- Full suite: `npm test`, which runs `node --test`.\n'
-  assert.match(reportFor(plan, []), /result: fail[\s\S]*Not run[\s\S]*- `npm test`/)
-  assert.match(reportFor(plan, [ok('npm test')]), /result: pass/)
-})
-
-test('a prose bullet whose backticks are not in command position is not a required command', () => {
-  const plan = '## Verification\n- `npm test`\n- Lint and type-check: none configured. `.rig/sensors.json` only defines `npm test`.\n'
-  const text = reportFor(plan, [ok('npm test')])
-  assert.match(text, /result: pass/)
-  assert.doesNotMatch(text, /Not run/)
-  assert.match(text, /## Ignored[\s\S]*sensors\.json/)
-})
-
-test('an expected-red bullet wrapping `sdlc.ts run --expect-fail` is not a required green command', () => {
-  const plan = '## Verification\n- Red first: `sdlc.ts run --expect-fail -- "node --test a.js"`.\n- `npm test`\n'
-  const text = reportFor(plan, [ok('npm test')])
-  assert.match(text, /result: pass/)
-  assert.doesNotMatch(text, /Not run/)
-})
-
-test('a bare-command bullet stays a command; a backtick-free "Label: prose" bullet does not', () => {
-  assert.match(reportFor('## Verification\n- npm test\n', []), /Not run[\s\S]*- `npm test`/)
-  const text = reportFor('## Verification\n- npm test\n- Lint: none configured\n', [ok('npm test')])
-  assert.match(text, /result: pass/)
-})
-
-test('sdlc.ts run -- "cmd" is unwrapped to a required command; red runs and check bullets are skipped', () => {
-  const plan = `## Verification\n- Suite: \`sdlc.ts run -- "npm test"\`\n- \`sdlc.ts run --expect-fail -- "node --test a.js"\`\n- Impact: \`sdlc.ts check --at plan\`\n`
-  assert.match(reportFor(plan, []), /result: fail[\s\S]*Not run[\s\S]*- `npm test`/)
-  const text = reportFor(plan, [ok('npm test')])
-  assert.match(text, /result: pass/)
-  assert.match(text, /## Ignored[\s\S]*expect-fail[\s\S]*check --at plan/)
-})
-
-test('a label containing backticks still yields the command after the first ": "', () => {
-  const plan = '## Verification\n- Unit tests for `foo`: `npm test` (fast)\n- `npm run lint`\n'
-  assert.match(reportFor(plan, [ok('npm run lint')]), /result: fail[\s\S]*Not run[\s\S]*- `npm test`/)
-  assert.match(reportFor(plan, [ok('npm run lint'), ok('npm test')]), /result: pass/)
-})
-
-test('a section where every bullet is ignored fails instead of passing on an unrelated green run', () => {
-  const plan = '## Verification\n- Unit: npm test\n- Lint: none configured\n'
-  const text = reportFor(plan, [ok('node -e "1"')])
-  assert.match(text, /result: fail/)
-  assert.match(text, /## Ignored \(not commands; listed in plan ## Verification\)\n- Unit: npm test\n- Lint: none configured/)
-  assert.match(text, /one leading backticked command per bullet/)
-})
-
-test('a plan with no ## Verification section keeps the all-runs fallback', () => {
-  assert.match(reportFor('', [ok('npm test')]), /result: pass/)
-})
-
-test('I5: a v0.1 change whose ship.json is committed stays done and never becomes the active change', () => {
-  run(['new', 'old-chore', '--type', 'chore', '--tier', 'S'])
-  write('.rig/changes/old-chore/verification.md', '---\nresult: pass\n---\n# Verification\nAll green.\n')
-  write('.rig/changes/old-chore/ship.json', '{ "at": "2026-01-01T00:00:00Z", "matchRatio": 1 }\n')
-  write('.rig/STATE.md', '---\nchange: old-chore\n---\n# State\n')
-  git('add', '-A')
-  git('commit', '-qm', 'chore: old (v0.1)')
-  const status = run(['status']).stdout
-  assert.match(status, /old-chore\s+chore\s+S\s+done/)
-  assert.doesNotMatch(status, /▶|next: /)
-  hook('prompt-submit', {})
-  write('src/new.js', 'export const n = 1\n')
-  hook('stop', {})
-  assert.match(run(['status']).stdout, /▶ adhoc-\d{8}-\d{4}/)
-})
 
 test('F5: a failing command that prints a key is recorded without the key', () => {
   run(['new', 'leak', '--type', 'chore', '--tier', 'S'])
   run(['run', '--slug', 'leak', '--', `node -e "console.log('AKIA'+'IOSFODNN7EXAMPLE'); process.exit(1)"`])
-  const runs = fs.readFileSync(path.join(repo, '.rig/changes/leak/runs.jsonl'), 'utf8')
+  const runs = fs.readFileSync(path.join(repo, '.rig/changes/leak/evidence/runs.jsonl'), 'utf8')
   assert.doesNotMatch(runs, /AKIA[0-9A-Z]{16}/)
   assert.match(runs, /masked by sdlc/)
 })
 
-test('F2: a tier L bugfix stops at a plan gate after diagnosis; S and M do not', () => {
-  run(['new', 'big-bug', '--type', 'bugfix', '--tier', 'L'])
-  assert.match(run(['status']).stdout, /next: \/rig:diagnose big-bug/)
-  fs.writeFileSync(path.join(repo, '.rig/changes/big-bug/plan.md'), '# Plan\n\n## Files\n- src/a.js\n\n## Verification\n- `npm test`\n')
-  assert.match(run(['status']).stdout, /human gate: review big-bug\/plan\.md, then run \/rig:approve big-bug plan/)
-  run(['approve', 'big-bug', 'plan'], { env: { SDLC_HUMAN: '1' } })
-  assert.match(run(['status']).stdout, /next: \/rig:diagnose big-bug/)
-  run(['new', 'small-bug', '--type', 'bugfix', '--tier', 'M'])
-  const st = JSON.parse(run(['status', '--json']).stdout) as { changes: { slug: string; command: string }[] }
-  assert.equal(st.changes.find(c => c.slug === 'small-bug')?.command, '/rig:diagnose small-bug')
-})
-
-test('a spec or plan with unresolved open questions cannot be approved; resolved or defaulted ones can', () => {
-  run(['new', 'qs', '--type', 'feature', '--tier', 'M'])
-  write('.rig/changes/qs/plan.md', PLAN + '\n## Open questions\n- Q1 swap GET /todos in place or add /v2?\n')
-  const refused = run(['approve', 'qs', 'plan'], { env: { SDLC_HUMAN: '1' } })
-  assert.notEqual(refused.code, 0)
-  assert.match(refused.stderr, /open question.*Q1 swap/s)
-  write('.rig/changes/qs/plan.md', PLAN + '\n## Risks\n- Q1 is still open: confirm before Task 3.\n')
-  assert.notEqual(run(['approve', 'qs', 'plan'], { env: { SDLC_HUMAN: '1' } }).code, 0, 'an open Q in prose also blocks')
-  write('.rig/changes/qs/plan.md', PLAN + '\n## Open questions\nnone\n\n## Decisions\n- Q1 swap in place → yes (default)\n')
-  assert.equal(run(['approve', 'qs', 'plan'], { env: { SDLC_HUMAN: '1' } }).code, 0)
-})
-
-test('lean S/M: a feature has one design gate and no review stage; a tier L refactor keeps the plan gate', () => {
-  run(['new', 'mid', '--type', 'feature', '--tier', 'M'])
-  write('.rig/changes/mid/plan.md', PLAN)
-  assert.match(run(['status']).stdout, /human gate: review mid\/plan\.md/, 'a feature has one gate at design (plan.md for older changes)')
-  write('.rig/changes/mid/design.md', PLAN)
-  run(['approve', 'mid', 'design'], { env: { SDLC_HUMAN: '1' } })
-  assert.match(run(['status']).stdout, /next: \/rig:build mid/)
-  const st = JSON.parse(run(['status', '--json']).stdout) as { changes: { slug: string }[] }
-  assert.ok(st.changes.some(c => c.slug === 'mid'))
-  run(['new', 'big', '--type', 'refactor', '--tier', 'L'])
-  write('.rig/changes/big/plan.md', PLAN)
-  assert.match(run(['status']).stdout, /human gate: review big\/plan\.md/)
-})
-
-test('status --json carries the active step and no story', () => {
+test('status --json carries the active change and each change\'s status and next step', () => {
   run(['new', 'aa', '--type', 'chore', '--tier', 'S'])
   const s = JSON.parse(run(['status', '--json']).stdout)
+  assert.equal(s.active, 'aa')
+  assert.deepEqual(s.changes, [{ slug: 'aa', type: 'chore', status: 'spec', next: '/rig:start aa' }])
   assert.equal(s.story, undefined)
-  assert.equal(s.step.verdict, 'continue')
-  assert.equal(s.step.node, 'build')
 })
 
 test('every slug-taking command refuses a path-like slug and writes nothing outside .rig/changes', () => {
@@ -498,32 +154,6 @@ test('every slug-taking command refuses a path-like slug and writes nothing outs
   }
   assert.deepEqual(fs.readdirSync(path.join(repo, '.rig/x')), [], 'nothing written into the sibling directory')
   assert.ok(!fs.existsSync(path.join(repo, '.rig/waivers.jsonl')) || fs.readFileSync(path.join(repo, '.rig/waivers.jsonl'), 'utf8') === '')
-})
-
-test('status warns when a plan lists ** or * in ## Files, which makes the scope gate vacuous', () => {
-  run(['new', 'wide', '--type', 'chore', '--tier', 'S'])
-  write('.rig/changes/wide/plan.md', '## Files\n- src/app.js\n- **\n')
-  assert.match(run(['status']).stdout, /warn: wide: .*"\*\*".*too broad/)
-  write('.rig/changes/wide/plan.md', '## Files\n- `*`\n')
-  assert.match(run(['status']).stdout, /warn: wide: .*"\*".*too broad/)
-  write('.rig/changes/wide/plan.md', '## Files\n- src/**\n')
-  assert.doesNotMatch(run(['status']).stdout, /too broad/)
-})
-
-test('a ## Files table counts as the file list, and a section with no paths is a warning', () => {
-  run(['new', 'tbl', '--type', 'chore', '--tier', 'S'])
-  write('.rig/changes/tbl/plan.md', '## Files\n| File/glob | Purpose |\n|---|---|\n| `src/app.js` | entry |\n| `test/app.test.js` | tests |\n')
-  write('src/app.js', 'changed\n')
-  write('test/app.test.js', 'new\n')
-  const drift = run(['scope-drift', 'tbl']).stdout
-  assert.doesNotMatch(drift, /src\/app\.js|test\/app\.test\.js/, drift)
-  assert.doesNotMatch(run(['status']).stdout, /lists no paths/)
-  write('.rig/changes/tbl/plan.md', '## Files\nthe shop modules and their tests\n')
-  assert.match(run(['status']).stdout, /warn: tbl: "## Files" lists no paths/)
-  write('.rig/changes/tbl/plan.md', '## Files\n| File | Why |\n|---|---|\n| `**` | everything |\n')
-  assert.match(run(['status']).stdout, /warn: tbl: .*"\*\*".*too broad/, 'a ** table row is as wide as a ** bullet')
-  write('.rig/changes/tbl/plan.md', '## Filesystem layout\nflat\n')
-  assert.doesNotMatch(run(['status']).stdout, /lists no paths/, '"## Filesystem" is not a Files section')
 })
 
 test('init runs git init when the directory is not inside a repository, and leaves an existing repo alone', () => {

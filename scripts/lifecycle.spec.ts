@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { makeRepo, sdlc, write, gitIn } from './testkit.ts'
+import { makeRepo, sdlc, write, gitIn, hook } from './testkit.ts'
 
 let repo: string
 beforeEach(() => { repo = makeRepo(); sdlc(repo, ['init']) })
@@ -105,4 +105,95 @@ test('activeSlug ignores a slug whose folder is gone; setActive(null) clears it'
   assert.equal(call(`return L.activeSlug()`), null)
   call(`L.newChange('two', 'feature', 'Two'); L.setActive(null)`)
   assert.equal(call(`return L.activeSlug()`), null)
+})
+
+// The CLI on the slim lifecycle.
+const HUMAN = { env: { SDLC_HUMAN: '1' } }
+const planned = (slug = 'demo') => {
+  sdlc(repo, ['new', slug, '--type', 'feature'])
+  write(repo, `.rig/changes/${slug}/spec.md`, SPEC)
+  write(repo, `.rig/changes/${slug}/plan.md`, PLAN)
+}
+const statusOf = (slug = 'demo') => (JSON.parse(sdlc(repo, ['status', '--json']).stdout) as { changes: { slug: string; status: string }[] }).changes.find(c => c.slug === slug)?.status
+
+test('cli: new, approve, verify and status walk one change; verify.json written under .rig stays fresh', () => {
+  planned()
+  assert.equal(statusOf(), 'approve')
+  assert.notEqual(sdlc(repo, ['approve', 'demo']).code, 0, 'approve is human-only')
+  assert.equal(sdlc(repo, ['approve', 'demo'], HUMAN).code, 0)
+  assert.ok(fs.existsSync(path.join(repo, '.rig/changes/demo/approval.json')))
+  assert.equal(statusOf(), 'build')
+  write(repo, 'test/a.test.js', "// B1 lists orders\n")
+  const v = sdlc(repo, ['verify', 'demo'])
+  assert.equal(v.code, 0, v.stdout + v.stderr)
+  assert.equal(JSON.parse(fs.readFileSync(path.join(repo, '.rig/changes/demo/verify.json'), 'utf8')).pass, true)
+  assert.equal(statusOf(), 'pr', 'writing verify.json under .rig does not make it stale')
+})
+
+test('cli: verify blocks a planned change that is not approved, with a plan-gate finding', () => {
+  planned()
+  const v = sdlc(repo, ['verify', 'demo'])
+  assert.equal(v.code, 1)
+  assert.match(v.stdout, /\[plan-gate\]/)
+})
+
+test('cli: a typed /rig:approve with no slug approves the active change once; a change that is not ready is refused with the reason', () => {
+  sdlc(repo, ['new', 'early', '--type', 'feature'])
+  const early = JSON.parse(hook(repo, 'prompt-submit', { prompt: '/rig:approve' }).stdout).hookSpecificOutput.additionalContext as string
+  assert.match(early, /no spec\.md or plan\.md/)
+  planned()
+  hook(repo, 'prompt-submit', { prompt: '/rig:approve' })
+  hook(repo, 'prompt-submit', { prompt: '/rig:approve demo' })
+  const a = JSON.parse(fs.readFileSync(path.join(repo, '.rig/changes/demo/approval.json'), 'utf8'))
+  assert.ok(a.by)
+  assert.match(sdlc(repo, ['approve', 'demo'], HUMAN).stdout, /already approved/)
+})
+
+test('cli: a change left by an older rig reads from its files without crashing', () => {
+  write(repo, '.rig/changes/old/intent.md', '---\nslug: old\ntype: greenfield\ntier: L\n---\n# Old\n')
+  write(repo, '.rig/changes/old/ratchet.json', '{"tier":"L","nodes":{}}')
+  write(repo, '.rig/changes/old/design.md', '# Design\n')
+  write(repo, '.rig/approvals.jsonl', '{"slug":"old","stage":"design","by":"x","at":"t","digest":"d"}\n')
+  const s = JSON.parse(sdlc(repo, ['status', '--json']).stdout) as { changes: { slug: string; type: string; status: string }[] }
+  assert.deepEqual(s.changes.find(c => c.slug === 'old'), { slug: 'old', type: 'feature', status: 'spec', next: '/rig:start old' })
+  assert.match(sdlc(repo, ['approve', 'old'], HUMAN).stderr, /no spec\.md or plan\.md/)
+})
+
+test('cli: re-approving after every contract file is gone lifts the old freeze', () => {
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], contracts: { files: ['api/**'] } }))
+  write(repo, 'api/openapi.yaml', 'openapi: 3.1.0\n')
+  gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'cfg')
+  planned()
+  sdlc(repo, ['approve', 'demo'], HUMAN)
+  assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(path.join(repo, '.rig/changes/demo/approval.json'), 'utf8')).contracts), ['api/openapi.yaml'])
+  fs.rmSync(path.join(repo, 'api/openapi.yaml'))
+  write(repo, '.rig/changes/demo/plan.md', PLAN + '\n## Decisions\n- dropped the API\n')
+  sdlc(repo, ['approve', 'demo'], HUMAN)
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(repo, '.rig/changes/demo/approval.json'), 'utf8')).contracts, {})
+  gitIn(repo, 'add', '-A')
+  assert.doesNotMatch(sdlc(repo, ['check', '--at', 'commit']).stdout, /\[harness-tamper\][^\n]*openapi/)
+})
+
+test('cli: CI treats an approval.json the PR adds as a human row that needs independent approval', () => {
+  gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'base')
+  gitIn(repo, 'checkout', '-qb', 'feature')
+  planned()
+  sdlc(repo, ['approve', 'demo'], HUMAN)
+  gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'change')
+  const r = sdlc(repo, ['check', '--at', 'ci', '--base', 'main'])
+  assert.match(r.stdout, /approval demo by /)
+  assert.match(r.stdout, /\[human-approval\]/)
+})
+
+test('cli: work with no change gets sensors only: Stop opens no ad-hoc change', () => {
+  hook(repo, 'prompt-submit', {})
+  write(repo, 'src/a.js', 'export const a = 1\n')
+  hook(repo, 'stop', { session_id: 's1' })
+  assert.deepEqual(fs.existsSync(path.join(repo, '.rig/changes')) ? fs.readdirSync(path.join(repo, '.rig/changes')) : [], [])
+})
+
+test('cli: the removed lifecycle commands are gone', () => {
+  const usage = /usage: sdlc\.ts <([^>]+)>/.exec(sdlc(repo, []).stderr)?.[1]?.split('|') ?? []
+  for (const c of ['next', 'scope-drift', 'pr-checks', 'skill', 'verify-report', 'log-usage', 'evals', 'inbox', 'spend', 'quality', 'shards', 'preflight', 'ratchet', 'impact-status']) assert.ok(!usage.includes(c), c)
+  for (const c of ['new', 'activate', 'status', 'approve', 'verify', 'pr', 'run', 'waive', 'check', 'sync']) assert.ok(usage.includes(c), c)
 })

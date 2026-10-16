@@ -1,7 +1,7 @@
 ---
 name: approve
-description: Human only. Approve a gated sdlc artifact. The model cannot run this.
-argument-hint: <slug> <design|spec|plan|impact|budget|full-route|tier S|M|L [type]>
+description: Human only. Approve a change: its spec.md, plan.md and contract files. The model cannot run this.
+argument-hint: <slug>
 disable-model-invocation: true
 allowed-tools: Bash(SDLC_HUMAN=1 node --disable-warning=ExperimentalWarning "${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts" approve *)
 ---

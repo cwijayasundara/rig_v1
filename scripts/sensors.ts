@@ -1,7 +1,6 @@
 // Language-agnostic sensors: pure functions from a parsed diff and config to findings.
 // Language knowledge lives in the pattern tables below, never in code paths per language.
 import { RATCHET_NODES, parseConfig, parseRules, type FileDiff, type Finding, type SensorConfig, isTest, isSource, matchesAny, globToRegex, SECRET_PATTERNS } from './model.ts'
-import { selectScopes } from './scopes.ts'
 import { isRegistryShape, weakensRegistry } from './registry.ts'
 
 export const TAMPER_PATTERNS: { id: string; re: RegExp; what: string }[] = [
@@ -364,13 +363,6 @@ export function harnessTamper(diffs: FileDiff[], o: { point: 'stop' | 'ship' | '
   return findings
 }
 
-// Tier of work done without /rig:start (spec 6.2): S is 3 or fewer source files and no contract; M is up to 15; else L.
-export function tierFromDiff(diffs: FileDiff[], cfg: SensorConfig): 'S' | 'M' | 'L' {
-  const files = diffs.filter(d => isSource(d.file, cfg))
-  if (Object.keys(cfg.scopes).length && selectScopes(files.map(d => d.file), cfg).touched.length > cfg.scopeLimit) return 'L'
-  if (files.length > 15) return 'L'
-  return files.length > 3 || files.some(d => matchesAny(d.file, cfg.contracts)) ? 'M' : 'S'
-}
 
 export function behaviourIds(text: string, heading: string): string[] {
   const section = new RegExp(`^##\\s+${heading}\\s*\\n([\\s\\S]*?)(?=^##\\s|(?![\\s\\S]))`, 'm').exec(text)?.[1] ?? ''

@@ -39,23 +39,14 @@ export function sdlc(repo: string, args: string[], { input, env = {} }: { input?
 
 export const hook = (repo: string, name: string, payload: unknown) => sdlc(repo, ['hook', name], { input: JSON.stringify(payload) })
 
-// The tier and type `new` recorded, kept when a helper rewrites ratchet.json.
-function recorded(repo: string, slug: string): { tier?: string; type?: string } {
-  try { const r = JSON.parse(fs.readFileSync(path.join(repo, `.rig/changes/${slug}/ratchet.json`), 'utf8')); return { tier: r.tier, type: r.type } } catch { return {} }
+// A change with intent, a spec (B1), a plan and a person's approval: the state /rig:build starts from.
+export function approvedChange(repo: string, slug: string, type = 'feature'): void {
+  sdlc(repo, ['new', slug, '--type', type])
+  write(repo, `.rig/changes/${slug}/spec.md`, '# Spec\n\n## Behaviours\n- B1: the change works\n\n## Open questions\nnone\n')
+  write(repo, `.rig/changes/${slug}/plan.md`, '# Plan\n\n## Files\n- src/\n\n## Open questions\nnone\n')
+  sdlc(repo, ['approve', slug], { env: { SDLC_HUMAN: '1' } })
 }
 
 export function verified(repo: string, slug: string): void {
-  sdlc(repo, ['run', '--slug', slug, '--', 'node -e "process.exit(0)"'])
-  sdlc(repo, ['verify-report', slug])
-}
-
-// A change whose build and sensors nodes are done, so the graph reaches pr (the ratchet.json shape is Task 3's).
-export function ratcheted(repo: string, slug: string): void {
-  const node = { rounds: 0, hashes: [], status: 'done' }
-  write(repo, `.rig/changes/${slug}/ratchet.json`, JSON.stringify({ ...recorded(repo, slug), nodes: { build: node, sensors: node }, slices: {}, baseline: {} }))
-}
-
-// A v0.4 change whose build node is done (every slice reviewed) and nothing later.
-export function buildDone(repo: string, slug: string): void {
-  write(repo, `.rig/changes/${slug}/ratchet.json`, JSON.stringify({ version: 4, ...recorded(repo, slug), nodes: { build: { rounds: 0, hashes: [], status: 'done' } }, slices: {}, baseline: {} }))
+  sdlc(repo, ['verify', slug])
 }

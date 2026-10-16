@@ -54,9 +54,9 @@ test('init skill: the baseline runs through `sdlc.ts baseline`, never `run` or `
   assert.doesNotMatch(skill, /through `sdlc\.ts run`|sdlc\.ts quality <first-change-slug>/)
 })
 
-test('init skill: never tells the model to write `/rig-start`, and shows the preflight answer keys', () => {
+test('init skill: never tells the model to write `/rig-start`, and runs no preflight', () => {
   assert.doesNotMatch(skill, /names its skills `rig-\*`|`\/rig-` for a standalone/)
-  assert.match(skill, /"valueRate": 100/)
+  assert.doesNotMatch(skill, /preflight|valueRate/)
 })
 
 test('init skill: allowed-tools grants the scaffold commands init itself instructs (git, npm, node, make), and no blanket ones', () => {

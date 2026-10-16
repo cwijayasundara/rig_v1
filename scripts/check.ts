@@ -3,16 +3,16 @@ import fs from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import {
-  ROOT, SDLC, CHANGES, WAIVERS, planFiles, isPlanned, exists, read, out, fail, git, gitIn, approvalOf, planApproved, planPath, readImpact, needsImpact, toPosix, optString, readJsonl, defaultBase, checkSlug,
-  type Args, type Waiver, type ImpactHit,
+  ROOT, SDLC, CHANGES, WAIVERS, exists, read, out, fail, git, toPosix, optString, readJsonl, defaultBase, checkSlug,
+  type Args, type Waiver,
 } from './core.ts'
 import { parseConfig, parseRules, formatFindings, warnLines, matchesAny, isTest, isSource, ghBin, type FileDiff, type Finding, type Rule, type SensorConfig } from './model.ts'
-import { withoutFixtures, testTamper, suppressions, layering, size, secretsInDiff, rulesSensor, retiredIdentifiers, contractsFromPlan, harnessTamper, isProtected, behaviourIds, behaviourText, missingBehaviours, tierFromDiff } from './sensors.ts'
+import { withoutFixtures, testTamper, suppressions, layering, size, secretsInDiff, rulesSensor, harnessTamper, isProtected, behaviourIds, behaviourText, missingBehaviours } from './sensors.ts'
 import { readBaseline, snapshot, turnDiff, fileDiff, branchDiff, showAt, fileLines, stagedDiff, showStaged } from './diffs.ts'
 import { runCommand, recordRun, normCmd } from './runs.ts'
 import { selectScopes, resolveCommands } from './scopes.ts'
 import { withBaseTree } from './basetree.ts'
-import { loadChange, activeSlug } from './graph.ts'
+import { activeSlug, approvalState, changeType } from './lifecycle.ts'
 import { isRegistryShape, parseRegistry, registryConfig, updateKnownRed, type Registry } from './registry.ts'
 import { frozenFindings, runContracts } from './contracts.ts'
 import { syncFindings } from './sync.ts'
@@ -31,6 +31,7 @@ export type CheckInput = {
   base: string | null
   ratchet?: boolean
   after?: (file: string) => string // the text being judged; defaults to the working tree (commit passes the index)
+  gates?: { plan: boolean } // the plan gate; absent: on
   contracts?: boolean // run the contract commands (validate, then run); absent: at ship and ci only
 }
 export type CheckResult = { findings: Finding[]; blocks: Finding[]; warns: Finding[]; waived: number }
@@ -127,9 +128,7 @@ function logRuleFires(findings: Finding[], point: Point): void {
 // an older change's wildcard waiver must not cover what a later PR does.
 function ciScope(slug: string, base: string | null | undefined): ((file: string | undefined) => boolean) | null {
   if (!base || showAt(base, `.rig/changes/${slug}/intent.md`) !== null) return null
-  const patterns = exists(planPath(slug)) ? planFiles(slug) : []
-  const folder = `.rig/changes/${slug}/`
-  return file => Boolean(file) && (String(file).startsWith(folder) || patterns.some(p => isPlanned(String(file), [p]) && !String(file).startsWith('.rig/')))
+  return () => true
 }
 
 // The PR supplies its own waivers.jsonl rows, so at CI harness-tamper on harness files and behavioral findings are never waivable: harness changes land on the trunk first, and the behavioural gate stays independent.
@@ -139,86 +138,6 @@ function applyWaivers(findings: Finding[], slugs: string[], ci?: { base: string 
   const waived = (f: Finding): boolean => waivers.some(w => w.sensor === f.sensor && (w.file === '*' || w.file === f.file) && !(ci && ((f.sensor === 'harness-tamper' && (!f.file || isProtected(f.file))) || f.sensor === 'behavioral')) && (scopes.get(w.slug) as (file: string | undefined) => boolean)(f.file))
   const kept = findings.filter(f => !waived(f))
   return { findings: kept, blocks: kept.filter(f => f.severity === 'block'), warns: kept.filter(f => f.severity === 'warn'), waived: findings.length - kept.length }
-}
-
-const escapeRe = (id: string): string => id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
-// One git grep per consumer (untracked files count); a directory that is not a work tree cannot be verified.
-export function consumerHits(ids: string[], cfg: SensorConfig): { hits: ImpactHit[]; missing: string[] } {
-  const hits: ImpactHit[] = []
-  const missing: string[] = []
-  for (const c of cfg.consumers) {
-    const dir = path.resolve(ROOT, c.path)
-    if (!exists(dir) || gitIn(dir, ['rev-parse', '--is-inside-work-tree']) !== 'true') {
-      missing.push(c.name)
-      continue
-    }
-    if (!ids.length) continue
-    const rows = (gitIn(dir, ['grep', '--untracked', '-n', '-w', '-F', ...ids.flatMap(id => ['-e', id])]) ?? '').split('\n').filter(Boolean)
-    for (const row of rows) {
-      const m = /^(.*?):(\d+):(.*)$/.exec(row)
-      if (!m) continue
-      for (const id of ids) if (new RegExp(`\\b${escapeRe(id)}\\b`).test(m[3] ?? '')) hits.push({ consumer: c.name, file: m[1] ?? '', line: Number(m[2]), id })
-    }
-  }
-  return { hits, missing }
-}
-
-// The current contract: contract files outside migration directories, whose history never stops naming old columns.
-const MIGRATIONS = /(^|\/)migrations?\//
-
-function producerContractText(cfg: SensorConfig): string {
-  const files = (git(['ls-files']) ?? '').split('\n').filter(f => matchesAny(f, cfg.contracts) && !MIGRATIONS.test(f))
-  return files.map(f => read(path.join(ROOT, f))).join('\n')
-}
-
-export function contractFindings(i: CheckInput): Finding[] {
-  if (!i.config.consumers.length || !i.diffs.some(d => matchesAny(d.file, i.config.contracts))) return []
-  const ids = retiredIdentifiers(i.diffs, i.config, producerContractText(i.config))
-  if (!ids.length) return []
-  const { hits, missing } = consumerHits(ids, i.config)
-  const approvedIds = new Set(i.slugs.filter(s => approvalOf(s, 'impact') === 'approved').flatMap(s => readImpact(s)?.ids ?? []))
-  const atStop = i.point === 'stop'
-  return [
-    ...hits.map((h): Finding => ({
-      sensor: 'contract-impact',
-      severity: atStop && approvedIds.has(h.id) ? 'warn' : 'block',
-      message: `${h.consumer}: ${h.file}:${h.line} still uses ${h.id}`,
-      fix: approvedIds.has(h.id) ? `update ${h.consumer} as part of this change (it is in the approved impact)` : 'cross-repo contract change: this needs a gated change: run /rig:start, then plan it with ## Contracts so the person approves the impact',
-    })),
-    ...missing.map((name): Finding => ({
-      sensor: 'contract-impact',
-      severity: atStop ? 'warn' : 'block',
-      message: `consumer ${name} is not checked out, so ${ids.length} retired identifier(s) cannot be verified`,
-      fix: `check out ${name} at its declared path as a git repo (CI: set the SDLC_CONSUMERS_TOKEN secret)`,
-    })),
-  ]
-}
-
-function setTierL(slug: string): boolean {
-  const file = path.join(CHANGES, slug, 'intent.md')
-  const text = read(file)
-  const next = text.replace(/^tier:\s*["']?[SM]["']?\s*$/m, 'tier: L')
-  if (next === text) return /^tier:\s*["']?L["']?\s*$/m.test(text)
-  fs.writeFileSync(file, next)
-  return true
-}
-
-export function cmdCheckPlan(args: Args): void {
-  const given = optString(args, 'slug')
-  const slug = given ? checkSlug(given) : activeSlug()
-  if (!slug) fail('check --at plan needs an active change or --slug')
-  const { config } = loadConfig()
-  const ids = contractsFromPlan(read(planPath(slug)))
-  const found = consumerHits(ids, config)
-  const hits = found.hits
-  const missing = ids.length ? found.missing : []
-  fs.writeFileSync(path.join(CHANGES, slug, 'impact.json'), JSON.stringify({ at: new Date().toISOString(), ids, hits, missing }, null, 2) + '\n')
-  if (!hits.length && !missing.length) return out(`impact: ${ids.length} contract identifier(s), no consumer references`)
-  const tier = setTierL(slug) ? '' : `\nwarning: no "tier:" line found in ${slug}/intent.md, so the tier was not raised to L; set it by hand.`
-  const rows = hits.slice(0, 20).map(h => `  ${h.consumer}: ${h.file}:${h.line} uses ${h.id}`)
-  const unverified = missing.length ? [`Not checked out, so the impact cannot be verified until they are: ${missing.join(', ')}`] : []
-  out([`impact: ${hits.length} consumer reference${hits.length === 1 ? '' : 's'} across ${new Set(hits.map(h => h.consumer)).size} repo(s). The change is now tier L and needs /rig:approve ${slug} impact.${tier}`, ...rows, ...unverified, 'Add the consumer files to plan ## Files (as ../<repo>/... globs) and each consumer test to ## Verification.'].join('\n'))
 }
 
 // Only the tests this branch adds or changes can show a behaviour is covered: an old test naming B1 proves nothing new.
@@ -257,54 +176,24 @@ function proofOnBase(slug: string, config: SensorConfig, diffs: FileDiff[], base
   return tree.ok ? tree.value : block(tree.error, 'run `git worktree prune` and retry, check permissions for symlinks, or the person waives red-proof')
 }
 
-export function shipVerdicts(slug: string, config: SensorConfig, diffs: FileDiff[], base: string | null, budgetMs = 1_800_000): Finding[] {
-  if (!exists(path.join(CHANGES, slug))) return [{ sensor: 'traceability', severity: 'block', message: `unknown change ${slug}`, fix: 'pass a slug that exists under .rig/changes/' }]
-  const change = loadChange(slug)
+export function shipVerdicts(slug: string, config: SensorConfig, diffs: FileDiff[], base: string | null, budgetMs: number, planGate: boolean): Finding[] {
+  const dir = path.join(CHANGES, slug)
+  if (!exists(dir)) return [{ sensor: 'traceability', severity: 'block', message: `unknown change ${slug}`, fix: 'pass a slug that exists under .rig/changes/' }]
   const findings: Finding[] = []
-  const hasPlan = exists(planPath(slug))
-  // An ad-hoc change is tiered on its first Stop; vibe coding keeps growing it, so re-tier it from the branch diff.
-  const RANK = { S: 0, M: 1, L: 2 } as const
-  const fromDiff = tierFromDiff(diffs, config)
-  const tier = slug.startsWith('adhoc-') && RANK[fromDiff] > RANK[change.tier] ? fromDiff : change.tier
-  if (slug.startsWith('adhoc-') && tier !== 'S' && !hasPlan) {
-    findings.push({ sensor: 'adhoc', severity: 'block', message: `ad-hoc change is now tier ${tier} with no plan`, fix: `run /rig:start ${slug} to adopt it: it writes the plan and applies the tier's gates; the code stays` })
-  }
-  const spec = read(path.join(change.dir, 'spec.md'))
-  const plan = read(planPath(slug))
-  let [source, heading] = [spec, 'Behaviours']
-  let ids = behaviourIds(spec, heading)
-  if (!ids.length) { [source, heading] = [plan, 'Slices']; ids = behaviourIds(plan, heading) }
-  const corpus = ids.length ? testCorpus(config, diffs) : ''
-  for (const id of missingBehaviours(ids, corpus)) {
-    const what = behaviourText(source, heading, id)
+  const state = approvalState(slug)
+  if (planGate && state !== 'approved') findings.push({ sensor: 'plan-gate', severity: 'block', message: `${slug}: the plan is ${state === 'missing' ? 'not approved' : 'changed since it was approved'}`, fix: `a person reviews spec.md and plan.md and runs /rig:approve ${slug}` })
+  const spec = read(path.join(dir, 'spec.md'))
+  const ids = behaviourIds(spec, 'Behaviours')
+  for (const id of missingBehaviours(ids, ids.length ? testCorpus(config, diffs) : '')) {
+    const what = behaviourText(spec, 'Behaviours', id)
     findings.push({ sensor: 'traceability', severity: 'block', message: `${id}${what ? ` (${what})` : ''} has no test that names it`, fix: `add a test whose name or comment says ${id} and proves it` })
   }
-  // Per change type: red for new behaviour, green-on-base for refactors, nothing extra for chore and migration
-  // (their full suite already runs as the ship gate's commands).
-  const always = change.type === 'bugfix' || change.type === 'incident'
-  const mode = ['feature', 'bugfix', 'incident', 'greenfield'].includes(change.type) && (tier !== 'S' || always) ? 'red' : change.type === 'refactor' && tier !== 'S' ? 'green' : null
+  // Red for new behaviour, green-on-base for a refactor, nothing extra for a chore (its full suite already ran).
+  const type = changeType(slug)
+  const mode = type === 'feature' || type === 'bugfix' ? 'red' : type === 'refactor' ? 'green' : null
   if (mode && !base) findings.push({ sensor: 'red-proof', severity: 'warn', message: 'no base branch found; proof against the base skipped', fix: 'pass --base <branch>' })
   else if (mode && base) findings.push(...proofOnBase(slug, config, diffs, base, mode, budgetMs))
   return findings
-}
-
-// Spec 6.2 in CI: a PR with source changes and no committed change folder is an ad-hoc change; at M or L it needs a plan.
-function unrecorded(diffs: FileDiff[], config: SensorConfig): Finding[] {
-  const tier = tierFromDiff(diffs, config)
-  if (tier === 'S') return []
-  return [{ sensor: 'adhoc', severity: 'block', message: `no sdlc change record for a tier ${tier} diff (${diffs.filter(d => isSource(d.file, config)).length} source file(s))`, fix: 'commit the change folder with the PR (git add .rig), or run /rig:start to adopt the work: it writes the plan and applies the tier\'s gates' }]
-}
-
-// Tier S and M skip the human gates, so a diff that reaches contracts or risky paths must be tier L.
-const RISKY = ['**/auth/**', '**/auth.*', '**/security/**', '**/payments/**', '**/billing/**', '**/migrations/**']
-function tierFindings(slugs: string[], diffs: FileDiff[], config: SensorConfig): Finding[] {
-  const low = slugs.filter(s => loadChange(s).tier !== 'L')
-  const hits = diffs.filter(d => matchesAny(d.file, [...config.contracts, ...RISKY]))
-  return low.flatMap(slug => hits.map(d => ({
-    sensor: 'tier', severity: 'block' as const, file: d.file,
-    message: `${slug} is tier ${loadChange(slug).tier} but changes a contract or risky path`,
-    fix: `set tier: L in ${slug}/intent.md (spec and plan gates), or the person waives with /rig:waive tier <file> <reason>`,
-  })))
 }
 
 export function runChecks(i: CheckInput): CheckResult {
@@ -320,17 +209,14 @@ export function runChecks(i: CheckInput): CheckResult {
     ...size(diffs, config, fileLines(diffs.filter(d => d.status !== 'D').map(d => d.file), after), point),
     ...secretsInDiff(pattern),
     ...rulesSensor(pattern, i.rules),
-    ...contractFindings({ ...i, point }),
     ...harnessTamper(diffs, { point, toolEdited: i.toolEdited, before: i.before, after }),
     ...frozenFindings(i.slugs, diffs.map(d => d.file), after),
   ]
   // A diff whose plan the person approved is big by design: the diff-size limit warns instead of blocking.
-  if (i.slugs.length && i.slugs.every(planApproved)) {
+  if (i.slugs.length && i.slugs.every(s => approvalState(s) === 'approved')) {
     for (const f of findings) if (f.sensor === 'size' && !f.file) f.severity = 'warn'
   }
-  if (point !== 'stop') for (const slug of i.slugs) findings.push(...shipVerdicts(slug, config, diffs, i.base, i.budgetMs))
-  if (i.point === 'ci' && !i.slugs.length) findings.push(...unrecorded(diffs, config))
-  if (point !== 'stop') findings.push(...tierFindings(i.slugs, diffs, config))
+  if (point !== 'stop') for (const slug of i.slugs) findings.push(...shipVerdicts(slug, config, diffs, i.base, i.budgetMs, i.gates?.plan ?? true))
   if (Object.keys(config.scopes).length) {
     const unscoped = selectScopes(diffs.filter(d => isSource(d.file, config)).map(d => d.file), config).unscoped
     if (unscoped.length) findings.push({ sensor: 'unscoped', severity: 'warn', message: `${unscoped.length} changed file(s) match no scope, so the top-level commands run for them: ${unscoped.slice(0, 5).join(', ')}`, fix: 'add a scope glob that covers them in .rig/sensors.json scopes' })
@@ -358,7 +244,7 @@ export function editFindings(rel: string): Finding[] {
 export const slugsIn = (diffs: FileDiff[]): string[] => [...new Set(diffs.map(d => /^\.rig\/changes\/([^/]+)\//.exec(d.file)?.[1]).filter((s): s is string => Boolean(s)))]
 
 // Waivers and approvals are trusted, not recomputed, so CI shows each row a PR adds for a person to review.
-const HUMAN_FILES = [['.rig/waivers.jsonl', 'waiver'], ['.rig/approvals.jsonl', 'approval']] as const
+const HUMAN_FILES = [['.rig/waivers.jsonl', 'waiver']] as const
 // PR-controlled text: one line, no backticks or angle brackets (it cannot close the summary fence or start a
 // `::` workflow command, since every row is printed after "  - "), and capped.
 const clean = (v: unknown): string => String(v).replace(/[\u0000-\u001f\u007f\u2028\u2029]/g, ' ').replace(/`/g, "'").replace(/[<>]/g, '_').replace(/"/g, "'").slice(0, 200)
@@ -370,8 +256,14 @@ export function humanRowsAdded(base: string): string[] {
       let r: Record<string, unknown> = {}
       try { r = JSON.parse(line) as Record<string, unknown> } catch { /* shown raw below */ }
       const s = (k: string): string => clean(r[k] ?? '?')
-      rows.push(!Object.keys(r).length ? `${kind} (unparseable): ${clean(line)}` : kind === 'waiver' ? `waiver ${s('slug')}: ${s('sensor')} ${s('file')} "${s('reason')}" by ${s('by')}` : `approval ${s('slug')} ${s('stage')} by ${s('by')}`)
+      rows.push(!Object.keys(r).length ? `${kind} (unparseable): ${clean(line)}` : `waiver ${s('slug')}: ${s('sensor')} ${s('file')} "${s('reason')}" by ${s('by')}`)
     }
+  }
+  // approval.json: every one the PR adds or edits is a person's decision CI cannot verify from the file alone.
+  for (const f of (git(['diff', '--name-only', base, 'HEAD', '--', '.rig/changes']) ?? '').split('\n').filter(f => /^\.rig\/changes\/[^/]+\/approval\.json$/.test(f))) {
+    let by = '?'
+    try { by = String((JSON.parse(read(path.join(ROOT, f))) as { by?: unknown }).by ?? '?') } catch { /* deleted or unreadable: still a row */ }
+    rows.push(`approval ${f.split('/')[2]} by ${clean(by)}`)
   }
   return rows
 }
@@ -406,9 +298,8 @@ function report(point: string, result: CheckResult, count: number, json: boolean
 }
 
 export function cmdCheck(args: Args): void {
-  if (optString(args, 'at') === 'plan') return cmdCheckPlan(args)
   const at = optString(args, 'at')
-  if (at !== 'stop' && at !== 'commit' && at !== 'ship' && at !== 'ci') fail('usage: check --at stop|commit|ship|ci|plan [--base <ref>] [--config-from <ref>] [--slug <s>] [--budget-ms <n>] [--json]')
+  if (at !== 'stop' && at !== 'commit' && at !== 'ship' && at !== 'ci') fail('usage: check --at stop|commit|ship|ci [--base <ref>] [--config-from <ref>] [--slug <s>] [--budget-ms <n>] [--json]')
   const { config, rules, errors, registry } = loadConfig(optString(args, 'config-from') ?? null)
   const baseRef = optString(args, 'base')
   const base = baseRef ? git(['merge-base', 'HEAD', baseRef]) : defaultBase()
@@ -445,7 +336,7 @@ export function cmdCheck(args: Args): void {
   if (!Number.isFinite(budgetMs) || budgetMs <= 0) fail('--budget-ms must be a positive number')
   const humanRows = at === 'ci' && base ? humanRowsAdded(base) : []
   const why = humanRows.length ? independentApproval() : null // before runChecks: the PR's test commands could rewrite the event file or shadow gh
-  const result = runChecks({ point: at, diffs, config, rules, slugs, commands: replaying ? 'none' : partial ? 'fast' : 'full', budgetMs, before, after, base, ratchet: !optString(args, 'config-from') && at !== 'commit', contracts: at === 'commit' ? registry !== null && !replaying : undefined })
+  const result = runChecks({ point: at, diffs, config, rules, slugs, commands: replaying ? 'none' : partial ? 'fast' : 'full', budgetMs, before, after, base, ratchet: !optString(args, 'config-from') && at !== 'commit', contracts: at === 'commit' ? registry !== null && !replaying : undefined, gates: registry?.gates })
   const configFindings: Finding[] = errors.map(e => ({ sensor: 'config', severity: 'block', file: SENSORS_JSON, message: e, fix: 'fix the file; see the sdlc README for its format' }))
   const humanFindings: Finding[] = why ? [{ sensor: 'human-approval', severity: 'block', message: `this PR adds ${humanRows.length} approval/waiver row(s): ${why}`, fix: 'a code owner other than the PR author reviews the rows below and approves the current head commit; pushing again needs a fresh approval' }] : []
   const syncBlocks = registry && (at === 'commit' || at === 'ci') ? syncFindings(registry, [], 'block') : [] // config errors already block above
@@ -463,19 +354,3 @@ export function cmdCheckFile(args: Args): void {
   out(formatFindings(findings) || `${rel}: ok`)
 }
 
-// A declared consumer is recognised at any depth (../../org/checkout), whether declared relative or absolute.
-export function consumerFor(rel: string): { name: string } | undefined {
-  const norm = (p: string): string => toPosix(path.normalize(path.isAbsolute(p) ? path.relative(ROOT, p) : p)).replace(/\/$/, '')
-  return loadConfig().config.consumers.find(c => rel.startsWith(norm(c.path) + '/'))
-}
-
-export function cmdImpactStatus(args: Args): void {
-  const file = args.pos[0] ?? ''
-  const slug = activeSlug()
-  const { config } = loadConfig()
-  const rel = toPosix(path.relative(ROOT, path.resolve(ROOT, file)))
-  const impact = slug ? readImpact(slug) : null
-  const touchesContract = Boolean(consumerFor(rel)) || matchesAny(rel, config.contracts)
-  const hold = Boolean(slug && needsImpact(impact) && touchesContract && approvalOf(slug, 'impact') !== 'approved')
-  out(JSON.stringify({ hold, slug, consumers: [...new Set((impact?.hits ?? []).map(h => h.consumer))], hits: impact?.hits.length ?? 0 }))
-}

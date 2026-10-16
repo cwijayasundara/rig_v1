@@ -7,35 +7,23 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import {
-  ROOT, SDLC, CHANGES, APPROVALS, STATE, USAGE, LIMITS, SOFT_HOOK_FAILURE, APPROVAL_ARTIFACTS, approvalDigest,
-  exists, read, lines, now, toPosix, out, fail, git, planPath, planName, approvalFile, frontmatter, parseArgs, optString, listChanges, defaultBase, isShipped, scopeDrift, scanSecrets, planProblems, checkSlug, SLUG_RE,
-  WAIVERS, readJsonl, type Waiver, ensureGitignore, startOnboarding, clearState, PLUGIN_ROOT, IS_VENDORED, skillRef, setActive, createChange, sanctionWrites, type Args, type Approval, type Change, type GatedStage, type UsageRow,
+  ROOT, SDLC, CHANGES, SLUG_RE, SOFT_HOOK_FAILURE, exists, read, now, defaultBase, toPosix, out, fail, git, parseArgs, optString, listChanges, scanSecrets, checkSlug,
+  WAIVERS, readJsonl, type Waiver, ensureGitignore, PLUGIN_ROOT, skillRef, sanctionWrites, type Args,
 } from './core.ts'
-import { PATHS, isChangeType, isTier, activeSlug, awaitingMerge, loadChange, nextCommand, step, tierDrift } from './graph.ts'
-import { formatFindings, openQuestions, unresolvedConcerns, SENSOR_NAMES, type Finding } from './model.ts'
+import { formatFindings, SENSOR_NAMES, type Finding } from './model.ts'
 import { readBaseline, branchDiff, turnDiff, type Snapshot } from './diffs.ts'
 import { cmdHook, readGate } from './hooks.ts'
-import { cmdCheck, cmdCheckFile, cmdImpactStatus, loadConfig } from './check.ts'
+import { cmdCheck, cmdCheckFile, loadConfig } from './check.ts'
 import { runCommand, recordRun } from './runs.ts'
-import { cmdEvals, lastRun } from './evals.ts'
-import { cmdInbox, pendingIntents, startRefusal } from './inbox.ts'
-import { flowOf, flowLine } from './flow.ts'
 import { cmdVendor, installStandalone } from './vendor.ts'
 import { cmdBaseline } from './initbaseline.ts'
-import { cmdVerify, cmdVerifyReport } from './verify.ts'
+import { cmdVerify } from './verify.ts'
 import { cmdHooks, cmdCheckPush } from './githooks.ts'
-import { safeBudgetView, pressureOf, cmdSpend, publishQuietly, type BudgetView, type Pressure } from './spend.ts'
-import { cmdPr, cmdPrChecks, otherChangeBranch } from './pr.ts'
-import { cmdRatchet, readRatchet, writeRatchet, rawSpendUsd, unblock, appendEvent } from './ratchet.ts'
-import { cmdQuality } from './quality.ts'
-import { cmdShards } from './shards.ts'
+import { cmdPr } from './pr.ts'
 import { treeStamp } from './stamp.ts'
-import { stalenessAll, openItems, sliceWarnings, repoStale } from './stale.ts'
-import { cmdPreflight } from './preflight.ts'
-import { contextWarnings, enabledPlugins } from './context.ts'
 import { declareStack } from './stackinit.ts'
-import { freezeRecord, frozenFor } from './contracts.ts'
 import { cmdSync } from './sync.ts'
+import { TYPES, toType, changeDir, newChange, setActive, activeSlug, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
 
 // ---------- commands ----------
 
@@ -44,25 +32,11 @@ function whoami(): string | null {
   return git(['config', 'user.name']) || process.env.USER || process.env.USERNAME || null
 }
 
-// Slice scope checks diff against a base commit, so a repo with no commits gets one: everything already here, minus clutter.
-function ensureBaseline(): string {
-  if (git(['rev-parse', '--verify', '-q', 'HEAD']) !== null) return ''
-  const ignore = path.join(ROOT, '.gitignore')
-  const have = exists(ignore) ? read(ignore).split('\n') : []
-  const add = ['.DS_Store', 'node_modules/'].filter(l => !have.includes(l))
-  if (add.length) fs.appendFileSync(ignore, (have.length && have[have.length - 1] !== '' ? '\n' : '') + add.join('\n') + '\n')
-  const who = git(['config', 'user.name']) ? [] : ['-c', 'user.name=rig', '-c', 'user.email=rig@localhost']
-  if (git(['add', '-A']) === null || git([...who, 'commit', '-q', '-m', 'baseline: the repository as it was before rig']) === null) return ''
-  return 'committed the existing files as a baseline (the repository had no commits)'
-}
-
 function cmdInit(args: Args): void {
   // Ship and the PR gate read git, so a directory outside any repo gets one.
   const newRepo = git(['rev-parse', '--is-inside-work-tree']) !== 'true' && git(['init', '-q', '-b', 'main']) !== null
   fs.mkdirSync(CHANGES, { recursive: true })
-  fs.mkdirSync(path.join(SDLC, 'incidents'), { recursive: true })
   ensureGitignore()
-  if (!exists(STATE)) fs.writeFileSync(STATE, '---\nchange:\n---\n# State\n\nNo active change.\n')
   const guides = path.join(SDLC, 'guides')
   if (!exists(guides) && exists(path.join(PLUGIN_ROOT, 'guides'))) {
     fs.cpSync(path.join(PLUGIN_ROOT, 'guides'), guides, { recursive: true })
@@ -76,102 +50,36 @@ function cmdInit(args: Args): void {
 }
 
 function cmdNew(args: Args): void {
-  const slug = args.pos[0]
-  if (!slug || !SLUG_RE.test(slug)) fail('usage: new <kebab-slug> --type <type> --tier S|M|L [--title "..."] [--source .rig/intent/<file>.md]')
-  const type = optString(args, 'type') ?? 'feature'
-  const tier = optString(args, 'tier') ?? 'M'
-  if (!isChangeType(type)) fail(`unknown type "${type}"; one of ${Object.keys(PATHS).join(', ')}`)
-  if (!isTier(tier)) fail('tier must be S, M or L')
-  // An inbox file only: a plain kebab .md name under .rig/intent/ that exists (no `..`, no other directory).
-  const source = optString(args, 'source')
-  if (source !== undefined && (!/^\.rig\/intent\/[a-z0-9][a-z0-9-]{0,60}\.md$/.test(source) || !exists(path.join(ROOT, source)))) fail(`--source must name an existing .rig/intent/<kebab-name>.md file, not "${source}"`)
-  const refusal = source === undefined ? null : startRefusal(path.basename(source)) // a sprint intent waits for its chart; any for its depends
-  if (refusal) fail(`not starting ${source}: ${refusal}`)
-  const dir = path.join(CHANGES, slug)
-  if (exists(dir)) fail(`change ${slug} already exists`)
-  if (!exists(SDLC)) {
-    if (git(['rev-parse', '--is-inside-work-tree']) !== 'true') git(['init', '-q', '-b', 'main'])
-    const note = ensureBaseline()
-    if (note) out(note)
-    cmdInit({ pos: [], opt: {} })
-  }
-  createChange(slug, type, tier, optString(args, 'title') ?? slug, { value: loadConfig().config.points[tier], set: false }, source)
-  const other = otherChangeBranch(slug)
-  out(`created ${toPosix(path.relative(ROOT, dir))}/intent.md (type ${type}, tier ${tier})${other ? `\nwarning: ${other}` : ''}`)
+  const slug = args.pos[0] ?? ''
+  if (!SLUG_RE.test(slug)) fail(`usage: new <kebab-slug> [--type ${TYPES.join('|')}] [--title "..."]`)
+  const raw = optString(args, 'type') ?? 'feature' // --tier is accepted and ignored until step 4c
+  // The four types, plus the older names toType folds in (greenfield, incident, migration, spike).
+  if (![...TYPES, 'greenfield', 'incident', 'migration', 'spike'].includes(raw)) fail(`usage: new <slug> [--type ${TYPES.join('|')}] [--title "..."]`)
+  if (exists(changeDir(slug))) fail(`${slug} already exists: /rig:start ${slug} continues it`)
+  if (!exists(SDLC)) cmdInit({ pos: [], opt: {} })
+  ensureGitignore()
+  newChange(slug, toType(raw), optString(args, 'title') ?? slug)
+  out(`created .rig/changes/${slug}/intent.md (type ${toType(raw)}); ${slug} is the active change`)
 }
 
 function cmdActivate(args: Args): void {
   const slug = checkSlug(args.pos[0] ?? '')
+  if (!exists(changeDir(slug))) fail(`no such change: ${slug}`)
   setActive(slug)
   out(`active change: ${slug}`)
 }
 
-function cmdNext(args: Args): void {
-  const slug = args.pos[0] ? checkSlug(args.pos[0]) : activeSlug()
-  if (!slug) return out(args.opt.json ? JSON.stringify({ slug: null, node: null, verdict: 'ready', reason: 'no active change', command: `${skillRef('start')} "<what you want>"`, round: 0 }) : 'no active change')
-  const s = step(slug)
-  if (s.routeWarnings.length) process.stderr.write(s.routeWarnings.join('\n') + '\n')
-  if (s.verdict === 'ready') clearReady(slug)
-  out(args.opt.json ? JSON.stringify(s) : `${s.verdict}: ${s.verdict === 'continue' || s.verdict === 'human' ? s.command : s.reason}`)
-}
-
-// A finished change (every node done, the PR left to a person) stops being the one STATE.md names.
-function clearReady(slug: string): void {
-  if (frontmatter(read(STATE)).data.change === slug) clearState(slug)
-}
-
 function cmdStatus(args: Args): void {
   const json = Boolean(args.opt.json)
-  if (!exists(SDLC)) return out(json ? JSON.stringify({ initialised: false, flow: flowOf(false, null) }) : `sdlc not initialised here: run ${skillRef('start')}`)
-  const named = frontmatter(read(STATE)).data.change
-  if (named && exists(path.join(CHANGES, named)) && step(named).verdict === 'ready') clearReady(named)
+  if (!exists(SDLC)) return out(json ? JSON.stringify({ initialised: false }) : `rig not initialised here: run ${skillRef('init')}`)
+  const gates = loadConfig().registry?.gates ?? { plan: true, merge: true }
+  const tree = treeStamp()
   const active = activeSlug()
-  // --band, the mod's every-turn read: the active change only, without the warnings and staleness that walk every change and stamp the tree.
-  const budgetOf = (st: { budget: BudgetView } | null): BudgetView => st?.budget ?? safeBudgetView(loadConfig().config.budget, null)
-  // Team pressure with no active change rides at the top level; with one, step.pressure (which honours full-route) wins.
-  const pressureTop = (st: { pressure: Pressure } | null): Pressure => st?.pressure ?? pressureOf(budgetOf(null), loadConfig().config.budget, false)
-  const shown = active ?? (json && args.opt.band ? awaitingMerge() : null), lean = json && args.opt.band ? (shown ? loadChange(shown) : null) : undefined
-  if (lean !== undefined) {
-    const st = shown ? step(shown) : null
-    return out(JSON.stringify({ initialised: true, active: shown, changes: lean ? [{ slug: lean.slug, next: lean.next }] : [], sensors: sensorStatus(), step: st, budget: budgetOf(st), pressure: pressureTop(st), flow: flowOf(true, lean) }))
-  }
-  const changes = listChanges().map(loadChange)
-  const warnings: string[] = []
-  for (const c of changes) {
-    const plan = planPath(c.slug)
-    if (exists(plan)) {
-      for (const p of planProblems(plan)) warnings.push(`${c.slug}: ${p}`)
-      warnings.push(...sliceWarnings(c.slug, read(plan)))
-    }
-    const drift = tierDrift(c.slug)
-    if (drift) warnings.push(`${c.slug}: ${drift}`)
-    if (lines(read(path.join(c.dir, 'intent.md'))) > LIMITS.intentLines + 10) warnings.push(`${c.slug}: intent.md is long; keep it under ${LIMITS.intentLines} lines`)
-  }
-  if (lines(frontmatter(read(STATE)).body) > LIMITS.stateLines) warnings.push(`STATE.md over ${LIMITS.stateLines} lines; trim it`)
-  if (active && !isShipped(active)) {
-    const stacked = otherChangeBranch(active)
-    if (stacked) warnings.push(stacked)
-    if (git(['remote', 'get-url', 'origin']) === null) warnings.push('no origin remote: ship commits locally, but no PR, PR review or gh metrics until one is added (git remote add origin <url>)')
-  }
-  for (const e of pendingIntents()) warnings.push(`intent ${e.file} is accepted and has no change: ${skillRef('start')} .rig/intent/${e.file}`)
-  const stale = [...repoStale(ROOT), ...stalenessAll(changes.map(c => c.slug))]
-  const open = changes.flatMap(c => openItems(c.slug))
-  if (json) {
-    const summary = changes.map(c => ({ slug: c.slug, type: c.type, tier: c.tier, next: c.next, command: nextCommand(c) }))
-    const st = active ? step(active) : null
-    return out(JSON.stringify({ initialised: true, active, changes: summary, warnings, stale, open, sensors: sensorStatus(), step: st, budget: budgetOf(st), pressure: pressureTop(st), flow: flowOf(true, active ? loadChange(active) : null) }))
-  }
-  if (!changes.length) return out([`no changes yet: run ${skillRef('start')} "<what you want>"`, ...warnings.map(w => `warn: ${w}`)].join('\n'))
-  const label = (c: Change): string => (c.next ? (c.next.kind === 'approve' && c.next.gate === 'impact' ? 'impact' : c.next.stage) + (c.next.kind === 'approve' ? ' (awaiting approval)' : '') : 'done')
-  const rows = changes
-    .sort((a, b) => (a.slug === active ? -1 : b.slug === active ? 1 : 0))
-    .map(c => `${c.slug === active ? '▶' : ' '} ${c.slug.padEnd(28)} ${c.type.padEnd(10)} ${c.tier}  ${label(c)}`)
-  const act = active ? loadChange(active) : null
-  const st = active ? step(active) : null
-  const where = act ? `${act.slug} is at ${act.next ? (act.next.kind === 'approve' ? act.next.gate : act.next.stage) : 'done'}` : 'no active change'
-  const ev = lastRun()
-  const evalLine = ev ? `evals: ${ev.passed}/${ev.total} pass (${ev.rate.toFixed(2)}) → ${ev.verdict}, last run ${ev.run.slice(0, 10)}` : ''
-  out([...rows, '', `flow: ${flowLine(flowOf(true, act))}`, `where: ${where}`, `stale: ${stale.length ? stale.join('; ') : 'nothing'}`, evalLine, st?.verdict === 'blocked' ? `blocked: ${st.reason}` : st?.verdict === 'human' ? `next: ${st.command}` : act ? `next: ${nextCommand(act)}` : '', ...warnings.map(w => `warn: ${w}`), ...open.map(o => `open: ${o}`)].filter(Boolean).join('\n'))
+  const changes = listChanges().map(slug => { const s = status(slug, gates, tree); return { slug, type: changeType(slug), status: s, next: nextStep(slug, s) } })
+    .filter(c => c.status !== 'shipped' || c.slug === active)
+  if (json) return out(JSON.stringify({ initialised: true, active, changes, sensors: sensorStatus() }))
+  if (!changes.length) return out(`no changes yet: start one with ${skillRef('start')} "<request>"`)
+  out(changes.map(c => `${c.slug === active ? '▶' : ' '} ${c.slug.padEnd(28)} ${c.type.padEnd(8)} ${c.status.padEnd(8)} next: ${c.next}`).join('\n'))
 }
 
 // A standalone repo's /rig:approve and /rig:waive skills pass '$ARGUMENTS' as one quoted string, so the shell never globs it.
@@ -181,88 +89,17 @@ const words = (args: Args): string[] => (args.pos.length === 1 ? (args.pos[0] ??
 const humanFallback = (cmd: string, usage: string): string => `! SDLC_HUMAN=1 node --disable-warning=ExperimentalWarning ${path.relative(process.cwd(), process.argv[1] ?? 'sdlc.ts')} ${cmd} ${usage}`
 
 function cmdApprove(args: Args): void {
-  if (process.env.SDLC_HUMAN !== '1') fail(`approvals are human-only: the person runs /rig:approve <slug> <stage>. If that command is not listed, restart Claude Code, or the person types: ${humanFallback('approve', '<slug> <stage>')}`, 3)
-  const [slug, stage] = words(args)
-  if (!slug || !stage) fail('usage: approve <slug> <stage>')
-  checkSlug(slug)
-  if (stage === 'budget') {
-    const node = readRatchet(slug).blocked?.node.replace(/#.*/, '') ?? step(slug).node ?? 'build'
-    const r = readRatchet(slug)
-    const spent = rawSpendUsd(slug, node)
-    r.credits = { ...r.credits, [node]: spent }
-    writeRatchet(slug, r)
-    unblock(slug, 'person approved more budget')
-    return out(`unblocked ${slug}: ${node} gets a fresh budget ($${spent.toFixed(2)} credited)`)
-  }
-  if (stage === 'full-route') {
-    const r = readRatchet(slug)
-    r.fullRoute = true
-    writeRatchet(slug, r)
-    appendEvent(slug, { node: 'any', verdict: 'approved', kind: 'full-route', reason: 'a person turned budget downshift off for this change' })
-    return out(`approved ${slug} full-route: budget downshift is off for this change; budget warnings still show`)
-  }
-  if (stage === 'tier') {
-    // The person states the target; it is recorded only if intent.md says exactly that right now, so an edit made after
-    // the person read it cannot be approved by accident. The recorded values are the person's arguments, never re-read.
-    const [tier, type] = words(args).slice(2)
-    if (!isTier(tier) || (type !== undefined && !isChangeType(type))) fail('usage: approve <slug> tier <S|M|L> [<type>]')
-    const intent = frontmatter(read(path.join(CHANGES, slug, 'intent.md'))).data
-    const says = { tier: isTier(intent.tier) ? intent.tier : 'M', type: isChangeType(intent.type) ? intent.type : 'feature' }
-    if (says.tier !== tier || (type !== undefined && says.type !== type)) fail(`not approving: ${slug}/intent.md now says tier ${says.tier}, type ${says.type}; you approved ${tier}${type ? ` ${type}` : ''}. Read it again and run /rig:approve ${slug} tier <tier> [<type>]`)
-    const r = readRatchet(slug)
-    const was = { tier: r.tier ?? 'unrecorded', type: r.type ?? 'unrecorded' }
-    r.tier = tier
-    r.type = type ?? (isChangeType(r.type) ? r.type : 'feature')
-    writeRatchet(slug, r)
-    appendEvent(slug, { node: 'any', verdict: 'approved', kind: 'tier', reason: `tier ${was.tier} → ${r.tier}, type ${was.type} → ${r.type}; a person accepted it` })
-    return out(`approved ${slug} tier: ${was.tier} → ${r.tier}, type ${was.type} → ${r.type}. Next: ${nextCommand(loadChange(slug))}`)
-  }
-  const artifact = APPROVAL_ARTIFACTS[stage as GatedStage] && path.basename(approvalFile(slug, stage as GatedStage))
-  const file = artifact ? approvalFile(slug, stage as GatedStage) : ''
-  if (!artifact || !exists(file)) fail(`nothing to approve: ${slug}/${artifact ?? stage} does not exist`)
-  const open = ['intent', 'spec', 'plan', 'design'].includes(stage)
-    ? [...openQuestions(read(file)).map(q => `${artifact}: ${q}`), ...(stage === 'design' ? openQuestions(read(path.join(CHANGES, slug, 'intent.md'))).map(q => `intent.md: ${q}`) : [])]
-    : []
-  if (open.length) {
-    const list = open.map(q => `  - ${q}`).join('\n')
-    fail(`resolve the open question(s) in ${open.some(q => q.startsWith('intent.md:')) ? `${slug}/intent.md` : `${slug}/${artifact}`} before approving: answer each, or record the default under ## Decisions, and leave "## Open questions" as none:\n${list}`)
-  }
-  const concerns = ['spec', 'plan', 'design'].includes(stage) ? unresolvedConcerns(read(file)) : []
-  if (concerns.length) {
-    // A policy skill copied from the template still has `owner: <the team or person ...>`; naming that as who to ask sends the person nowhere.
-    const ghost = concerns.some(c => /→ owner: <[^>]*>/.test(c))
-    const me = whoami() ?? '<your name>'
-    const hint = ghost ? `\nThe policy's owner is not set (.claude/skills/policy-*/SKILL.md still has the template placeholder), so no one is named to decide. If you own the policy, you can resolve it yourself:\n  1. set "owner: ${me}" in .claude/skills/policy-*/SKILL.md\n  2. edit ${slug}/${artifact} and append " → resolved: <decision> (${me})" to each bullet\n  3. run /rig:approve ${slug} ${stage} again` : ''
-    fail(`resolve the concern(s) in ${slug}/${artifact} with their policy owners before approving: add " → resolved: <decision> (<owner>)" to each:\n${concerns.map(c => `  - ${c}`).join('\n')}${hint}`)
-  }
+  if (process.env.SDLC_HUMAN !== '1') fail(`approvals are human-only: the person runs /rig:approve <slug>. If that command is not listed, restart Claude Code, or the person types: ${humanFallback('approve', '<slug>')}`, 3)
+  const given = words(args)[0] // a second word (the old stage name) is ignored
+  const slug = given ? checkSlug(given) : activeSlug()
+  if (!slug || !exists(changeDir(slug))) fail('usage: approve <slug>')
+  const refusal = approvalRefusal(slug)
+  if (refusal) fail(refusal)
+  if (approvalState(slug) === 'approved' && JSON.stringify(readApproval(slug)?.contracts ?? {}) === JSON.stringify(freezeRecord(slug))) return out(`${slug} is already approved. Next: /rig:build ${slug}`)
   const by = optString(args, 'by') || whoami() || 'unknown'
-  if (stage === 'impact' && !exists(path.join(CHANGES, slug, 'impact.json'))) fail(`nothing to approve: ${slug}/impact.json does not exist (run check --at plan first)`)
-  const frozen = freezeRecord(slug, stage)
-  const row: Approval = { slug, stage, by, at: now(), digest: approvalDigest(slug, stage as GatedStage), ...(frozen ? { contracts: frozen } : {}) }
-  // The prompt hook and the /rig:approve skill can both run for one typed command: the second finds the row and adds nothing.
-  // A registry's digest leaves contract files out, so a re-approval after a contract edit must still record the new hashes.
-  const sameFreeze = !frozen || JSON.stringify(frozenFor(slug)) === JSON.stringify(frozen)
-  if (sameFreeze && exists(APPROVALS) && read(APPROVALS).split('\n').some(l => l.includes(`"slug":"${slug}","stage":"${stage}"`) && l.includes(`"digest":"${row.digest}"`))) return out(`${slug} ${stage} is already approved (digest ${row.digest}). Next: ${nextCommand(loadChange(slug))}`)
-  fs.appendFileSync(APPROVALS, JSON.stringify(row) + '\n')
-  out(`approved ${slug} ${stage} by ${by} (digest ${row.digest}). Next: ${nextCommand(loadChange(slug))}`)
-}
-
-function cmdScopeDrift(args: Args): void {
-  const slug = args.pos[0] ? checkSlug(args.pos[0]) : activeSlug()
-  if (!slug) fail('no change to check')
-  const base = optString(args, 'base') ?? defaultBase()
-  const r = scopeDrift(slug, base)
-  if (args.opt.record) {
-    const shipFile = path.join(CHANGES, slug, 'ship.json')
-    const prev: object = exists(shipFile) ? JSON.parse(read(shipFile)) : {}
-    const record = { ...prev, at: now(), base, changed: r.changed.length, drift: r.drift, matchRatio: Number(r.matchRatio.toFixed(3)) }
-    fs.writeFileSync(shipFile, JSON.stringify(record, null, 2) + '\n')
-  }
-  if (args.opt.json) return out(JSON.stringify(r))
-  if (!r.patterns.length) out(`warn: ${slug}/${planName(slug)} has no "## Files" section; every changed file counts as drift`)
-  if (!r.drift.length) return out(`scope ok: ${r.changed.length} changed file(s), all in ${slug}'s plan`)
-  out(`scope drift: ${r.drift.length} of ${r.changed.length} changed file(s) are not in ${slug}/${planName(slug)} ## Files:\n${r.drift.map(f => '  ' + f).join('\n')}\nAdd them to the plan (and re-approve if gated) or revert them.`)
-  process.exitCode = 1
+  const a = writeApproval(slug, by)
+  const n = Object.keys(a.contracts).length
+  out(`approved ${slug} by ${by}: spec.md and plan.md${n ? `, ${n} contract file(s) frozen` : ''}. Next: /rig:build ${slug}`)
 }
 
 function cmdSecrets(args: Args): void {
@@ -272,37 +109,7 @@ function cmdSecrets(args: Args): void {
   process.exitCode = 2
 }
 
-function cmdLogUsage(args: Args): void {
-  if (!exists(SDLC)) return
-  ensureGitignore()
-  // The mod passes the change and stage it saw when the turn started. A turn that started with no
-  // change and created one (/rig:start) is that change's intent stage.
-  const row = JSON.parse(args.pos[0] ?? '{}') as Partial<UsageRow>
-  // Money only goes up: a malformed or negative usd, an unknown kind or a budget-raised event would let the model grant itself budget.
-  const badUsd = row.usd !== undefined && (typeof row.usd !== 'number' || !Number.isFinite(row.usd) || row.usd < 0)
-  const badKind = !(['main', 'agent', 'event'] as unknown[]).includes(row.kind)
-  if (badUsd || badKind || (row.kind === 'event' && row.event === 'budget-raised')) fail('log-usage refuses a bad usd or kind and budget-raised rows: only /rig:approve <slug> budget raises a budget', 3)
-  const current = frontmatter(read(STATE)).data.change || null
-  const change = row.change ?? current
-  const stage = row.change ? row.stage ?? null : current ? 'intent' : null
-  fs.appendFileSync(USAGE, JSON.stringify({ at: now(), ...row, change, stage }) + '\n')
-  // The context sensor: one line per warning, which the mod shows as a toast and the band's log keeps.
-  const warnings = contextWarnings(row, row.first ? enabledPlugins(undefined, ROOT) : [])
-  if (warnings.length) out(warnings.join('\n'))
-}
-
 // ---------- main ----------
-
-// Deterministic fallback when the Skill tool fails to load a stage skill (seen in `claude -p`):
-// prints the same instructions the skill would have loaded.
-function cmdSkill(args: Args): void {
-  const [name, ...rest] = args.pos
-  const skills = IS_VENDORED ? path.join(ROOT, '.claude', 'skills') : path.join(PLUGIN_ROOT, 'skills')
-  const file = path.join(skills, IS_VENDORED ? `rig-${name ?? ''}` : name ?? '', 'SKILL.md')
-  if (!name || !exists(file)) fail(`no skill named ${name ?? ''}; one of ${exists(skills) ? fs.readdirSync(skills).join(', ') : '(none here)'}`)
-  const body = frontmatter(read(file)).body
-  out(body.replaceAll('${CLAUDE_PLUGIN_ROOT}', toPosix(PLUGIN_ROOT)).replaceAll('$ARGUMENTS', rest.join(' ')).replace(/\$0\b/g, rest[0] ?? ''))
-}
 
 // `run` takes its command after `--`, as one quoted argument: sdlc.ts run [--slug s] [--expect-fail] -- "npm test"
 function cmdRun(): void {
@@ -321,7 +128,7 @@ function cmdRun(): void {
   const stamped = tree ? { ...row, tree } : row
   recordRun(slug, expectFail ? { ...stamped, expectFail: true } : stamped)
   if (row.tail) out(row.tail)
-  out(`sdlc run: exit ${row.exit}${row.timedOut ? ' (timed out)' : ''} in ${row.ms} ms, recorded in ${slug}/runs.jsonl`)
+  out(`sdlc run: exit ${row.exit}${row.timedOut ? ' (timed out)' : ''} in ${row.ms} ms, recorded in ${slug}/evidence/runs.jsonl`)
   process.exitCode = expectFail ? (row.exit !== 0 ? 0 : 1) : row.exit
 }
 
@@ -401,45 +208,25 @@ function scaffoldPolicy(): string {
 
 const COMMANDS: Record<string, (args: Args) => void> = {
   stamp: () => out(treeStamp() ?? 'none'),
-  // /rig:init passes --onboarding: its own writes over the next turns open no ad-hoc change (core.ts onboarding()).
-  init: args => { cmdInit(args); if (args.opt.onboarding) startOnboarding(); if (args.opt.full) { const note = scaffoldPolicy(); if (note) out(note) } },
+  init: args => { cmdInit(args); if (args.opt.full) { const note = scaffoldPolicy(); if (note) out(note) } },
   new: cmdNew,
   activate: cmdActivate,
   status: cmdStatus,
-  next: cmdNext,
   approve: cmdApprove,
-  'scope-drift': cmdScopeDrift,
   pr: cmdPr,
-  ship: cmdPr,
-  'pr-checks': cmdPrChecks,
-  skill: cmdSkill,
   run: () => cmdRun(),
   verify: cmdVerify,
-  'verify-report': cmdVerifyReport,
   secrets: cmdSecrets,
-  'log-usage': cmdLogUsage,
   hook: cmdHook,
-  evals: cmdEvals,
-  inbox: cmdInbox,
-  spend: args => cmdSpend(args, () => {
-    const slug = typeof args.opt.change === 'string' ? checkSlug(args.opt.change) : activeSlug()
-    const c = slug ? loadChange(slug) : null
-    return { cfg: loadConfig().config.budget, change: c ? { slug: c.slug, tier: c.tier, type: c.type } : null }
-  }),
   diff: cmdDiff,
-  quality: cmdQuality,
-  shards: cmdShards,
-  preflight: cmdPreflight,
   baseline: () => cmdBaseline(),
-  check: args => (args.opt.at === 'push' ? (cmdCheckPush(args), process.exitCode ? undefined : publishQuietly()) : cmdCheck(args)),
+  check: args => (args.opt.at === 'push' ? cmdCheckPush(args) : cmdCheck(args)),
   'check-file': cmdCheckFile,
   sync: cmdSync,
   vendor: cmdVendor,
   hooks: cmdHooks,
-  ratchet: cmdRatchet,
   waive: cmdWaive,
   sensors: () => cmdSensors(),
-  'impact-status': cmdImpactStatus,
 }
 
 const [command = '', ...rest] = process.argv.slice(2)

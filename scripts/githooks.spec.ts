@@ -223,22 +223,6 @@ test('a new branch is judged against the merge-base with the default branch', ()
   assert.match(r.stdout, /secrets/)
 })
 
-test('an unplanned tier M ad-hoc change is refused at push; prePush off skips; a second push reuses the change', () => {
-  const base = head()
-  for (const n of ['a', 'b', 'c', 'd']) stage(`src/${n}.js`, `export const ${n} = 1\n`)
-  gitIn(repo, 'commit', '-qm', 'four files')
-  const r = push(head(), base)
-  assert.equal(r.code, 1, r.stdout)
-  assert.match(r.stdout, /adhoc/)
-  assert.equal(fs.readdirSync(path.join(repo, '.rig/changes')).filter(s => s.startsWith('adhoc-')).length, 1)
-  push(head(), base)
-  assert.equal(fs.readdirSync(path.join(repo, '.rig/changes')).filter(s => s.startsWith('adhoc-')).length, 1, 'reused, not recreated')
-  write(repo, '.rig/sensors.json', JSON.stringify({ githooks: { prePush: 'off' } }))
-  const off = push(head(), base)
-  assert.equal(off.code, 0)
-  assert.match(off.stdout, /off/)
-})
-
 // main gains four source files (already judged there): a tier M ad-hoc change if a push wrongly counts them.
 const mainGainsFour = () => {
   gitIn(repo, 'checkout', '-q', 'main')
@@ -290,23 +274,6 @@ test('pushing another branch than HEAD uses that branch\'s merge-base, not HEAD\
   assert.match(refused.stdout, /secrets/)
 })
 
-const LINT = `node -e "for (const f of require('fs').readdirSync('.')) if (f.startsWith('bad')) console.log(f)"`
-
-test('push blocks a quality regression against the base', () => {
-  write(repo, '.rig/sensors.json', JSON.stringify({ quality: { lint: { cmd: LINT, count: 'lines' } } }))
-  gitIn(repo, 'add', '-A')
-  gitIn(repo, 'commit', '-qm', 'config')
-  const base = head()
-  stage('bad1.js', 'export const x = 1\n')
-  gitIn(repo, 'commit', '-qm', 'adds a lint finding')
-  const r = push(head(), base)
-  assert.equal(r.code, 1, r.stdout)
-  assert.match(r.stdout, /quality\.lint/)
-  gitIn(repo, 'reset', '-q', '--hard', base)
-  stage('src/a.js', 'export const a = 1\n')
-  gitIn(repo, 'commit', '-qm', 'clean')
-  assert.equal(push(head(), base).code, 0)
-})
 
 test('an overrun push budget warns and lets the push through', () => {
   write(repo, '.rig/sensors.json', JSON.stringify({ full: { slow: 'node -e "setTimeout(()=>{},3000)"' }, githooks: { budgetMs: 500 } }))
@@ -316,7 +283,6 @@ test('an overrun push budget warns and lets the push through', () => {
   const r = push(head(), base)
   assert.equal(r.code, 0, r.stdout)
   assert.match(r.stdout, /^  ! commands: .*(?:budget|timed out).* → /m)
-  assert.match(r.stdout, /quality ratchet skipped/)
 })
 
 const pushRaw = (localRef: string, local: string, remoteRef: string, remote: string) => sdlc(repo, ['check', '--at', 'push'], { input: `${localRef} ${local} ${remoteRef} ${remote}\n` })
@@ -550,7 +516,7 @@ test('a failing full command still blocks at push; only a budget overrun is soft
   assert.match(r.stdout, /full\.test failed/)
 })
 
-test('pre-push skips the full commands and the quality ratchet for a change stamped on exactly this tree', () => {
+test('pre-push skips the full commands for a change verified on exactly this tree', () => {
   const OK = 'node -e "process.exit(0)"'
   const m = path.join(os.tmpdir(), `rig-push-${process.pid}-${Math.random().toString(36).slice(2)}.txt`)
   const bump = `node -e "require('fs').appendFileSync('${m}','x')"`
@@ -559,10 +525,11 @@ test('pre-push skips the full commands and the quality ratchet for a change stam
   const base = gitIn(repo, 'rev-parse', 'HEAD')
   gitIn(repo, 'checkout', '-qb', 'sdlc/tiny')
   sdlc(repo, ['new', 'tiny', '--type', 'chore', '--tier', 'S'])
+  write(repo, '.rig/changes/tiny/spec.md', '# Spec\n\n## Behaviours\n- none\n')
   write(repo, '.rig/changes/tiny/plan.md', `## Files\n- src/app.js\n## Verification\n- \`${OK}\`\n`)
+  sdlc(repo, ['approve', 'tiny'], { env: { SDLC_HUMAN: '1' } })
   write(repo, 'src/app.js', 'x\n')
   assert.equal(sdlc(repo, ['verify', 'tiny']).code, 0)
-  assert.equal(sdlc(repo, ['quality', 'tiny']).code, 0)
   const seen = fs.readFileSync(m, 'utf8').length
   gitIn(repo, 'add', 'src/app.js'); gitIn(repo, 'commit', '-qm', 'work')
   const head = gitIn(repo, 'rev-parse', 'HEAD')
@@ -581,11 +548,12 @@ test('pre-push does not skip when an untracked file was in the stamped tree, eve
   const base = gitIn(repo, 'rev-parse', 'HEAD')
   gitIn(repo, 'checkout', '-qb', 'sdlc/tiny')
   sdlc(repo, ['new', 'tiny', '--type', 'chore', '--tier', 'S'])
+  write(repo, '.rig/changes/tiny/spec.md', '# Spec\n\n## Behaviours\n- none\n')
   write(repo, '.rig/changes/tiny/plan.md', `## Files\n- src/app.js\n## Verification\n- \`${OK}\`\n`)
+  sdlc(repo, ['approve', 'tiny'], { env: { SDLC_HUMAN: '1' } })
   write(repo, 'src/app.js', 'x\n')
   write(repo, 'src/helper.js', 'untracked helper\n')
   assert.equal(sdlc(repo, ['verify', 'tiny']).code, 0)
-  assert.equal(sdlc(repo, ['quality', 'tiny']).code, 0)
   const seen = fs.readFileSync(m, 'utf8').length
   gitIn(repo, 'add', 'src/app.js'); gitIn(repo, 'commit', '-qm', 'work')
   const head = gitIn(repo, 'rev-parse', 'HEAD')

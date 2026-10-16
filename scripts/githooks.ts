@@ -4,11 +4,9 @@ import path from 'node:path'
 import { ROOT, SDLC, git, exists, out, fail, type Args } from './core.ts'
 import { loadConfig, runChecks, slugsIn } from './check.ts'
 import { rangeDiff, showAt } from './diffs.ts'
-import { activeSlug, createAdhoc } from './graph.ts'
-import { runQuality } from './quality.ts'
-import { verificationFresh, sensorsFresh } from './stamp.ts'
-import { tierFromDiff, isProtected } from './sensors.ts'
-import { formatFindings, warnLines, isSource, type Finding } from './model.ts'
+import { activeSlug, verifyFresh } from './lifecycle.ts'
+import { treeStamp } from './stamp.ts'
+import { formatFindings, warnLines, type Finding } from './model.ts'
 
 export const HOOKS_DIR = '.rig/githooks'
 const NAMES = ['pre-commit', 'pre-push'] as const
@@ -138,7 +136,6 @@ export function cmdCheckPush(_args: Args): void {
   const all = raw.trim() ? parsePushRefs(raw) : [{ localRef: 'refs/heads/HEAD', localSha: git(['rev-parse', 'HEAD']) ?? '', remoteRef: 'refs/heads/HEAD', remoteSha: '0' }]
   const refs = all.filter(judged)
   if (!refs.length) return out('sdlc check push: nothing to judge (a delete or tag push)')
-  const t0 = Date.now()
   const findings: Finding[] = errors.map(e => ({ sensor: 'config', severity: 'block', file: '.rig/sensors.json', message: e, fix: 'fix the file' }))
   const notes = all.filter(r => !judged(r)).map(r => `${r.remoteRef}: skipped (a delete or tag)`)
   const head = git(['rev-parse', 'HEAD'])
@@ -150,25 +147,15 @@ export function cmdCheckPush(_args: Args): void {
     if (!diffs.length) continue
     // A finished change is not active, but its branch carries its folder: judge the push as that change (its branch's first), as CI does.
     const owned = slugsIn(diffs).filter(s => exists(path.join(SDLC, 'changes', s)))
-    const own = owned.find(s => r.remoteRef === `refs/heads/sdlc/${s}`) ?? owned[0]
-    const touched = diffs.some(d => isSource(d.file, config) && !isProtected(d.file))
-    const slug = activeSlug() ?? own ?? (touched ? createAdhoc(tierFromDiff(diffs, config)) : null)
-    // A rig-managed change in flight is gated by /rig:pr; only ad-hoc work gets ship verdicts here.
-    const shipSlugs = slug?.startsWith('adhoc-') ? [slug] : []
-    // A rig change verified and sensed on exactly this tree, pushed from a clean checkout of it, needs neither again.
-    const stamped = Boolean(slug) && !slug?.startsWith('adhoc-') && r.localSha === head && !git(['status', '--porcelain', '--untracked-files=all', '--', '.', ':(exclude).rig'])
-    const covered = stamped && verificationFresh(slug as string).fullCovered // knownRed is not tightened here either
+    const slug = activeSlug() ?? owned.find(s => r.remoteRef === `refs/heads/sdlc/${s}`) ?? owned[0] ?? null
+    // A change verified on exactly this tree, pushed from a clean checkout of it, needs its full commands no second time.
+    const covered = Boolean(slug) && r.localSha === head && !git(['status', '--porcelain', '--untracked-files=all', '--', '.', ':(exclude).rig']) && verifyFresh(slug as string, treeStamp())
     const result = runChecks({
-      point: 'ship', diffs, config, rules, slugs: shipSlugs, commands: covered ? 'none' : 'full', budgetMs: config.githooks.budgetMs,
+      point: 'ship', diffs, config, rules, slugs: [], commands: covered ? 'none' : 'full', budgetMs: config.githooks.budgetMs,
       before: f => showAt(base, f) ?? '', after: f => showAt(r.localSha, f) ?? '', base, ratchet: false,
     })
     findings.push(...result.findings.map(soften))
-    if (slug && Object.values(config.quality).some(Boolean) && !(stamped && sensorsFresh(slug))) {
-      if (Date.now() - t0 > config.githooks.budgetMs) notes.push('quality ratchet skipped: the push budget is used up')
-      else findings.push(...runQuality(slug, base).blocks.filter(b => b.sensor.startsWith('quality.') || b.sensor === 'invariant'))
-    }
   }
-  if (!Object.values(config.quality).some(Boolean)) notes.push('quality ratchet skipped: no quality commands declared in .rig/sensors.json')
   const blocks = findings.filter(f => f.severity === 'block')
   out([formatFindings(findings) || 'sdlc check push: pass', ...warnLines(findings), ...notes].join('\n'))
   process.exitCode = blocks.length ? 1 : 0

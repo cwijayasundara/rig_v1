@@ -1,18 +1,13 @@
 ---
 name: pr
-description: The PR node - scope gate, ship gate, commit on sdlc/<slug>, pr.md, push and open the PR (or local-only without a remote). No confirmation needed inside an approved plan.
-argument-hint: <slug>
-effort: low
-allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Read, Agent
+description: Open the PR for a verified change, then run one advisory review by the evaluator agent.
+argument-hint: '[<slug>]'
+allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Bash(git diff*), Bash(git log*), Bash(gh pr view*), Bash(gh pr comment*), Read, Grep, Write, Agent
 ---
-# PR $0
+# Open the PR
 
-Run each sdlc.ts command as its own Bash call (no `cd`, pipes, redirects, `&&` or variables); read files with Read and Grep; one-line commit messages.
+`S` means `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts`.
 
-**Models:** read `routes` from `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts next $0 --json` and pass that role's `model` and `effort` on every launch: `rig:architect` (architect), `rig:implementer` (implementer), `rig:reviewer` (`slice-review` in build, `reviewer` elsewhere). A `main` route means draft it in this thread. After a failed round, run that command again before the fix launch: the implementer route can rise.
-
-1. Run `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts pr $0 --message "<type(scope): summary>"`. The script checks readiness, scope and the ship gate, writes `pr.md`, commits, pushes and runs `gh pr create`. After a failed `gh` or push, run the same command again: it resumes.
-2. **If the gate refuses**, `next` still says `continue` at pr and its reason names the pending block. First try to fix it without a person: send the findings once to one `rig:implementer` run (plan files only; never edit sensors.json, tests to pass, or add a waiver), run `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts quality $0`, then run step 1 again. Only if the gate refuses a second time, show the reason and stop: the person fixes the findings or waives them (`/rig:waive ...`); then `/rig:next` resumes, this step re-runs the gate and clears the block. `/rig:approve $0 budget` is the manual unblock only for a cap, stall or budget block.
-3. Never stage, commit, push or open the PR by hand.
-
-End with the PR URL (or `local-only`) and: `Next: <command from node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts next $0 --json>`. Run `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts skill next` and follow it.
+1. Run `S pr <slug> --message "<type(scope): summary>"`. It refuses without an approved plan and a fresh, passing `verify.json`. On a refusal, run `/rig:test <slug>` again or ask the person to approve. It commits on `sdlc/<slug>`, pushes and opens the PR, or stays local-only without a remote.
+2. Review once: launch `rig:evaluator` with no model override (its frontmatter pins the evaluation model). Pass the change folder and the base it was verified against (`base` in `verify.json`). Write its findings to `.rig/changes/<slug>/review.md` and, when a PR exists, post them with `gh pr comment`. Findings are advice and never block. Fix a critical one only when the person agrees, then rerun `/rig:test` and push.
+3. End with the PR URL (or `local-only`) and `Next: a person reviews and merges the PR`.

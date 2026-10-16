@@ -1,22 +1,18 @@
 ---
 name: test
-description: The test node - run every required test level (unit, integration, acceptance, api) and the plan's verification through the recorder; fix failing items within the ratchet's cap.
-argument-hint: <slug>
-effort: low
-allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Read, Agent
+description: Verify a built change - every commit and ci sensor, the contracts and the change's own checks - and record verify.json.
+argument-hint: '[<slug>]'
+allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Read, Grep, Glob, Write, Edit
 ---
-# Test $0
+# Verify a change
 
-Run each sdlc.ts command as its own Bash call (no `cd`, pipes, redirects, `&&` or variables); read files with Read and Grep; one-line commit messages.
+`S` means `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts`.
 
-**Models:** read `routes` from `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts next $0 --json` and pass that role's `model` and `effort` on every launch: `rig:architect` (architect), `rig:implementer` (implementer), `rig:reviewer` (`slice-review` in build, `reviewer` elsewhere). A `main` route means draft it in this thread. After a failed round, run that command again before the fix launch: the implementer route can rise.
-
-**Subagents:** run them in the foreground and wait; never end your turn while one is running.
-
-1. Run `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts next $0 --json`. Continue only if `node` is `test` and `verdict` is `continue`.
-2. Run `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts verify $0` (Bash timeout 600000). It runs the plan's `## Verification` commands and each required level's declared command through the recorder, then writes `verification.md`. A command it lists as not run is not declared in `sensors.json` and the plan is not approved: run each with `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts run --slug $0 -- "<command>"`, then `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts verify-report $0`.
-3. Read `verification.md`'s `## Test levels`. A level marked `undeclared` cannot be fixed by code: stop and tell the person to declare it in `sensors.json` `levels` (or to change the plan).
-A `behavioral` failure is fixed by changing the implementation or the execution setup, never the examples or specs (changing them needs a person to re-approve the design).
-4. **If `result: fail`:** send only the failing items to one `rig:implementer` run (plan files only), then repeat step 2. `verify` counts the round; when `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts next $0 --json` says `blocked`, stop and show the reason (`/rig:approve $0 budget` is the person's way past a cap). Never edit tests to pass.
-
-End with: `Next: <command from node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts next $0 --json>`. Run `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts skill next` and follow it.
+1. Run `S verify <slug>`. It runs:
+   - every commit and ci sensor;
+   - the contract commands (validate first);
+   - traceability: each B-number in spec.md is named by a test;
+   - red-proof: a feature's or bugfix's new tests fail on the base, and a refactor's pass on it.
+   It then writes `verify.json` for this tree.
+2. On failure, fix the code, never a test, a sensor or a contract, and run verify again. If the same finding fails twice, stop and show it to the person, who may waive it with `/rig:waive`.
+3. On pass, continue with `/rig:pr <slug>` in this turn.

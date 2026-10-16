@@ -4,7 +4,7 @@ import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { makeRepo, sdlc, hook, write, gitIn, buildDone } from './testkit.ts'
+import { makeRepo, sdlc, hook, write, gitIn } from './testkit.ts'
 
 let repo: string
 let consumer: string
@@ -39,8 +39,6 @@ const DEFECTS: [string, RegExp, () => void][] = [
   ['added .skip', /test-tamper/, () => write(repo, 'test/add.test.js', BASE_TEST.replace("test('B1", "test.skip('B1"))],
   ['domain imports infra', /layering/, () => write(repo, 'src/domain/order.js', "import { db } from '../infra/db.js'\n")],
   ['Bash-made suppression (sed -i)', /suppression/, () => fs.appendFileSync(path.join(repo, 'src/add.js'), '// eslint-disable-next-line\n')],
-  ['schema rename with a live consumer', /contract-impact/, () => write(repo, 'schema/billing.sql', 'CREATE TABLE billing (promotional_discount NUMERIC);\n')],
-  ['migration RENAME COLUMN with a live consumer', /contract-impact/, () => write(repo, 'migrations/0002.sql', 'ALTER TABLE billing RENAME COLUMN discount_rate TO promotional_discount;\n')],
   ['agent raises limits.diffLines via Bash', /harness-tamper/, () => write(repo, '.rig/sensors.json', fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8').replace('500', '5000'))],
 ]
 
@@ -72,16 +70,9 @@ test('seeded: a 700-line diff warns at Stop and blocks in CI', () => {
   assert.match(sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main']).stdout, /\[size\][\s\S]*limit 500/)
 })
 
-test('seeded: a hand-written passing verification.md does not make a change shippable', () => {
-  sdlc(repo, ['new', 'xx', '--type', 'chore', '--tier', 'S'])
-  buildDone(repo, 'xx')
-  write(repo, '.rig/changes/xx/verification.md', '---\nresult: pass\n---\n')
-  assert.match(sdlc(repo, ['status']).stdout, /next: \/rig:test xx/)
-})
-
 test('seeded: a B-number with no test blocks at ship', () => {
-  sdlc(repo, ['new', 'sub', '--type', 'feature', '--tier', 'M'])
-  write(repo, '.rig/changes/sub/plan.md', '## Files\n- src/**\n- test/**\n## Slices\n1. B1 subtract, B2 negative\n## Verification\n- node --test test/*.test.js\n')
+  sdlc(repo, ['new', 'sub', '--type', 'feature'])
+  write(repo, '.rig/changes/sub/spec.md', '# Spec\n\n## Behaviours\n- B1 subtract, B2 negative\n')
   write(repo, 'src/sub.js', 'export const sub = (a, b) => a - b\n')
   write(repo, 'test/sub.test.js', "import { test } from 'node:test'\nimport assert from 'node:assert'\nimport { sub } from '../src/sub.js'\ntest('B1 subtracts', () => assert.equal(sub(3, 1), 2))\n")
   assert.match(sdlc(repo, ['check', '--at', 'ship', '--base', 'main', '--slug', 'sub']).stdout, /\[traceability\][\s\S]*B2 .*has no test that names it/)

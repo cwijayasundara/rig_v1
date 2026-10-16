@@ -1,142 +1,46 @@
-// `verify` runs a change's verification commands through the recorder; only trusted commands run unprompted.
-import { test } from 'node:test'
+// verify (spec 2026-10-16 §8): writes verify.json for the tree it judged; contracts validate before they run.
+import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
-import { makeRepo, sdlc, write, buildDone, gitIn } from './testkit.ts'
+import { makeRepo, sdlc, write, approvedChange } from './testkit.ts'
 
-const OK = 'node -e "process.exit(0)"'
-const BAD = 'node -e "process.exit(3)"'
+let repo: string
+beforeEach(() => { repo = makeRepo(); sdlc(repo, ['init']) })
+const verifyJson = () => JSON.parse(fs.readFileSync(path.join(repo, '.rig/changes/demo/verify.json'), 'utf8'))
 
-function change(sensors: object, plan: string): string {
-  const repo = makeRepo()
-  write(repo, '.rig/sensors.json', JSON.stringify(sensors))
-  sdlc(repo, ['new', 'tiny', '--type', 'chore', '--tier', 'S'])
-  buildDone(repo, 'tiny')
-  write(repo, '.rig/changes/tiny/plan.md', `## Files\n- src/**\n## Verification\n${plan}`)
-  return repo
-}
-const report = (repo: string): string => fs.readFileSync(path.join(repo, '.rig/changes/tiny/verification.md'), 'utf8')
-const rows = (repo: string): { cmd: string; exit: number }[] =>
-  fs.readFileSync(path.join(repo, '.rig/changes/tiny/runs.jsonl'), 'utf8').trim().split('\n').map(r => JSON.parse(r))
-
-test('verify runs the plan commands the config declares, records each and writes a passing report', () => {
-  const repo = change({ fast: { test: OK } }, `- \`${OK}\`\n`)
-  const r = sdlc(repo, ['verify', 'tiny'])
-  assert.equal(r.code, 0, r.stdout + r.stderr)
-  assert.match(report(repo), /result: pass/)
-  assert.deepEqual(rows(repo).map(x => x.exit), [0])
+test('a failing commit sensor fails verify and is recorded in verify.json', () => {
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [{ id: 'unit', cmd: 'node -e "process.exit(2)"', cadence: 'commit', blocks: true, count: 'exit', guide: 'Unit tests pass.' }] }))
+  approvedChange(repo, 'demo')
+  assert.equal(sdlc(repo, ['verify', 'demo']).code, 1)
+  assert.equal(verifyJson().pass, false)
+  assert.match(verifyJson().blocks.join('\n'), /unit/)
 })
 
-test('verify reports a failing command with a non-zero exit and a failing report', () => {
-  const repo = change({ fast: { a: OK, b: BAD } }, `- \`${OK}\`\n- \`${BAD}\`\n`)
-  const r = sdlc(repo, ['verify', 'tiny'])
-  assert.equal(r.code, 1)
-  assert.match(report(repo), /result: fail/)
-  assert.deepEqual(rows(repo).map(x => x.exit), [0, 3])
+test('a ci-cadence sensor runs at verify; a nightly one does not', () => {
+  const mark = path.join(repo, '..', `ran-${path.basename(repo)}.txt`)
+  const cmd = (name: string) => `node -e "require('fs').appendFileSync('${mark}', '${name}\\n')"`
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [
+    { id: 'audit', cmd: cmd('ci'), cadence: 'ci', blocks: false, count: 'exit', guide: 'No vulnerable deps.' },
+    { id: 'mutation', cmd: cmd('nightly'), cadence: 'nightly', blocks: false, count: 'exit', guide: 'Tests catch mutants.' },
+  ] }))
+  approvedChange(repo, 'demo')
+  sdlc(repo, ['verify', 'demo'])
+  assert.deepEqual(fs.readFileSync(mark, 'utf8').trim().split('\n'), ['ci'])
 })
 
-test('behavioral: validate runs before run, and a validate failure means run never executes', () => {
-  const marker = path.join(os.tmpdir(), `rig-beh-${process.pid}-${Math.random().toString(36).slice(2)}.txt`)
-  const run = `node -e "require('fs').writeFileSync('${marker}','x')"`
-  const repo = change({ fast: { test: OK }, behavioral: { validate: BAD, run } }, `- \`${OK}\`\n`)
-  const r = sdlc(repo, ['verify', 'tiny'])
-  assert.equal(r.code, 1)
-  assert.equal(fs.existsSync(marker), false, 'run must not execute when validate fails')
-  assert.match(report(repo), /behavioral: fail/)
-  assert.match(report(repo), /result: fail/)
+test('contracts validate before they run at verify; a failing validate skips run', () => {
+  const mark = path.join(repo, '..', `c-${path.basename(repo)}.txt`)
+  const cmd = (name: string, exit: number) => `node -e "require('fs').appendFileSync('${mark}', '${name}\\n'); process.exit(${exit})"`
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], contracts: { files: ['api/**'], validate: cmd('validate', 1), run: cmd('run', 0) } }))
+  approvedChange(repo, 'demo')
+  assert.equal(sdlc(repo, ['verify', 'demo']).code, 1)
+  assert.deepEqual(fs.readFileSync(mark, 'utf8').trim().split('\n'), ['validate'])
 })
 
-test('behavioral: a failing run fails verification and a passing one passes', () => {
-  const bad = change({ fast: { test: OK }, behavioral: { validate: OK, run: BAD } }, `- \`${OK}\`\n`)
-  assert.equal(sdlc(bad, ['verify', 'tiny']).code, 1)
-  assert.match(report(bad), /behavioral: fail/)
-  const good = change({ fast: { test: OK }, behavioral: { validate: OK, run: OK } }, `- \`${OK}\`\n`)
-  assert.equal(sdlc(good, ['verify', 'tiny']).code, 0)
-  assert.match(report(good), /behavioral: pass/)
-})
-
-test('behavioral: a validate command also listed in the plan runs once, not twice', () => {
-  const marker = path.join(os.tmpdir(), `rig-beh-once-${process.pid}-${Math.random().toString(36).slice(2)}.txt`)
-  const bump = `node -e "require('fs').appendFileSync('${marker}','x')"`
-  const repo = change({ fast: { test: OK }, behavioral: { validate: bump, run: OK } }, `- \`${bump}\`\n- \`${OK}\`\n`)
-  assert.equal(sdlc(repo, ['verify', 'tiny']).code, 0)
-  assert.equal(fs.readFileSync(marker, 'utf8').length, 1)
-})
-
-test('verify never runs a plan command that no config declares and no person approved', () => {
-  const repo = change({ fast: { test: OK } }, `- \`${OK}\`\n- \`touch pwned\`\n`)
-  const r = sdlc(repo, ['verify', 'tiny'])
-  assert.match(r.stdout, /not run .*touch pwned/)
-  assert.equal(fs.existsSync(path.join(repo, 'pwned')), false)
-  assert.match(report(repo), /result: fail/)
-  assert.deepEqual(rows(repo).map(x => x.cmd), [OK])
-})
-
-test('a command listed twice runs once', () => {
-  const repo = change({ fast: { test: OK } }, `- \`${OK}\`\n- \`${OK}\`\n`)
-  sdlc(repo, ['verify', 'tiny'])
-  assert.equal(rows(repo).length, 1)
-})
-
-const PASS = 'node -e "process.exit(0)"'
-function stampedChange(full: Record<string, string>) {
-  const repo = makeRepo()
-  write(repo, '.rig/sensors.json', JSON.stringify({ fast: { test: PASS }, full }))
-  gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'cfg')
-  sdlc(repo, ['new', 'tiny', '--type', 'chore', '--tier', 'S'])
-  write(repo, '.rig/changes/tiny/plan.md', `## Files\n- src/a.js\n## Verification\n- \`${PASS}\`\n`)
-  write(repo, 'src/a.js', 'export const a = 1\n')
-  return repo
-}
-
-test('verify stamps the tree and records that the declared full commands passed', () => {
-  const repo = stampedChange({ test: PASS })
-  const r = sdlc(repo, ['verify', 'tiny'])
-  assert.equal(r.code, 0, r.stdout + r.stderr)
-  assert.match(report(repo), /^tree: [0-9a-f]{16}$/m)
-  assert.match(report(repo), /^full: pass$/m)
-  assert.equal(report(repo).match(/^tree: (\S+)$/m)?.[1], sdlc(repo, ['stamp']).stdout.trim())
-})
-
-test('a failing full command fails verification', () => {
-  const repo = stampedChange({ lint: 'node -e "process.exit(1)"' })
-  const r = sdlc(repo, ['verify', 'tiny'])
-  assert.equal(r.code, 1)
-  assert.match(report(repo), /^result: fail$/m)
-  assert.match(report(repo), /^full: fail$/m)
-})
-
-test('verify-report alone does not claim the full commands ran', () => {
-  const repo = stampedChange({ test: PASS })
-  sdlc(repo, ['run', '--slug', 'tiny', '--', PASS])
-  sdlc(repo, ['verify-report', 'tiny'])
-  assert.match(report(repo), /^full: none$/m)
-})
-
-test('a full command that rewrites the tree leaves verification unstamped and ship runs the full commands again', () => {
-  const m = path.join(os.tmpdir(), `rig-rw-${process.pid}-${Math.random().toString(36).slice(2)}.txt`)
-  const rewrite = `node -e "require('fs').appendFileSync('${m}','x');require('fs').appendFileSync('src/a.js','//y\\n')"`
-  const repo = stampedChange({ fmt: rewrite })
-  const r = sdlc(repo, ['verify', 'tiny'])
-  assert.equal(r.code, 0, r.stdout + r.stderr)
-  assert.doesNotMatch(report(repo), /^tree: /m)
-  assert.doesNotMatch(report(repo), /^full: pass$/m)
-  assert.equal(fs.readFileSync(m, 'utf8').length, 1)
-})
-
-test('a full command equal to a plan command runs once during verify and is still recorded as the full pass', () => {
-  const m = path.join(os.tmpdir(), `rig-once-${process.pid}-${Math.random().toString(36).slice(2)}.txt`)
-  const bump = `node -e "require('fs').appendFileSync('${m}','x')"`
-  const repo = makeRepo()
-  write(repo, '.rig/sensors.json', JSON.stringify({ fast: { test: bump }, full: { test: bump } }))
-  gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'cfg')
-  sdlc(repo, ['new', 'tiny', '--type', 'chore', '--tier', 'S'])
-  write(repo, '.rig/changes/tiny/plan.md', `## Files\n- src/a.js\n## Verification\n- \`${bump}\`\n`)
-  write(repo, 'src/a.js', 'export const a = 1\n')
-  const r = sdlc(repo, ['verify', 'tiny'])
-  assert.equal(r.code, 0, r.stdout + r.stderr)
-  assert.equal(fs.readFileSync(m, 'utf8').length, 1, 'the command ran once')
-  assert.match(report(repo), /^full: pass$/m)
+test('a behaviour with no test that names it fails traceability', () => {
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [] }))
+  approvedChange(repo, 'demo')
+  const r = sdlc(repo, ['verify', 'demo'])
+  assert.match(r.stdout, /\[traceability\][\s\S]*B1/)
 })
