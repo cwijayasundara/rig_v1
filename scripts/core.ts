@@ -32,7 +32,7 @@ export type Change = {
   review: Fields
 }
 
-export type Approval = { slug: string; stage: string; by: string; at: string; digest: string }
+export type Approval = { slug: string; stage: string; by: string; at: string; digest: string; contracts?: Record<string, string> }
 
 export type UsageRow = {
   at: string
@@ -187,17 +187,17 @@ export const optString = (args: Args, key: string): string | undefined => {
 }
 // ---------- changes ----------
 
-// Behavioural files frozen by an approval: `behavioral.files` matches plus `.rig/changes/<slug>/behavioral/**` (read raw here, no import cycle).
-export function behavioralFiles(slug: string): string[] {
+// Behavioural files frozen by an approval: contract globs plus `.rig/changes/<slug>/behavioral/**`. legacyOnly: none for a registry (contracts.ts freezes per file).
+export function behavioralFiles(slug: string, legacyOnly = false): string[] {
   let globs: string[] = []
-  try { const raw = JSON.parse(read(path.join(SDLC, 'sensors.json'))) as { sensors?: unknown; contracts?: { files?: unknown; validate?: unknown; run?: unknown }; behavioral?: { files?: unknown } }; const list = (v: unknown): string[] | null => (Array.isArray(v) && v.every(f => typeof f === 'string') ? (v as string[]) : null); globs = Array.isArray(raw.sensors) ? (list(raw.contracts?.files)?.length ? list(raw.contracts?.files) ?? [] : raw.contracts?.validate || raw.contracts?.run ? ['.rig/contracts/**'] : []) : raw.behavioral ? list(raw.behavioral.files) ?? ['.rig/contracts/**'] : [] } catch { /* no or unreadable sensors.json: nothing frozen by config */ }
+  try { const raw = JSON.parse(read(path.join(SDLC, 'sensors.json'))) as { sensors?: unknown; contracts?: { files?: unknown; validate?: unknown; run?: unknown }; behavioral?: { files?: unknown } }; if (legacyOnly && Array.isArray(raw.sensors)) return []; const list = (v: unknown): string[] | null => (Array.isArray(v) && v.every(f => typeof f === 'string') ? (v as string[]) : null); globs = Array.isArray(raw.sensors) ? (list(raw.contracts?.files)?.length ? list(raw.contracts?.files) ?? [] : raw.contracts?.validate || raw.contracts?.run ? ['.rig/contracts/**'] : []) : raw.behavioral ? list(raw.behavioral.files) ?? ['.rig/contracts/**'] : [] } catch { /* no or unreadable sensors.json: nothing frozen by config */ }
   if (!globs.length && !exists(path.join(CHANGES, slug, 'behavioral'))) return [] // no block and no local folder: nothing frozen, and no git call on the common path
   return (git(['ls-files', '--cached', '--others', '--exclude-standard'])?.split('\n').filter(Boolean) ?? []).filter(f => f.startsWith(`.rig/changes/${slug}/behavioral/`) || globs.some(g => globToRegex(g).test(f))).sort()
 }
 
 // The impact approval covers plan.md and impact.json, so a re-run of the plan point with new hits makes it stale.
 export function approvalDigest(slug: string, gate: GatedStage): string {
-  const suffix = (frozen => (frozen.length ? `\n${sha(frozen.map(f => `${f}\n${read(path.join(ROOT, f))}`).join('\n'))}` : ''))(['spec', 'plan', 'design'].includes(gate) ? behavioralFiles(slug) : [])
+  const suffix = (frozen => (frozen.length ? `\n${sha(frozen.map(f => `${f}\n${read(path.join(ROOT, f))}`).join('\n'))}` : ''))(['spec', 'plan', 'design'].includes(gate) ? behavioralFiles(slug, true) : [])
   // One approval covers the problem and the design, so a change to either makes it stale.
   if (gate === 'design') return sha(`${read(path.join(CHANGES, slug, 'intent.md'))}\n${read(path.join(CHANGES, slug, 'design.md'))}${suffix}`)
   const artifact = read(approvalFile(slug, gate))

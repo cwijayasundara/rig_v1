@@ -41,6 +41,7 @@ import { cmdPreflight } from './preflight.ts'
 import { contextWarnings, enabledPlugins } from './context.ts'
 import { cmdBrainSource } from './brainsource.ts'
 import { declareStack } from './stackinit.ts'
+import { freezeRecord, frozenFor } from './contracts.ts'
 
 // ---------- commands ----------
 
@@ -247,9 +248,12 @@ function cmdApprove(args: Args): void {
   }
   const by = optString(args, 'by') || whoami() || 'unknown'
   if (stage === 'impact' && !exists(path.join(CHANGES, slug, 'impact.json'))) fail(`nothing to approve: ${slug}/impact.json does not exist (run check --at plan first)`)
-  const row: Approval = { slug, stage, by, at: now(), digest: approvalDigest(slug, stage as GatedStage) }
+  const frozen = freezeRecord(slug, stage)
+  const row: Approval = { slug, stage, by, at: now(), digest: approvalDigest(slug, stage as GatedStage), ...(frozen ? { contracts: frozen } : {}) }
   // The prompt hook and the /rig:approve skill can both run for one typed command: the second finds the row and adds nothing.
-  if (exists(APPROVALS) && read(APPROVALS).split('\n').some(l => l.includes(`"slug":"${slug}","stage":"${stage}"`) && l.includes(`"digest":"${row.digest}"`))) return out(`${slug} ${stage} is already approved (digest ${row.digest}). Next: ${nextCommand(loadChange(slug))}`)
+  // A registry's digest leaves contract files out, so a re-approval after a contract edit must still record the new hashes.
+  const sameFreeze = JSON.stringify(frozenFor(slug)) === JSON.stringify(frozen ?? {})
+  if (sameFreeze && exists(APPROVALS) && read(APPROVALS).split('\n').some(l => l.includes(`"slug":"${slug}","stage":"${stage}"`) && l.includes(`"digest":"${row.digest}"`))) return out(`${slug} ${stage} is already approved (digest ${row.digest}). Next: ${nextCommand(loadChange(slug))}`)
   fs.appendFileSync(APPROVALS, JSON.stringify(row) + '\n')
   out(`approved ${slug} ${stage} by ${by} (digest ${row.digest}). Next: ${nextCommand(loadChange(slug))}`)
 }

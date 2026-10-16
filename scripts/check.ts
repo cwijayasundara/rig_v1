@@ -7,13 +7,14 @@ import {
   type Args, type Waiver, type ImpactHit,
 } from './core.ts'
 import { parseConfig, parseRules, formatFindings, warnLines, matchesAny, isTest, isSource, ghBin, type FileDiff, type Finding, type Rule, type SensorConfig } from './model.ts'
-import { withoutFixtures, testTamper, suppressions, layering, size, secretsInDiff, rulesSensor, retiredIdentifiers, contractsFromPlan, harnessTamper, behaviourIds, behaviourText, missingBehaviours, tierFromDiff } from './sensors.ts'
+import { withoutFixtures, testTamper, suppressions, layering, size, secretsInDiff, rulesSensor, retiredIdentifiers, contractsFromPlan, harnessTamper, isProtected, behaviourIds, behaviourText, missingBehaviours, tierFromDiff } from './sensors.ts'
 import { readBaseline, snapshot, turnDiff, fileDiff, branchDiff, showAt, fileLines, stagedDiff, showStaged } from './diffs.ts'
 import { runCommand, recordRun, normCmd } from './runs.ts'
 import { selectScopes, resolveCommands } from './scopes.ts'
 import { withBaseTree } from './basetree.ts'
 import { loadChange, activeSlug } from './graph.ts'
 import { isRegistryShape, parseRegistry, registryConfig, updateKnownRed, type Registry } from './registry.ts'
+import { frozenFindings } from './contracts.ts'
 
 export type Point = 'stop' | 'commit' | 'ship' | 'ci'
 export type CheckInput = {
@@ -129,11 +130,11 @@ function ciScope(slug: string, base: string | null | undefined): ((file: string 
   return file => Boolean(file) && (String(file).startsWith(folder) || patterns.some(p => isPlanned(String(file), [p]) && !String(file).startsWith('.rig/')))
 }
 
-// The PR supplies its own waivers.jsonl rows, so at CI harness-tamper and behavioral findings are never waivable: harness changes land on the trunk first, and the behavioural gate stays independent.
+// The PR supplies its own waivers.jsonl rows, so at CI harness-tamper on harness files and behavioral findings are never waivable: harness changes land on the trunk first, and the behavioural gate stays independent.
 function applyWaivers(findings: Finding[], slugs: string[], ci?: { base: string | null | undefined }): CheckResult {
   const scopes = new Map(slugs.map(s => [s, ci ? ciScope(s, ci.base) : () => true] as const))
   const waivers = readJsonl<Waiver>(WAIVERS).filter(w => slugs.includes(w.slug) && scopes.get(w.slug) !== null)
-  const waived = (f: Finding): boolean => waivers.some(w => w.sensor === f.sensor && (w.file === '*' || w.file === f.file) && !(ci && (f.sensor === 'harness-tamper' || f.sensor === 'behavioral')) && (scopes.get(w.slug) as (file: string | undefined) => boolean)(f.file))
+  const waived = (f: Finding): boolean => waivers.some(w => w.sensor === f.sensor && (w.file === '*' || w.file === f.file) && !(ci && ((f.sensor === 'harness-tamper' && (!f.file || isProtected(f.file))) || f.sensor === 'behavioral')) && (scopes.get(w.slug) as (file: string | undefined) => boolean)(f.file))
   const kept = findings.filter(f => !waived(f))
   return { findings: kept, blocks: kept.filter(f => f.severity === 'block'), warns: kept.filter(f => f.severity === 'warn'), waived: findings.length - kept.length }
 }
@@ -319,6 +320,7 @@ export function runChecks(i: CheckInput): CheckResult {
     ...rulesSensor(pattern, i.rules),
     ...contractFindings({ ...i, point }),
     ...harnessTamper(diffs, { point, toolEdited: i.toolEdited, before: i.before, after }),
+    ...frozenFindings(i.slugs, after),
   ]
   // A diff whose plan the person approved is big by design: the diff-size limit warns instead of blocking.
   if (i.slugs.length && i.slugs.every(planApproved)) {
@@ -355,7 +357,7 @@ export function editFindings(rel: string): Finding[] {
   const diffs = fileDiff(snap, rel)
   const pattern = withoutFixtures(diffs, config)
   const slug = activeSlug()
-  return applyWaivers(builtinsApplied([...testTamper(pattern, config), ...suppressions(pattern, config), ...layering(pattern, config), ...size(diffs, config, fileLines([rel]), 'edit'), ...secretsInDiff(pattern), ...rulesSensor(pattern, rules)], config), slug ? [slug] : []).findings
+  return applyWaivers(builtinsApplied([...testTamper(pattern, config), ...suppressions(pattern, config), ...layering(pattern, config), ...size(diffs, config, fileLines([rel]), 'edit'), ...secretsInDiff(pattern), ...rulesSensor(pattern, rules), ...frozenFindings(slug ? [slug] : [], f => read(path.join(ROOT, f)))], config), slug ? [slug] : []).findings
 }
 
 // The changes a diff carries evidence for, as CI reads them.
