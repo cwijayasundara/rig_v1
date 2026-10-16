@@ -40,6 +40,7 @@ import { stalenessAll, openItems, sliceWarnings, repoStale } from './stale.ts'
 import { cmdPreflight } from './preflight.ts'
 import { contextWarnings, enabledPlugins } from './context.ts'
 import { cmdBrainSource } from './brainsource.ts'
+import { loadPacks, detectStacks, packFile, PACKS_DIR } from './stackpacks.ts'
 
 // ---------- commands ----------
 
@@ -69,6 +70,25 @@ function declareStackLevels(opt: string | true): string {
   fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + '\n')
   sanctionWrites(['.rig/sensors.json'])
   return `declared levels for ${name}: ${Object.entries(cfg.levels as Record<string, string>).map(([k, v]) => `${k}=${v}`).join(', ')} (acceptance and api default to the unit command; point them at a real e2e or HTTP test when you have one)`
+}
+
+// `init --stack [name]` (behavioural harness step 2): with no sensors.json yet, write the detected stack pack as a registry.
+// A hand-written sensors.json keeps the levels path above until step 4. Same onboarding-only guards as declareStackLevels.
+function declareStack(opt: string | true): string {
+  const file = path.join(SDLC, 'sensors.json')
+  const text = exists(file) ? read(file).trim() : ''
+  if (text && text !== '{}') return declareStackLevels(opt)
+  if ((git(['ls-tree', '-r', '--name-only', 'HEAD']) ?? '').split('\n').includes('.rig/sensors.json')) return '.rig/sensors.json is committed; changing it is a reviewed harness edit, not onboarding'
+  if (listChanges().length) return 'a change already exists; --stack is for onboarding only'
+  const { packs } = loadPacks(PACKS_DIR)
+  const found = typeof opt === 'string' ? [opt] : detectStacks(ROOT, packs)
+  if (found.length > 1) return `several stacks match (${found.sort().join(', ')}); run init --stack <name> with one of them`
+  const pack = packs.find(p => p.stack === found[0])
+  if (!pack) return `no stack pack for ${found[0] ?? 'this directory'} (known: ${packs.map(p => p.stack).join(', ')}); write .rig/sensors.json yourself`
+  fs.mkdirSync(SDLC, { recursive: true })
+  fs.writeFileSync(file, JSON.stringify(packFile(pack), null, 2) + '\n')
+  sanctionWrites(['.rig/sensors.json'])
+  return `wrote .rig/sensors.json from the ${pack.stack} pack (${pack.sensors.length} sensors); edit the commands to fit this repo`
 }
 
 // Who approvals, waivers and a scaffolded policy owner are recorded as: the git identity, then the OS user.
@@ -101,7 +121,7 @@ function cmdInit(args: Args): void {
     sanctionWrites(fs.readdirSync(guides).map(f => `.rig/guides/${f}`))
   }
   out(`initialised ${toPosix(path.relative(ROOT, SDLC)) || SDLC}${newRepo ? ' (ran git init: no repository was here)' : ''}`)
-  if (args.opt.stack) out(declareStackLevels(args.opt.stack))
+  if (args.opt.stack) out(declareStack(args.opt.stack))
   if (args.opt.full) out(installStandalone(Boolean(args.opt.workflows)))
   const me = whoami()
   out(me ? `approvals and waivers are recorded as "${me}" (git user.name); change it with: git config user.name "<name>"` : 'no user name found: set one with `git config user.name "<name>"` so approvals say who approved')

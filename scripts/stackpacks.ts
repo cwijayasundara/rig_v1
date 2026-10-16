@@ -8,7 +8,9 @@ export type StackPack = { stack: string; markers: string[]; paths: Partial<Paths
 export const PACKS_DIR = path.resolve(import.meta.dirname, '../templates/stacks')
 const PACK_KEYS = ['stack', 'markers', 'paths', 'contracts', 'sensors']
 
-const registryText = (p: StackPack): string => JSON.stringify({ stack: p.stack, paths: p.paths, contracts: p.contracts, sensors: p.sensors })
+// The registry rig init writes for a pack: everything but the markers.
+export const packFile = (p: StackPack): Record<string, unknown> => ({ stack: p.stack, paths: p.paths, contracts: p.contracts, sensors: p.sensors })
+const registryText = (p: StackPack): string => JSON.stringify(packFile(p))
 
 export function parsePack(text: string, file: string): { pack: StackPack | null; errors: string[] } {
   let v: unknown

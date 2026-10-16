@@ -623,18 +623,30 @@ test('init runs git init when the directory is not inside a repository, and leav
   assert.doesNotMatch(init(repo), /ran git init/)
 })
 
-test('init --stack declares levels from the shipped template once, and never overwrites declared ones', () => {
+test('init --stack writes the detected stack pack when there is no sensors.json, and names the choices when several match', () => {
+  write('package.json', '{ "type": "module" }\n')
+  const r = run(['init', '--stack'])
+  assert.match(r.stdout, /wrote \.rig\/sensors\.json from the node pack \(\d+ sensors\)/, r.stderr)
+  const cfg = JSON.parse(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8')) as { stack: string; sensors: { id: string }[] }
+  assert.equal(cfg.stack, 'node')
+  assert.ok(cfg.sensors.some(s => s.id === 'unit'))
+  fs.rmSync(path.join(repo, '.rig/sensors.json'))
+  write('angular.json', '{}\n')
+  assert.match(run(['init', '--stack']).stdout, /several stacks match \(angular, node\)/)
+  assert.match(run(['init', '--stack', 'angular']).stdout, /from the angular pack/)
+  fs.rmSync(path.join(repo, '.rig/sensors.json'))
+  assert.match(run(['init', '--stack', 'cobol']).stdout, /no stack pack for cobol \(known: .*node/)
+})
+
+test('init --stack keeps declaring levels into a hand-written sensors.json, and never overwrites declared ones', () => {
   const init = (...a: string[]) => run(['init', ...a])
   write('package.json', '{ "type": "module" }\n')
+  write('.rig/sensors.json', JSON.stringify({ fast: { test: 'npm test' } }))
   assert.match(init('--stack').stdout, /declared levels for node: unit=npm test, integration=npm test, acceptance=npm test, api=npm test/)
   const cfg = JSON.parse(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8')) as { levels: Record<string, string>; fast: { test: string } }
-  // every level a change can require is declared, so an endpoint change onboarded with --defaults never blocks on an undeclared api level
   assert.deepEqual(cfg.levels, { unit: 'npm test', integration: 'npm test', acceptance: 'npm test', api: 'npm test' })
-  assert.equal(cfg.fast.test, 'npm test')
   fs.writeFileSync(path.join(repo, '.rig/sensors.json'), JSON.stringify({ ...cfg, levels: { unit: 'make t' } }))
   assert.match(init('--stack').stdout, /already declared/)
-  assert.equal((JSON.parse(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8')) as typeof cfg).levels.unit, 'make t')
-  assert.match(init('--stack', 'cobol').stdout, /no stack template for cobol/)
 })
 
 test('init --stack refuses once sensors.json is committed or a change exists', () => {
