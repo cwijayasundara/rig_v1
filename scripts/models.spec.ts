@@ -68,14 +68,14 @@ test('pr-review hands the reviewer and referee routes to the review workflow', (
   assert.match(read('skills/pr-review/SKILL.md'), /routes: \{reviewer: routes\.reviewer, referee: routes\.referee\}/)
 })
 
-test('tier S builds through a Haiku implementer; tier S and M review through rig:reviewer, not code-review', () => {
+test('tier S builds through a Haiku implementer; tier S and M review through rig:evaluator, not code-review', () => {
   const build = read('skills/build/SKILL.md')
   assert.doesNotMatch(build, /Tier S, and tier M with/, 'tier S no longer builds inline')
   assert.match(build, /Tier M with ≤ 3 slices and ≤ 8 files: do it yourself/)
   assert.doesNotMatch(read('skills/start/SKILL.md'), /Tier S builds inline with no subagents/)
   assert.doesNotMatch(read('skills/start/SKILL.md'), /\*\*Models:\*\*/, 'start passes no slug, so it carries no Models line')
   const review = read('skills/pr-review/SKILL.md')
-  assert.match(review, /Tier S and M: one `rig:reviewer`/)
+  assert.match(review, /Tier S and M: one `rig:evaluator`/)
   assert.doesNotMatch(review, /Tier S and M: one `code-review`/)
 })
 
@@ -148,4 +148,14 @@ test('CI triage runs Haiku at low effort, as the triage route says', () => {
 
 test('build sends tier L findings to a fresh implementer when its route changed', () => {
   assert.match(read('skills/build/SKILL.md'), /differs[^\n]*launch a fresh `rig:implementer`[^\n]*otherwise[^\n]*same implementer/)
+})
+
+test('the evaluator is a read-only Opus 5.5 agent that pr-review uses for tier S and M', () => {
+  const text = read('agents/evaluator.md')
+  const front = text.split('---')[1] ?? ''
+  assert.match(front, /^name: evaluator$/m)
+  assert.match(front, /^model: claude-opus-5-5$/m)
+  assert.doesNotMatch(front, /\b(Edit|Write|MultiEdit|NotebookEdit)\b/)
+  assert.match(text, /verdict: pass \| changes-needed/)
+  assert.match(read('skills/pr-review/SKILL.md'), /Tier S and M: one `rig:evaluator` on the branch diff/)
 })

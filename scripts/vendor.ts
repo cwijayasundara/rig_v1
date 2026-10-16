@@ -10,7 +10,7 @@ const SDLC_HOOK = '.rig/bin/sdlc.ts'
 type HookGroup = { matcher?: string; hooks: { type: string; command: string; timeout?: number; async?: boolean }[] }
 
 // Plugin references rewritten for a project copy: script paths, /rig:x skills, rig:x agents and the skill's name.
-const AGENTS = ['architect', 'implementer', 'researcher', 'reviewer', 'scout']
+const AGENTS = ['architect', 'evaluator', 'implementer', 'researcher', 'reviewer', 'scout']
 
 // `kind` says what the file is named: a skill keeps the plugin's colon (`/rig:start`), an agent takes a hyphen (`rig-scout`).
 export function forProject(text: string, kind: 'skill' | 'agent' = 'skill'): string {

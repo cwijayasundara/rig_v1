@@ -32,7 +32,7 @@ test('vendor --cloud writes project skills, agents and hooks with no plugin refe
   assert.ok(agents.some(f => f.endsWith('rig-scout.md')), 'scout agent')
   for (const f of [...skills, ...agents]) {
     const text = fs.readFileSync(f, 'utf8')
-    assert.doesNotMatch(text, /CLAUDE_PLUGIN_ROOT|<plugin>\/scripts|(?<![/\w])rig:(?:architect|implementer|researcher|reviewer|scout)\b/, path.relative(repo, f))
+    assert.doesNotMatch(text, /CLAUDE_PLUGIN_ROOT|<plugin>\/scripts|(?<![/\w])rig:(?:architect|evaluator|implementer|researcher|reviewer|scout)\b/, path.relative(repo, f))
     assert.match(text, f.includes('/agents/') ? /^name: rig-/m : /^name: rig:[a-z]/m, path.relative(repo, f))
   }
   assert.ok(fs.existsSync(path.join(repo, '.rig/templates/rig-check.yml')), 'templates copied')
