@@ -7,7 +7,7 @@ import { parseRegistry, isRegistryShape, type Registry } from './registry.ts'
 import { behaviourIds, missingBehaviours } from './sensors.ts'
 import { matchesAny, type Finding, type Severity } from './model.ts'
 
-export const CLAUDE_MD = 'CLAUDE.md'
+const CLAUDE_MD = 'CLAUDE.md'
 export const BRIEF = '.rig/product/brief.md'
 const START = /^<!-- rig:guides start hash=([0-9a-f]+) -->$/m
 const END = '<!-- rig:guides end -->'

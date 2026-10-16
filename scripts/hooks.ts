@@ -71,7 +71,7 @@ function readStdin(): HookInput {
 
 type Guide = { name: string; globs: string[]; sourceOnly: boolean; body: string }
 
-export function listGuides(r: Registry): Guide[] {
+function listGuides(r: Registry): Guide[] {
   const dir = path.join(SDLC, 'guides')
   if (!exists(dir)) return []
   return fs.readdirSync(dir).filter(f => f.endsWith('.md')).sort().map(f => {
@@ -92,7 +92,7 @@ function guidesFor(rel: string, session: string): string | undefined {
   return fresh.map(g => g.body).join('\n\n')
 }
 
-export const ROUTING_LINE = `sdlc routes all work in this repo: start with ${skillRef('start')}; use superpowers skills only when an sdlc skill names one.`
+const ROUTING_LINE = `sdlc routes all work in this repo: start with ${skillRef('start')}; use superpowers skills only when an sdlc skill names one.`
 
 
 function hookSessionStart(input: HookInput): void {
@@ -146,9 +146,9 @@ function hookPostEdit(input: HookInput): void {
   if (guide) out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: guide } }))
 }
 
-export type GateSummary = { at: string; blocks: number; warns: number; bySensor: Record<string, number>; warnRows?: string[]; shown?: boolean }
+type GateSummary = { at: string; blocks: number; warns: number; bySensor: Record<string, number>; warnRows?: string[]; shown?: boolean }
 // trees: stamps of working trees on which the fast commands passed, kept across turns (the per-turn fields reset at each prompt).
-export type Gate = { turn: string; blocks: Record<string, number>; passed: Record<string, string>; tool: string[]; guides: Record<string, string[]>; trees: string[]; last?: GateSummary }
+type Gate = { turn: string; blocks: Record<string, number>; passed: Record<string, string>; tool: string[]; guides: Record<string, string[]>; trees: string[]; last?: GateSummary }
 
 const GATE = path.join(SDLC, '.gate')
 const UNRESOLVED = path.join(SDLC, 'unresolved.json')
@@ -291,7 +291,7 @@ const HOOKS: Record<string, (input: HookInput) => void> = {
 // when the project registers that same hook, so none runs twice and none is lost; unreadable settings keep the plugin's, and so does
 // managed allowManagedHooksOnly, which blocks project hooks (only a force-enabled plugin's hooks run).
 type SettingsHooks = { hooks?: Record<string, { hooks?: { command?: unknown }[] }[]> }
-export function runsOwnHook(name: string): boolean {
+function runsOwnHook(name: string): boolean {
   if (IS_VENDORED) return false
   // RIG_MANAGED_HOOKS_ONLY is the template's marker for server-managed settings, which are not visible on disk.
   if (process.env.RIG_MANAGED_HOOKS_ONLY === '1' || managedSettings().allowManagedHooksOnly === true) return false
@@ -305,7 +305,7 @@ export function runsOwnHook(name: string): boolean {
 }
 
 // Hooks rig no longer registers (spec §7): a settings file vendored before step 4a may still call them.
-export const RETIRED_HOOKS = ['subagent-start', 'subagent-stop', 'skill-failed']
+const RETIRED_HOOKS = ['subagent-start', 'subagent-stop', 'skill-failed']
 
 export function cmdHook(args: Args): void {
   if (RETIRED_HOOKS.includes(args.pos[0] ?? '')) return

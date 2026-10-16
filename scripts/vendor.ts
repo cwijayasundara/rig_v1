@@ -13,7 +13,7 @@ type HookGroup = { matcher?: string; hooks: { type: string; command: string; tim
 const AGENTS = ['architect', 'evaluator', 'implementer', 'researcher', 'reviewer', 'scout']
 
 // `kind` says what the file is named: a skill keeps the plugin's colon (`/rig:start`), an agent takes a hyphen (`rig-scout`).
-export function forProject(text: string, kind: 'skill' | 'agent' = 'skill'): string {
+function forProject(text: string, kind: 'skill' | 'agent' = 'skill'): string {
   return text
     .replaceAll('${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts', SDLC_HOOK)
     .replaceAll('<plugin>/scripts/sdlc.ts', SDLC_HOOK)

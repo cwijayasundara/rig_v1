@@ -10,7 +10,7 @@ export { globToRegex }
 
 // ---------- types ----------
 
-export type Fields = Record<string, string>
+type Fields = Record<string, string>
 
 export type Args = { pos: string[]; opt: Record<string, string | true> }
 export type HookInput = {
@@ -166,7 +166,7 @@ export const IS_VENDORED = path.basename(import.meta.dirname) === 'bin'
 export const skillRef = (name: string): string => `/rig:${name}`
 // Managed settings (the platform team's, which no engineer can edit): the OS file plus managed-settings.d/ drop-ins in name order.
 // Objects merge, arrays concatenate, later scalars win. RIG_MANAGED_DIR overrides the directory (tests). Server-managed settings are not visible here.
-export const MANAGED_DIR = process.env.RIG_MANAGED_DIR || (process.platform === 'darwin' ? '/Library/Application Support/ClaudeCode'
+const MANAGED_DIR = process.env.RIG_MANAGED_DIR || (process.platform === 'darwin' ? '/Library/Application Support/ClaudeCode'
   : process.platform === 'win32' ? 'C:\\Program Files\\ClaudeCode' : '/etc/claude-code')
 export function managedFiles(dir = MANAGED_DIR): string[] {
   const d = path.join(dir, 'managed-settings.d')

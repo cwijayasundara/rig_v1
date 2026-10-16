@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { type FileDiff, type Rule } from './model.ts'
 import { defaultRegistry, type Registry } from './registry.ts'
-import { withoutFixtures, testTamper, suppressions, TAMPER_PATTERNS, layering, size, secretsInDiff, rulesSensor, contractsFromPlan, weakensRules, isProtected, onlyKnownRedRemoved, harnessTamper, behaviourIds, missingBehaviours } from './sensors.ts'
+import { withoutFixtures, testTamper, suppressions, TAMPER_PATTERNS, layering, size, secretsInDiff, rulesSensor, weakensRules, isProtected, onlyKnownRedRemoved, harnessTamper, behaviourIds, missingBehaviours } from './sensors.ts'
 
 // A registry with the overrides the sensor tests set: paths, size limits, layers, contract globs.
 const reg = (o: { tests?: string[]; fixtures?: string[]; ignore?: string[]; testSupport?: string[]; limits?: Record<string, number>; layers?: unknown[]; contracts?: string[] } = {}): Registry => {
@@ -150,12 +150,6 @@ test('rules apply to added lines within their paths, labelled with the rule id',
   const r = rulesSensor([fd('src/a.py', ['print("x")']), fd('scripts/b.py', ['print("y")'])], rules)
   assert.deepEqual(r.map(f => [f.file, f.labels?.[0], f.severity]), [['src/a.py', 'no-print', 'block']])
   assert.match(r[0]?.message ?? '', /stdout carries the protocol/)
-})
-
-test('contractsFromPlan reads rename and remove lines only', () => {
-  const plan = '## Contracts\n- rename `discount_rate` → `promotional_discount`\n- remove `legacy_code`\n- add `currency`\n## Risks\n- rename `x`\n'
-  assert.deepEqual(contractsFromPlan(plan), ['discount_rate', 'legacy_code'])
-  assert.deepEqual(contractsFromPlan('## Contracts\nnone\n'), [])
 })
 
 const J = (o: object) => JSON.stringify(o, null, 2)

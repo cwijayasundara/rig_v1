@@ -111,7 +111,7 @@ function cmdSecrets(args: Args): void {
 
 // ---------- main ----------
 
-// `run` takes its command after `--`, as one quoted argument: sdlc.ts run [--slug s] [--expect-fail] -- "npm test"
+// `run` takes its command after `--`, as one quoted argument: sdlc.ts run [--slug s] [--expect-fail] -- "<test command>"
 function cmdRun(): void {
   const argv = process.argv.slice(3)
   const dash = argv.indexOf('--')

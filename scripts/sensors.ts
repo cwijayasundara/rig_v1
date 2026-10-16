@@ -177,31 +177,8 @@ export function rulesSensor(diffs: FileDiff[], rules: { id: string; pattern: str
   return findings
 }
 
-// Rename and drop statements whose old name lives only in added lines of a new migration file.
-export const RETIRE_PATTERNS: RegExp[] = [
-  /\bRENAME\s+COLUMN\s+["'`]?(\w+)["'`]?\s+TO\b/i,
-  /\bDROP\s+COLUMN\s+(?:IF\s+EXISTS\s+)?["'`]?(\w+)/i,
-  /\bALTER\s+TABLE\s+["'`]?(\w+)["'`]?\s+RENAME\s+TO\b/i,
-  /\brename_column\s*\(?\s*:\w+\s*,\s*:(\w+)/,
-  /\bremove_column\s*\(?\s*:\w+\s*,\s*:(\w+)/,
-  /\bRenameField\s*\([^)]*old_name\s*=\s*["'](\w+)["']/,
-  /\bRemoveField\s*\([^)]*name\s*=\s*["'](\w+)["']/,
-  /\brenameColumn\s*\(\s*["'](\w+)["']/,
-  /\bdropColumn\s*\(\s*["'](\w+)["']/,
-]
-
-
-
-export function contractsFromPlan(planText: string): string[] {
-  const section = /^##\s+Contracts\s*\n([\s\S]*?)(?=^##\s|(?![\s\S]))/m.exec(planText)?.[1] ?? ''
-  return section
-    .split('\n')
-    .map(row => /^\s*[-*]\s*(?:rename|remove|drop|retire)\s+`([A-Za-z_]\w*)`/i.exec(row)?.[1])
-    .filter((id): id is string => Boolean(id))
-}
-
 // rig-*.yml: every workflow rig writes (check, review, spec); a repo's own rig-*.yml counts too.
-export const PROTECTED = ['.rig/sensors.json', '.rig/rules.json', '.rig/guides/**', '.rig/evals/*.json', '.rig/bin/**', '.rig/mod/**', '.rig/githooks/**', '.claude-plugin/**', 'CLAUDE.md', '.claude/**', '.github/workflows/rig-*.yml', '.github/workflows/sdlc-check.yml', 'CODEOWNERS', '.github/CODEOWNERS']
+const PROTECTED = ['.rig/sensors.json', '.rig/rules.json', '.rig/guides/**', '.rig/evals/*.json', '.rig/bin/**', '.rig/mod/**', '.rig/githooks/**', '.claude-plugin/**', 'CLAUDE.md', '.claude/**', '.github/workflows/rig-*.yml', '.github/workflows/sdlc-check.yml', 'CODEOWNERS', '.github/CODEOWNERS']
 // ci: compare case-insensitively (macOS and Windows file systems treat CLAUDE.MD and CLAUDE.md as one file).
 export const isProtected = (file: string, ci = false): boolean => (ci ? matchesAny(file.toLowerCase(), PROTECTED.map(p => p.toLowerCase())) : matchesAny(file, PROTECTED))
 const SENSORS = '.rig/sensors.json'
@@ -256,7 +233,6 @@ export function harnessTamper(diffs: FileDiff[], o: { point: 'stop' | 'ship' | '
   }
   return findings
 }
-
 
 export function behaviourIds(text: string, heading: string): string[] {
   const section = new RegExp(`^##\\s+${heading}\\s*\\n([\\s\\S]*?)(?=^##\\s|(?![\\s\\S]))`, 'm').exec(text)?.[1] ?? ''

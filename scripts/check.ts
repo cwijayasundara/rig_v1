@@ -16,8 +16,8 @@ import { isRegistryShape, parseRegistry, defaultRegistry, updateKnownRed, active
 import { frozenFindings, runContracts } from './contracts.ts'
 import { syncFindings } from './sync.ts'
 
-export type Point = 'stop' | 'commit' | 'ship' | 'ci'
-export type CheckInput = {
+type Point = 'stop' | 'commit' | 'ship' | 'ci'
+type CheckInput = {
   point: Point
   diffs: FileDiff[]
   config: Registry
@@ -33,7 +33,7 @@ export type CheckInput = {
   gates?: { plan: boolean } // the plan gate; absent: on
   contracts?: boolean // run the contract commands (validate, then run); absent: at ship and ci only
 }
-export type CheckResult = { findings: Finding[]; blocks: Finding[]; warns: Finding[]; waived: number }
+type CheckResult = { findings: Finding[]; blocks: Finding[]; warns: Finding[]; waived: number }
 
 const SENSORS_JSON = '.rig/sensors.json'
 const TAIL_IN_FINDING = 15
@@ -160,7 +160,7 @@ function proofOnBase(slug: string, config: Registry, diffs: FileDiff[], base: st
   return tree.ok ? tree.value : block(tree.error, 'run `git worktree prune` and retry, check permissions for symlinks, or the person waives red-proof')
 }
 
-export function shipVerdicts(slug: string, config: Registry, diffs: FileDiff[], base: string | null, budgetMs: number, planGate: boolean): Finding[] {
+function shipVerdicts(slug: string, config: Registry, diffs: FileDiff[], base: string | null, budgetMs: number, planGate: boolean): Finding[] {
   const dir = path.join(CHANGES, slug)
   if (!exists(dir)) return [{ sensor: 'traceability', severity: 'block', message: `unknown change ${slug}`, fix: 'pass a slug that exists under .rig/changes/' }]
   const findings: Finding[] = []
@@ -229,7 +229,7 @@ const HUMAN_FILES = [['.rig/waivers.jsonl', 'waiver']] as const
 // PR-controlled text: one line, no backticks or angle brackets (it cannot close the summary fence or start a
 // `::` workflow command, since every row is printed after "  - "), and capped.
 const clean = (v: unknown): string => String(v).replace(/[\u0000-\u001f\u007f\u2028\u2029]/g, ' ').replace(/`/g, "'").replace(/[<>]/g, '_').replace(/"/g, "'").slice(0, 200)
-export function humanRowsAdded(base: string): string[] {
+function humanRowsAdded(base: string): string[] {
   const rows: string[] = []
   for (const [rel, kind] of HUMAN_FILES) {
     const before = new Set((showAt(base, rel) ?? '').replace(/\r\n/g, '\n').split('\n').filter(Boolean))
@@ -250,7 +250,7 @@ export function humanRowsAdded(base: string): string[] {
 }
 
 // A PR file cannot prove who wrote an approval row (the model commits as the developer): CI asks GitHub for an approving review of the head commit by someone other than the author.
-export function independentApproval(): string | null {
+function independentApproval(): string | null {
   const eventPath = process.env.GITHUB_EVENT_PATH
   if (!eventPath || !fs.existsSync(eventPath)) return 'cannot verify a reviewer outside a GitHub pull_request run'
   let pr: { number?: number; user?: { login?: string }; head?: { sha?: string } } = {}, repo = ''

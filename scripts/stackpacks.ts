@@ -4,7 +4,7 @@ import path from 'node:path'
 import { globToRegex, isObject, isStringList } from './model.ts'
 import { parseRegistry, type Contracts, type Paths, type Registry } from './registry.ts'
 
-export type StackPack = { stack: string; markers: string[]; paths: Partial<Paths>; contracts: Contracts; sensors: unknown[] }
+type StackPack = { stack: string; markers: string[]; paths: Partial<Paths>; contracts: Contracts; sensors: unknown[] }
 export const PACKS_DIR = path.resolve(import.meta.dirname, '../templates/stacks')
 const PACK_KEYS = ['stack', 'markers', 'paths', 'contracts', 'sensors']
 

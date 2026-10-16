@@ -5,8 +5,8 @@ import { modelFamily, type Registry } from './registry.ts'
 import type { Finding } from './model.ts'
 import { withLock } from './core.ts'
 
-export type Launch = { session: string; id: string; agent: string; requested: string | null; resolved: string | null; at: string }
-export type ModelState = { sessions: Record<string, { model: string; source: string; at: string }>; launches: Launch[] }
+type Launch = { session: string; id: string; agent: string; requested: string | null; resolved: string | null; at: string }
+type ModelState = { sessions: Record<string, { model: string; source: string; at: string }>; launches: Launch[] }
 const MAX_LAUNCHES = 50
 const TAIL_BYTES = 256 * 1024
 const EVALUATOR = /(?:^|[:-])evaluator$/

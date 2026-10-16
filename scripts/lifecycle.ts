@@ -7,10 +7,10 @@ import { openQuestions, globToRegex } from './model.ts'
 import { parseRegistry, contractGlobs } from './registry.ts'
 
 export const TYPES = ['feature', 'bugfix', 'refactor', 'chore'] as const
-export type ChangeType = typeof TYPES[number]
+type ChangeType = typeof TYPES[number]
 export type Status = 'spec' | 'plan' | 'approve' | 'build' | 'pr' | 'review' | 'shipped'
 export type Approval = { by: string; at: string; hashes: Record<string, string>; contracts: Record<string, string> }
-export type Verify = { at: string; tree: string | null; base: string | null; pass: boolean; blocks: string[] }
+type Verify = { at: string; tree: string | null; base: string | null; pass: boolean; blocks: string[] }
 
 const ACTIVE = path.join(SDLC, 'state', 'active')
 const APPROVED = ['spec.md', 'plan.md']
@@ -70,14 +70,14 @@ export function writeApproval(slug: string, by: string): Approval {
   return a
 }
 
-export const readVerify = (slug: string): Verify | null => json<Verify>(file(slug, 'verify.json'))
+const readVerify = (slug: string): Verify | null => json<Verify>(file(slug, 'verify.json'))
 export const writeVerify = (slug: string, v: Verify): void => fs.writeFileSync(file(slug, 'verify.json'), JSON.stringify(v, null, 2) + '\n')
 export const verifyFresh = (slug: string, tree: string | null): boolean => { const v = readVerify(slug); return Boolean(v?.pass && tree && v.tree === tree) }
 
 // Shipped: its pr.md is on the trunk (HEAD itself when the trunk is checked out, where defaultBase has nothing to compare).
 // One ls-tree per process, however many changes status walks.
 let shippedOnTrunk: Set<string> | null = null
-export function isShipped(slug: string): boolean {
+function isShipped(slug: string): boolean {
   if (!shippedOnTrunk) {
     const base = defaultBase() ?? (['main', 'master'].includes(git(['rev-parse', '--abbrev-ref', 'HEAD']) ?? '') ? 'HEAD' : null)
     const files = base ? (git(['ls-tree', '-r', '--name-only', base, '--', '.rig/changes']) ?? '').split('\n') : []

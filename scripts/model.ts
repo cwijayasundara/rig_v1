@@ -1,7 +1,7 @@
 // The pure data model for sensors: diffs, globs, config, rules and findings. No fs, git or process access.
 import type { Paths } from './registry.ts'
 export type Line = { n: number; text: string }
-export type FileStatus = 'A' | 'M' | 'D' | 'R'
+type FileStatus = 'A' | 'M' | 'D' | 'R'
 export type FileDiff = { file: string; from?: string; status: FileStatus; added: Line[]; removed: Line[]; binary?: true; oversize?: true }
 export type Severity = 'block' | 'warn'
 // Every sensor name a Finding can carry; /rig:waive accepts exactly these (a test keeps this in step with the sources).
@@ -180,7 +180,6 @@ export function parseUnifiedDiff(text: string): FileDiff[] {
 type Json = Record<string, unknown>
 export const isObject = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v)
 export const isStringList = (v: unknown): v is string[] => Array.isArray(v) && v.every(x => typeof x === 'string')
-export const isStringMap = (v: unknown): v is Record<string, string> => isObject(v) && Object.values(v).every(x => typeof x === 'string')
 
 export const posInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v > 0
 

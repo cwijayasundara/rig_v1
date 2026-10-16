@@ -8,7 +8,7 @@ import { activeSlug, verifyFresh } from './lifecycle.ts'
 import { treeStamp } from './stamp.ts'
 import { formatFindings, warnLines, type Finding } from './model.ts'
 
-export const HOOKS_DIR = '.rig/githooks'
+const HOOKS_DIR = '.rig/githooks'
 const NAMES = ['pre-commit', 'pre-push'] as const
 const AT = { 'pre-commit': 'commit', 'pre-push': 'push' } as const
 
@@ -36,8 +36,8 @@ export function writeHookScripts(written: string[] = []): void {
   }
 }
 
-export type HooksState = 'installed' | 'missing' | 'other'
-export function hooksState(): { state: HooksState; path: string } {
+type HooksState = 'installed' | 'missing' | 'other'
+function hooksState(): { state: HooksState; path: string } {
   // Any scope: a global or system hooksPath would otherwise be shadowed in silence. ./x and x/ are x.
   const p = git(['config', '--get', 'core.hooksPath']) ?? ''
   const norm = p.replace(/^(?:\.\/)+/, '').replace(/\/+$/, '')
@@ -78,7 +78,7 @@ function wireAtSessionStart(): string {
   return r.ok ? `Git hooks: installed the rig pre-commit and pre-push checks (core.hooksPath = ${HOOKS_DIR}). Opt out with: node .rig/bin/sdlc.ts hooks uninstall` : `Git hooks: ${r.message}`
 }
 
-export function uninstallHooks(): string {
+function uninstallHooks(): string {
   git(['config', '--local', 'rig.githooks', 'off']) // session start will not wire them again
   if (hooksState().state !== 'installed') return 'rig git hooks are not installed (session start will not wire them; `hooks install` undoes this)'
   git(['config', '--local', '--unset', 'core.hooksPath'])
@@ -101,10 +101,10 @@ export function cmdHooks(args: Args): void {
 }
 
 const ZERO = /^0+$/
-export type PushRef = { localRef: string; localSha: string; remoteRef: string; remoteSha: string }
+type PushRef = { localRef: string; localSha: string; remoteRef: string; remoteSha: string }
 
 // git feeds pre-push one line per ref: <local ref> <local sha> <remote ref> <remote sha>.
-export function parsePushRefs(stdin: string): PushRef[] {
+function parsePushRefs(stdin: string): PushRef[] {
   return stdin.split('\n').filter(l => l.trim()).map(l => {
     const [localRef = '', localSha = '', remoteRef = '', remoteSha = ''] = l.trim().split(/\s+/)
     return { localRef, localSha, remoteRef, remoteSha }
@@ -114,7 +114,7 @@ export function parsePushRefs(stdin: string): PushRef[] {
 const TRUNKS = ['origin/main', 'main', 'origin/master', 'master']
 // The base CI would use (the merge-base with the trunk, for the pushed commit, not HEAD), so merging or rebasing on
 // the trunk never counts the trunk's own work. A push to the trunk itself judges what the remote lacks.
-export function pushBase(r: PushRef): string | null {
+function pushBase(r: PushRef): string | null {
   const trunk = TRUNKS.find(t => git(['rev-parse', '--verify', '--quiet', `${t}^{commit}`]))
   const mb = trunk ? git(['merge-base', r.localSha, trunk]) : null
   const tb = mb && mb !== r.localSha ? mb : null // already on the trunk: nothing of its own to compare

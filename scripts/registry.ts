@@ -3,17 +3,17 @@
 import { isObject, isStringList, posInt } from './model.ts'
 
 export type Cadence = 'edit' | 'turn' | 'commit' | 'ci' | 'nightly'
-export const CADENCES: Cadence[] = ['edit', 'turn', 'commit', 'ci', 'nightly']
-export type Count = 'exit' | 'lines' | `json:${string}`
+const CADENCES: Cadence[] = ['edit', 'turn', 'commit', 'ci', 'nightly']
+type Count = 'exit' | 'lines' | `json:${string}`
 export type Mode = 'continuous' | 'final'
 export const BUILTIN_IDS = ['secrets', 'test-tamper', 'suppression', 'harness-tamper', 'size', 'layering', 'rules', 'red-proof', 'traceability', 'model-role'] as const
-export type BuiltinId = typeof BUILTIN_IDS[number]
+type BuiltinId = typeof BUILTIN_IDS[number]
 export const ALWAYS_ON: BuiltinId[] = ['secrets', 'harness-tamper']
 
 export type RegistrySensor = { id: string; cmd?: string; builtin?: true; cadence: Cadence; blocks: boolean; count?: Count; guide: string; timeoutMs?: number; enabled: boolean; options?: Record<string, unknown> }
 export type Paths = { tests: string[]; testSupport: string[]; fixtures: string[]; ignore: string[] }
 export type Contracts = { files: string[]; covers: string[]; validate: string; run: string }
-export type Policy = Record<string, Mode> & { default: Mode }
+type Policy = Record<string, Mode> & { default: Mode }
 export type Registry = { stack: string | null; gates: { plan: boolean; merge: boolean }; contracts: Contracts; models: { build: string; evaluate: string }; paths: Paths; sensors: RegistrySensor[]; knownRed: string[]; policy: Policy }
 
 type Base = { cadence: Cadence; blocks: boolean; guide: string }
@@ -37,10 +37,10 @@ const KEBAB = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
 const isBuiltinId = (v: string): v is BuiltinId => (BUILTIN_IDS as readonly string[]).includes(v)
 const isCadence = (v: unknown): v is Cadence => typeof v === 'string' && (CADENCES as string[]).includes(v)
-export const isCount = (v: unknown): v is Count => v === 'exit' || v === 'lines' || (typeof v === 'string' && /^json:[A-Za-z0-9_.]+$/.test(v))
-export const isMode = (v: unknown): v is Mode => v === 'continuous' || v === 'final'
+const isCount = (v: unknown): v is Count => v === 'exit' || v === 'lines' || (typeof v === 'string' && /^json:[A-Za-z0-9_.]+$/.test(v))
+const isMode = (v: unknown): v is Mode => v === 'continuous' || v === 'final'
 
-export function builtinSensor(id: BuiltinId): RegistrySensor {
+function builtinSensor(id: BuiltinId): RegistrySensor {
   return { id, builtin: true, ...BUILTIN_DEFAULTS[id], enabled: true }
 }
 
@@ -191,7 +191,7 @@ export function modelFamily(model: string | null | undefined, policy: Policy): s
 
 export const policyMode = (r: Registry, model: string | null | undefined): Mode => r.policy[modelFamily(model, r.policy)] ?? r.policy.default
 
-export const RANK: Record<Cadence, number> = { edit: 0, turn: 1, commit: 2, ci: 3, nightly: 4 }
+const RANK: Record<Cadence, number> = { edit: 0, turn: 1, commit: 2, ci: 3, nightly: 4 }
 
 // A sensor runs at its own cadence and every later one; a nightly sensor only at nightly; nightly runs everything enabled.
 export function runsAt(s: RegistrySensor, at: Cadence): boolean {
