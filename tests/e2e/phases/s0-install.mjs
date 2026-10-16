@@ -16,7 +16,7 @@ export const REGISTRY = { sensors: [{ id: 'unit', cmd: 'npm test', cadence: 'tur
 
 export async function install(sb) {
   sb.isolate([])
-  const scripts = { test: 'node --test', 'test-fast': 'node --test', lint: 'node --check src/index.js' }
+  const scripts = { start: 'node src/server.js', test: 'node --test', 'test-fast': 'node --test', lint: 'node --check src/index.js' }
   sb.write('package.json', JSON.stringify({ name: 'shop-app', version: '0.1.0', type: 'module', scripts }, null, 2) + '\n')
   sb.write('src/index.js', 'export {}\n')
   sb.write('test/smoke.test.js', "import { test } from 'node:test'\nimport '../src/index.js'\ntest('loads', () => {})\n")
