@@ -19,11 +19,11 @@ Node 22 ESM, `node --test`, no dependencies, integer cents throughout.
 
 ## Interfaces
 
-Modules (every arm builds these paths):
+Modules:
 - `src/catalog/products.js` exports `Catalog`. `add({ sku, name, priceCents })`: a SKU is three capital letters, a hyphen and three digits (`TEA-001`); anything else throws `invalid sku: <sku>`. `priceCents` must be a positive integer, or `add` throws. `get(sku)` returns the product or `null`; `list()` returns every product as `{ sku, name, priceCents }`.
 - `src/cart/cart.js` exports `Cart`, constructed with a catalog. `add(sku, qty)`: `qty` defaults to 1 and must be a positive integer; a SKU not in the catalog throws `unknown sku: <sku>`; adding a SKU again adds to its quantity. `lines()` returns one `{ sku, qty, unitCents }` per SKU, priced from the catalog. `subtotalCents()` is the sum of `qty × unitCents`. `remove(sku)` deletes the whole line and throws when the SKU is not in the cart.
-- `src/orders/orders.js` exports `checkout(cart, { code })`. It returns the order `{ lines, subtotalCents, discountCents, totalCents }` and does not change the cart. No code means no discount; `SAVE10` takes 10% off and `SAVE20` 20%; `discountCents` is rounded to the nearest cent and `totalCents = subtotalCents − discountCents`. Any other code throws `unknown discount code: <code>`; an empty cart throws `cart is empty`.
-- `src/http/handler.js` exports `createHandler(catalog)`, which returns a synchronous `handle({ method, path, body })` returning `{ status, body }`, with one cart per handler:
+- `src/orders/orders.js` exports `checkout(cart, { code } = {})`; the options may be omitted. It returns the order `{ lines, subtotalCents, discountCents, totalCents }` and does not change the cart. No code means no discount; `SAVE10` takes 10% off and `SAVE20` 20%; `discountCents` is rounded to the nearest cent and `totalCents = subtotalCents − discountCents`. Any other code throws `unknown discount code: <code>`; an empty cart throws `cart is empty`.
+- `src/http/handler.js` exports `createHandler(catalog)`, which uses the catalog it is given and adds no products of its own, and returns the function `handle({ method, path, body })` itself (synchronous, returning `{ status, body }`), with one cart per handler; a request with no body counts as `{}`:
   - `GET /products` → 200 with the products as a bare JSON array (`[{ sku, name, priceCents }]`, not wrapped in an object);
   - `POST /cart` with `{ sku, qty }` → 201 with the cart lines as a JSON array;
   - `DELETE /cart/<sku>` → 200 with the remaining lines as a JSON array; 400 when the SKU is not in the cart;

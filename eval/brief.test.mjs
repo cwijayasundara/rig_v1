@@ -42,7 +42,7 @@ const FACTS = {
   'checkout after delete: …, want total 1200': /one cart per running server/,
   'DELETE of an absent SKU not 400': /`DELETE \/cart\/<sku>`[^\n]*400 when the SKU is not in the cart/,
 }
-const WRAPPERS = /^(?:…: …|regression before remove: …|acceptance child exited …)/
+const WRAPPERS = /^(?:…: …|regression before remove: …|acceptance child exited …: …)$/
 
 const messages = () => ['shop.mjs', 'shop-http.mjs'].flatMap(f => [...read(f).matchAll(/(?:return|\|\|) (['`])((?:(?!\1).)+)\1/g)].map(m => m[2].replace(/\$\{[^}]*\}/g, '…')))
   .filter(m => !WRAPPERS.test(m))
@@ -60,4 +60,25 @@ test('the brief states rules, not the acceptance\'s numbers', () => {
   // The seeded catalog prices are part of the product; the acceptance's totals and subtotals are not.
   const rest = brief.replace('MUG-002 (Mug, 1200)', '')
   for (const n of ['2550', '2295', '2100', '1890', '900', '1200', '810']) assert.doesNotMatch(rest, new RegExp(`\\b${n}\\b`), n)
+})
+
+test('final review: every FACTS entry is still used by some acceptance message', () => {
+  const ms = new Set(messages())
+  assert.deepEqual(Object.keys(FACTS).filter(k => !ms.has(k)), [])
+})
+
+// Checks that fail by throwing (a crash), not by returning a message, depend on these call shapes being stated.
+const CALL_SHAPES = {
+  'checkout(new Cart(catalog)) with no options': /`checkout\(cart, \{ code \} = \{\}\)`/,
+  'h = createHandler(catalog); h({ ... })': /returns the function `handle\(\{ method, path, body \}\)` itself/,
+  'createHandler(catalog) with a catalog the caller filled': /uses the catalog it is given and adds no products of its own/,
+  'GET and DELETE requests carry no body': /a request with no body counts as `\{\}`/,
+}
+
+test('final review: the call shapes the acceptance relies on, which fail by crashing, are stated', () => {
+  for (const [use, re] of Object.entries(CALL_SHAPES)) assert.match(brief, re, use)
+})
+
+test('final review: the brief reads as a product brief, not as a trial', () => {
+  assert.doesNotMatch(brief, /\barm\b|\beval\b|hidden|acceptance/i)
 })
