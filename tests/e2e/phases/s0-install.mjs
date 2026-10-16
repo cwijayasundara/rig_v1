@@ -29,8 +29,8 @@ export function copyContractTool(sb) {
   fs.copyFileSync(path.join(import.meta.dirname, '../fixtures/tooling/scripts/contract.mjs'), sb.file('scripts/contract.mjs'))
 }
 
-export async function install(sb) {
-  sb.isolate([])
+export async function install(sb, { registry = REGISTRY, plugins = [] } = {}) {
+  sb.isolate(plugins)
   const scripts = { start: 'node src/server.js', test: 'node --test', 'test-fast': 'node --test', lint: 'node --check src/index.js' }
   sb.write('package.json', JSON.stringify({ name: 'shop-app', version: '0.1.0', type: 'module', scripts }, null, 2) + '\n')
   sb.write('src/index.js', 'export {}\n')
@@ -38,7 +38,7 @@ export async function install(sb) {
   sb.write('test/smoke.test.js', "import { test } from 'node:test'\nimport '../src/index.js'\ntest('loads', () => {})\n")
   sb.commitAll('chore: scaffold')
   must(sb.sdlc(['init']), 'init')
-  sb.write('.rig/sensors.json', JSON.stringify(REGISTRY, null, 2) + '\n')
+  sb.write('.rig/sensors.json', JSON.stringify(registry, null, 2) + '\n')
   must(sb.sdlc(['init', '--full']), 'init --full')
   sb.write('CLAUDE.md', `# shop-app\n\n${ROUTING}\n\n## Map\n- src/\n`)
   must(sb.sdlc(['sync']), 'sync')
