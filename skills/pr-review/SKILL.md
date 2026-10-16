@@ -26,4 +26,4 @@ If `.rig/changes/$0/review.md` exists, this is a rerun: go straight to step 6 (t
    - `pending` or `unknown`: tell the person the checks are not finished and to rerun `/rig:pr-review $0` later, which resumes the sweep; never sleep-poll.
    - If `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts next $0 --json` says `blocked` (the pr-review budget), or after 3 rounds checks still fail: stop and show what is left; the person decides.
 
-End with: `Next: <command from node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts next $0 --json>` (`ready` means a person merges). Optionally show `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts scorecard $0`.
+End with: `Next: <command from node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts next $0 --json>` (`ready` means a person merges).

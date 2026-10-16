@@ -27,9 +27,8 @@ test('init skill: a Node scaffold uses `node --test` with no directory argument 
   assert.doesNotMatch(skill, /node --test test\//)
 })
 
-test('init skill: marketplace registration is per project', () => {
-  assert.match(skill, /marketplace add <repo-root> --scope project/)
-  assert.doesNotMatch(skill, /marketplace add <repo-root>`/)
+test('init skill: no marketplace registration or mod is left (step 4a deleted the mod)', () => {
+  assert.doesNotMatch(skill, /marketplace add|\.rig\/mod|rig-review|\.claude-plugin\//)
 })
 
 test('init skill: writes rig docs into README.md between markers, brownfield in place and greenfield new', () => {
@@ -74,11 +73,10 @@ test('init skill: the greenfield lint script never writes helper files under .ri
   assert.match(skill, /never write scaffold helper files under `\.rig\/`/)
 })
 
-test('init skill: --quick is the no-question fast lane that turns on registration and workflows', () => {
+test('init skill: --quick is the no-question fast lane that turns on workflows', () => {
   assert.match(skill, /argument-hint: '\[--quick \| --defaults\]/)
   const mode = /## `--quick` mode\n([\s\S]*?)\n## /.exec(skill)?.[1] ?? ''
   assert.match(mode, /no AskUserQuestion at all/)
-  assert.match(mode, /marketplace add <repo-root> --scope project/)
   assert.match(mode, /`--workflows`[^\n]*only when `git remote get-url origin` succeeds/)
   assert.doesNotMatch(mode, /claude plugin install|~\/\.claude\/settings/)
 })

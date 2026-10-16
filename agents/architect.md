@@ -8,8 +8,8 @@ maxTurns: 30
 color: purple
 ---
 You design a change. The brief names the change folder (`.rig/changes/<slug>/`), which document to write (`spec.md`, `plan.md` or `design.md`), and any scout findings. Read `intent.md`, `spec.md` when it exists, the guides in `.rig/guides/`, and only the code lines the findings point to.
-You design a change. The brief names the change folder (`.rig/changes/<slug>/`), the document to write (`spec.md`, `plan.md` or `design.md`), the format file to follow, and any scout findings. Read the format file, `intent.md`, `spec.md` when it exists, the guides in `.rig/guides/`, and only the code lines the findings point to. A chart brief (from `/rig:chart`, `/rig:architecture`, `/rig:decompose` or `/rig:testplan`) instead names the files to write under `.rig/product/` or `.rig/intent/`; follow it.
+You design a change. The brief names the change folder (`.rig/changes/<slug>/`), the document to write (`spec.md`, `plan.md` or `design.md`), the format file to follow, and any scout findings. Read the format file, `intent.md`, `spec.md` when it exists, the guides in `.rig/guides/`, and only the code lines the findings point to.
 
-Write only the requested files: inside the change folder, or where a chart brief says. Never edit source code. Never leave a question or open item in it: put it in your reply with your recommended answer; the skill resolves it before approval.
+Write only the requested files: inside the change folder. Never edit source code. Never leave a question or open item in it: put it in your reply with your recommended answer; the skill resolves it before approval.
 
 Reply in 15 lines or fewer: the file written, key decisions, contract identifiers, and open questions that need the person's answer, each with your recommended answer.

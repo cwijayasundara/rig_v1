@@ -86,12 +86,12 @@ test('4a: new --source still refuses an intent whose dependency has not shipped,
   assert.match(r.stderr + r.stdout, /blocked by: one/)
 })
 
-test('4a: the review workflow, the rig-spec CI template and the five non-lifecycle skills are gone', () => {
-  gone('workflows', 'templates/rig-review.yml', 'templates/rig-spec.yml', ...['architecture', 'codebase-design', 'prototype', 'sensors', 'testplan'].map(s => `skills/${s}`))
+test('4a: the review workflow, the rig-spec CI template and four non-lifecycle skills are gone', () => {
+  gone('workflows', 'templates/rig-review.yml', 'templates/rig-spec.yml', ...['architecture', 'codebase-design', 'prototype', 'testplan'].map(s => `skills/${s}`))
   const ci = fs.readdirSync(path.join(ROOT, 'templates')).filter(f => /^rig-.*\.yml$/.test(f))
   assert.deepEqual(ci, ['rig-check.yml'])
   const kept = fs.readdirSync(path.join(ROOT, 'skills')).sort()
-  assert.deepEqual(kept, ['approve', 'build', 'design', 'diagnose', 'incident', 'init', 'intent', 'next', 'plan', 'pr', 'pr-review', 'rule', 'spec', 'start', 'test', 'waive'])
+  assert.deepEqual(kept, ['approve', 'build', 'design', 'diagnose', 'incident', 'init', 'intent', 'next', 'plan', 'pr', 'pr-review', 'rule', 'sensors', 'spec', 'start', 'test', 'waive'])
 })
 
 test('4a: the scripted e2e suite is out of npm test until step 5 rewrites it; the e2e unit tests stay', () => {
@@ -99,4 +99,25 @@ test('4a: the scripted e2e suite is out of npm test until step 5 rewrites it; th
   assert.doesNotMatch(t, /test:e2e:fast/)
   assert.match(t, /test:e2e:unit/)
   assert.doesNotMatch(read('.github/workflows/ci.yml'), /test:e2e:fast/)
+})
+
+// Every slash command and sdlc subcommand the shipped text names must exist (a deleted skill or command left behind breaks the flow).
+test('4a: every /rig:<skill> and sdlc.ts <command> named in skills, agents, guides and templates exists', () => {
+  const skills = new Set(fs.readdirSync(path.join(ROOT, 'skills')))
+  const cmds = new Set(commands())
+  const files = ['skills', 'agents', 'guides', 'templates'].flatMap(d => (fs.readdirSync(path.join(ROOT, d), { recursive: true }) as string[]).map(f => path.join(d, f)))
+    .filter(f => f.endsWith('.md') && fs.statSync(path.join(ROOT, f)).isFile())
+  const bad: string[] = []
+  for (const f of files) {
+    const text = read(f)
+    for (const m of text.matchAll(/(?<![\w-])\/rig[:-]([a-z][a-z-]*)/g)) if (m[1] !== 'x' && !skills.has(m[1]!)) bad.push(`${f}: /rig:${m[1]}`)
+    for (const m of text.matchAll(/(?:scripts|bin)\/sdlc\.ts"? ([a-z][a-z-]+)/g)) if (!cmds.has(m[1]!)) bad.push(`${f}: sdlc.ts ${m[1]}`)
+  }
+  assert.deepEqual(bad, [])
+})
+
+test('4a: every stage the lifecycle graph can route to has a skill', () => {
+  const graph = fs.readFileSync(path.join(ROOT, 'scripts/graph.ts'), 'utf8')
+  const stages = new Set([...graph.matchAll(/'([a-z-]+)'/g)].map(m => m[1]!).filter(s => ['intent', 'spec', 'plan', 'design', 'build', 'diagnose', 'test', 'sensors', 'pr', 'pr-review'].includes(s)))
+  for (const s of stages) assert.ok(fs.existsSync(path.join(ROOT, 'skills', s, 'SKILL.md')), `stage ${s} has no skill`)
 })
