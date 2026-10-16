@@ -170,3 +170,42 @@ export function parseRegistry(text: string): { registry: Registry; errors: strin
   for (const k of Object.keys(value)) if (!TOP_KEYS.includes(k)) errors.push(`unknown key "${k}"`)
   return { registry, errors }
 }
+
+// ---------- policy and selection (spec §3.3) ----------
+
+// The longest policy key found in the model id wins, so a family named "sonnet-fast" beats "sonnet".
+export function modelFamily(model: string | null | undefined, policy: Policy): string {
+  const id = (model ?? '').toLowerCase()
+  if (!id) return 'default'
+  const keys = Object.keys(policy).filter(k => k !== 'default').sort((a, b) => b.length - a.length)
+  return keys.find(k => id.includes(k)) ?? 'default'
+}
+
+export const policyMode = (r: Registry, model: string | null | undefined): Mode => r.policy[modelFamily(model, r.policy)] ?? r.policy.default
+
+const RANK: Record<Cadence, number> = { edit: 0, turn: 1, commit: 2, ci: 3, nightly: 4 }
+
+// A sensor runs at its own cadence and every later one; a nightly sensor only at nightly; nightly runs everything enabled.
+export function runsAt(s: RegistrySensor, at: Cadence): boolean {
+  if (!s.enabled) return false
+  if (s.cadence === 'nightly') return at === 'nightly'
+  return RANK[s.cadence] <= RANK[at]
+}
+
+// Under "final", in-session cadences keep only the always-on built-ins; commit, ci and nightly run in full.
+export function activeSensors(r: Registry, at: Cadence, mode: Mode): RegistrySensor[] {
+  const due = r.sensors.filter(s => runsAt(s, at))
+  if (mode === 'continuous' || RANK[at] >= RANK.commit) return due
+  return due.filter(s => (ALWAYS_ON as string[]).includes(s.id))
+}
+
+const shq = (s: string): string => (/^[A-Za-z0-9_./:@%+=,-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`)
+
+// null files: whole repo, so {files} is dropped. An empty list with {files}: nothing to check, skip (null).
+export function commandFor(s: RegistrySensor, files: string[] | null): string | null {
+  if (!s.cmd) return null
+  if (!s.cmd.includes('{files}')) return s.cmd
+  if (files && !files.length) return null
+  if (!files) return s.cmd.replace(/\s*\{files\}/g, '').trim()
+  return s.cmd.replaceAll('{files}', files.map(shq).join(' '))
+}

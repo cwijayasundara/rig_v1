@@ -61,3 +61,52 @@ test('rejects a non-object, unparseable JSON and unknown top-level keys', () => 
   assert.match(parseRegistry('{').errors.join(), /does not parse/)
   assert.match(reg({ sensors: [], tiers: {} }).errors.join(), /unknown key "tiers"/)
 })
+
+import { modelFamily, policyMode, runsAt, activeSensors, commandFor, type RegistrySensor } from './registry.ts'
+
+const cmd = (id: string, cadence: RegistrySensor['cadence'], c = 'run'): RegistrySensor => ({ id, cmd: c, cadence, blocks: true, count: 'exit', guide: 'g', enabled: true })
+
+test('model ids map to policy families; unknown, empty and null map to default', () => {
+  const r = defaultRegistry()
+  assert.equal(modelFamily('claude-sonnet-5-5', r.policy), 'sonnet')
+  assert.equal(modelFamily('claude-opus-5-5[1m]', r.policy), 'opus')
+  assert.equal(modelFamily('HAIKU', r.policy), 'haiku')
+  for (const m of ['claude-fable-5-1', '', null, undefined]) assert.equal(modelFamily(m, r.policy), 'default')
+  assert.equal(policyMode(r, 'claude-opus-5-5'), 'final')
+  assert.equal(policyMode(r, 'claude-sonnet-5-5'), 'continuous')
+  assert.equal(policyMode(r, null), 'continuous')
+})
+
+test('a repo policy overrides one family and keeps the rest', () => {
+  const { registry } = parseRegistry(JSON.stringify({ policy: { opus: 'continuous', default: 'final' } }))
+  assert.equal(policyMode(registry, 'claude-opus-5-5'), 'continuous')
+  assert.equal(policyMode(registry, 'claude-sonnet-5-5'), 'continuous')
+  assert.equal(policyMode(registry, 'claude-fable-5-1'), 'final')
+})
+
+test('a sensor runs at its cadence and later ones; nightly sensors only at nightly; nightly runs all', () => {
+  const e = cmd('e', 'edit'), c = cmd('c', 'commit'), n = cmd('n', 'nightly')
+  assert.deepEqual(['edit', 'turn', 'commit', 'ci', 'nightly'].map(a => runsAt(e, a as RegistrySensor['cadence'])), [true, true, true, true, true])
+  assert.deepEqual(['edit', 'turn', 'commit', 'ci', 'nightly'].map(a => runsAt(c, a as RegistrySensor['cadence'])), [false, false, true, true, true])
+  assert.deepEqual(['edit', 'turn', 'commit', 'ci', 'nightly'].map(a => runsAt(n, a as RegistrySensor['cadence'])), [false, false, false, false, true])
+  assert.equal(runsAt({ ...e, enabled: false }, 'ci'), false)
+})
+
+test('final mode keeps only secrets and harness-tamper at edit and turn, everything at commit', () => {
+  const { registry } = parseRegistry(JSON.stringify({ sensors: [cmd('lint', 'edit'), cmd('unit', 'turn')] }))
+  const ids = (at: RegistrySensor['cadence'], m: 'final' | 'continuous') => activeSensors(registry, at, m).map(s => s.id)
+  assert.deepEqual(ids('edit', 'final').sort(), ['harness-tamper', 'secrets'])
+  assert.deepEqual(ids('turn', 'final').sort(), ['harness-tamper', 'secrets'])
+  assert.ok(ids('edit', 'continuous').includes('lint'))
+  assert.ok(ids('turn', 'continuous').includes('unit'))
+  assert.ok(ids('commit', 'final').includes('lint') && ids('commit', 'final').includes('unit'))
+})
+
+test('{files} is shell-quoted, removed for whole-repo runs, and an empty list skips', () => {
+  const s = cmd('lint', 'edit', 'eslint {files}')
+  assert.equal(commandFor(s, ['src/a.ts', 'my dir/b.ts', "it's.ts"]), `eslint src/a.ts 'my dir/b.ts' 'it'\\''s.ts'`)
+  assert.equal(commandFor(s, null), 'eslint')
+  assert.equal(commandFor(s, []), null)
+  assert.equal(commandFor(cmd('unit', 'turn', 'make test'), []), 'make test')
+  assert.equal(commandFor({ id: 'secrets', builtin: true, cadence: 'edit', blocks: true, guide: 'g', enabled: true }, null), null)
+})
