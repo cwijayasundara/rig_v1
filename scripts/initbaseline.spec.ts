@@ -9,7 +9,7 @@ import { makeRepo, sdlc, write } from './testkit.ts'
 const ok = 'node -e "process.exit(0)"'
 const bad = 'node -e "process.exit(3)"'
 
-test('baseline: runs fast, levels and quality once with no change; failing fast commands go into knownRed', () => {
+test('baseline: runs fast and levels once with no change; failing fast commands go into knownRed', () => {
   const repo = makeRepo()
   sdlc(repo, ['init'])
   write(repo, '.rig/sensors.json', JSON.stringify({
@@ -23,8 +23,7 @@ test('baseline: runs fast, levels and quality once with no change; failing fast 
   assert.match(r.stdout, /fast\.lint: fail \(exit 3\) → knownRed/)
   assert.match(r.stdout, /levels unit, integration: pass/, 'one command serving two levels runs once')
   assert.match(r.stdout, /levels acceptance: FAIL/)
-  assert.match(r.stdout, /quality lint: 2 finding\(s\)/)
-  assert.match(r.stdout, /quality deps: cannot count/)
+  assert.doesNotMatch(r.stdout, /quality/, 'quality counts are no longer measured here (step 4b)')
   assert.ok(!fs.existsSync(path.join(repo, '.rig/changes')) || !fs.readdirSync(path.join(repo, '.rig/changes')).length, 'no change is created')
   const cfg = JSON.parse(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8'))
   assert.deepEqual(cfg.knownRed, ['fast.lint'])

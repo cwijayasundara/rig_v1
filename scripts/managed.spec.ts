@@ -7,7 +7,6 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { makeRepo, sdlc, write } from './testkit.ts'
 import { managedSettings, managedFiles } from './core.ts'
-import { managedCheck, controlsInForce, CONTROLS } from './preflight.ts'
 
 const ROOT = path.join(import.meta.dirname, '..')
 const tmpDir = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'rig-managed-'))
@@ -114,31 +113,6 @@ test('the gate never fails open: no jq, no env name, no .rig, a symlinked log, a
   assert.equal(gate('deploy \\"production\\"', { CLAUDE_PROJECT_DIR: repo }).status, 2, 'escaped quotes in the command still match')
 })
 
-test('preflight managed: 16 controls from p.42; the template has all 16; never fails', () => {
-  assert.equal(CONTROLS.length, 16)
-  const full = tpl('managed-settings.json')
-  assert.equal(controlsInForce(full).length, 16)
-  assert.deepEqual(managedCheck(full, 1, () => true), { id: 'managed', status: 'pass', line: '16/16 managed controls in force (1 file)' })
-  assert.equal(managedCheck({}, 0).status, 'skip')
-  assert.match(managedCheck({}, 0).line, /server-managed settings are not visible here/)
-  const partial = managedCheck({ permissions: { disableBypassPermissionsMode: 'disable' }, sandbox: { enabled: true } }, 1)
-  assert.equal(partial.status, 'warn')
-  assert.match(partial.line, /^2\/16 managed controls in force/)
-  assert.match(partial.line, /missing: .*allowManagedHooksOnly/)
-  assert.ok(partial.fix?.includes('templates/managed-settings.json'))
-})
-
-test('preflight managed warns when the managed file would switch rig off or protect the wrong folder', () => {
-  const full = tpl('managed-settings.json')
-  const noRig = managedCheck({ ...full, enabledPlugins: {} }, 1)
-  assert.equal(noRig.status, 'warn')
-  assert.match(noRig.line, /rig's hooks are off: allowManagedHooksOnly without rig force-enabled/)
-  const noRules = managedCheck({ ...full, permissions: { ...full.permissions, deny: ['Read(.env*)'] } }, 1)
-  assert.match(noRules.line, /rig's evidence rules are dropped/)
-  const anchored = managedCheck({ ...full, permissions: { ...full.permissions, deny: [...full.permissions.deny, 'Edit(/.rig/approvals.jsonl)'] } }, 1)
-  assert.match(anchored.line, /Edit\(\/\.rig\/approvals\.jsonl\) anchors at the managed settings folder: use \.\//)
-})
-
 test('SECURITY.md documents the managed rollout, the gate install path and its limits', () => {
   const sec = fs.readFileSync(path.join(ROOT, 'SECURITY.md'), 'utf8')
   assert.match(sec, /templates\/managed-settings\.json/)
@@ -152,14 +126,6 @@ test('SECURITY.md documents the managed rollout, the gate install path and its l
 })
 
 // Final-review fixes.
-test('preflight warns when a managed hook script is missing or not executable: Claude Code then allows every command', () => {
-  const full = tpl('managed-settings.json')
-  const r = managedCheck(full, 1, () => false)
-  assert.equal(r.status, 'warn')
-  assert.match(r.line, /managed hook \/etc\/claude-code\/gates\/production-gate\.sh is missing or not executable/)
-  assert.equal(managedCheck(full, 1, () => true).status, 'pass')
-})
-
 test('the RIG_MANAGED_HOOKS_ONLY marker keeps the plugin hooks on when managed settings come from the server (not visible locally)', () => {
   assert.equal(tpl('managed-settings.json').env.RIG_MANAGED_HOOKS_ONLY, '1')
   const repo = makeRepo()

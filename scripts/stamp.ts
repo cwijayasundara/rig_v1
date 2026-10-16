@@ -4,8 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { ROOT, SDLC, CHANGES, git, read, sha, frontmatter } from './core.ts'
-import { readRatchet } from './ratchet.ts'
+import { ROOT, SDLC, git, read, sha } from './core.ts'
 
 // What `git write-tree` would record for the working tree (tracked and untracked files, ignored ones left out) with
 // .rig/ removed: harness evidence changes with every run, and the same content has the same stamp before and after a
@@ -32,20 +31,4 @@ export function treeStamp(): string | null {
   } finally {
     fs.rmSync(tmp, { force: true })
   }
-}
-
-// verification.md was written by sdlc, passed, and was stamped on exactly this tree. fullCovered: its declared full
-// commands also passed there, so ship and push need not run them again.
-export function verificationFresh(slug: string): { fullCovered: boolean } {
-  const { data } = frontmatter(read(path.join(CHANGES, slug, 'verification.md')))
-  const now = treeStamp()
-  const fresh = data.generated === 'sdlc' && data.result === 'pass' && Boolean(data.tree) && now !== null && data.tree === now
-  return { fullCovered: fresh && data.full === 'pass' }
-}
-
-// The sensors node finished clean on exactly this tree.
-export function sensorsFresh(slug: string): boolean {
-  const node = readRatchet(slug).nodes.sensors
-  const now = treeStamp()
-  return node?.status === 'done' && Boolean(node.tree) && now !== null && node.tree === now
 }

@@ -119,3 +119,12 @@ test('4b: seven workflow skills plus the two human gates, and one agent', () => 
   gone('templates/design-format.md')
   for (const s of ['start', 'plan', 'build', 'test', 'pr']) assert.doesNotMatch(read(`skills/${s}/SKILL.md`), /tier|ratchet|slice|next --json|rig:(scout|implementer|reviewer|architect)/i, s)
 })
+
+test('4b: the old lifecycle modules are gone and the harness templates guard approval.json', () => {
+  gone(...['graph', 'ratchet', 'slices', 'slicecheck', 'checkpoint', 'stale', 'spend', 'routing', 'flow', 'levels', 'quality', 'shards', 'evals', 'context', 'inbox', 'toolchain', 'preflight'].map(m => `scripts/${m}.ts`))
+  const core = read('scripts/core.ts')
+  for (const name of ['approvalDigest', 'planApproved', 'createChange', 'APPROVAL_ARTIFACTS', 'intentTemplate', 'scopeDrift', 'planProblems']) assert.doesNotMatch(core, new RegExp(`export (?:function|const|type) ${name}\\b`), name)
+  const settings = read('templates/settings.json')
+  assert.match(settings, /approval\.json/)
+  assert.doesNotMatch(settings, /approvals\.jsonl|usage\.jsonl|PREFLIGHT/)
+})

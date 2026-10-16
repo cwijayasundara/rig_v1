@@ -43,7 +43,7 @@ test('new creates intent and makes the change active; status prints next command
 test('new writes .rig/.gitignore even when .rig already exists', () => {
   fs.mkdirSync(path.join(repo, '.rig'))
   run(['new', 'x-change', '--type', 'chore', '--tier', 'S'])
-  assert.equal(fs.readFileSync(path.join(repo, '.rig/.gitignore'), 'utf8'), 'state/\nusage.jsonl\n.baseline\n.gate\nunresolved.json\ngates.jsonl\nspend-cache.json\nspend-fetched\nbudget-seen.json\n.onboarding\nchanges/*/prototype/\n')
+  assert.equal(fs.readFileSync(path.join(repo, '.rig/.gitignore'), 'utf8'), 'state/\n.baseline\n.gate\nunresolved.json\ngates.jsonl\nspend-cache.json\nspend-fetched\nbudget-seen.json\n.onboarding\nchanges/*/prototype/\n')
 })
 
 test('hooks are silent in repos that never opted in', () => {

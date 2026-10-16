@@ -112,17 +112,6 @@ export function runDeclared(prefix: 'fast' | 'full', config: SensorConfig, slug:
   return findings
 }
 
-// A "fire" is one rule matching in one check run (deduplicated by rule id); only stop and ship runs count, never ci.
-function logRuleFires(findings: Finding[], point: Point): void {
-  if (point === 'ci' || !exists(SDLC)) return
-  const ids = [...new Set(findings.filter(f => f.sensor === 'rules').map(f => f.labels?.[0]))]
-  const rows = ids.map(rule => JSON.stringify({ at: new Date().toISOString(), kind: 'event', event: 'rule-fired', rule }))
-  try {
-    if (rows.length) fs.appendFileSync(path.join(SDLC, 'usage.jsonl'), rows.join('\n') + '\n')
-  } catch {
-    // telemetry must never fail a check
-  }
-}
 
 // At CI only a change the PR adds (its folder is absent in the base) can waive, and only inside its plan's files or its own folder:
 // an older change's wildcard waiver must not cover what a later PR does.
@@ -225,7 +214,6 @@ export function runChecks(i: CheckInput): CheckResult {
   if ((i.contracts ?? (i.point === 'ship' || i.point === 'ci')) && config.behavioral) findings.push(...runContracts(config.behavioral, i.point === 'stop' ? i.budgetMs : Math.max(i.budgetMs, 600_000)))
   if (i.commands !== 'none') findings.push(...runDeclared(i.commands, config, i.point === 'ci' ? null : i.slugs[0] ?? null, i.budgetMs, Boolean(i.ratchet) && i.point !== 'ci', i.point === 'ci' && config.ci.scope === 'all' ? 'all' : diffs.map(d => d.file).filter(f => isSource(f, config)), config.behavioral ? new Set([config.behavioral.validate ?? '', config.behavioral.run ?? ''].filter(Boolean).map(normCmd)) : undefined))
   const result = applyWaivers(builtinsApplied(findings, config), i.slugs, i.point === 'ci' ? { base: i.base } : undefined)
-  logRuleFires(result.findings, i.point)
   return result
 }
 

@@ -1,6 +1,6 @@
 // The pure data model for sensors: diffs, globs, config, rules and findings. No fs, git or process access.
 import { parseV4, parseV6 } from './configparse.ts'
-import type { RoutingOverride } from './routing.ts'
+export type RoutingOverride = Record<string, unknown> // step 4b removed routing; 4c removes the key
 export type Line = { n: number; text: string }
 export type FileStatus = 'A' | 'M' | 'D' | 'R'
 export type FileDiff = { file: string; from?: string; status: FileStatus; added: Line[]; removed: Line[]; binary?: true; oversize?: true }

@@ -1,13 +1,11 @@
-// `sdlc.ts baseline`: /rig:init's measurement of the repo as it is, before any change exists. Each fast command, each distinct
-// levels command and each quality command runs once. A failing fast command goes into knownRed (the gate never blocks on debt
-// it did not create, and the ratchet tightens it once it passes); a failing level or an uncountable quality tool is reported
-// for the person to fix or leave out. Base quality counts per change are measured later, against the base SHA, by the sensors node.
+// `sdlc.ts baseline`: /rig:init's measurement of the repo as it is, before any change exists. Each fast command and each
+// distinct levels command runs once. A failing fast command goes into knownRed (the gate never blocks on debt it did not
+// create, and the ratchet tightens it once it passes); a failing level is reported for the person to fix.
 import fs from 'node:fs'
 import path from 'node:path'
 import { ROOT, read, out, fail, sanctionWrites } from './core.ts'
 import { runCommand } from './runs.ts'
 import { loadConfig } from './check.ts'
-import { countIn } from './quality.ts'
 import { resolveCommands } from './scopes.ts'
 import { updateKnownRed } from './registry.ts'
 
@@ -36,12 +34,6 @@ export function cmdBaseline(): void {
     const r = runCommand(cmd, { timeoutMs: BUDGET_MS })
     const which = levels.length > 1 ? 'these levels' : 'this level'
     rows.push(`levels ${levels.join(', ')}: ${r.exit === 0 ? 'pass' : `FAIL (exit ${r.exit}): verification blocks on ${which} until it passes`}`)
-  }
-  for (const [category, q] of Object.entries(config.quality)) {
-    if (!q) continue
-    const c = countIn(ROOT, q.cmd, q.count)
-    const why = `cannot count (${c.note}): remove it from sensors.json or install what it needs`
-    rows.push(`quality ${category}: ${c.n === null ? why : `${c.n} finding(s) now`}`)
   }
   if (!rows.length) return out('nothing declared to measure in .rig/sensors.json')
   const known = new Set(config.knownRed)

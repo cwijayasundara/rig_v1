@@ -178,8 +178,8 @@ test('init --full --workflows writes the CI files and never overwrites an existi
 test('the settings template protects evidence with deny rules and the harness config with ask rules', () => {
   const settings = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, '..', 'templates', 'settings.json'), 'utf8')) as { permissions: { allow: string[]; ask: string[]; deny: string[] } }
   const deny = new Set(settings.permissions.deny)
-  for (const f of ['approvals.jsonl', 'waivers.jsonl', 'usage.jsonl', '.gate', '.baseline', 'unresolved.json', 'PREFLIGHT.md']) assert.ok(deny.has(`Edit(/.rig/${f})`), f)
-  for (const f of ['runs.jsonl', 'verification.md', 'impact.json', 'ratchet.json', 'events.jsonl', 'pr.md', 'ship.json']) assert.ok(deny.has(`Edit(/.rig/changes/*/${f})`), f)
+  for (const f of ['waivers.jsonl', '.gate', '.baseline', 'unresolved.json']) assert.ok(deny.has(`Edit(/.rig/${f})`), f)
+  for (const f of ['approval.json', 'verify.json', 'evidence/runs.jsonl']) assert.ok(deny.has(`Edit(/.rig/changes/*/${f})`), f)
   assert.ok(deny.has('Read(.env)') && deny.has('Edit(.env)'), 'the .env rules stay')
   assert.deepEqual(settings.permissions.ask, [
     'Edit(/.rig/sensors.json)', 'Edit(/.rig/rules.json)', 'Edit(/.rig/evals/*.json)', 'Edit(/.claude/settings.json)',
@@ -198,7 +198,7 @@ test('init --full merges the evidence rules into an existing settings file witho
   assert.equal(sdlc(repo, ['init', '--full']).code, 0)
   const merged = JSON.parse(fs.readFileSync(path.join(repo, '.claude/settings.json'), 'utf8'))
   assert.ok(merged.permissions.deny.includes('Bash(rm -rf *)'))
-  assert.ok(merged.permissions.deny.includes('Edit(/.rig/approvals.jsonl)'))
+  assert.ok(merged.permissions.deny.includes('Edit(/.rig/changes/*/approval.json)'))
 })
 
 test('re-vendoring over an older standalone install drops the retired sdlc hooks, the lane hooks included, and keeps the project\'s own', () => {
@@ -241,7 +241,7 @@ test('vendor --standalone over an old install adds the template permissions, kee
   const once = fs.readFileSync(file, 'utf8')
   const perms = JSON.parse(once).permissions as { deny: string[]; allow: string[]; ask: string[] }
   assert.ok(perms.deny.includes('Bash(rm -rf *)') && perms.allow.includes('Bash(npm test)'), 'own rules kept')
-  assert.ok(perms.deny.includes('Edit(/.rig/approvals.jsonl)') && perms.deny.includes('Edit(/.rig/waivers.jsonl)'), 'evidence denies added')
+  assert.ok(perms.deny.includes('Edit(/.rig/changes/*/approval.json)') && perms.deny.includes('Edit(/.rig/waivers.jsonl)'), 'evidence denies added')
   assert.ok(perms.ask.includes('Edit(/.rig/sensors.json)') && perms.ask.includes('Edit(/CODEOWNERS)'), 'ask rules added')
   assert.ok(JSON.stringify(JSON.parse(once).hooks).includes('echo mine') && !once.includes('pre-bash'))
   assert.ok(!once.includes('$comment'))

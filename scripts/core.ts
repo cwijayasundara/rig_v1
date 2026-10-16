@@ -10,49 +10,7 @@ export { globToRegex }
 
 // ---------- types ----------
 
-export type ChangeType = 'greenfield' | 'feature' | 'bugfix' | 'incident' | 'refactor' | 'migration' | 'chore' | 'spike'
-export type Tier = 'S' | 'M' | 'L'
-export type Stage = 'intent' | 'spec' | 'plan' | 'design' | 'build' | 'diagnose' | 'test' | 'sensors' | 'pr' | 'pr-review' | 'notes'
-export type GatedStage = 'intent' | 'spec' | 'plan' | 'design' | 'impact'
-export type ApprovalState = 'approved' | 'stale' | 'missing'
 export type Fields = Record<string, string>
-
-export type Next = { stage: Stage; kind: 'work' } | { stage: Stage; kind: 'approve'; state: ApprovalState; gate: GatedStage }
-
-export type Change = {
-  slug: string
-  dir: string
-  type: ChangeType
-  tier: Tier
-  stages: Stage[]
-  gates: GatedStage[]
-  next: Next | null
-  intent: Fields
-  verification: Fields
-  review: Fields
-}
-
-export type Approval = { slug: string; stage: string; by: string; at: string; digest: string; contracts?: Record<string, string> }
-
-export type UsageRow = {
-  at: string
-  kind: 'main' | 'agent' | 'event'
-  change: string | null
-  stage: string | null
-  model?: string | null
-  agentType?: string
-  in?: number
-  out?: number
-  cr?: number
-  cw?: number
-  usd?: number
-  ctx?: number
-  first?: boolean // the session's first main turn: its ctx is the system prompt plus the prompt, before any work
-  event?: string
-  id?: string
-  skill?: string
-  rule?: string
-}
 
 export type Args = { pos: string[]; opt: Record<string, string | true> }
 export type HookInput = {
@@ -81,17 +39,8 @@ export type HookInput = {
 export const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd()
 export const SDLC = path.join(ROOT, '.rig')
 export const CHANGES = path.join(SDLC, 'changes')
-export const APPROVALS = path.join(SDLC, 'approvals.jsonl')
-export const STATE = path.join(SDLC, 'STATE.md')
-export const USAGE = path.join(SDLC, 'usage.jsonl')
 
-export const LIMITS = { intentLines: 40, specLines: 150, planLines: 120, planCodeBlockLines: 10, stateLines: 40 }
-export const MIN_SAMPLE = 5
 export const SOFT_HOOK_FAILURE = 'sdlc hook error (ignored)'
-
-export const APPROVAL_ARTIFACTS: Record<GatedStage, string> = { intent: 'intent.md', spec: 'spec.md', plan: 'plan.md', design: 'design.md', impact: 'plan.md' }
-export type ImpactHit = { consumer: string; file: string; line: number; id: string }
-export type Impact = { at: string; ids: string[]; hits: ImpactHit[]; missing: string[] }
 
 // ---------- small helpers ----------
 
@@ -140,17 +89,6 @@ export function frontmatter(text: string): { data: Fields; body: string } {
   return { data, body: text.slice(m[0].length) }
 }
 
-// Reads frontmatter fields, falling back to `key: value` lines in the body for fields the model wrote there instead.
-export function reportFields(text: string, keys: string[]): Fields {
-  const { data, body } = frontmatter(text)
-  for (const key of keys) {
-    if (data[key]) continue
-    const m = new RegExp(`^\\s*\\**${key}\\**\\s*:\\s*\\**\\s*([\\w-]+)`, 'mi').exec(body)
-    if (m?.[1]) data[key] = m[1].toLowerCase()
-  }
-  return data
-}
-
 export function readJsonl<T>(p: string): T[] {
   return read(p)
     .split('\n')
@@ -187,62 +125,12 @@ export const optString = (args: Args, key: string): string | undefined => {
 }
 // ---------- changes ----------
 
-// Behavioural files frozen by an approval: contract globs plus `.rig/changes/<slug>/behavioral/**`. legacyOnly: none for a registry (contracts.ts freezes per file).
-export function behavioralFiles(slug: string, legacyOnly = false): string[] {
+// Contract files frozen by an approval: contract globs plus `.rig/changes/<slug>/behavioral/**` (read raw here, no import cycle).
+export function behavioralFiles(slug: string): string[] {
   let globs: string[] = []
-  try { const raw = JSON.parse(read(path.join(SDLC, 'sensors.json'))) as { sensors?: unknown; contracts?: { files?: unknown; validate?: unknown; run?: unknown }; behavioral?: { files?: unknown } }; if (legacyOnly && Array.isArray(raw.sensors)) return []; const list = (v: unknown): string[] | null => (Array.isArray(v) && v.every(f => typeof f === 'string') ? (v as string[]) : null); globs = Array.isArray(raw.sensors) ? (list(raw.contracts?.files)?.length ? list(raw.contracts?.files) ?? [] : raw.contracts?.validate || raw.contracts?.run ? ['.rig/contracts/**'] : []) : raw.behavioral ? list(raw.behavioral.files) ?? ['.rig/contracts/**'] : [] } catch { /* no or unreadable sensors.json: nothing frozen by config */ }
+  try { const raw = JSON.parse(read(path.join(SDLC, 'sensors.json'))) as { sensors?: unknown; contracts?: { files?: unknown; validate?: unknown; run?: unknown }; behavioral?: { files?: unknown } }; const list = (v: unknown): string[] | null => (Array.isArray(v) && v.every(f => typeof f === 'string') ? (v as string[]) : null); globs = Array.isArray(raw.sensors) ? (list(raw.contracts?.files)?.length ? list(raw.contracts?.files) ?? [] : raw.contracts?.validate || raw.contracts?.run ? ['.rig/contracts/**'] : []) : raw.behavioral ? list(raw.behavioral.files) ?? ['.rig/contracts/**'] : [] } catch { /* no or unreadable sensors.json: nothing frozen by config */ }
   if (!globs.length && !exists(path.join(CHANGES, slug, 'behavioral'))) return [] // no block and no local folder: nothing frozen, and no git call on the common path
   return (git(['ls-files', '--cached', '--others', '--exclude-standard'])?.split('\n').filter(Boolean) ?? []).filter(f => f.startsWith(`.rig/changes/${slug}/behavioral/`) || globs.some(g => globToRegex(g).test(f))).sort()
-}
-
-// The impact approval covers plan.md and impact.json, so a re-run of the plan point with new hits makes it stale.
-export function approvalDigest(slug: string, gate: GatedStage): string {
-  const suffix = (frozen => (frozen.length ? `\n${sha(frozen.map(f => `${f}\n${read(path.join(ROOT, f))}`).join('\n'))}` : ''))(['spec', 'plan', 'design'].includes(gate) ? behavioralFiles(slug, true) : [])
-  // One approval covers the problem and the design, so a change to either makes it stale.
-  if (gate === 'design') return sha(`${read(path.join(CHANGES, slug, 'intent.md'))}\n${read(path.join(CHANGES, slug, 'design.md'))}${suffix}`)
-  const artifact = read(approvalFile(slug, gate))
-  if (gate !== 'impact') return sha(artifact + suffix)
-  // The timestamp is left out so a re-run with identical results keeps the approval.
-  const raw = read(path.join(CHANGES, slug, 'impact.json'))
-  let content = raw
-  try {
-    const { ids, hits, missing } = JSON.parse(raw) as Impact
-    content = JSON.stringify({ ids, hits, missing })
-  } catch {
-    // unparseable: hash the raw text
-  }
-  return sha(`${artifact}\n${content}`)
-}
-
-// The file an approval covers. The impact approval follows the plan document, so editing design.md makes it stale too.
-export const approvalFile = (slug: string, gate: GatedStage): string => (gate === 'impact' ? planPath(slug) : path.join(CHANGES, slug, APPROVAL_ARTIFACTS[gate]))
-
-// A change's plan document: design.md (feature and greenfield) when it exists, else plan.md. Every reader of the plan goes through here.
-// A plan.md the person already approved stays the plan: a design.md added later must not widen the scope unapproved.
-export const planPath = (slug: string): string => {
-  const plan = path.join(CHANGES, slug, 'plan.md')
-  const useDesign = exists(path.join(CHANGES, slug, 'design.md')) && !(exists(plan) && readJsonl<Approval>(APPROVALS).some(a => a.slug === slug && a.stage === 'plan'))
-  return useDesign ? path.join(CHANGES, slug, 'design.md') : plan
-}
-export const planName = (slug: string): string => path.basename(planPath(slug))
-
-export function approvalOf(slug: string, gate: GatedStage): ApprovalState {
-  const latest = readJsonl<Approval>(APPROVALS).filter(a => a.slug === slug && a.stage === gate).at(-1)
-  if (!latest) return 'missing'
-  return latest.digest === approvalDigest(slug, gate) ? 'approved' : 'stale'
-}
-
-// The person approved the plan document: its own gate (plan, or design for feature and greenfield).
-export const planApproved = (slug: string): boolean => approvalOf(slug, planName(slug) === 'design.md' ? 'design' : 'plan') === 'approved'
-
-export const needsImpact = (impact: Impact | null): boolean => Boolean(impact && (impact.hits.length || impact.missing.length))
-
-export function readImpact(slug: string): Impact | null {
-  try {
-    return JSON.parse(read(path.join(CHANGES, slug, 'impact.json'))) as Impact
-  } catch {
-    return null
-  }
 }
 
 export function listChanges(): string[] {
@@ -253,72 +141,9 @@ export function listChanges(): string[] {
     .map(d => d.name)
 }
 
-// Shipped means the scope record is committed with the change, which git can prove. v0.1 changes count too. One ls-tree of HEAD
-// per (short-lived) process: status asks for every change each turn, and `git log -- <path>` for an unshipped one walks all history.
-let committed: Set<string> | null = null
-export function isShipped(slug: string): boolean {
-  const dir = toPosix(path.relative(ROOT, CHANGES))
-  committed ??= new Set((git(['ls-tree', '-r', '--name-only', '-z', 'HEAD', '--', dir]) ?? '').split('\0'))
-  return committed.has(`${dir}/${slug}/ship.json`)
-}
-
-// ---------- plan parsing & scope drift ----------
-
-// Evidence file names, written only by sdlc itself or the person's commands (ratchet record refuses them as --from).
-export const EVIDENCE_NAME_RE = /approvals\.jsonl|waivers\.jsonl|usage\.jsonl|runs\.jsonl|ratchet\.json|events\.jsonl|ship\.json|proposals\.json/
-
-// The plan's ## Verification bullets, split into required commands and ignored bullets (never dropped silently).
-// A command is the first backticked span in command position: right at the bullet start, or right after the
-// first `: ` (so a label may itself contain backticks). Backticks later in prose are not commands. A bullet with
-// no backticks and no `: ` is a bare command (`- npm test`); anything else is ignored. `sdlc.ts run -- "cmd"` is
-// unwrapped to cmd; `sdlc.ts run --expect-fail ...` (red evidence), `sdlc.ts check ...` and other sdlc.ts
-// invocations are ignored.
-export function planVerificationBullets(slug: string): { commands: string[]; ignored: string[] } {
-  const body = read(planPath(slug))
-  const m = /^##\s+Verification\s*\n([\s\S]*?)(?=^##\s|(?![\s\S]))/m.exec(body)
-  const commands: string[] = []
-  const ignored: string[] = []
-  for (const row of (m?.[1] ?? '').split('\n')) {
-    const text = /^\s*[-*]\s+(.+)$/.exec(row)?.[1]?.trim()
-    if (!text) continue
-    const rest = text.startsWith('`') ? text : text.includes(': ') ? text.slice(text.indexOf(': ') + 2).trimStart() : text
-    let cmd = (rest.startsWith('`') ? /^`([^`]+)`/.exec(rest)?.[1] : text.includes('`') || text.includes(': ') ? undefined : text)?.trim()
-    const wrapped = cmd && /\bsdlc\.ts\s+(.*)$/.exec(cmd)?.[1]
-    if (wrapped !== undefined && wrapped !== '') cmd = /^run\s+(?:--slug\s+\S+\s+)?--\s+(["'])(.+)\1$/.exec(wrapped)?.[2]
-    else if (wrapped === '') cmd = undefined
-    if (cmd) commands.push(cmd)
-    else ignored.push(text)
-  }
-  return { commands, ignored }
-}
-
-export const planVerification = (slug: string): string[] => planVerificationBullets(slug).commands
-
-export function planFiles(slug: string): string[] {
-  const { body } = frontmatter(read(planPath(slug)))
-  return filesRows(/^##\s+Files\s*\n([\s\S]*?)(?=^##\s|$(?![\s\S]))/m.exec(body)?.[1] ?? '').map(toPosix)
-}
-
-// `## Files` paths: `- path` bullets, or a table row's backticked first cell (read as no files, a model's table sent it to edit the approved design).
-export const filesRows = (section: string): string[] => section.split('\n')
-  .map(row => /^\s*[-*]\s+`?([^`\s]+)`?/.exec(row)?.[1] ?? /^\s*\|\s*`([^`|\s]+)`\s*\|/.exec(row)?.[1])
-  .filter((p): p is string => Boolean(p))
-
 // Paths are compared in POSIX form so plans written on macOS match edits made on Windows.
 export function relPosix(file: string): string {
   return toPosix(path.isAbsolute(file) ? path.relative(ROOT, file) : file)
-}
-
-export function isPlanned(file: string, patterns: string[]): boolean {
-  const rel = relPosix(file)
-  if (rel.startsWith('.rig/')) return true
-  return patterns.some(p => globToRegex(p).test(rel))
-}
-
-export function changedFiles(base: string | null): string[] {
-  const sets = [git(['diff', '--name-only']), git(['diff', '--name-only', '--cached']), git(['ls-files', '--others', '--exclude-standard'])]
-  if (base) sets.push(git(['diff', '--name-only', `${base}...HEAD`]))
-  return [...new Set(sets.flatMap(s => (s ? s.split('\n') : [])).filter(Boolean))]
 }
 
 export function defaultBase(): string | null {
@@ -329,12 +154,6 @@ export function defaultBase(): string | null {
   return null
 }
 
-export function scopeDrift(slug: string, base: string | null) {
-  const patterns = planFiles(slug)
-  const changed = changedFiles(base)
-  const drift = changed.filter(f => !isPlanned(f, patterns))
-  return { slug, base, patterns, changed, drift, matchRatio: changed.length ? (changed.length - drift.length) / changed.length : 1 }
-}
 // ---------- secrets & plan quality ----------
 
 export function scanSecrets(file: string): string[] {
@@ -349,25 +168,10 @@ export function scanSecrets(file: string): string[] {
   return hits
 }
 
-export function planProblems(file: string): string[] {
-  const text = read(file)
-  const problems: string[] = []
-  if (lines(text) > LIMITS.planLines) problems.push(`plan is ${lines(text)} lines (limit ${LIMITS.planLines})`)
-  const big = [...text.matchAll(/```[^\n]*\n([\s\S]*?)```/g)].filter(f => lines(f[1] ?? '') > LIMITS.planCodeBlockLines)
-  if (big.length) problems.push(`${big.length} code block(s) over ${LIMITS.planCodeBlockLines} lines: plans carry interfaces and acceptance tests, not implementation code`)
-  if (!/^##\s+Files/m.test(text)) problems.push('missing "## Files" section (the ownership contract)')
-  const section = /^##\s+Files\s*\n([\s\S]*?)(?=^##\s|$(?![\s\S]))/m.exec(text)?.[1] ?? ''
-  const wide = [...new Set(filesRows(section).filter(p => p === '**' || p === '*'))]
-  for (const w of wide) problems.push(`"## Files" lists "${w}", which is too broad: the scope gate would allow every file; list the paths or narrower globs`)
-  if (/^##\s+Files\s*$/m.test(text) && !filesRows(section).length) problems.push('"## Files" lists no paths: write one `- path/or/glob` bullet per file, tests included')
-  return problems
-}
-
 export const PLUGIN_ROOT = path.resolve(import.meta.dirname, '..')
 // A standalone repo runs its own copy from .rig/bin: its skills are named /rig:<name> as in the plugin, its agents rig-<name>.
 export const IS_VENDORED = path.basename(import.meta.dirname) === 'bin'
 export const skillRef = (name: string): string => `/rig:${name}`
-export const agentRef = (name: string): string => `rig${IS_VENDORED ? '-' : ':'}${name}`
 // Managed settings (the platform team's, which no engineer can edit): the OS file plus managed-settings.d/ drop-ins in name order.
 // Objects merge, arrays concatenate, later scalars win. RIG_MANAGED_DIR overrides the directory (tests). Server-managed settings are not visible here.
 export const MANAGED_DIR = process.env.RIG_MANAGED_DIR || (process.platform === 'darwin' ? '/Library/Application Support/ClaudeCode'
@@ -385,23 +189,8 @@ export const managedSettings = (dir = MANAGED_DIR): Record<string, unknown> =>
   managedFiles(dir).reduce<Record<string, unknown>>((acc, f) => { const v: unknown = JSON.parse(fs.readFileSync(f, 'utf8')); return isObj(v) ? deepMerge(acc, v) : acc }, {})
 
 const GITIGNORED = [
-  'state/', 'usage.jsonl', '.baseline', '.gate', 'unresolved.json', 'gates.jsonl', 'spend-cache.json', 'spend-fetched', 'budget-seen.json', '.onboarding', 'changes/*/prototype/',
+  'state/', '.baseline', '.gate', 'unresolved.json', 'gates.jsonl', 'spend-cache.json', 'spend-fetched', 'budget-seen.json', '.onboarding', 'changes/*/prototype/',
 ]
-
-// /rig:init runs over several turns and writes source (a greenfield skeleton, CI workflows): while it runs, the Stop gate
-// judges those writes but adopts no ad-hoc change. `sdlc.ts init --onboarding` opens the window; the Stop after the
-// preflight report closes it, and a window left by an abandoned init lapses after two hours.
-const ONBOARDING = path.join(SDLC, '.onboarding')
-const ONBOARDING_MS = 2 * 60 * 60 * 1000
-export const startOnboarding = (): void => fs.writeFileSync(ONBOARDING, now() + '\n')
-export function onboarding(): boolean {
-  const since = fs.statSync(ONBOARDING, { throwIfNoEntry: false })?.mtimeMs
-  if (since === undefined) return false
-  const report = fs.statSync(path.join(SDLC, 'PREFLIGHT.md'), { throwIfNoEntry: false })?.mtimeMs ?? 0
-  if (Date.now() - since > ONBOARDING_MS) { fs.rmSync(ONBOARDING, { force: true }); return false }
-  if (report >= since) fs.rmSync(ONBOARDING, { force: true })
-  return true
-}
 
 // Parallel hooks (subagents) read-modify-write the same small state file: serialise them with a mkdir lock (stale after 10 s;
 // after 5 s of waiting, proceed rather than wedge the hook) and write by rename so a reader never sees half a file.
@@ -428,59 +217,6 @@ export function ensureGitignore(): void {
   const have = new Set(read(ignore).split('\n').filter(Boolean))
   const missing = GITIGNORED.filter(f => !have.has(f))
   if (missing.length) fs.appendFileSync(ignore, missing.join('\n') + '\n')
-}
-
-export function clearState(shipped: string): void {
-  fs.writeFileSync(STATE, `---\nchange:\n---\n# State\n\nNo active change. Last shipped: ${shipped}.\n`)
-}
-
-export const intentTemplate = (slug: string, type: ChangeType, tier: Tier, title: string, points?: number, source?: string): string => `---
-slug: ${slug}
-type: ${type}
-tier: ${tier}
-${source ? `source: ${source}\n` : ''}${points ? `points: ${points}\n` : ''}created: ${now()}
----
-# ${title}
-
-## Problem
-<!-- who is affected, what hurts, evidence -->
-
-## Outcome
-<!-- observable result when done; how we will check it -->
-
-## Non-goals
-<!-- explicitly out of scope -->
-
-## Risks
-<!-- data, security, public contracts, migrations; say "none" if none -->
-
-## Decisions
-<!-- skipped optional steps and defaults taken, one line each -->
-
-## Open questions
-none
-`
-
-export function createChange(slug: string, type: ChangeType, tier: Tier, title: string, points?: { value: number; set: boolean }, source?: string): void {
-  const dir = path.join(CHANGES, slug)
-  if (!exists(SDLC)) fs.mkdirSync(CHANGES, { recursive: true })
-  ensureGitignore()
-  fs.mkdirSync(dir, { recursive: true })
-  fs.writeFileSync(path.join(dir, 'intent.md'), intentTemplate(slug, type, tier, title, points?.value, source))
-  // Evidence written by sdlc itself: a change with a versioned ratchet.json is a v0.4 change; one without is legacy.
-  // The tier and type are recorded here because intent.md is model-writable: it may raise them, only a person lowers them.
-  fs.writeFileSync(path.join(dir, 'ratchet.json'), JSON.stringify({ version: 4, tier, type, ...(points?.set ? { points: points.value } : {}), nodes: {}, slices: {}, baseline: {} }, null, 2) + '\n')
-  setActive(slug)
-}
-
-// A body sdlc itself wrote (init, clearState, or this function) is replaced; anything else was written by
-// the model or the person and is kept.
-const GENERATED_STATE = /^\s*(?:# State\s*)?(?:(?:No active change\.|Active change: [a-z0-9-]+\. Next: see \/rig[:-]status\.)[^\n]*)?\s*$/
-export function setActive(slug: string): void {
-  const { body } = frontmatter(read(STATE))
-  const kept = body && !GENERATED_STATE.test(body) ? body : `# State\n\nActive change: ${slug}. Next: see /rig:status.\n`
-  fs.mkdirSync(SDLC, { recursive: true })
-  fs.writeFileSync(STATE, `---\nchange: ${slug}\n---\n${kept}`)
 }
 
 export const WAIVERS = path.join(SDLC, 'waivers.jsonl')

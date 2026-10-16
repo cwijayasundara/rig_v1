@@ -15,9 +15,9 @@
     "deny": [
       "Read(.env*)", "Read(./secrets/**)", "WebFetch", "Bash(curl *)", "Bash(wget *)",
       "Read(.env)", "Read(.env.*)", "Edit(.env)", "Edit(.env.*)",
-      "Edit(./.rig/approvals.jsonl)", "Edit(./.rig/waivers.jsonl)", "Edit(./.rig/usage.jsonl)", "Edit(./.rig/spend-cache.json)", "Edit(./.rig/spend-fetched)", "Edit(./.rig/budget-seen.json)", "Edit(./.rig/gates.jsonl)", "Edit(./.rig/watch/*.jsonl)",
-      "Edit(./.rig/.gate)", "Edit(./.rig/.baseline)", "Edit(./.rig/unresolved.json)", "Edit(./.rig/PREFLIGHT.md)",
-      "Edit(./.rig/evals/results.jsonl)", "Edit(./.rig/changes/*/runs.jsonl)", "Edit(./.rig/changes/*/verification.md)",
+      "Edit(./.rig/changes/*/approval.json)", "Edit(./.rig/waivers.jsonl)", "Edit(./.rig/gates.jsonl)",
+      "Edit(./.rig/.gate)", "Edit(./.rig/.baseline)", "Edit(./.rig/unresolved.json)",
+      "Edit(./.rig/changes/*/evidence/runs.jsonl)", "Edit(./.rig/changes/*/verify.json)",
       "Edit(./.rig/changes/*/impact.json)", "Edit(./.rig/changes/*/ratchet.json)", "Edit(./.rig/changes/*/events.jsonl)",
       "Edit(./.rig/changes/*/pr.md)", "Edit(./.rig/changes/*/ship.json)"
     ],
