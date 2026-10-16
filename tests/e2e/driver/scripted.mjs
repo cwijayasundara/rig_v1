@@ -23,6 +23,7 @@ export function scriptedDriver(sb, phase) {
     async plan() {
       sb.write(`${dir}/spec.md`, phase.spec)
       sb.write(`${dir}/plan.md`, phase.plan)
+      copy(sb, phase.contracts ?? [])
     },
     // /rig:build, /rig:test and /rig:pr: red, green, verify, PR.
     async build() {

@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/cart",
+    "body": {
+      "sku": "TEA-001",
+      "qty": 2
+    }
+  },
+  "response": {
+    "status": 201,
+    "body": [
+      {
+        "sku": "TEA-001",
+        "qty": 2
+      }
+    ]
+  }
+}

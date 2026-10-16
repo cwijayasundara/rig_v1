@@ -14,7 +14,7 @@ import { Checks } from './lib/checks.mjs'
 import { install, SCAFFOLD_PROMPT } from './phases/s0-install.mjs'
 import { runBrief } from './phases/s1-brief.mjs'
 import { PHASE as S2, runShopChange } from './phases/s2-greenfield.mjs'
-import { PHASE as S3, assertDelete, staleCheck } from './phases/s3-delete.mjs'
+import { PHASE as S3, assertDelete, staleCheck, contractChecks } from './phases/s3-delete.mjs'
 import { runDeploy } from './phases/s4-deploy.mjs'
 import { scriptedDriver } from './driver/scripted.mjs'
 import { createSessions, liveDriver } from './driver/live.mjs'
@@ -49,7 +49,7 @@ const ensureMain = slug => {
   if (b !== 'main') mergeToMain(sb, slug)
 }
 // A group that ran fewer checks than this lost coverage silently (an assertion call deleted or skipped): fail the scripted run.
-const FLOOR = { 'S0 install': 14, 'S1 brief': 3, 'S2 ': 20, 'S3 ': 22, 'S4 deploy': 9 }
+const FLOOR = { 'S0 install': 14, 'S1 brief': 3, 'S2 ': 22, 'S3 ': 27, 'S4 deploy': 9 }
 const lostCoverage = () => (live || only ? [] : Object.entries(FLOOR).filter(([k, n]) => {
   const g = results.find(c => c.title.startsWith(k))
   return !g || g.results.length < n
@@ -87,7 +87,7 @@ try {
   if (want('S3')) {
     const { slug, checks } = await timed('S3', () => {
       ensureMain(s2slug)
-      return runShopChange(sb, S3, driverFor(S3), { afterApprove: live ? undefined : slug => staleCheck(sb, slug) })
+      return runShopChange(sb, S3, driverFor(S3), { afterApprove: live ? undefined : async slug => [...await staleCheck(sb, slug), ...await contractChecks(sb, slug)] })
     })
     await assertDelete(checks, sb, slug)
     results.push(checks)

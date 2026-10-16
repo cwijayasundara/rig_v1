@@ -1,0 +1,10 @@
+{
+  "request": {
+    "method": "DELETE",
+    "path": "/cart/TEA-001"
+  },
+  "response": {
+    "status": 200,
+    "body": []
+  }
+}

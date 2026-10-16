@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/products"
+  },
+  "response": {
+    "status": 200,
+    "body": [
+      {
+        "sku": "TEA-001",
+        "priceCents": 450
+      },
+      {
+        "sku": "MUG-002",
+        "priceCents": 1200
+      }
+    ]
+  }
+}

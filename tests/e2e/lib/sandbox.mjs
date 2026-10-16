@@ -34,7 +34,7 @@ export function createSandbox({ name, out }) {
 
   // RIG_GH points at the stub by absolute path: a headless agent session rebuilds PATH, so a PATH-only stub
   // would silently resolve to the machine's real gh (which then refuses the local bare origin).
-  const env = { ...CLEAN_ENV, PATH: `${bin}${path.delimiter}${process.env.PATH}`, RIG_GH: path.join(bin, 'gh'), RIG_GH_LOG: path.join(logs, 'gh.log') }
+  const env = { ...CLEAN_ENV, PATH: `${bin}${path.delimiter}${process.env.PATH}`, RIG_GH: path.join(bin, 'gh'), RIG_GH_LOG: path.join(logs, 'gh.log'), CONTRACT_LOG: path.join(logs, 'contract.log') }
   const run = (cmd, args, opts = {}) =>
     spawnSync(cmd, args, { cwd: dir, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, ...opts, env: { ...env, ...opts.env } })
   const git = (...args) => {
