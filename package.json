@@ -6,7 +6,7 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "test": "node --disable-warning=ExperimentalWarning --test scripts/*.spec.ts && npm run test:e2e:unit",
+    "test": "node --disable-warning=ExperimentalWarning --test scripts/*.spec.ts && npm run test:e2e:unit && npm run test:e2e:fast",
     "typecheck": "tsc -p scripts/tsconfig.json",
     "validate": "claude plugin validate .claude-plugin/plugin.json",
     "test:e2e": "node tests/e2e/run.mjs --driver live",

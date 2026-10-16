@@ -85,12 +85,12 @@ As of 2026-10-11. `.claude-plugin/plugin.json` says **0.6.0**; the last git tag 
 | Area | State | Evidence |
 |---|---|---|
 | Lifecycle: start, plan, approve, build, verify, PR; human gates | Rebuilt as the slim lifecycle on this branch | [DESIGN.md](DESIGN.md) §4 |
-| Greenfield end to end (init, greenfield build, a follow-on change, deploy, maintain) | The one integration test: scripted in CI; the live lane is the release acceptance run | `npm run test:e2e:fast`, `npm run test:e2e` |
+| Greenfield end to end (install, brief, greenfield change, a follow-on change, deploy gate) | The one integration test: scripted in CI; the live lane is the release acceptance run | `npm run test:e2e:fast`, `npm run test:e2e` |
 | Run loop: production gate | Shipped; the production gate is covered by e2e S4 | DESIGN, SECURITY.md |
 | Git hooks: `pre-commit`, `pre-push`, session-start wiring | Merged and covered by tests that drive real `git`. **Not yet trialled live.** No bypass guard: CI plus branch protection is the boundary | DESIGN §9, [SECURITY.md](SECURITY.md) |
 | Windows | **Not supported.** Its CI jobs are red, and the hook scripts are POSIX `sh` | SECURITY.md |
 
-**Quality gates on `main`:** `npm test` (about 830 specs, the e2e operator and scripted phases), `npm run typecheck` and `claude plugin validate` pass locally. In CI trust the Linux and macOS jobs and the dogfood check; the Windows jobs fail for the reason above. Open items are in [DESIGN.md](DESIGN.md) §10.
+**Quality gates on `main`:** `npm test` (about 390 specs, the e2e unit tests and the scripted e2e phases), `npm run typecheck` and `claude plugin validate` pass locally. In CI trust the Linux and macOS jobs and the dogfood check; the Windows jobs fail for the reason above. Open items are in [DESIGN.md](DESIGN.md) §10.
 
 ## How the harness is put together
 
@@ -348,11 +348,11 @@ claude plugin validate .claude-plugin/plugin.json
 
 ### End-to-end acceptance test
 
-`tests/e2e/` is the one integration test. It scaffolds a throwaway repo, installs the harness into it with `/rig:init` (the test itself approves every human gate, in code: the operator), builds the shop greenfield, lands a delete-item change on top without regressions, exercises the local deploy gate. Phases: S0 install, S2 greenfield build, S3 delete-item change, S4 deploy/maintain (local only).
+`tests/e2e/` is the one integration test. It scaffolds a throwaway repo and installs the harness into it; the test itself plays the person who approves (`approve <slug>` with SDLC_HUMAN=1). Phases: S0 install (registry, vendored harness, git hooks, guides block), S1 product brief, S2 greenfield change, S3 follow-on change (with a stale-approval check), S4 local deploy gate. `npm run test:e2e:fast` runs in `npm test` and CI; the live run stays under 20 minutes and $6.
 
 ```bash
 npm run test:e2e         # the acceptance test: real Claude Code (claude -p, claude-haiku-5-5 by default), costs money, --cap USD (default 6), fails over --minutes (default 20)
-npm run test:e2e:fast    # a fake model replays fixture files: $0, about 30 s; out of npm test until step 5 rewrites it; never the acceptance result
-npm run test:e2e:unit    # the operator loop
+npm run test:e2e:fast    # a fake model plays the skills from fixture files: $0, about 30 s; runs in npm test and CI; never the acceptance result
+npm run test:e2e:unit    # the route runner and the live driver's budget accounting
 node tests/e2e/run.mjs --driver live --phase S3 --cap 20   # one phase (its prerequisites run first)
 ```
