@@ -208,3 +208,9 @@ test('a Write/Edit that weakens a committed registry is labelled harness tamper 
   write(repo, 'src/x.js', `export const x = ${++n}\n`)
   assert.match(stop().stdout, /harness-tamper[\s\S]*sensor unit no longer blocks/)
 })
+
+test('SessionStart tells the model to read and write with tools and run one command per Bash call', () => {
+  const ctx = JSON.parse(hook(repo, 'session-start', { session_id: 's1' }).stdout).hookSpecificOutput.additionalContext
+  assert.match(ctx, /read files with Read, Grep and Glob and change them with Edit or Write/)
+  assert.match(ctx, /run each command as its own Bash call \(no `cd`, pipes, redirects, `&&`, `;` or heredocs\)/)
+})

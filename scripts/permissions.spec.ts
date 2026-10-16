@@ -15,7 +15,7 @@ test('every skill or gh command a skill tells the model to run is allowed', () =
   for (const s of MODEL_SKILLS) {
     const text = fs.readFileSync(path.join(ROOT, 'skills', s, 'SKILL.md'), 'utf8').replace(/^---[\s\S]*?---\n/, '')
     for (const [, name] of text.matchAll(/\/rig:([a-z]+)/g)) {
-      if (name === 'approve' || name === 'waive' || name === s || !SKILLS.includes(name)) continue // the person runs these; a self-reference is no chain; /rig:x is a placeholder
+      if (name === 'approve' || name === 'waive' || name === s || !SKILLS.includes(name ?? '')) continue // the person runs these; a self-reference is no chain; /rig:x is a placeholder
       assert.ok(rules.includes(`Skill(rig:${name})`) && rules.includes(`Skill(rig:${name} *)`), `${s} runs /rig:${name}`)
     }
     for (const [, sub] of text.matchAll(/`gh pr ([a-z]+)/g)) assert.ok(rules.includes(`Bash(gh pr ${sub} *)`), `${s} runs gh pr ${sub}`)
