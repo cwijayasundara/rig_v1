@@ -1,4 +1,4 @@
-// The one integration test: node tests/e2e/run.mjs [--driver scripted|live] [--phase S0|S1|S2|S3|S4]
+// The one integration test: node tests/e2e/run.mjs [--driver scripted|live] [--phase S0|S1|S2|S3|S4|S5]
 // [--cap USD] [--model MODEL] [--minutes N] [--out DIR]
 // S0 installs the harness into a throwaway shop-app repo, S1 writes the product brief, S2 builds the shop greenfield
 // through approval, verify and PR, S3 lands the delete-item change on top (with a stale-approval check), S4 exercises
@@ -16,6 +16,7 @@ import { runBrief } from './phases/s1-brief.mjs'
 import { PHASE as S2, runShopChange } from './phases/s2-greenfield.mjs'
 import { PHASE as S3, assertDelete, staleCheck, contractChecks } from './phases/s3-delete.mjs'
 import { runDeploy } from './phases/s4-deploy.mjs'
+import { runPolicy } from './phases/s5-policy.mjs'
 import { scriptedDriver } from './driver/scripted.mjs'
 import { createSessions, liveDriver } from './driver/live.mjs'
 import { assertOnboarding } from './assert/onboarding.mjs'
@@ -42,14 +43,14 @@ const timed = async (id, fn) => {
 }
 const fmt = m => `${m.toFixed(1)} min`
 // A phase runs when it is the requested one or a prerequisite of it.
-const NEEDS = { S2: ['S1'], S3: ['S1', 'S2'], S4: ['S1', 'S2', 'S3'] }
+const NEEDS = { S2: ['S1'], S3: ['S1', 'S2'], S4: ['S1', 'S2', 'S3'], S5: ['S1', 'S2', 'S3', 'S4'] }
 const want = id => !only || only === id || (NEEDS[only] ?? []).includes(id)
 const ensureMain = slug => {
   const b = sb.git('rev-parse', '--abbrev-ref', 'HEAD')
   if (b !== 'main') mergeToMain(sb, slug)
 }
 // A group that ran fewer checks than this lost coverage silently (an assertion call deleted or skipped): fail the scripted run.
-const FLOOR = { 'S0 install': 14, 'S1 brief': 3, 'S2 ': 22, 'S3 ': 27, 'S4 deploy': 9 }
+const FLOOR = { 'S0 install': 14, 'S1 brief': 3, 'S2 ': 22, 'S3 ': 27, 'S4 deploy': 9, 'S5 policy': 6 }
 const lostCoverage = () => (live || only ? [] : Object.entries(FLOOR).filter(([k, n]) => {
   const g = results.find(c => c.title.startsWith(k))
   return !g || g.results.length < n
@@ -96,6 +97,10 @@ try {
   if (want('S4')) {
     ensureMain(s3slug ?? S3.slug)
     results.push(...await timed('S4', () => runDeploy(sb)))
+  }
+  if (want('S5') && !live) {
+    ensureMain(s3slug ?? S3.slug)
+    results.push(await timed('S5', () => runPolicy(sb)))
   }
   if (live) {
     const pc = new Checks('process (all live sessions)')
