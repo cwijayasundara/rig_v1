@@ -23,6 +23,7 @@ import { cmdPr } from './pr.ts'
 import { treeStamp } from './stamp.ts'
 import { declareStack } from './stackinit.ts'
 import { cmdSync } from './sync.ts'
+import { CHART_RE, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, prdPath, chartFiles } from './chart.ts'
 import { TYPES, toType, changeDir, newChange, setActive, activeSlug, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
 
 // ---------- commands ----------
@@ -91,6 +92,8 @@ const humanFallback = (cmd: string, usage: string): string => `! SDLC_HUMAN=1 no
 function cmdApprove(args: Args): void {
   if (process.env.SDLC_HUMAN !== '1') fail(`approvals are human-only: the person runs /rig:approve <slug>. If that command is not listed, restart Claude Code, or the person types: ${humanFallback('approve', '<slug>')}`, 3)
   const given = words(args)[0] // a second word (the old stage name) is ignored
+  const chart = CHART_RE.exec(given ?? '')?.[1]
+  if (chart) return approveChart(Number(chart), args)
   const slug = given ? checkSlug(given) : activeSlug()
   if (!slug || !exists(changeDir(slug))) fail('usage: approve <slug>')
   const refusal = approvalRefusal(slug)
@@ -100,6 +103,34 @@ function cmdApprove(args: Args): void {
   const a = writeApproval(slug, by)
   const n = Object.keys(a.contracts).length
   out(`approved ${slug} by ${by}: spec.md and plan.md${n ? `, ${n} contract file(s) frozen` : ''}. Next: /rig:build ${slug}`)
+}
+
+function approveChart(n: number, args: Args): void {
+  if (!exists(prdPath(n))) fail(`no PRD for sprint ${n}: write .rig/product/prd/sprint-${n}.md first`)
+  const block = chartFindings(n, true).filter(f => f.severity === 'block')
+  if (block.length) fail(`chart-${n} has ${block.length} blocking finding(s); fix them, then approve:\n${block.map(f => `  [${f.rule}] ${f.message}`).join('\n')}`)
+  if (chartState(n).state === 'approved') return out(`chart-${n} is already approved`)
+  const by = optString(args, 'by') || whoami() || 'unknown'
+  writeChartApproval(n, by)
+  out(`approved chart-${n} by ${by}: ${chartFiles(n).length} file(s). Next: engineers run \`ready\` to see which intents can start, then ${skillRef('start')} .rig/product/intents/<slug>.md`)
+}
+
+function cmdChart(args: Args): void {
+  const [sub, num] = args.pos
+  if ((sub !== 'check' && sub !== 'report') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: chart (check [--cases] [--json] | report) <sprint number>')
+  const n = Number(num)
+  if (!exists(prdPath(n))) fail(`no PRD for sprint ${n}: write .rig/product/prd/sprint-${n}.md first`)
+  if (sub === 'report') return out(chartReport(n))
+  const found = chartFindings(n, Boolean(args.opt.cases))
+  if (args.opt.json) return out(JSON.stringify(found))
+  const block = found.filter(f => f.severity === 'block')
+  out([...found.map(f => `[${f.rule}] ${f.severity === 'report' ? '(report) ' : ''}${f.message}`), `chart-${n}: ${block.length ? `${block.length} blocking finding(s)` : 'no blocking findings'}`].join('\n'))
+}
+
+function cmdReady(args: Args): void {
+  const ready = readyIntents()
+  if (args.opt.json) return out(JSON.stringify(ready))
+  out(ready.length ? ready.map(i => `${i.slug.padEnd(28)} sprint ${i.sprint}  ${i.estimateDays ?? '?'} day(s)`).join('\n') : 'no intents are ready')
 }
 
 function cmdSecrets(args: Args): void {
@@ -214,6 +245,8 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   activate: cmdActivate,
   status: cmdStatus,
   approve: cmdApprove,
+  chart: cmdChart,
+  ready: cmdReady,
   pr: cmdPr,
   run: () => cmdRun(),
   verify: cmdVerify,

@@ -244,10 +244,13 @@ function humanRowsAdded(base: string): string[] {
     }
   }
   // approval.json: every one the PR adds or edits is a person's decision CI cannot verify from the file alone.
-  for (const f of (git(['diff', '--name-only', base, 'HEAD', '--', '.rig/changes']) ?? '').split('\n').filter(f => /^\.rig\/changes\/[^/]+\/approval\.json$/.test(f))) {
+  // A sprint chart approval (.rig/product/approvals/chart-N.json) is the same kind of row.
+  for (const f of (git(['diff', '--name-only', base, 'HEAD', '--', '.rig/changes', '.rig/product/approvals']) ?? '').split('\n')) {
+    const name = /^\.rig\/changes\/([^/]+)\/approval\.json$/.exec(f)?.[1] ?? /^\.rig\/product\/approvals\/(chart-\d+)\.json$/.exec(f)?.[1]
+    if (!name) continue
     let by = '?'
     try { by = String((JSON.parse(read(path.join(ROOT, f))) as { by?: unknown }).by ?? '?') } catch { /* deleted or unreadable: still a row */ }
-    rows.push(`approval ${f.split('/')[2]} by ${clean(by)}`)
+    rows.push(`approval ${name} by ${clean(by)}`)
   }
   return rows
 }

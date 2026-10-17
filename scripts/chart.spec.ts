@@ -118,3 +118,45 @@ test('intentReady explains why not: unapproved, stale, blocked by an unshipped d
   assert.match(stale.why[0] ?? '', /^chart-1 is stale: run \/rig:approve chart-1 after reviewing \(changed: .*intents\/b\.md\)$/)
   assert.deepEqual(ready('ghost'), { ready: false, why: ['no such intent: ghost'] })
 })
+
+// The CLI: chart check, approve chart-N, ready.
+const HUMAN = { env: { SDLC_HUMAN: '1' } }
+const cleanChart = (): void => {
+  chart1()
+  write(repo, `${P}/testplan/cases.md`, '| ID | Req | Intent | B | Level | Data | Expected |\n| TC-1 | FR-1 | a | B1 | unit | - | ok |\n')
+}
+
+test('chart check prints findings, as JSON on request, and fails only when the PRD is missing', () => {
+  chart1()
+  const r = sdlc(repo, ['chart', 'check', '1', '--cases', '--json'])
+  assert.equal(r.code, 0, r.stderr)
+  assert.deepEqual((JSON.parse(r.stdout) as { rule: string }[]).map(f => f.rule), ['req-untested'])
+  assert.match(sdlc(repo, ['chart', 'check', '1']).stdout, /no blocking findings/)
+  assert.equal(sdlc(repo, ['chart', 'check', '9']).code, 1)
+})
+
+test('approve chart-N is human-only, refuses while a block finding stands, and is idempotent', () => {
+  cleanChart()
+  assert.equal(sdlc(repo, ['approve', 'chart-1']).code, 3)
+  write(repo, `${P}/intents/a.md`, intent(1, { req: 'FR-1' }).replace('estimate_days: 1', 'estimate_days: 5'))
+  const refused = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  assert.equal(refused.code, 1)
+  assert.match(refused.stderr, /estimate/)
+  assert.ok(!fs.existsSync(path.join(repo, `${P}/approvals/chart-1.json`)))
+  write(repo, `${P}/intents/a.md`, intent(1))
+  const ok = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
+  assert.equal(ok.code, 0, ok.stderr)
+  assert.match(ok.stdout, /approved chart-1 by Pat/)
+  assert.equal(state(1).state, 'approved')
+  assert.match(sdlc(repo, ['approve', 'chart-1'], HUMAN).stdout, /already approved/)
+})
+
+test('ready lists the intents that can start and leaves out the blocked ones', () => {
+  cleanChart()
+  write(repo, `${P}/intents/b.md`, intent(1, { depends: '[a]' }))
+  write(repo, `${P}/testplan/cases.md`, '| ID | Req | Intent | B | Level | Data | Expected |\n| TC-1 | FR-1 | a | B1 | unit | - | ok |\n| TC-2 | FR-1 | b | B1 | unit | - | ok |\n')
+  assert.equal(sdlc(repo, ['approve', 'chart-1'], HUMAN).code, 0)
+  const r = sdlc(repo, ['ready', '--json'])
+  assert.deepEqual((JSON.parse(r.stdout) as { slug: string }[]).map(i => i.slug), ['a'])
+  assert.match(sdlc(repo, ['ready']).stdout, /a\s+sprint 1\s+1 day/)
+})

@@ -62,9 +62,9 @@ test('4a: a typed /rig:approve records one row even when the skill runs the same
   assert.equal(fs.readFileSync(path.join(repo, '.rig/changes/demo/approval.json'), 'utf8'), first)
 })
 
-test('4a: chart, watch, metrics, scorecard, points and timing are gone', () => {
-  gone(...['chart', 'chartcheck', 'watch', 'metrics', 'scorecard', 'points', 'timing'].map(m => `scripts/${m}.ts`), 'skills/chart', 'skills/decompose', 'skills/metrics', 'templates/prd-format.md', 'templates/rig-watch.yml', 'templates/rig-triage.yml', 'templates/rig-rehearse.yml')
-  for (const c of ['chart', 'watch', 'metrics', 'scorecard', 'points']) assert.ok(!commands().includes(c), c)
+test('4a: watch, metrics, scorecard, points and timing are gone (the chart returned in the outer loop, 2026-10-17)', () => {
+  gone(...['watch', 'metrics', 'scorecard', 'points', 'timing'].map(m => `scripts/${m}.ts`), 'skills/decompose', 'skills/metrics', 'templates/rig-watch.yml', 'templates/rig-triage.yml', 'templates/rig-rehearse.yml')
+  for (const c of ['watch', 'metrics', 'scorecard', 'points']) assert.ok(!commands().includes(c), c)
 })
 
 test('4a: status and status --json no longer carry points or story', () => {

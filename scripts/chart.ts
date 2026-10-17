@@ -106,3 +106,26 @@ export function intentReady(slug: string): { ready: boolean; why: string[] } {
   if (blocked.length) why.push(`blocked by ${blocked.join(', ')}`)
   return { ready: !why.length, why }
 }
+
+// Every intent that can start now.
+export function readyIntents(): { slug: string; sprint: number; estimateDays: number | null }[] {
+  return allIntents().filter(i => i.sprint !== null && intentReady(i.slug).ready).map(i => ({ slug: i.slug, sprint: i.sprint as number, estimateDays: i.estimateDays }))
+}
+
+// The chain for one sprint and how far the work has got: requirement → intent → behaviour → test case, then started and shipped.
+export function chartReport(n: number): string {
+  const intents = intentsOf(n)
+  const cases = parseCases(read(path.join(PRODUCT, 'testplan', 'cases.md')))
+  const ids = [...new Set(read(prdPath(n)).replace(/\r\n/g, '\n').split('\n').flatMap(l => /^#{2,4}\s+(N?FR-\d+)\b/.exec(l)?.[1] ?? /^\|\s*(N?FR-\d+)\s*\|/.exec(l)?.[1] ?? []))].sort()
+  const inCase = (id: string): string[] => cases.filter(c => c.reqs.includes(id)).map(c => c.id)
+  const chain = ids.map(id => `  ${id} → ${intents.filter(i => i.prd.includes(id)).map(i => `${i.slug}#${i.behaviours.filter(b => b.reqs.includes(id)).map(b => b.id).join(',')}`).join(' ') || '(no intent)'} → ${inCase(id).join(' ') || '(no test case)'}`)
+  const started = intents.filter(i => exists(changeDir(i.slug))).length
+  const shipped = intents.filter(i => isShipped(i.slug)).length
+  const days = intents.reduce((sum, i) => sum + (i.estimateDays ?? 0), 0)
+  return [
+    `chart-${n}: ${chartState(n).state}`,
+    `requirements ${ids.length}: with an intent ${ids.filter(id => intents.some(i => i.prd.includes(id))).length}, with a test case ${ids.filter(id => inCase(id).length).length}`,
+    `intents ${intents.length} (${days} engineer-days): started ${started}, shipped ${shipped}`,
+    ...chain,
+  ].join('\n')
+}
