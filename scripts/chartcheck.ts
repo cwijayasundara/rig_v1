@@ -17,7 +17,7 @@ const SPRINT_DAYS = 10
 const MAX_DAYS = 2
 
 // Frontmatter lists are flow style on one line; brackets, quotes and a trailing `.md` are tolerated.
-export const listField = (v: string | undefined): string[] =>
+const listField = (v: string | undefined): string[] =>
   (v ?? '').replace(/^\[|\]$/g, '').split(',').map(s => s.trim().replace(/^["']|["']$/g, '').replace(/\.md$/, '')).filter(s => /^[A-Za-z0-9][\w.-]*$/.test(s))
 const section = (text: string, heading: string): string =>
   new RegExp(`^##\\s+${heading}\\s*\\n([\\s\\S]*?)(?=^##\\s|(?![\\s\\S]))`, 'm').exec(text)?.[1] ?? ''
@@ -29,7 +29,7 @@ const whole = (v: string | undefined): number | null => (/^\d{1,4}$/.test(v ?? '
 // Requirement ids the PRD defines: a heading `### FR-3: ...` or a table row `| NFR-2 | ...`. Ids in prose are references.
 export function prdIds(text: string): string[] {
   const ids = new Set<string>()
-  for (const l of text.replace(/\r\n/g, '\n').split('\n')) {
+  for (const l of uncomment(text.replace(/\r\n/g, '\n')).split('\n')) {
     const m = /^#{2,4}\s+(N?FR-\d+)\b/.exec(l) ?? /^\|\s*(N?FR-\d+)\s*\|/.exec(l)
     if (m?.[1]) ids.add(m[1])
   }
@@ -37,7 +37,7 @@ export function prdIds(text: string): string[] {
 }
 
 // `- B1 (FR-3, NFR-1): text` lines under `## Behaviours`, in an intent or a change's spec.md.
-export function parseBehaviours(text: string): Behaviour[] {
+function parseBehaviours(text: string): Behaviour[] {
   return section(text.replace(/\r\n/g, '\n'), 'Behaviours').split('\n').flatMap((l): Behaviour[] => {
     const m = /^\s*[-*]\s+(B\d+)\s*(?:\(([^)]*)\))?\s*:?\s*(.*)$/.exec(l)
     return m?.[1] ? [{ id: m[1], reqs: (m[2] ?? '').match(REQ) ?? [], text: (m[3] ?? '').trim() }] : []
@@ -73,7 +73,7 @@ function cyclic(intents: Intent[]): Set<string> {
 
 // `others` are the intents of other sprints (a dependency may name one; their test cases are theirs to check); `exists` resolves a case's
 // data path under the test plan, `repoExists` a contract or example path in the repo.
-export function traceReport(i: { prd: string; intents: Intent[]; others?: Intent[]; cases: TestCase[] | null; exists: (path: string) => boolean; repoExists?: (path: string) => boolean; engineers?: number }): ChartFinding[] {
+export function traceReport(i: { prd: string; intents: Intent[]; others?: Intent[]; cases: TestCase[] | null; exists: (path: string) => boolean; repoExists?: (path: string) => boolean }): ChartFinding[] {
   const out: ChartFinding[] = []
   const add = (rule: string, where: string, message: string, severity: 'block' | 'report' = 'block'): number => out.push({ rule, severity, where, message })
   const prd = uncomment(i.prd.replace(/\r\n/g, '\n'))
@@ -113,7 +113,7 @@ export function traceReport(i: { prd: string; intents: Intent[]; others?: Intent
     const tested = new Set(rows.flatMap(c => c.reqs))
     for (const id of defined) if (!tested.has(id)) add('req-untested', id, `${id} has no test case`)
   }
-  const engineers = i.engineers ?? whole(frontmatter(prd).data.engineers) ?? 1
+  const engineers = whole(frontmatter(prd).data.engineers) ?? 1
   const days = i.intents.reduce((n, t) => n + (t.estimateDays ?? 0), 0)
   if (days > SPRINT_DAYS * engineers) add('capacity', 'sprint', `${days} intent-days against ${SPRINT_DAYS * engineers} available (${engineers} engineer${engineers === 1 ? '' : 's'} × ${SPRINT_DAYS} days)`, 'report')
   return out

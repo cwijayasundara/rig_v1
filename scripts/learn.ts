@@ -2,22 +2,21 @@
 // and writes only under .rig/learn/. The model-facing step is the /rig:learn skill; a person applies every change to the lessons and the rules.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SDLC, out, fail, listChanges, readJsonl, writeAtomic, type Args, type Waiver } from './core.ts'
+import { ROOT, SDLC, WAIVERS, out, fail, read, listChanges, readJsonl, writeAtomic, type Args, type Waiver } from './core.ts'
 import { parseLessons, checkLessons, type Lesson } from './learnfile.ts'
 import { mineCandidates, shippedChanges, lessonStatus } from './learnmine.ts'
 import { replayRule } from './learnreplay.ts'
-import type { Rule } from './model.ts'
+import { parseRules, type Rule } from './model.ts'
 
 const LESSONS = path.join(SDLC, 'lessons.md')
 const ARCHIVE = path.join(SDLC, 'lessons-archive.md')
 const LEARN = path.join(SDLC, 'learn')
 
-const readFile = (p: string): string => { try { return fs.readFileSync(p, 'utf8') } catch { return '' } }
-const allLessons = (): Lesson[] => [...parseLessons(readFile(LESSONS)).lessons, ...parseLessons(readFile(ARCHIVE)).lessons]
+const allLessons = (): Lesson[] => [...parseLessons(read(LESSONS)).lessons, ...parseLessons(read(ARCHIVE)).lessons]
 
 function analyse() {
   const candidates = mineCandidates(ROOT)
-  const waivers = readJsonl<Waiver>(path.join(SDLC, 'waivers.jsonl'))
+  const waivers = readJsonl<Waiver>(WAIVERS)
   const status = lessonStatus(allLessons(), shippedChanges(ROOT), waivers)
   return { candidates, ...status }
 }
@@ -37,10 +36,10 @@ function mine(): void {
 function check(): void {
   const slugs = listChanges()
   const problems = [
-    ...checkLessons(readFile(LESSONS), slugs),
-    ...checkLessons(readFile(ARCHIVE), slugs),
-    ...parseLessons(readFile(LESSONS)).lessons.filter(l => l.status !== 'active').map(l => `${l.id}: ${l.status} lessons belong in .rig/lessons-archive.md`),
-    ...parseLessons(readFile(ARCHIVE)).lessons.filter(l => l.status === 'active').map(l => `${l.id}: active lessons belong in .rig/lessons.md`),
+    ...checkLessons(read(LESSONS), slugs),
+    ...checkLessons(read(ARCHIVE), slugs),
+    ...parseLessons(read(LESSONS)).lessons.filter(l => l.status !== 'active').map(l => `${l.id}: ${l.status} lessons belong in .rig/lessons-archive.md`),
+    ...parseLessons(read(ARCHIVE)).lessons.filter(l => l.status === 'active').map(l => `${l.id}: active lessons belong in .rig/lessons.md`),
   ]
   out(problems.length ? problems.map(p => `[learn] ${p}`).join('\n') : 'learn check: lessons are well formed')
   process.exitCode = problems.length ? 1 : 0
@@ -48,10 +47,11 @@ function check(): void {
 
 function readRule(file: string | undefined): Rule {
   const abs = file ? path.resolve(ROOT, file) : ''
-  let v: Partial<Rule>
-  try { v = JSON.parse(fs.readFileSync(abs, 'utf8')) as Partial<Rule> } catch { return fail(`cannot read the rule file ${file ?? '(none given)'}: pass a JSON rule {id, pattern, message, why, action}`) }
-  if (!v.id || !v.pattern || !v.message || !v.why || (v.action !== 'warn' && v.action !== 'block')) fail('the rule file needs id, pattern, message, why and action ("warn" or "block")')
-  return v as Rule
+  let v: unknown
+  try { v = JSON.parse(fs.readFileSync(abs, 'utf8')) } catch { return fail(`cannot read the rule file ${file ?? '(none given)'}: pass a JSON rule {id, pattern, message, why, action}`) }
+  const { rules, errors } = parseRules(JSON.stringify([v]))
+  if (errors.length || !rules[0]) return fail(`the rule file is not a valid rule: ${errors.join('; ')}`)
+  return rules[0]
 }
 
 function replay(args: Args): void {
@@ -72,7 +72,7 @@ function replay(args: Args): void {
 
 function status(): void {
   const a = analyse()
-  const active = parseLessons(readFile(LESSONS)).lessons.filter(l => l.status === 'active').length
+  const active = parseLessons(read(LESSONS)).lessons.filter(l => l.status === 'active').length
   out(`learn: active ${active}, eligible ${a.candidates.length}, flagged ${a.retire.length}`)
 }
 

@@ -4,12 +4,12 @@ import { pageCitations } from './wikivalidate.ts'
 
 // `paths` scopes a page's sources: repo-relative files or directory prefixes (ending in `/`). Without it the page sees every source file.
 export type WikiPage = { title: string; purpose: string; parent?: string; notes?: string[]; paths?: string[] }
-export type WikiConfig = { notes: string[]; pages: WikiPage[] }
-export type PageState = { builtAt: string; hashes: Record<string, string> }
+export type WikiConfig = { pages: WikiPage[] }
+type PageState = { builtAt: string; hashes: Record<string, string> }
 export type WikiState = { pages: Record<string, PageState> }
 export type Stale = { page: string; cite: string; why: 'changed' | 'missing' | 'unresolved' }
 
-export const MAX_PAGES = 30
+const MAX_PAGES = 30
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const str = (v: unknown): v is string => typeof v === 'string' && v.trim() !== ''
@@ -19,7 +19,7 @@ const strs = (v: unknown): v is string[] => Array.isArray(v) && v.every(x => typ
 export function parseWikiConfig(json: string): WikiConfig | string {
   let v: unknown
   try { v = JSON.parse(json) } catch { return 'wiki.json is not valid JSON' }
-  if (!isObj(v) || !strs(v.notes)) return 'wiki.json needs "notes" (an array of strings; use [] when empty)'
+  if (!isObj(v)) return 'wiki.json must be a JSON object with "pages"'
   if (!Array.isArray(v.pages) || v.pages.length === 0) return 'wiki.json needs at least one page'
   if (v.pages.length > MAX_PAGES) return `wiki.json has ${v.pages.length} pages; the limit is ${MAX_PAGES}`
   const pages: WikiPage[] = []
@@ -50,7 +50,7 @@ export function parseWikiConfig(json: string): WikiConfig | string {
       seen.add(at)
     }
   }
-  return { notes: v.notes, pages }
+  return { pages }
 }
 
 export const slugOf = (title: string): string => title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')

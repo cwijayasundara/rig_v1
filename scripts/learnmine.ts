@@ -2,31 +2,30 @@
 // Only a key seen in at least two distinct changes is a candidate; one occurrence is never a lesson.
 import fs from 'node:fs'
 import path from 'node:path'
-import { readJsonl, gitIn, type Waiver } from './core.ts'
+import { read, readJsonl, gitIn, SLUG_RE, type Waiver } from './core.ts'
 import type { Lesson } from './learnfile.ts'
 
-export type Candidate = { key: string; kind: 'finding' | 'waiver'; changes: string[]; count: number; sample: string }
+type Candidate = { key: string; kind: 'finding' | 'waiver'; changes: string[]; count: number; sample: string }
 export type Shipped = { slug: string; date: string; keys: string[] }
 
-export const MIN_CHANGES = 2
-export const STALE_AFTER = 10
-export const WAIVED_AFTER = 3
+const MIN_CHANGES = 2
+const STALE_AFTER = 10
+const WAIVED_AFTER = 3
 const CATEGORY = /\[category: ([a-z-]+)\]/g
 
 const changesDir = (root: string): string => path.join(root, '.rig', 'changes')
 const slugsOf = (root: string): string[] =>
-  fs.existsSync(changesDir(root)) ? fs.readdirSync(changesDir(root), { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort() : []
-const reviewOf = (root: string, slug: string): string => {
-  try { return fs.readFileSync(path.join(changesDir(root), slug, 'review.md'), 'utf8') } catch { return '' }
-}
+  fs.existsSync(changesDir(root)) ? fs.readdirSync(changesDir(root), { withFileTypes: true }).filter(d => d.isDirectory() && SLUG_RE.test(d.name)).map(d => d.name).sort() : []
+const reviewOf = (root: string, slug: string): string => read(path.join(changesDir(root), slug, 'review.md'))
 const waiversOf = (root: string): Waiver[] => readJsonl<Waiver>(path.join(root, '.rig', 'waivers.jsonl')).filter(w => typeof w.slug === 'string' && typeof w.sensor === 'string')
 
 // Each finding line of a review, keyed by its category.
 const findingsOf = (review: string): { key: string; line: string }[] =>
   review.split('\n').flatMap(line => [...line.matchAll(CATEGORY)].map(m => ({ key: m[1] as string, line: line.replace(/^-\s*/, '').trim() })))
 
+// Only shipped changes count: an in-flight change's review.md is not evidence yet, and replay and lesson status see only shipped ones.
 export function mineCandidates(root: string): Candidate[] {
-  const slugs = slugsOf(root)
+  const slugs = shippedChanges(root).map(s => s.slug)
   const acc = new Map<string, Candidate>()
   const add = (kind: Candidate['kind'], key: string, slug: string, sample: string): void => {
     const id = `${kind}:${key}`
@@ -60,14 +59,15 @@ export function lessonStatus(lessons: Lesson[], shipped: Shipped[], waivers: { s
   const lastFired: Record<string, string> = {}
   const retire: { id: string; why: string }[] = []
   for (const l of lessons) {
-    const fired = shipped.filter(s => s.date > l.first && s.keys.includes(l.key)).map(s => s.date).sort().pop()
+    const fired = shipped.filter(s => s.date >= l.first && !l.seen.includes(s.slug) && s.keys.includes(l.key)).map(s => s.date).sort().pop()
     lastFired[l.id] = fired && fired > l.lastFired ? fired : l.lastFired
     if (l.status === 'active') {
-      const later = shipped.filter(s => s.date > (lastFired[l.id] as string)).length
+      const later = shipped.filter(s => !l.seen.includes(s.slug) && (s.date > (lastFired[l.id] as string) || (s.date === lastFired[l.id] && !s.keys.includes(l.key)))).length
       if (later >= STALE_AFTER) retire.push({ id: l.id, why: `not fired in ${later} later changes` })
     } else if (l.status.startsWith('promoted:')) {
       const rule = l.status.slice('promoted:'.length)
-      const waived = waivers.filter(w => w.sensor === 'rules' && (w.reason ?? '').includes(rule)).length
+      const named = new RegExp(`(?<![\\w-])${rule.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w-])`)
+      const waived = waivers.filter(w => w.sensor === 'rules' && named.test(w.reason ?? '')).length
       if (waived >= WAIVED_AFTER) retire.push({ id: l.id, why: `rule ${rule} waived ${waived} times` })
     }
   }

@@ -56,3 +56,10 @@ test('titles, initials and inline code do not read as two sentences', () => {
   assert.deepEqual(rules(page('- Splits on `a. B` as written. [src/a.ts#f]\n')), [])
   assert.deepEqual(rules(page('- It adds. It subtracts. [src/a.ts#f]\n')), ['two-sentences@8'])
 })
+
+test('a #symbol cite on an unsupported language says so', () => {
+  const e: PageEnv = { read: () => 'def f; end', whyExists: () => false }
+  const f = validatePage(page('- Gone. [src/a.rb#f]\n'), e)
+  assert.equal(f[0]?.rule, 'symbol-unresolved')
+  assert.match(f[0]!.message, /not supported for this language/)
+})

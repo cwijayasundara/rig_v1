@@ -88,3 +88,26 @@ test('an edit inside those shapes changes the hash', () => {
   assert.notEqual(h('const f = (a: number) =>\n  a + 1\n', 'f'), h('const f = (a: number) =>\n  a + 2\n', 'f'))
   assert.notEqual(h('function f(): { a: number } {\n  return { a: 1 }\n}\n', 'f'), h('function f(): { a: number } {\n  return { a: 2 }\n}\n', 'f'))
 })
+
+test('findSymbol resolves Python def and class, bounded by indent', () => {
+  const py = 'import os\n\nclass K:\n    def m(self):\n        return 1\n\n    x = 2\n\nasync def go(a):\n    if a:\n        return 1\n\n    return 2\n\ndef after():\n    pass\n'
+  assert.equal(findSymbol(py, 'go', 'a.py'), 'async def go(a):\n    if a:\n        return 1\n\n    return 2')
+  assert.match(findSymbol(py, 'K', 'a.py') ?? '', /^class K:[\s\S]*x = 2$/)
+  assert.equal(findSymbol(py, 'nope', 'a.py'), null)
+})
+
+test('findSymbol resolves Go funcs and methods and Rust fns', () => {
+  const go = 'package p\n\nfunc Add(a, b int) int {\n\treturn a + b\n}\n\nfunc (r *T) Name() string {\n\treturn "x"\n}\n'
+  assert.match(findSymbol(go, 'Add', 'a.go') ?? '', /^func Add[\s\S]*\}$/)
+  assert.match(findSymbol(go, 'Name', 'a.go') ?? '', /^func \(r \*T\) Name\(\) string \{[\s\S]*\}$/)
+  const rs = 'pub fn add(a: i32) -> i32 {\n    a + 1\n}\n\nfn hidden() {}\n'
+  assert.match(findSymbol(rs, 'add', 'a.rs') ?? '', /^pub fn add[\s\S]*\}$/)
+  assert.equal(findSymbol(rs, 'hidden', 'a.rs'), 'fn hidden() {}')
+})
+
+test('a #symbol cite in a language with no symbol support never resolves; whole-file cites still hash', () => {
+  assert.equal(findSymbol('def f(): pass', 'f', 'a.rb'), null)
+  assert.equal(citeHash({ kind: 'code', path: 'a.rb', symbol: 'f' }, () => 'def f; end'), null)
+  assert.ok(citeHash({ kind: 'code', path: 'a.rb' }, () => 'def f; end'))
+  assert.ok(citeHash({ kind: 'code', path: 'a.py', symbol: 'f' }, () => 'def f():\n    pass\n'))
+})

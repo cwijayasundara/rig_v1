@@ -4,12 +4,12 @@
   "paths": { "tests": ["**/*_test.go"], "testSupport": ["**/testdata/**"] },
   "contracts": { "files": [], "validate": "", "run": "" },
   "sensors": [
-    { "id": "types", "cmd": "go vet ./...", "cadence": "turn", "blocks": true, "count": "exit", "guide": "go vet must pass before the turn ends." },
-    { "id": "lint", "cmd": "golangci-lint run", "cadence": "turn", "blocks": true, "count": "exit", "guide": "golangci-lint must pass; fix the code rather than adding nolint." },
-    { "id": "unit", "cmd": "go test ./...", "cadence": "turn", "blocks": true, "count": "exit", "guide": "Run go test before claiming done; fix the code, never the tests." },
-    { "id": "layers", "cmd": "go-arch-lint check", "cadence": "commit", "blocks": true, "count": "exit", "guide": "Respect the component rules in .go-arch-lint.yml." },
-    { "id": "duplication", "cmd": "npx --yes jscpd@5 . --silent --threshold 5", "cadence": "commit", "blocks": false, "count": "exit", "guide": "Reuse existing code instead of copying it." },
-    { "id": "audit", "cmd": "govulncheck ./...", "cadence": "ci", "blocks": false, "count": "exit", "guide": "Do not call code with known vulnerabilities." },
-    { "id": "mutation", "cmd": "go-mutesting ./...", "cadence": "nightly", "blocks": false, "count": "exit", "guide": "Tests must assert behaviour so that changing the code makes them fail." }
+    { "id": "types", "cmd": "go vet ./...", "cadence": "turn", "blocks": true, "guide": "go vet must pass before the turn ends." },
+    { "id": "lint", "cmd": "golangci-lint run", "cadence": "turn", "blocks": true, "guide": "golangci-lint must pass; fix the code rather than adding nolint." },
+    { "id": "unit", "cmd": "go test ./...", "cadence": "turn", "blocks": true, "guide": "Run go test before claiming done; fix the code, never the tests." },
+    { "id": "layers", "cmd": "go-arch-lint check", "cadence": "commit", "blocks": true, "guide": "Respect the component rules in .go-arch-lint.yml." },
+    { "id": "duplication", "cmd": "npx --yes jscpd@5 . --silent --threshold 5", "cadence": "commit", "blocks": false, "guide": "Reuse existing code instead of copying it." },
+    { "id": "audit", "cmd": "govulncheck ./...", "cadence": "ci", "blocks": false, "guide": "Do not call code with known vulnerabilities." },
+    { "id": "mutation", "cmd": "go-mutesting ./...", "cadence": "nightly", "blocks": false, "guide": "Tests must assert behaviour so that changing the code makes them fail." }
   ]
 }

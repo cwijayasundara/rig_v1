@@ -85,3 +85,17 @@ test('a second pr after a fix and a fresh verify commits the follow-up on the sa
   assert.match(gitIn(repo, 'log', '-1', '--format=%s'), /fix: review findings/)
   assert.equal(gitIn(repo, 'rev-parse', '--abbrev-ref', 'HEAD').trim(), 'sdlc/demo')
 })
+
+test('a failed push on the first pr leaves no pr.md or commit, so a rerun still opens the PR', () => {
+  approvedChange(repo, 'demo')
+  write(repo, 'test/a.test.js', '// B1\n')
+  verified(repo, 'demo')
+  gitIn(repo, 'remote', 'add', 'origin', path.join(repo, 'no-such-remote.git'))
+  assert.match(pr().stderr, /git push failed/)
+  assert.equal(fs.existsSync(path.join(repo, '.rig/changes/demo/pr.md')), false)
+  assert.equal(gitIn(repo, 'log', '--format=%s', '-1'), 'init')
+  const bare = fs.mkdtempSync(path.join(repo, '..', 'rig-bare-'))
+  gitIn(bare, 'init', '-q', '--bare')
+  gitIn(repo, 'remote', 'set-url', 'origin', bare)
+  assert.match(pr().stderr, /pushed sdlc\/demo but gh pr create|gh pr create/)
+})

@@ -136,7 +136,7 @@ export function size(diffs: FileDiff[], r: Registry, fileLines: Record<string, n
   if (total > limits.diffLines && point !== 'edit') {
     findings.push({
       sensor: 'size', severity: point === 'stop' ? 'warn' : 'block', message: `diff is ${total} changed lines (limit ${limits.diffLines})`,
-      fix: 'ship it as smaller changes, or the person approves the plan (/rig:approve <slug> plan) or waives with /rig:waive size * <reason>',
+      fix: 'ship it as smaller changes, or the person approves the plan (/rig:approve <slug>) or waives with /rig:waive size * <reason>',
     })
   }
   if (point !== 'edit') {
@@ -186,7 +186,6 @@ const RULES = '.rig/rules.json'
 
 const removedFrom = (before: string[], after: string[]): string[] => before.filter(x => !after.includes(x))
 
-export const weakensConfig = (beforeText: string, afterText: string): string[] => weakensRegistry(beforeText, afterText)
 
 export function weakensRules(beforeText: string, afterText: string): string[] {
   const b = parseRules(beforeText).rules
@@ -216,7 +215,7 @@ export function harnessTamper(diffs: FileDiff[], o: { point: 'stop' | 'ship' | '
     // since a PR adding a config from scratch could declare no-op levels. Stop compares it as advice.
     const adopting = o.point === 'ship' && d.status === 'A' && !o.before(d.file).trim()
     const compare = (d.file === SENSORS || d.file === RULES) && !adopting
-    const weaker = !compare ? [] : d.file === SENSORS ? weakensConfig(o.before(d.file), o.after(d.file)) : weakensRules(o.before(d.file), o.after(d.file))
+    const weaker = !compare ? [] : d.file === SENSORS ? weakensRegistry(o.before(d.file), o.after(d.file)) : weakensRules(o.before(d.file), o.after(d.file))
     const reasons = d.status === 'D' ? [`${d.file} deleted`, ...weaker] : weaker
     if (o.point === 'stop') {
       if (o.toolEdited && !o.toolEdited.has(d.file)) {

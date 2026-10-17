@@ -1,6 +1,6 @@
 // Wiki page validation (wiki design 2026-10-17, "Against wrong claims" step 1): the rules a script can check, no model.
 // A page body is one sentence per line and every such line ends with a citation; a mermaid line carries `%% [cite]`.
-import { parseCites, citeHash, type Cite } from './wikicite.ts'
+import { parseCites, citeHash, symbolSupported, type Cite } from './wikicite.ts'
 
 export type WikiFinding = {
   rule: 'uncited' | 'two-sentences' | 'path-missing' | 'symbol-unresolved' | 'path-escapes' | 'why-unresolved' | 'mermaid' | 'unsupported'
@@ -11,7 +11,7 @@ export type PageEnv = {
   read: (p: string) => string | null
   whyExists: (c: { type: 'adr' | 'commit' | 'pr'; ref: string }) => boolean
 }
-export type BodyLine = { line: number; text: string; mermaid: boolean }
+type BodyLine = { line: number; text: string; mermaid: boolean }
 
 const DIAGRAM_HEAD = /^\s*(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram(-v2)?|erDiagram|journey|gantt|pie|mindmap)\b/
 
@@ -67,6 +67,7 @@ export function validatePage(text: string, env: PageEnv): WikiFinding[] {
     for (const c of cites) {
       if (c.kind === 'why') { if (!env.whyExists(c)) add('why-unresolved', `${c.type}:${c.ref} does not resolve`); continue }
       if (env.read(c.path) === null) add('path-missing', `${c.path} does not exist`)
+      else if (c.symbol !== undefined && !symbolSupported(c.path)) add('symbol-unresolved', `${c.path}: #symbol cites are not supported for this language, cite the whole file`)
       else if (c.symbol !== undefined && citeHash(c, env.read) === null) add('symbol-unresolved', `${c.path}#${c.symbol} is absent or declared more than once`)
     }
   }

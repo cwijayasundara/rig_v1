@@ -201,3 +201,34 @@ test('re-approving after every contract file is gone clears the freeze, and a se
   assert.equal(approvals().length, rows)
   assert.doesNotMatch(commitCheck().stdout, /\[harness-tamper\]/)
 })
+
+test('renaming a frozen contract file blocks: the old path counts as touched', () => {
+  approved()
+  gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'approved', '--no-verify')
+  gitIn(repo, 'mv', 'api/openapi.yaml', 'api/renamed.yaml')
+  assert.match(commitCheck().stdout, /\[harness-tamper\][\s\S]*api\/openapi\.yaml[\s\S]*frozen/)
+})
+
+// A PR-added change whose plan lists `files` under ## Files; its contract is edited after approval and a wildcard waiver is recorded.
+const ciWaiver = (files: string) => {
+  registry({ contracts: { files: ['api/**'] } })
+  write(repo, 'api/openapi.yaml', 'openapi: 3.1.0\n')
+  gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'api')
+  gitIn(repo, 'checkout', '-qb', 'feature')
+  sdlc(repo, ['new', 'demo', '--type', 'feature'])
+  write(repo, '.rig/changes/demo/spec.md', '# Spec\n\n## Behaviours\n- B1: x\n\n## Open questions\nnone\n')
+  write(repo, '.rig/changes/demo/plan.md', `# Plan\n\n## Files\n${files}\n\n## Open questions\nnone\n`)
+  sdlc(repo, ['approve', 'demo'], HUMAN)
+  write(repo, 'api/openapi.yaml', 'openapi: 3.1.0\npaths: {}\n')
+  sdlc(repo, ['waive', 'harness-tamper', '*', 'agreed'], HUMAN)
+  gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'change', '--no-verify')
+  return sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--slug', 'demo'])
+}
+
+test('CI: a PR-added change\'s waiver does not cover a file outside its plan\'s ## Files', () => {
+  assert.match(ciWaiver('- src/').stdout, /\[harness-tamper\]/)
+})
+
+test('CI: a PR-added change\'s waiver covers a file under a directory its plan lists', () => {
+  assert.doesNotMatch(ciWaiver('- api/').stdout, /\[harness-tamper\]/)
+})

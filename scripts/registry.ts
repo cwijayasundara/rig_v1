@@ -4,19 +4,18 @@ import { isObject, isStringList, posInt } from './model.ts'
 
 export type Cadence = 'edit' | 'turn' | 'commit' | 'ci' | 'nightly'
 const CADENCES: Cadence[] = ['edit', 'turn', 'commit', 'ci', 'nightly']
-type Count = 'exit' | 'lines' | `json:${string}`
 export type Mode = 'continuous' | 'final'
 export const BUILTIN_IDS = ['secrets', 'test-tamper', 'suppression', 'harness-tamper', 'size', 'layering', 'rules', 'red-proof', 'traceability', 'model-role'] as const
 type BuiltinId = typeof BUILTIN_IDS[number]
 // Harness finding names that are not built-ins: a command sensor with one of these ids would inherit that finding's gate rules.
-export const RESERVED_IDS = ['commands', 'config', 'contracts', 'unscanned', 'plan-gate', 'human-approval', 'sync'] as const
+const RESERVED_IDS = ['commands', 'config', 'contracts', 'unscanned', 'plan-gate', 'human-approval', 'sync'] as const
 export const ALWAYS_ON: BuiltinId[] = ['secrets', 'harness-tamper']
 
-export type RegistrySensor = { id: string; cmd?: string; builtin?: true; cadence: Cadence; blocks: boolean; count?: Count; guide: string; timeoutMs?: number; enabled: boolean; options?: Record<string, unknown> }
+export type RegistrySensor = { id: string; cmd?: string; builtin?: true; cadence: Cadence; blocks: boolean; guide: string; timeoutMs?: number; enabled: boolean; options?: Record<string, unknown> }
 export type Paths = { tests: string[]; testSupport: string[]; fixtures: string[]; ignore: string[] }
 export type Contracts = { files: string[]; covers: string[]; validate: string; run: string }
 type Policy = Record<string, Mode> & { default: Mode }
-export type Registry = { stack: string | null; gates: { plan: boolean; merge: boolean }; contracts: Contracts; models: { build: string; evaluate: string; design: string }; paths: Paths; sensors: RegistrySensor[]; knownRed: string[]; policy: Policy }
+export type Registry = { stack: string | null; gates: { plan: boolean }; contracts: Contracts; models: { build: string; evaluate: string; design: string }; paths: Paths; sensors: RegistrySensor[]; knownRed: string[]; policy: Policy }
 
 type Base = { cadence: Cadence; blocks: boolean; guide: string }
 const BUILTIN_DEFAULTS: Record<BuiltinId, Base> = {
@@ -39,7 +38,6 @@ const KEBAB = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
 const isBuiltinId = (v: string): v is BuiltinId => (BUILTIN_IDS as readonly string[]).includes(v)
 const isCadence = (v: unknown): v is Cadence => typeof v === 'string' && (CADENCES as string[]).includes(v)
-const isCount = (v: unknown): v is Count => v === 'exit' || v === 'lines' || (typeof v === 'string' && /^json:[A-Za-z0-9_.]+$/.test(v))
 const isMode = (v: unknown): v is Mode => v === 'continuous' || v === 'final'
 
 function builtinSensor(id: BuiltinId): RegistrySensor {
@@ -49,7 +47,7 @@ function builtinSensor(id: BuiltinId): RegistrySensor {
 export function defaultRegistry(): Registry {
   return {
     stack: null,
-    gates: { plan: true, merge: true },
+    gates: { plan: true },
     contracts: { files: [], covers: [], validate: '', run: '' },
     models: { build: 'sonnet', evaluate: 'opus', design: 'opus' },
     paths: { tests: [...GENERIC_TESTS], testSupport: [], fixtures: [], ignore: ['**/*.md', '**/*.lock'] },
@@ -71,8 +69,6 @@ function parseSensor(raw: unknown, at: string, errors: string[]): RegistrySensor
   if (!builtin && (RESERVED_IDS as readonly string[]).includes(id)) errors.push(`${at}: "${id}" is reserved for a harness finding; rename the sensor`)
   if (builtin && 'cmd' in raw) errors.push(`${at}: a built-in sensor has no cmd`)
   if (!builtin && (typeof raw.cmd !== 'string' || !raw.cmd.trim())) errors.push(`${at}.cmd must be a non-empty command string`)
-  if (builtin && 'count' in raw) errors.push(`${at}: a built-in sensor has no count`)
-  if (!builtin && !isCount(raw.count)) errors.push(`${at}.count must be "exit", "lines" or "json:<path>"`)
   const base = builtin && isBuiltinId(id) ? BUILTIN_DEFAULTS[id] : null
   const cadence = raw.cadence ?? base?.cadence
   if (!isCadence(cadence)) errors.push(`${at}.cadence must be one of ${CADENCES.join(', ')}`)
@@ -96,7 +92,7 @@ function parseSensor(raw: unknown, at: string, errors: string[]): RegistrySensor
   const options = raw.options
   const common = { cadence: cadence as Cadence, blocks: blocks as boolean, guide: (guide as string).trim(), enabled: enabled as boolean, ...(posInt(timeout) ? { timeoutMs: timeout } : {}) }
   if (builtin) return { id, builtin: true, ...common, ...(isObject(options) ? { options } : {}) }
-  return { id, cmd: raw.cmd as string, count: raw.count as Count, ...common }
+  return { id, cmd: raw.cmd as string, ...common }
 }
 
 function parseSensors(raw: unknown, errors: string[]): RegistrySensor[] {
@@ -125,10 +121,11 @@ function parseSections(value: Record<string, unknown>, r: Registry, errors: stri
   }
   if ('gates' in value) {
     const g = value.gates
-    if (!isObject(g)) errors.push('gates must be { plan?: boolean, merge?: boolean }')
+    if (!isObject(g)) errors.push('gates must be { plan?: boolean }')
     else for (const [k, v] of Object.entries(g)) {
-      if ((k === 'plan' || k === 'merge') && typeof v === 'boolean') r.gates[k] = v
-      else errors.push(`gates.${k} must be plan or merge, true or false`)
+      if (k === 'plan' && typeof v === 'boolean') r.gates.plan = v
+      else if (k === 'merge') continue // retired, accepted and ignored
+      else errors.push(`gates.${k} must be plan, true or false`)
     }
   }
   if ('contracts' in value) {
@@ -245,16 +242,15 @@ export function updateKnownRed(text: string, add: string[], remove: string[]): s
   return JSON.stringify(raw, null, 2) + '\n'
 }
 
-// ---------- harness tamper for a registry (sensors.ts weakensConfig delegates here) ----------
+// ---------- harness tamper for a registry (sensors.ts calls weakensRegistry) ----------
 
-const LATER: Record<Cadence, number> = { edit: 0, turn: 1, commit: 2, ci: 3, nightly: 4 }
 const LIMIT_DEFAULTS: Record<string, number> = { fileLines: 400, diffLines: 500, lineChars: 160 }
 
 // What an edit loosens: a sensor removed, disabled, made advisory, re-commanded or moved later; wider ignores; fewer
 // test globs; new known red; a family moved to "final"; raised size limits; lost contract files or commands; a gate off.
 export function weakensRegistry(beforeText: string, afterText: string): string[] {
   const now = parseRegistry(afterText)
-  if (now.errors.some(e => /does not parse|must be a JSON object|not valid JSON/.test(e))) return ['sensors.json no longer parses']
+  if (now.errors.some(e => /does not parse|must be a JSON object/.test(e))) return ['sensors.json no longer parses']
   const b = parseRegistry(beforeText).registry
   const a = now.registry
   const out: string[] = []
@@ -264,7 +260,8 @@ export function weakensRegistry(beforeText: string, afterText: string): string[]
     if (s.enabled && !n.enabled) out.push(`sensor ${s.id} disabled`)
     if (s.blocks && !n.blocks) out.push(`sensor ${s.id} no longer blocks`)
     if ((s.cmd ?? '') !== (n.cmd ?? '')) out.push(`sensor ${s.id} command changed`)
-    if (LATER[n.cadence] > LATER[s.cadence]) out.push(`sensor ${s.id} moved from ${s.cadence} to ${n.cadence}`)
+    if (n.timeoutMs !== undefined && (s.timeoutMs === undefined || n.timeoutMs > s.timeoutMs)) out.push(`sensor ${s.id} timeoutMs raised${s.timeoutMs === undefined ? '' : ` ${s.timeoutMs} → ${n.timeoutMs}`}`)
+    if (RANK[n.cadence] > RANK[s.cadence]) out.push(`sensor ${s.id} moved from ${s.cadence} to ${n.cadence}`)
     if (s.id === 'size') for (const k of Object.keys(LIMIT_DEFAULTS)) {
       const from = Number(s.options?.[k] ?? LIMIT_DEFAULTS[k]), to = Number(n.options?.[k] ?? LIMIT_DEFAULTS[k])
       if (to > from) out.push(`size.${k} raised ${from} → ${to}`)
@@ -279,7 +276,7 @@ export function weakensRegistry(beforeText: string, afterText: string): string[]
   for (const g of b.contracts.files) if (!a.contracts.files.includes(g)) out.push(`contracts.files lost ${g}`)
   for (const g of b.contracts.covers) if (!a.contracts.covers.includes(g)) out.push(`contracts.covers lost ${g}`)
   for (const k of ['validate', 'run'] as const) if (b.contracts[k] && a.contracts[k] !== b.contracts[k]) out.push(`contracts.${k} changed`)
-  for (const k of ['plan', 'merge'] as const) if (b.gates[k] && !a.gates[k]) out.push(`gates.${k} turned off`)
+  if (b.gates.plan && !a.gates.plan) out.push('gates.plan turned off')
   return out
 }
 

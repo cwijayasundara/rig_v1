@@ -181,7 +181,7 @@ export const managedSettings = (dir = MANAGED_DIR): Record<string, unknown> =>
   managedFiles(dir).reduce<Record<string, unknown>>((acc, f) => { const v: unknown = JSON.parse(fs.readFileSync(f, 'utf8')); return isObj(v) ? deepMerge(acc, v) : acc }, {})
 
 const GITIGNORED = [
-  'state/', '.baseline', '.gate', 'unresolved.json', 'gates.jsonl', 'spend-cache.json', 'spend-fetched', 'budget-seen.json', '.onboarding', 'changes/*/prototype/', 'learn/',
+  'state/', '.baseline', '.gate', 'unresolved.json', 'gates.jsonl', '.onboarding', 'changes/*/prototype/', 'learn/',
 ]
 
 // Parallel hooks (subagents) read-modify-write the same small state file: serialise them with a mkdir lock (stale after 10 s;
@@ -189,13 +189,14 @@ const GITIGNORED = [
 export function withLock<T>(file: string, fn: () => T): T {
   const lock = `${file}.lock`
   const until = Date.now() + 5_000
+  let owned = false
   while (Date.now() < until) {
-    try { fs.mkdirSync(lock); break } catch {
+    try { fs.mkdirSync(lock); owned = true; break } catch {
       try { if (Date.now() - fs.statSync(lock).mtimeMs > 10_000) fs.rmSync(lock, { recursive: true, force: true }) } catch { /* raced */ }
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20)
     }
   }
-  try { return fn() } finally { try { fs.rmdirSync(lock) } catch { /* not ours */ } }
+  try { return fn() } finally { if (owned) try { fs.rmdirSync(lock) } catch { /* gone */ } }
 }
 export function writeAtomic(file: string, text: string): void {
   const tmp = `${file}.${process.pid}.tmp`
@@ -214,15 +215,32 @@ export function ensureGitignore(): void {
 export const WAIVERS = path.join(SDLC, 'waivers.jsonl')
 export type Waiver = { slug: string; sensor: string; file: string; reason: string; by: string; at: string }
 
+// ---------- the turn gate (.rig/.gate) ----------
+
+export type GateSummary = { at: string; blocks: number; warns: number; bySensor: Record<string, number>; warnRows?: string[]; shown?: boolean }
+// trees: stamps of working trees on which the fast commands passed, kept across turns (the per-turn fields reset at each prompt).
+export type Gate = { turn: string; blocks: Record<string, number>; passed: Record<string, string>; tool: string[]; guides: Record<string, string[]>; trees: string[]; last?: GateSummary }
+export const GATE = path.join(SDLC, '.gate')
+const emptyGate = (): Gate => ({ turn: '', blocks: {}, passed: {}, tool: [], guides: {}, trees: [] })
+
+export function readGate(): Gate {
+  try {
+    const g = JSON.parse(read(GATE)) as Record<string, unknown>
+    const d = emptyGate()
+    const obj = <T>(v: unknown, dflt: T): T => (v && typeof v === 'object' && !Array.isArray(v) ? (v as T) : dflt)
+    return {
+      turn: typeof g.turn === 'string' ? g.turn : d.turn, blocks: obj(g.blocks, d.blocks), passed: obj(g.passed, d.passed),
+      tool: Array.isArray(g.tool) ? g.tool.map(String) : d.tool, guides: obj(g.guides, d.guides), trees: Array.isArray(g.trees) ? g.trees.map(String) : d.trees,
+      ...(g.last && typeof g.last === 'object' ? { last: g.last as GateSummary } : {}),
+    }
+  } catch {
+    return emptyGate()
+  }
+}
+const writeGate = (g: Gate): void => writeAtomic(GATE, JSON.stringify(g))
+export const updateGate = (fn: (g: Gate) => void): void => withLock(GATE, () => { const g = readGate(); fn(g); writeGate(g) })
+
 // Files sdlc itself wrote this turn count as sanctioned edits for the Stop gate's harness-tamper rule.
 export function sanctionWrites(rels: string[]): void {
-  const file = path.join(SDLC, '.gate')
-  let gate: { tool?: string[] } = {}
-  try {
-    gate = JSON.parse(read(file)) as { tool?: string[] }
-  } catch {
-    gate = {}
-  }
-  gate.tool = [...new Set([...(gate.tool ?? []), ...rels.map(toPosix)])]
-  fs.writeFileSync(file, JSON.stringify(gate))
+  updateGate(g => { g.tool = [...new Set([...g.tool, ...rels.map(toPosix)])] })
 }

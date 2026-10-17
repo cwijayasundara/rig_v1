@@ -64,13 +64,15 @@ export function cmdPr(args: Args): void {
   }
   const files = changeFiles(slug)
   if (!files.length) return out(followUp ? `${slug} already has a PR (.rig/changes/${slug}/pr.md); nothing new to commit` : 'not shipping: nothing to commit')
-  if (git(['add', '--', ...files]) === null) fail('git add failed')
+  // A first run that fails before the PR is open must leave no pr.md (and no commit), or a rerun reads it as a follow-up and never opens the PR.
+  const undo = (committed: boolean): void => { if (followUp) return; if (committed) git(['reset', '-q', 'HEAD~1']); fs.rmSync(path.join(CHANGES, slug, 'pr.md'), { force: true }) }
+  if (git(['add', '--', ...files]) === null) { undo(false); fail('git add failed') }
   // verify judged this tree with waivers applied: the git hooks would only run the same checks again.
-  if (git(['commit', '-q', '--no-verify', '-m', message]) === null) fail('git commit failed')
+  if (git(['commit', '-q', '--no-verify', '-m', message]) === null) { undo(false); fail('git commit failed') }
   if (!followUp) setActive(null)
   if (!remote) return out(`pr ${slug}: committed on ${branch}${followUp ? ' (follow-up)' : ''}; no origin remote, local only`)
   const retry = `gh pr create --title ${JSON.stringify(title)} --body-file .rig/changes/${slug}/pr.md`
-  if (git(['push', '--no-verify', '-u', 'origin', branch]) === null) fail(`committed on ${branch} but git push failed: push it${followUp ? '' : `, then run ${retry}`}`)
+  if (git(['push', '--no-verify', '-u', 'origin', branch]) === null) { undo(true); fail(`git push failed; ${followUp ? `the follow-up is committed on ${branch}: push it` : 'nothing was kept: fix the remote and rerun pr'}`) }
   if (followUp) return out(`pr ${slug}: follow-up pushed to ${branch}`)
   const url = openPr(slug, branch, title)
   if (!url) fail(`pushed ${branch} but gh pr create printed no PR url: run ${retry}`)

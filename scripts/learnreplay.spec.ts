@@ -73,3 +73,10 @@ test('a pattern that backtracks without end is stopped by a time limit and repor
   assert.equal(got.pass, false)
   assert.ok(Date.now() - started < 8000)
 })
+
+test('a rule that throws is reported as an error, not as a timeout', () => {
+  const repo = history()
+  const r = replayRule(repo, rule({ paths: 5 as unknown as string[] }), ['cart-add', 'cart-remove'], ALL)
+  assert.ok(r.error && !/timed out/.test(r.error), r.error)
+  assert.equal(r.pass, false)
+})

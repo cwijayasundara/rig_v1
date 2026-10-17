@@ -4,13 +4,13 @@
   "paths": { "ignore": ["**/*.md", "**/*.lock", "**/package-lock.json"], "tests": ["**/*.spec.ts", "**/e2e/**"], "testSupport": ["**/testing/**"] },
   "contracts": { "files": [], "validate": "", "run": "" },
   "sensors": [
-    { "id": "lint", "cmd": "npx --no-install ng lint", "cadence": "turn", "blocks": true, "count": "exit", "guide": "Angular lint must pass; fix the code rather than the rule." },
-    { "id": "types", "cmd": "npx --no-install tsc -p tsconfig.app.json --noEmit --pretty false", "cadence": "turn", "blocks": true, "count": "exit", "guide": "The app must typecheck before the turn ends." },
-    { "id": "unit", "cmd": "npx --no-install ng test --watch=false", "cadence": "turn", "blocks": true, "count": "exit", "guide": "Run the component and service specs before claiming done; fix the code, never the specs." },
-    { "id": "layers", "cmd": "npx --no-install depcruise src --output-type err", "cadence": "commit", "blocks": true, "count": "exit", "guide": "Respect the dependency rules between features, shared and core modules." },
-    { "id": "duplication", "cmd": "npx --yes jscpd@5 src --silent --threshold 5", "cadence": "commit", "blocks": false, "count": "exit", "guide": "Reuse existing components and services instead of copying them." },
-    { "id": "build", "cmd": "npx --no-install ng build", "cadence": "ci", "blocks": true, "count": "exit", "guide": "The production build must succeed." },
-    { "id": "audit", "cmd": "npm audit --audit-level=high", "cadence": "ci", "blocks": false, "count": "exit", "guide": "Do not add dependencies with known high-severity vulnerabilities." },
-    { "id": "mutation", "cmd": "npx --no-install stryker run", "cadence": "nightly", "blocks": false, "count": "exit", "guide": "Specs must assert behaviour so that changing the code makes them fail." }
+    { "id": "lint", "cmd": "npx --no-install ng lint", "cadence": "turn", "blocks": true, "guide": "Angular lint must pass; fix the code rather than the rule." },
+    { "id": "types", "cmd": "npx --no-install tsc -p tsconfig.app.json --noEmit --pretty false", "cadence": "turn", "blocks": true, "guide": "The app must typecheck before the turn ends." },
+    { "id": "unit", "cmd": "npx --no-install ng test --watch=false", "cadence": "turn", "blocks": true, "guide": "Run the component and service specs before claiming done; fix the code, never the specs." },
+    { "id": "layers", "cmd": "npx --no-install depcruise src --output-type err", "cadence": "commit", "blocks": true, "guide": "Respect the dependency rules between features, shared and core modules." },
+    { "id": "duplication", "cmd": "npx --yes jscpd@5 src --silent --threshold 5", "cadence": "commit", "blocks": false, "guide": "Reuse existing components and services instead of copying them." },
+    { "id": "build", "cmd": "npx --no-install ng build", "cadence": "ci", "blocks": true, "guide": "The production build must succeed." },
+    { "id": "audit", "cmd": "npm audit --audit-level=high", "cadence": "ci", "blocks": false, "guide": "Do not add dependencies with known high-severity vulnerabilities." },
+    { "id": "mutation", "cmd": "npx --no-install stryker run", "cadence": "nightly", "blocks": false, "guide": "Specs must assert behaviour so that changing the code makes them fail." }
   ]
 }
