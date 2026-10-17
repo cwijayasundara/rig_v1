@@ -21,7 +21,7 @@ Five behaviours. Each one is a thing Claude Code does not reliably do alone.
 
 ## The rules that keep it thin
 
-These come from the research (`docs/research/`, `reports/`, `research_notes/`) and from the one week this repo cost $1k.
+These come from the research (`docs/research/`) and from the one week this repo cost $1k.
 
 1. **Native first.** Before writing anything, check whether Claude Code does it: plan mode, skills, subagents, hooks, plugins,
    `.claude/rules` with `paths:`, auto memory, `/code-review`, `/security-review`, `/goal`, `/loop`, routines, `claude-code-action`,
