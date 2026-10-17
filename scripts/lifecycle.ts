@@ -36,9 +36,9 @@ export function setActive(slug: string | null): void {
 export const toType = (raw: string | undefined): ChangeType => ((TYPES as readonly string[]).includes(raw ?? '') ? (raw as ChangeType) : LEGACY[raw ?? ''] ?? 'feature')
 export const changeType = (slug: string): ChangeType => toType(frontmatter(read(file(slug, 'intent.md'))).data.type)
 
-export function newChange(slug: string, type: ChangeType, title: string): void {
+export function newChange(slug: string, type: ChangeType, title: string, source?: string): void {
   fs.mkdirSync(changeDir(slug), { recursive: true })
-  fs.writeFileSync(file(slug, 'intent.md'), `---\nslug: ${slug}\ntype: ${type}\n---\n# ${title}\n\n## Intent\n\n## Open questions\nnone\n`)
+  fs.writeFileSync(file(slug, 'intent.md'), `---\nslug: ${slug}\ntype: ${type}\n${source ? `source: ${source}\n` : ''}---\n# ${title}\n\n## Intent\n\n## Open questions\nnone\n`)
   setActive(slug)
 }
 
@@ -77,7 +77,7 @@ export const verifyFresh = (slug: string, tree: string | null): boolean => { con
 // Shipped: its pr.md is on the trunk (HEAD itself when the trunk is checked out, where defaultBase has nothing to compare).
 // One ls-tree per process, however many changes status walks.
 let shippedOnTrunk: Set<string> | null = null
-function isShipped(slug: string): boolean {
+export function isShipped(slug: string): boolean {
   if (!shippedOnTrunk) {
     const base = defaultBase() ?? (['main', 'master'].includes(git(['rev-parse', '--abbrev-ref', 'HEAD']) ?? '') ? 'HEAD' : null)
     const files = base ? (git(['ls-tree', '-r', '--name-only', base, '--', '.rig/changes']) ?? '').split('\n') : []

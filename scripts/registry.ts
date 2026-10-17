@@ -16,7 +16,7 @@ export type RegistrySensor = { id: string; cmd?: string; builtin?: true; cadence
 export type Paths = { tests: string[]; testSupport: string[]; fixtures: string[]; ignore: string[] }
 export type Contracts = { files: string[]; covers: string[]; validate: string; run: string }
 type Policy = Record<string, Mode> & { default: Mode }
-export type Registry = { stack: string | null; gates: { plan: boolean; merge: boolean }; contracts: Contracts; models: { build: string; evaluate: string }; paths: Paths; sensors: RegistrySensor[]; knownRed: string[]; policy: Policy }
+export type Registry = { stack: string | null; gates: { plan: boolean; merge: boolean }; contracts: Contracts; models: { build: string; evaluate: string; design: string }; paths: Paths; sensors: RegistrySensor[]; knownRed: string[]; policy: Policy }
 
 type Base = { cadence: Cadence; blocks: boolean; guide: string }
 const BUILTIN_DEFAULTS: Record<BuiltinId, Base> = {
@@ -51,7 +51,7 @@ export function defaultRegistry(): Registry {
     stack: null,
     gates: { plan: true, merge: true },
     contracts: { files: [], covers: [], validate: '', run: '' },
-    models: { build: 'sonnet', evaluate: 'opus' },
+    models: { build: 'sonnet', evaluate: 'opus', design: 'opus' },
     paths: { tests: [...GENERIC_TESTS], testSupport: [], fixtures: [], ignore: ['**/*.md', '**/*.lock'] },
     sensors: BUILTIN_IDS.map(builtinSensor),
     knownRed: [],
@@ -143,10 +143,10 @@ function parseSections(value: Record<string, unknown>, r: Registry, errors: stri
   }
   if ('models' in value) {
     const m = value.models
-    if (!isObject(m)) errors.push('models must be { build?: string, evaluate?: string }')
+    if (!isObject(m)) errors.push('models must be { build?: string, evaluate?: string, design?: string }')
     else for (const [k, v] of Object.entries(m)) {
-      if ((k === 'build' || k === 'evaluate') && typeof v === 'string' && v.trim()) r.models[k] = v.trim()
-      else errors.push(`models.${k} must be build or evaluate, a model name`)
+      if ((k === 'build' || k === 'evaluate' || k === 'design') && typeof v === 'string' && v.trim()) r.models[k] = v.trim()
+      else errors.push(`models.${k} must be build, evaluate or design, a model name`)
     }
   }
   if ('paths' in value) {

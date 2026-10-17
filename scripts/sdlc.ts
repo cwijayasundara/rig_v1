@@ -23,6 +23,7 @@ import { cmdPr } from './pr.ts'
 import { treeStamp } from './stamp.ts'
 import { declareStack } from './stackinit.ts'
 import { cmdSync } from './sync.ts'
+import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, prdPath, chartFiles } from './chart.ts'
 import { TYPES, toType, changeDir, newChange, setActive, activeSlug, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
 
 // ---------- commands ----------
@@ -51,15 +52,25 @@ function cmdInit(args: Args): void {
 
 function cmdNew(args: Args): void {
   const slug = args.pos[0] ?? ''
-  if (!SLUG_RE.test(slug)) fail(`usage: new <kebab-slug> [--type ${TYPES.join('|')}] [--title "..."]`)
+  if (!SLUG_RE.test(slug)) fail(`usage: new <kebab-slug> [--type ${TYPES.join('|')}] [--title "..."] [--source .rig/product/intents/<slug>.md]`)
   const raw = optString(args, 'type') ?? 'feature'
   // The four types, plus the older names toType folds in (greenfield, incident, migration, spike).
   if (![...TYPES, 'greenfield', 'incident', 'migration', 'spike'].includes(raw)) fail(`usage: new <slug> [--type ${TYPES.join('|')}] [--title "..."]`)
   if (exists(changeDir(slug))) fail(`${slug} already exists: /rig:start ${slug} continues it`)
+  const source = optString(args, 'source')
+  if (source) {
+    const rel = toPosix(path.relative(ROOT, path.resolve(ROOT, source)))
+    if (rel !== `.rig/product/intents/${slug}.md`) fail(`the slug must equal the intent's: new ${slug} --source ${rel} (expected .rig/product/intents/${slug}.md)`)
+    const ready = intentReady(slug)
+    if (!ready.ready) fail(`${slug} cannot start:\n${ready.why.map(w => `  - ${w}`).join('\n')}`)
+  }
   if (!exists(SDLC)) cmdInit({ pos: [], opt: {} })
   ensureGitignore()
-  newChange(slug, toType(raw), optString(args, 'title') ?? slug)
-  out(`created .rig/changes/${slug}/intent.md (type ${toType(raw)}); ${slug} is the active change`)
+  const intent = source ? intentOf(slug) : null
+  const title = optString(args, 'title') ?? (source ? /^#\s+(.+)$/m.exec(read(path.resolve(ROOT, source)))?.[1] : undefined) ?? slug
+  newChange(slug, toType(raw), title, source && toPosix(path.relative(ROOT, path.resolve(ROOT, source))))
+  if (intent) fs.writeFileSync(path.join(changeDir(slug), 'spec.md'), `# Spec: ${title}\n\n## Behaviours\n${intent.behaviours.map(b => `- ${b.id}${b.reqs.length ? ` (${b.reqs.join(', ')})` : ''}: ${b.text}`).join('\n')}\n\n## Out of scope\n\n## Open questions\nnone\n`)
+  out(`created .rig/changes/${slug}/intent.md (type ${toType(raw)}); ${slug} is the active change${intent ? `; spec.md starts with the ${intent.behaviours.length} behaviour(s) of the intent` : ''}`)
 }
 
 function cmdActivate(args: Args): void {
@@ -91,6 +102,8 @@ const humanFallback = (cmd: string, usage: string): string => `! SDLC_HUMAN=1 no
 function cmdApprove(args: Args): void {
   if (process.env.SDLC_HUMAN !== '1') fail(`approvals are human-only: the person runs /rig:approve <slug>. If that command is not listed, restart Claude Code, or the person types: ${humanFallback('approve', '<slug>')}`, 3)
   const given = words(args)[0] // a second word (the old stage name) is ignored
+  const chart = CHART_RE.exec(given ?? '')?.[1]
+  if (chart) return approveChart(Number(chart), args)
   const slug = given ? checkSlug(given) : activeSlug()
   if (!slug || !exists(changeDir(slug))) fail('usage: approve <slug>')
   const refusal = approvalRefusal(slug)
@@ -100,6 +113,34 @@ function cmdApprove(args: Args): void {
   const a = writeApproval(slug, by)
   const n = Object.keys(a.contracts).length
   out(`approved ${slug} by ${by}: spec.md and plan.md${n ? `, ${n} contract file(s) frozen` : ''}. Next: /rig:build ${slug}`)
+}
+
+function approveChart(n: number, args: Args): void {
+  if (!exists(prdPath(n))) fail(`no PRD for sprint ${n}: write .rig/product/prd/sprint-${n}.md first`)
+  const block = chartFindings(n, true).filter(f => f.severity === 'block')
+  if (block.length) fail(`chart-${n} has ${block.length} blocking finding(s); fix them, then approve:\n${block.map(f => `  [${f.rule}] ${f.message}`).join('\n')}`)
+  if (chartState(n).state === 'approved') return out(`chart-${n} is already approved`)
+  const by = optString(args, 'by') || whoami() || 'unknown'
+  writeChartApproval(n, by)
+  out(`approved chart-${n} by ${by}: ${chartFiles(n).length} file(s). Next: engineers run \`ready\` to see which intents can start, then ${skillRef('start')} .rig/product/intents/<slug>.md`)
+}
+
+function cmdChart(args: Args): void {
+  const [sub, num] = args.pos
+  if ((sub !== 'check' && sub !== 'report') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: chart (check [--cases] [--json] | report) <sprint number>')
+  const n = Number(num)
+  if (!exists(prdPath(n))) fail(`no PRD for sprint ${n}: write .rig/product/prd/sprint-${n}.md first`)
+  if (sub === 'report') return out(chartReport(n))
+  const found = chartFindings(n, Boolean(args.opt.cases))
+  if (args.opt.json) return out(JSON.stringify(found))
+  const block = found.filter(f => f.severity === 'block')
+  out([...found.map(f => `[${f.rule}] ${f.severity === 'report' ? '(report) ' : ''}${f.message}`), `chart-${n}: ${block.length ? `${block.length} blocking finding(s)` : 'no blocking findings'}`].join('\n'))
+}
+
+function cmdReady(args: Args): void {
+  const ready = readyIntents()
+  if (args.opt.json) return out(JSON.stringify(ready))
+  out(ready.length ? ready.map(i => `${i.slug.padEnd(28)} sprint ${i.sprint}  ${i.estimateDays ?? '?'} day(s)`).join('\n') : 'no intents are ready')
 }
 
 function cmdSecrets(args: Args): void {
@@ -214,6 +255,8 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   activate: cmdActivate,
   status: cmdStatus,
   approve: cmdApprove,
+  chart: cmdChart,
+  ready: cmdReady,
   pr: cmdPr,
   run: () => cmdRun(),
   verify: cmdVerify,

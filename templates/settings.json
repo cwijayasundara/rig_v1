@@ -27,6 +27,8 @@
       "Skill(rig:rule)",
       "Skill(rig:rule *)",
       "Skill(rig-rule)", "Skill(rig-rule *)",
+      "Skill(rig:chart)", "Skill(rig:chart *)", "Skill(rig-chart)", "Skill(rig-chart *)",
+      "Skill(rig:testplan)", "Skill(rig:testplan *)", "Skill(rig-testplan)", "Skill(rig-testplan *)",
       "Bash(gh pr comment *)",
       "Bash(gh pr view *)"
     ],
@@ -52,6 +54,7 @@
       "Edit(.env)",
       "Edit(.env.*)",
       "Edit(/.rig/changes/*/approval.json)",
+      "Edit(/.rig/product/approvals/**)",
       "Edit(/.rig/waivers.jsonl)",
       "Edit(/.rig/.gate)",
       "Edit(/.rig/.baseline)",

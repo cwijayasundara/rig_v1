@@ -1,0 +1,8 @@
+openapi: 3.0.3
+info: { title: stock, version: "1" }
+paths:
+  /stock/{sku}:
+    get:
+      responses:
+        "200": { description: the stock level }
+        "404": { description: unknown SKU }

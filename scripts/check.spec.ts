@@ -351,6 +351,15 @@ test('CI runs a behavioral command that is also a full command once, not twice',
   assert.equal(fs.readFileSync(marker, 'utf8').length, 1)
 })
 
+test('CI lists a sprint chart approval the PR adds, for human review', () => {
+  gitIn(repo, 'checkout', '-qb', 'pr')
+  write(repo, '.rig/product/approvals/chart-3.json', JSON.stringify({ by: 'Mallory', at: '2026-10-03T00:00:00Z', digest: 'x', files: [] }))
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', 'pr')
+  const json = JSON.parse(sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main', '--json']).stdout)
+  assert.deepEqual(json.humanRows, ['approval chart-3 by Mallory'])
+})
+
 test('I4: CI lists every waiver and approval row the PR adds, for human review', () => {
   gitIn(repo, 'checkout', '-qb', 'pr')
   sdlc(repo, ['new', 'tiny', '--type', 'chore'])

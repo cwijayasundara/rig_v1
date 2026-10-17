@@ -6,8 +6,10 @@
       "Edit(.rig/**)", "Bash(node --disable-warning=ExperimentalWarning .rig/bin/sdlc.ts *)",
       "Skill(rig:start)", "Skill(rig:start *)", "Skill(rig:plan)", "Skill(rig:plan *)", "Skill(rig:build)", "Skill(rig:build *)",
       "Skill(rig:test)", "Skill(rig:test *)", "Skill(rig:pr)", "Skill(rig:pr *)", "Skill(rig:rule)", "Skill(rig:rule *)",
+      "Skill(rig:chart)", "Skill(rig:chart *)", "Skill(rig:testplan)", "Skill(rig:testplan *)",
       "Skill(rig-start)", "Skill(rig-start *)", "Skill(rig-plan)", "Skill(rig-plan *)", "Skill(rig-build)", "Skill(rig-build *)",
       "Skill(rig-test)", "Skill(rig-test *)", "Skill(rig-pr)", "Skill(rig-pr *)", "Skill(rig-rule)", "Skill(rig-rule *)",
+      "Skill(rig-chart)", "Skill(rig-chart *)", "Skill(rig-testplan)", "Skill(rig-testplan *)",
       "Bash(gh pr comment *)", "Bash(gh pr view *)"
     ],
     "ask": [
@@ -20,7 +22,7 @@
     "deny": [
       "Read(.env*)", "Read(./secrets/**)", "WebFetch", "Bash(curl *)", "Bash(wget *)",
       "Read(.env)", "Read(.env.*)", "Edit(.env)", "Edit(.env.*)",
-      "Edit(./.rig/changes/*/approval.json)", "Edit(./.rig/waivers.jsonl)", "Edit(./.rig/gates.jsonl)",
+      "Edit(./.rig/changes/*/approval.json)", "Edit(./.rig/product/approvals/**)", "Edit(./.rig/waivers.jsonl)", "Edit(./.rig/gates.jsonl)",
       "Edit(./.rig/.gate)", "Edit(./.rig/.baseline)", "Edit(./.rig/unresolved.json)",
       "Edit(./.rig/changes/*/evidence/runs.jsonl)", "Edit(./.rig/changes/*/verify.json)",
       "Edit(./.rig/changes/*/impact.json)", "Edit(./.rig/changes/*/ratchet.json)", "Edit(./.rig/changes/*/events.jsonl)",
