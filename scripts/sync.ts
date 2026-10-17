@@ -2,7 +2,8 @@
 // checks that keep guides, sensors and the brief's behaviours in step. Text outside the block is the team's and never touched.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SDLC, read, sha, git, out, fail, sanctionWrites, type Args } from './core.ts'
+import { ROOT, SDLC, CHANGES, read, sha, git, out, fail, sanctionWrites, frontmatter, listChanges, type Args } from './core.ts'
+import { parseIntent, intentSpecProblems } from './chartcheck.ts'
 import { parseRegistry, isRegistryShape, type Registry } from './registry.ts'
 import { behaviourIds, missingBehaviours } from './sensors.ts'
 import { matchesAny, type Finding, type Severity } from './model.ts'
@@ -55,10 +56,15 @@ const testsText = (r: Registry): string => (git(['ls-files', '--cached', '--othe
 // what verify and CI hold to its tests.
 export function syncFindings(registry: Registry, errors: string[], severity: Severity): Finding[] {
   const brief = read(path.join(ROOT, BRIEF))
-  return syncProblems({ registry, errors, claude: read(path.join(ROOT, CLAUDE_MD)), brief, tests: brief ? testsText(registry) : '' }).map(message => {
+  const intentSpec = (): Finding[] => listChanges().flatMap(slug => {
+    const source = frontmatter(read(path.join(CHANGES, slug, 'intent.md'))).data.source
+    const text = source ? read(path.join(ROOT, source)) : ''
+    return !text ? [] : intentSpecProblems(parseIntent(slug, text), read(path.join(CHANGES, slug, 'spec.md'))).map((message): Finding => ({ sensor: 'sync', severity, file: `.rig/changes/${slug}/spec.md`, message, fix: 'restore the behaviour in spec.md, or ask the architect to change the intent (the chart then needs a new approval)' }))
+  })
+  return [...intentSpec(), ...syncProblems({ registry, errors, claude: read(path.join(ROOT, CLAUDE_MD)), brief, tests: brief ? testsText(registry) : '' }).map(message => {
     const ofBrief = message.startsWith(BRIEF)
     return { sensor: 'sync', severity: ofBrief ? 'warn' : severity, file: ofBrief ? BRIEF : CLAUDE_MD, message, fix: ofBrief ? 'add a test whose name or comment says the B-number and proves it' : 'run rig sync (sdlc.ts sync); never edit the block by hand' }
-  })
+  })]
 }
 
 export function writeSync(registry: Registry): string {

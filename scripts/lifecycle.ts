@@ -36,9 +36,9 @@ export function setActive(slug: string | null): void {
 export const toType = (raw: string | undefined): ChangeType => ((TYPES as readonly string[]).includes(raw ?? '') ? (raw as ChangeType) : LEGACY[raw ?? ''] ?? 'feature')
 export const changeType = (slug: string): ChangeType => toType(frontmatter(read(file(slug, 'intent.md'))).data.type)
 
-export function newChange(slug: string, type: ChangeType, title: string): void {
+export function newChange(slug: string, type: ChangeType, title: string, source?: string): void {
   fs.mkdirSync(changeDir(slug), { recursive: true })
-  fs.writeFileSync(file(slug, 'intent.md'), `---\nslug: ${slug}\ntype: ${type}\n---\n# ${title}\n\n## Intent\n\n## Open questions\nnone\n`)
+  fs.writeFileSync(file(slug, 'intent.md'), `---\nslug: ${slug}\ntype: ${type}\n${source ? `source: ${source}\n` : ''}---\n# ${title}\n\n## Intent\n\n## Open questions\nnone\n`)
   setActive(slug)
 }
 

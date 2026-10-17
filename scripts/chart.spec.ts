@@ -24,7 +24,7 @@ const intent = (n: number, o: { depends?: string; iface?: string; req?: string }
   `---\nsprint: ${n}\nprd: [${o.req ?? `FR-${n}`}]\ndepends: ${o.depends ?? '[]'}\nestimate_days: 1\nkind: ${o.iface ? 'boundary' : 'internal'}\n---\n# i\n\n## Interfaces\n${o.iface ?? 'none'}\n\n## Behaviours\n- B1 (${o.req ?? `FR-${n}`}): works\n\n## Open questions\nnone\n`
 const chart1 = (): void => {
   write(repo, `${P}/prd/sprint-1.md`, prd(1))
-  write(repo, `${P}/intents/a.md`, intent(1))
+  write(repo, `${P}/intents/alpha.md`, intent(1))
   write(repo, `${P}/architecture.md`, '# Architecture\n\n## Concerns\nnone\n\n## Open questions\nnone\n')
 }
 const files = (n: number): unknown => call(`return C.chartFiles(${n})`)
@@ -32,28 +32,28 @@ const state = (n: number): { state: string; changed: string[] } => call(`return 
 
 test('the digest changes when a sprint file is edited, added or removed, and not for another sprint intent', () => {
   chart1()
-  write(repo, `${P}/intents/z.md`, intent(2))
+  write(repo, `${P}/intents/zeta.md`, intent(2))
   const d = (): unknown => call('return C.chartDigest(1)')
   const base = d()
-  write(repo, `${P}/intents/z.md`, intent(2) + '\nmore\n')
+  write(repo, `${P}/intents/zeta.md`, intent(2) + '\nmore\n')
   assert.equal(d(), base, 'a sprint 2 intent is not part of sprint 1')
-  write(repo, `${P}/intents/a.md`, intent(1) + '\nmore\n')
+  write(repo, `${P}/intents/alpha.md`, intent(1) + '\nmore\n')
   const edited = d()
   assert.notEqual(edited, base)
-  write(repo, `${P}/intents/b.md`, intent(1, { req: 'FR-1' }))
+  write(repo, `${P}/intents/beta.md`, intent(1, { req: 'FR-1' }))
   const added = d()
   assert.notEqual(added, edited)
-  fs.rmSync(path.join(repo, `${P}/intents/b.md`))
+  fs.rmSync(path.join(repo, `${P}/intents/beta.md`))
   assert.equal(d(), edited)
-  assert.deepEqual(files(1), [`${P}/architecture.md`, `${P}/intents/a.md`, `${P}/prd/sprint-1.md`])
+  assert.deepEqual(files(1), [`${P}/architecture.md`, `${P}/intents/alpha.md`, `${P}/prd/sprint-1.md`])
 })
 
 test('contract and example files an intent names are part of its sprint', () => {
   chart1()
   write(repo, 'api/x.yaml', 'openapi: 3\n')
   write(repo, 'api/ex.json', '{}\n')
-  write(repo, `${P}/intents/a.md`, intent(1, { iface: 'Contract: api/x.yaml\nExample: api/ex.json\n' }))
-  assert.deepEqual(files(1), [`${P}/architecture.md`, `${P}/intents/a.md`, `${P}/prd/sprint-1.md`, 'api/ex.json', 'api/x.yaml'])
+  write(repo, `${P}/intents/alpha.md`, intent(1, { iface: 'Contract: api/x.yaml\nExample: api/ex.json\n' }))
+  assert.deepEqual(files(1), [`${P}/architecture.md`, `${P}/intents/alpha.md`, `${P}/prd/sprint-1.md`, 'api/ex.json', 'api/x.yaml'])
 })
 
 test('an approval is missing, then approved, then stale after an edit that names the file', () => {
@@ -62,10 +62,10 @@ test('an approval is missing, then approved, then stale after an edit that names
   call(`C.writeChartApproval(1, 'Pat')`)
   assert.equal(state(1).state, 'approved')
   assert.equal(JSON.parse(fs.readFileSync(path.join(repo, `${P}/approvals/chart-1.json`), 'utf8')).by, 'Pat')
-  write(repo, `${P}/intents/a.md`, intent(1) + '\nedit\n')
-  assert.deepEqual(state(1), { state: 'stale', changed: [`${P}/intents/a.md`] })
-  write(repo, `${P}/intents/z.md`, intent(2))
-  assert.deepEqual(state(1).changed, [`${P}/intents/a.md`], 'another sprint does not change it')
+  write(repo, `${P}/intents/alpha.md`, intent(1) + '\nedit\n')
+  assert.deepEqual(state(1), { state: 'stale', changed: [`${P}/intents/alpha.md`] })
+  write(repo, `${P}/intents/zeta.md`, intent(2))
+  assert.deepEqual(state(1).changed, [`${P}/intents/alpha.md`], 'another sprint does not change it')
 })
 
 test('a hand-edited or garbage approval file reads as missing and never throws', () => {
@@ -82,7 +82,7 @@ test('a later sprint editing the shared architecture leaves sprint 1 approved on
   write(repo, `${P}/architecture.md`, '# Architecture\n\nchanged for sprint 2\n\n## Concerns\nnone\n\n## Open questions\nnone\n')
   assert.deepEqual(state(1), { state: 'stale', changed: [`${P}/architecture.md`] })
   write(repo, `${P}/prd/sprint-2.md`, prd(2))
-  write(repo, `${P}/intents/z.md`, intent(2))
+  write(repo, `${P}/intents/zeta.md`, intent(2))
   call(`C.writeChartApproval(2, 'Pat')`)
   assert.equal(state(1).state, 'approved')
 })
@@ -92,7 +92,7 @@ test('chartFindings runs the trace rules over the files and adds concerns and ar
   assert.deepEqual(call('return C.chartFindings(1, false)'), [])
   const withCases = call('return C.chartFindings(1, true)') as { rule: string; where: string }[]
   assert.deepEqual(withCases.map(f => f.rule), ['req-untested'], 'no cases.md yet')
-  write(repo, `${P}/testplan/cases.md`, '| ID | Req | Intent | B | Level | Data | Expected |\n| TC-1 | FR-1 | a | B1 | unit | data/x.json | ok |\n')
+  write(repo, `${P}/testplan/cases.md`, '| ID | Req | Intent | B | Level | Data | Expected |\n| TC-1 | FR-1 | alpha | B1 | unit | data/x.json | ok |\n')
   assert.deepEqual((call('return C.chartFindings(1, true)') as { rule: string }[]).map(f => f.rule), ['case-data-missing'])
   write(repo, `${P}/testplan/data/x.json`, '{}\n')
   assert.deepEqual(call('return C.chartFindings(1, true)'), [])
@@ -102,20 +102,20 @@ test('chartFindings runs the trace rules over the files and adds concerns and ar
 
 test('intentReady explains why not: unapproved, stale, blocked by an unshipped dependency, already started', () => {
   chart1()
-  write(repo, `${P}/intents/b.md`, intent(1, { depends: '[a]' }))
+  write(repo, `${P}/intents/beta.md`, intent(1, { depends: '[alpha]' }))
   const ready = (slug: string): { ready: boolean; why: string[] } => call(`return C.intentReady(${JSON.stringify(slug)})`) as { ready: boolean; why: string[] }
-  assert.deepEqual(ready('a'), { ready: false, why: ['chart-1 is not approved'] })
+  assert.deepEqual(ready('alpha'), { ready: false, why: ['chart-1 is not approved'] })
   call(`C.writeChartApproval(1, 'Pat')`)
-  assert.deepEqual(ready('a'), { ready: true, why: [] })
-  assert.deepEqual(ready('b'), { ready: false, why: ['blocked by a'] })
-  write(repo, '.rig/changes/a/pr.md', 'x\n')
-  gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'ship a')
-  assert.deepEqual(ready('b'), { ready: true, why: [] }, 'a is shipped once its pr.md is on the trunk')
-  assert.deepEqual(ready('a'), { ready: false, why: ['already started'] })
-  write(repo, `${P}/intents/b.md`, intent(1, { depends: '[a]' }) + '\nedit\n')
-  const stale = ready('b')
+  assert.deepEqual(ready('alpha'), { ready: true, why: [] })
+  assert.deepEqual(ready('beta'), { ready: false, why: ['blocked by alpha'] })
+  write(repo, '.rig/changes/alpha/pr.md', 'x\n')
+  gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'ship alpha')
+  assert.deepEqual(ready('beta'), { ready: true, why: [] }, 'a is shipped once its pr.md is on the trunk')
+  assert.deepEqual(ready('alpha'), { ready: false, why: ['already started'] })
+  write(repo, `${P}/intents/beta.md`, intent(1, { depends: '[alpha]' }) + '\nedit\n')
+  const stale = ready('beta')
   assert.equal(stale.ready, false)
-  assert.match(stale.why[0] ?? '', /^chart-1 is stale: run \/rig:approve chart-1 after reviewing \(changed: .*intents\/b\.md\)$/)
+  assert.match(stale.why[0] ?? '', /^chart-1 is stale: run \/rig:approve chart-1 after reviewing \(changed: .*intents\/beta\.md\)$/)
   assert.deepEqual(ready('ghost'), { ready: false, why: ['no such intent: ghost'] })
 })
 
@@ -123,7 +123,7 @@ test('intentReady explains why not: unapproved, stale, blocked by an unshipped d
 const HUMAN = { env: { SDLC_HUMAN: '1' } }
 const cleanChart = (): void => {
   chart1()
-  write(repo, `${P}/testplan/cases.md`, '| ID | Req | Intent | B | Level | Data | Expected |\n| TC-1 | FR-1 | a | B1 | unit | - | ok |\n')
+  write(repo, `${P}/testplan/cases.md`, '| ID | Req | Intent | B | Level | Data | Expected |\n| TC-1 | FR-1 | alpha | B1 | unit | - | ok |\n')
 }
 
 test('chart check prints findings, as JSON on request, and fails only when the PRD is missing', () => {
@@ -138,12 +138,12 @@ test('chart check prints findings, as JSON on request, and fails only when the P
 test('approve chart-N is human-only, refuses while a block finding stands, and is idempotent', () => {
   cleanChart()
   assert.equal(sdlc(repo, ['approve', 'chart-1']).code, 3)
-  write(repo, `${P}/intents/a.md`, intent(1, { req: 'FR-1' }).replace('estimate_days: 1', 'estimate_days: 5'))
+  write(repo, `${P}/intents/alpha.md`, intent(1, { req: 'FR-1' }).replace('estimate_days: 1', 'estimate_days: 5'))
   const refused = sdlc(repo, ['approve', 'chart-1'], HUMAN)
   assert.equal(refused.code, 1)
   assert.match(refused.stderr, /estimate/)
   assert.ok(!fs.existsSync(path.join(repo, `${P}/approvals/chart-1.json`)))
-  write(repo, `${P}/intents/a.md`, intent(1))
+  write(repo, `${P}/intents/alpha.md`, intent(1))
   const ok = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
   assert.equal(ok.code, 0, ok.stderr)
   assert.match(ok.stdout, /approved chart-1 by Pat/)
@@ -153,10 +153,64 @@ test('approve chart-N is human-only, refuses while a block finding stands, and i
 
 test('ready lists the intents that can start and leaves out the blocked ones', () => {
   cleanChart()
-  write(repo, `${P}/intents/b.md`, intent(1, { depends: '[a]' }))
-  write(repo, `${P}/testplan/cases.md`, '| ID | Req | Intent | B | Level | Data | Expected |\n| TC-1 | FR-1 | a | B1 | unit | - | ok |\n| TC-2 | FR-1 | b | B1 | unit | - | ok |\n')
+  write(repo, `${P}/intents/beta.md`, intent(1, { depends: '[alpha]' }))
+  write(repo, `${P}/testplan/cases.md`, '| ID | Req | Intent | B | Level | Data | Expected |\n| TC-1 | FR-1 | alpha | B1 | unit | - | ok |\n| TC-2 | FR-1 | beta | B1 | unit | - | ok |\n')
   assert.equal(sdlc(repo, ['approve', 'chart-1'], HUMAN).code, 0)
   const r = sdlc(repo, ['ready', '--json'])
-  assert.deepEqual((JSON.parse(r.stdout) as { slug: string }[]).map(i => i.slug), ['a'])
-  assert.match(sdlc(repo, ['ready']).stdout, /a\s+sprint 1\s+1 day/)
+  assert.deepEqual((JSON.parse(r.stdout) as { slug: string }[]).map(i => i.slug), ['alpha'])
+  assert.match(sdlc(repo, ['ready']).stdout, /alpha\s+sprint 1\s+1 day/)
+})
+
+// new --source links a change to its intent; sync keeps the change's spec.md faithful to it.
+const startable = (): void => {
+  cleanChart()
+  assert.equal(sdlc(repo, ['approve', 'chart-1'], HUMAN).code, 0)
+}
+const SRC = `${P}/intents/alpha.md`
+
+test('new --source refuses an intent that cannot start, naming why', () => {
+  cleanChart()
+  const r = sdlc(repo, ['new', 'alpha', '--source', SRC])
+  assert.equal(r.code, 1)
+  assert.match(r.stderr, /chart-1 is not approved/)
+  assert.ok(!fs.existsSync(path.join(repo, '.rig/changes/alpha')))
+})
+
+test('new --source needs the slug of the intent', () => {
+  startable()
+  const r = sdlc(repo, ['new', 'other', '--source', SRC])
+  assert.equal(r.code, 1)
+  assert.match(r.stderr, /slug must equal the intent's/)
+})
+
+test('new --source starts the change: source recorded, behaviours copied into spec.md', () => {
+  startable()
+  const r = sdlc(repo, ['new', 'alpha', '--source', SRC])
+  assert.equal(r.code, 0, r.stderr)
+  assert.match(fs.readFileSync(path.join(repo, '.rig/changes/alpha/intent.md'), 'utf8'), new RegExp(`^source: ${SRC.replace(/\./g, '\\.')}$`, 'm'))
+  assert.match(fs.readFileSync(path.join(repo, '.rig/changes/alpha/spec.md'), 'utf8'), /## Behaviours\n- B1 \(FR-1\): works\n/)
+})
+
+test('a started change keeps going after its chart goes stale; a new start is refused', () => {
+  cleanChart()
+  write(repo, `${P}/intents/beta.md`, intent(1, { req: 'FR-1' }))
+  assert.equal(sdlc(repo, ['approve', 'chart-1'], HUMAN).code, 0)
+  assert.equal(sdlc(repo, ['new', 'alpha', '--source', SRC]).code, 0)
+  write(repo, `${P}/intents/beta.md`, intent(1, { req: 'FR-1' }) + '\nedit\n')
+  assert.match(sdlc(repo, ['status']).stdout, /alpha\s+feature\s+plan/)
+  const r = sdlc(repo, ['new', 'beta', '--source', `${P}/intents/beta.md`])
+  assert.equal(r.code, 1)
+  assert.match(r.stderr, /chart-1 is stale/)
+})
+
+test('sync --check blocks a change whose spec.md dropped a behaviour of its intent', () => {
+  startable()
+  write(repo, '.rig/sensors.json', '{"sensors":[]}\n')
+  assert.equal(sdlc(repo, ['new', 'alpha', '--source', SRC]).code, 0)
+  assert.equal(sdlc(repo, ['sync']).code, 0)
+  assert.equal(sdlc(repo, ['sync', '--check']).code, 0)
+  write(repo, '.rig/changes/alpha/spec.md', '# Spec\n\n## Behaviours\n- B9: something else\n\n## Open questions\nnone\n')
+  const r = sdlc(repo, ['sync', '--check'])
+  assert.equal(r.code, 1)
+  assert.match(r.stdout, /B1 of alpha is missing from spec\.md/)
 })

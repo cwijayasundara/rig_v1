@@ -32,19 +32,23 @@ export function prdIds(text: string): string[] {
   return [...ids].sort()
 }
 
+// `- B1 (FR-3, NFR-1): text` lines under `## Behaviours`, in an intent or a change's spec.md.
+export function parseBehaviours(text: string): Behaviour[] {
+  return section(text.replace(/\r\n/g, '\n'), 'Behaviours').split('\n').flatMap((l): Behaviour[] => {
+    const m = /^\s*[-*]\s+(B\d+)\s*(?:\(([^)]*)\))?\s*:?\s*(.*)$/.exec(l)
+    return m?.[1] ? [{ id: m[1], reqs: (m[2] ?? '').match(REQ) ?? [], text: (m[3] ?? '').trim() }] : []
+  })
+}
+
 export function parseIntent(slug: string, raw: string): Intent {
   const text = raw.replace(/\r\n/g, '\n')
   const { data } = frontmatter(text)
   const iface = section(text, 'Interfaces').split('\n')
   const files = (label: string): string[] => iface.flatMap(l => { const m = new RegExp(`^\\s*[-*]?\\s*${label}:\\s*(\\S+)`).exec(l); return m?.[1] ? [m[1]] : [] })
-  const behaviours = section(text, 'Behaviours').split('\n').flatMap((l): Behaviour[] => {
-    const m = /^\s*[-*]\s+(B\d+)\s*(?:\(([^)]*)\))?\s*:?\s*(.*)$/.exec(l)
-    return m?.[1] ? [{ id: m[1], reqs: (m[2] ?? '').match(REQ) ?? [], text: (m[3] ?? '').trim() }] : []
-  })
   return {
     slug, sprint: whole(data.sprint), prd: listField(data.prd), depends: listField(data.depends), estimateDays: whole(data.estimate_days),
     kind: data.kind === 'boundary' || data.kind === 'internal' ? data.kind : null,
-    behaviours, contractFiles: files('Contract'), exampleFiles: files('Example'), openQuestions: openQuestions(text),
+    behaviours: parseBehaviours(text), contractFiles: files('Contract'), exampleFiles: files('Example'), openQuestions: openQuestions(text),
   }
 }
 
@@ -97,4 +101,14 @@ export function traceReport(i: { prd: string; intents: Intent[]; cases: TestCase
   const days = i.intents.reduce((n, t) => n + (t.estimateDays ?? 0), 0)
   if (days > SPRINT_DAYS * engineers) add('capacity', 'sprint', `${days} intent-days against ${SPRINT_DAYS * engineers} available (${engineers} engineer${engineers === 1 ? '' : 's'} × ${SPRINT_DAYS} days)`, 'report')
   return out
+}
+
+// A change started from an intent keeps its behaviours (spec.md may drop the citations) and adds only ones that serve a requirement of the intent.
+export function intentSpecProblems(intent: Intent, spec: string): string[] {
+  const inSpec = parseBehaviours(spec)
+  const known = new Set(intent.behaviours.map(b => b.id))
+  return [
+    ...intent.behaviours.filter(b => !inSpec.some(x => x.id === b.id)).map(b => `${b.id} of ${intent.slug} is missing from spec.md`),
+    ...inSpec.filter(b => !known.has(b.id) && !b.reqs.some(r => intent.prd.includes(r))).map(b => `${b.id} is not in the intent ${intent.slug} and cites no requirement of ${intent.slug} (${intent.prd.join(', ') || 'none'})`),
+  ]
 }

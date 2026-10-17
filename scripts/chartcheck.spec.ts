@@ -1,7 +1,7 @@
 // The sprint chart's deterministic trace rules (outer-loop spec 2026-10-17 §7): no repo, no model, only text in and findings out.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { prdIds, parseIntent, parseCases, traceReport, type Intent, type TestCase } from './chartcheck.ts'
+import { prdIds, parseIntent, parseCases, traceReport, intentSpecProblems, type Intent, type TestCase } from './chartcheck.ts'
 
 const PRD = '---\nsprint: 1\nengineers: 1\n---\n# Sprint 1\n\n### FR-1: add\n### FR-2: remove\n| NFR-1 | fast |\n\nMentioned only in prose: FR-9.\n\n## Open questions\nnone\n'
 const intent = (slug: string, o: { prd?: string; depends?: string; days?: string; kind?: string; behaviours?: string; iface?: string; open?: string } = {}): string =>
@@ -106,4 +106,14 @@ test('capacity is a report: summed days above ten per engineer', () => {
   const big = Object.fromEntries(Array.from({ length: 6 }, (_, i) => [`i${i}`, intent(`i${i}`, { prd: '[FR-1]', days: '2' })]))
   const f = traceReport({ prd: PRD, intents: parse(big), cases: null, exists, engineers: 1 })
   assert.deepEqual(rules(f, 'report'), ['capacity'])
+})
+
+test('intentSpecProblems: a dropped intent behaviour, and an extra one that cites nothing the intent serves', () => {
+  const i = parseIntent('a', intent('a', { prd: '[FR-1]', behaviours: '- B1 (FR-1): adds\n- B2 (FR-1): more\n' }))
+  const spec = (lines: string): string => `# Spec\n\n## Behaviours\n${lines}\n## Open questions\nnone\n`
+  assert.deepEqual(intentSpecProblems(i, spec('- B1: adds\n- B2: more\n')), [])
+  assert.match(intentSpecProblems(i, spec('- B1: adds\n')).join('\n'), /B2 of a is missing from spec\.md/)
+  assert.deepEqual(intentSpecProblems(i, spec('- B1: adds\n- B2: more\n- B3 (FR-1): extra\n')), [], 'an extra that cites a requirement of the intent is fine')
+  assert.match(intentSpecProblems(i, spec('- B1: adds\n- B2: more\n- B3: extra\n')).join('\n'), /B3 .*cites no requirement of a/)
+  assert.match(intentSpecProblems(i, spec('- B1: adds\n- B2: more\n- B3 (FR-2): extra\n')).join('\n'), /B3 .*cites no requirement of a/)
 })

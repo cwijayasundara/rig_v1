@@ -23,7 +23,7 @@ import { cmdPr } from './pr.ts'
 import { treeStamp } from './stamp.ts'
 import { declareStack } from './stackinit.ts'
 import { cmdSync } from './sync.ts'
-import { CHART_RE, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, prdPath, chartFiles } from './chart.ts'
+import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, prdPath, chartFiles } from './chart.ts'
 import { TYPES, toType, changeDir, newChange, setActive, activeSlug, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
 
 // ---------- commands ----------
@@ -52,15 +52,25 @@ function cmdInit(args: Args): void {
 
 function cmdNew(args: Args): void {
   const slug = args.pos[0] ?? ''
-  if (!SLUG_RE.test(slug)) fail(`usage: new <kebab-slug> [--type ${TYPES.join('|')}] [--title "..."]`)
+  if (!SLUG_RE.test(slug)) fail(`usage: new <kebab-slug> [--type ${TYPES.join('|')}] [--title "..."] [--source .rig/product/intents/<slug>.md]`)
   const raw = optString(args, 'type') ?? 'feature'
   // The four types, plus the older names toType folds in (greenfield, incident, migration, spike).
   if (![...TYPES, 'greenfield', 'incident', 'migration', 'spike'].includes(raw)) fail(`usage: new <slug> [--type ${TYPES.join('|')}] [--title "..."]`)
   if (exists(changeDir(slug))) fail(`${slug} already exists: /rig:start ${slug} continues it`)
+  const source = optString(args, 'source')
+  if (source) {
+    const rel = toPosix(path.relative(ROOT, path.resolve(ROOT, source)))
+    if (rel !== `.rig/product/intents/${slug}.md`) fail(`the slug must equal the intent's: new ${slug} --source ${rel} (expected .rig/product/intents/${slug}.md)`)
+    const ready = intentReady(slug)
+    if (!ready.ready) fail(`${slug} cannot start:\n${ready.why.map(w => `  - ${w}`).join('\n')}`)
+  }
   if (!exists(SDLC)) cmdInit({ pos: [], opt: {} })
   ensureGitignore()
-  newChange(slug, toType(raw), optString(args, 'title') ?? slug)
-  out(`created .rig/changes/${slug}/intent.md (type ${toType(raw)}); ${slug} is the active change`)
+  const intent = source ? intentOf(slug) : null
+  const title = optString(args, 'title') ?? (source ? /^#\s+(.+)$/m.exec(read(path.resolve(ROOT, source)))?.[1] : undefined) ?? slug
+  newChange(slug, toType(raw), title, source && toPosix(path.relative(ROOT, path.resolve(ROOT, source))))
+  if (intent) fs.writeFileSync(path.join(changeDir(slug), 'spec.md'), `# Spec: ${title}\n\n## Behaviours\n${intent.behaviours.map(b => `- ${b.id}${b.reqs.length ? ` (${b.reqs.join(', ')})` : ''}: ${b.text}`).join('\n')}\n\n## Out of scope\n\n## Open questions\nnone\n`)
+  out(`created .rig/changes/${slug}/intent.md (type ${toType(raw)}); ${slug} is the active change${intent ? `; spec.md starts with the ${intent.behaviours.length} behaviour(s) of the intent` : ''}`)
 }
 
 function cmdActivate(args: Args): void {

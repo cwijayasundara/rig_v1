@@ -32,6 +32,7 @@ const rel = (abs: string[]): string[] => [...new Set(abs.filter(f => exists(f)).
 
 const allIntents = (): Intent[] => (exists(INTENTS) ? fs.readdirSync(INTENTS).filter(f => f.endsWith('.md') && !local(f)).sort().map(f => parseIntent(f.slice(0, -3), read(path.join(INTENTS, f)))) : [])
 export const intentsOf = (n: number): Intent[] => allIntents().filter(i => i.sprint === n)
+export const intentOf = (slug: string): Intent | null => allIntents().find(i => i.slug === slug) ?? null
 const intentFile = (slug: string): string => path.join(INTENTS, `${slug}.md`)
 
 export function ownFiles(n: number): string[] {
