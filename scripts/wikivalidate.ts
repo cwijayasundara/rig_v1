@@ -48,8 +48,8 @@ const rawTail = (line: string): string[] =>
   [...(/((?:\s*\[[^\]\s]+\])+)\s*$/.exec(line)?.[1] ?? '').matchAll(/\[([^\]\s]+)\]/g)].map(m => m[1]!)
 const escapes = (tok: string): boolean => !/^(adr|commit|pr):/.test(tok) && (tok.startsWith('/') || tok.split('#')[0]!.split('/').includes('..'))
 
-const ABBREV = /(?<!\be\.g|\bi\.e|\betc|\bvs|\bcf)[.!?]["')\]]?\s+[A-Z]/
-const prose = (line: string): string => line.replace(/\s*(\[[^\]\s]+\]\s*)+$/, '').replace(/^\s*(?:[-*+]|\d+\.)\s+/, '')
+const ABBREV = /(?<!\be\.g|\bi\.e|\betc|\bvs|\bcf|\bDr|\bMr|\bMrs|\bMs|\bProf|\bSt|\bNo|\b[A-Z])[.!?]["')\]]?\s+[A-Z]/
+const prose = (line: string): string => line.replace(/`[^`]*`/g, 'x').replace(/\s*(\[[^\]\s]+\]\s*)+$/, '').replace(/^\s*(?:[-*+]|\d+\.)\s+/, '')
 
 export function validatePage(text: string, env: PageEnv): WikiFinding[] {
   const out: WikiFinding[] = []

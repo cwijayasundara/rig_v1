@@ -1,7 +1,7 @@
 // Wiki page writing and claim review (wiki design 2026-10-17): the only model-facing code. Every call goes through a Runner, so the
 // logic around it (validate, rewrite once, review, drop, regenerate once) is tested with a scripted one.
 import { spawnSync } from 'node:child_process'
-import { findSymbol, type Cite } from './wikicite.ts'
+import { findSymbol, parseCites, type Cite } from './wikicite.ts'
 import { bodyLines, validatePage, type PageEnv, type WikiFinding } from './wikivalidate.ts'
 import { parseWikiConfig, type WikiConfig, type WikiPage } from './wikistate.ts'
 
@@ -21,7 +21,7 @@ export function estimateUsd(pages: number, sourceChars: number): number {
   return (inTok * PRICE_PER_MTOK.input + outTok * PRICE_PER_MTOK.output) / 1e6
 }
 
-// The real runner: a one-shot `claude -p` with no tools (the prompt carries the sources) and user settings only, so a target repo's
+// The real runner: a one-shot `claude -p` (prompt on stdin: sources can exceed an argv element) with no tools (the prompt carries the sources) and user settings only, so a target repo's
 // CLAUDE.md, hooks and plugins add nothing (measured 2026-10-17: $0.06 a call with them, $0.0005 without). Cost comes from its JSON result.
 export function claudeRunner(model: string = WIKI_MODEL): Runner {
   return ({ prompt }) => {
@@ -29,7 +29,7 @@ export function claudeRunner(model: string = WIKI_MODEL): Runner {
     const env = { ...process.env }
     for (const k of Object.keys(env)) if (k.startsWith('CLAUDE_CODE_MESSAGING_')) delete env[k]
     for (const k of ['CLAUDECODE', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_SSE_PORT', 'CLAUDE_CODE_CHILD_SESSION', 'CLAUDE_EFFORT', 'NODE_TEST_CONTEXT']) delete env[k]
-    const c = spawnSync(bin, ['-p', prompt, '--output-format', 'json', '--model', model, '--tools', '', '--setting-sources', 'user', '--disable-slash-commands', '--no-session-persistence'], { env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 600_000 })
+    const c = spawnSync(bin, ['-p', '--output-format', 'json', '--model', model, '--tools', '', '--setting-sources', 'user', '--disable-slash-commands', '--no-session-persistence'], { input: prompt, env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 600_000 })
     if ((c.error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT') throw new Error(`${bin} not found: install Claude Code`)
     if (c.error) throw new Error(`${bin} did not finish: ${c.error.message}`)
     if (c.status !== 0) throw new Error(`${bin} exited ${c.status}: ${(c.stderr ?? '').trim().split('\n').slice(-2).join(' ')}`)
@@ -89,14 +89,20 @@ function cited(c: Cite, sources: Record<string, string>): string {
 export function reviewPage(text: string, sources: Record<string, string>, run: Runner): { verdicts: Verdicts; usd: number; error?: string } {
   const claims = bodyLines(text)
   if (!claims.length) return { verdicts: [], usd: 0 }
-  const items = claims.map(b => `${b.line}: ${b.text}\n${[...b.text.matchAll(/\[([^\]\s]+)\]/g)].map(m => m[1]!).map(tok => {
-    const [path, symbol] = tok.split('#')
-    return cited(/^(adr|commit|pr):/.test(tok) ? { kind: 'why', type: tok.split(':')[0] as 'adr', ref: tok.split(':')[1]! } : { kind: 'code', path: path!, ...(symbol ? { symbol } : {}) }, sources)
-  }).join('\n---\n')}`)
+  const code = new Map<string, string>()
+  const items = claims.map(b => {
+    const keys = parseCites(b.text).map(c => {
+      const key = c.kind === 'why' ? `${c.type}:${c.ref}` : c.symbol === undefined ? c.path : `${c.path}#${c.symbol}`
+      if (!code.has(key)) code.set(key, cited(c, sources))
+      return key
+    })
+    return `${b.line}: ${b.text}  -> see ${keys.join(', ')}`
+  })
   const r = run({ role: 'review', prompt: [
-    'For each numbered claim, judge only from the code shown under it: "supported" (the code shows it), "unsupported" (the code does not show it)',
-    'or "contradicted" (the code shows otherwise). Reply with a JSON array only: [{"line": N, "verdict": "supported"}, ...].', '', ...items,
-  ].join('\n\n') })
+    'For each numbered claim, judge only from the cited code below: "supported" (the code shows it), "unsupported" (the code does not show it)',
+    'or "contradicted" (the code shows otherwise). Reply with a JSON array only: [{"line": N, "verdict": "supported"}, ...].',
+    '', 'Claims:', ...items, '', 'Cited code:', ...[...code].map(([k, v]) => `### ${k}\n${v}`),
+  ].join('\n') })
   const json = jsonSpan(r.text, '[', ']')
   let arr: unknown
   try { arr = json === null ? null : JSON.parse(json) } catch { arr = null }
@@ -126,11 +132,12 @@ export function buildPage(args: { page: WikiPage; sources: Record<string, string
   const once = (hint?: string): Attempt => {
     let w = writePage(page, sources, run, hint)
     let usd = w.usd
-    let findings = validatePage(w.text, env)
+    const check = (text: string): WikiFinding[] => [...validatePage(text, env), ...(bodyLines(text).length ? [] : [{ rule: 'uncited' as const, line: 0, message: 'the page has no cited claims; write lines that end in a citation' }])]
+    let findings = check(w.text)
     if (findings.length) {
       w = writePage(page, sources, run, [hint, ...findings.map(f => `line ${f.line}: ${f.message}`)].filter(Boolean).join('\n'))
       usd += w.usd
-      findings = validatePage(w.text, env)
+      findings = check(w.text)
       if (findings.length) return { text: null, findings, dropped: 0, usd, total: 0, removed: [] }
     }
     const rv = reviewPage(w.text, sources, run)
@@ -146,6 +153,7 @@ export function buildPage(args: { page: WikiPage; sources: Record<string, string
     r = { ...second, usd: r.usd + second.usd }
     if (r.text !== null && over(second)) r.findings = [{ rule: 'unsupported', line: 0, message: `${second.dropped} of ${second.total} claims were not supported after a regeneration` }]
   }
+  if (r.text !== null && !bodyLines(r.text).length) r = { ...r, text: null, findings: [{ rule: 'unsupported', line: 0, message: 'no claim survived the review' }] }
   const { total: _t, removed: _r, ...out } = r
   return out
 }

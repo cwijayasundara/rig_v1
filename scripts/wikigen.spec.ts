@@ -112,3 +112,20 @@ test('planConfig keeps the paths the planner proposes', () => {
   const r = planConfig(['src/a.ts'], scripted({ plan: [json] }).run)
   assert.deepEqual((r.config as { pages: { paths?: string[] }[] }).pages[0]!.paths, ['src/'])
 })
+
+test('the reviewer sees each cited source once, however many lines cite it', () => {
+  const page = '# T\n\n> p\n\n- One. [src/a.ts]\n- Two. [src/a.ts]\n- Three. [src/a.ts]\n'
+  const { run, calls } = scripted({ review: [JSON.stringify([5, 6, 7].map(line => ({ line, verdict: 'supported' })))] })
+  reviewPage(page, { 'src/a.ts': 'export function f(a: number): number {\n  return a\n}\n' }, run)
+  assert.equal(calls[0]!.prompt.split('return a').length - 1, 1)
+})
+
+test('an empty reply, or a page whose claims are all dropped, is not a page', () => {
+  const empty = buildPage({ page: PAGE, sources: SOURCES, env, run: scripted({ write: ['', ''] }).run })
+  assert.equal(empty.text, null)
+  assert.ok(empty.findings.length > 0)
+  const none = verdicts('unsupported', 'unsupported', 'unsupported', 'unsupported')
+  const r = buildPage({ page: PAGE, sources: SOURCES, env, run: scripted({ write: [four('a'), four('b')], review: [none, none] }).run })
+  assert.equal(r.text, null)
+  assert.ok(r.findings.some(f => f.rule === 'unsupported'))
+})

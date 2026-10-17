@@ -72,7 +72,10 @@ function loadPages(root: string): Record<string, string> {
 }
 
 const loadState = (root: string): WikiState => {
-  try { return JSON.parse(reader(root)(`${DIR}/state.json`) ?? '') as WikiState } catch { return { pages: {} } }
+  try {
+    const s = JSON.parse(reader(root)(`${DIR}/state.json`) ?? '') as Partial<WikiState> | null
+    return s && typeof s.pages === 'object' && s.pages !== null && !Array.isArray(s.pages) ? { pages: s.pages } : { pages: {} }
+  } catch { return { pages: {} } }
 }
 
 function indexText(config: WikiConfig, state: WikiState): string {
@@ -109,7 +112,14 @@ function buildPages(root: string, config: WikiConfig, pages: WikiPage[], args: A
   let failed = 0
   for (const page of pages) {
     const hint = hintFor(page)
-    const r = buildPage({ page, sources: sources.get(page.title)!, env: e, run, ...(hint ? { hint } : {}) })
+    let r: ReturnType<typeof buildPage>
+    try {
+      r = buildPage({ page, sources: sources.get(page.title)!, env: e, run, ...(hint ? { hint } : {}) })
+    } catch (err) {
+      failed++
+      lines.push(`${page.title}: failed (${err instanceof Error ? err.message : String(err)}); the old page is kept`)
+      continue
+    }
     usd += r.usd
     if (r.text === null) {
       failed++
@@ -166,7 +176,9 @@ function cmdRefresh(root: string, args: Args, run: Runner): WikiResult {
   const state = loadState(root)
   return buildPages(root, config, pages, args, run, p => {
     const cited = [...new Set(stale.filter(s => s.page === slugOf(p.title)).map(s => s.cite.split('#')[0]!))]
-    const diff = gitIn(root, ['diff', '--stat', state.pages[slugOf(p.title)]?.builtAt ?? 'HEAD', '--', ...cited])
+    // builtAt comes from a committed file: only a plain hex revision is ever handed to git.
+    const at = state.pages[slugOf(p.title)]?.builtAt
+    const diff = gitIn(root, ['diff', '--stat', at && /^[0-9a-f]{4,40}$/.test(at) ? at : 'HEAD', '--', ...cited])
     return `Changed since the last build: ${cited.join(', ')}${diff ? `\n${diff}` : ''}`
   })
 }

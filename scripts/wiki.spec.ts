@@ -119,3 +119,36 @@ test('the sdlc entry point runs wiki status from the command line', () => {
   assert.match(r.stdout, /wiki: fresh/)
   assert.notEqual(sdlc(repo, ['wiki', 'nonsense']).code, 0)
 })
+
+test('a runner that throws on one page keeps the pages already built, their state and the index', () => {
+  const repo = repoWithSources()
+  write(repo, '.rig/wiki.json', JSON.stringify(CONFIG))
+  const { run } = fake()
+  const flaky: Runner = req => { if (req.role === 'write' && /Page title: Beta/.test(req.prompt)) throw new Error('claude exited 1'); return run(req) }
+  const r = cmd(repo, ['build'], flaky)
+  assert.notEqual(r.code, 0)
+  assert.match(r.text, /Beta: failed \(claude exited 1\)/)
+  assert.ok(fs.existsSync(path.join(repo, '.rig/wiki/alpha.md')) && fs.existsSync(path.join(repo, '.rig/wiki/index.md')))
+  assert.ok(JSON.parse(fs.readFileSync(path.join(repo, '.rig/wiki/state.json'), 'utf8')).pages.alpha)
+  assert.match(cmd(repo, ['status'], run).text, /wiki: fresh/)
+})
+
+test('a state.json that is not a state does not crash status', () => {
+  const { repo, run } = built()
+  fs.writeFileSync(path.join(repo, '.rig/wiki/state.json'), '{}')
+  const r = cmd(repo, ['status'], run)
+  assert.equal(r.code, 0, r.text)
+  assert.match(r.text, /stale page/)
+})
+
+test('a builtAt that looks like a git option is never passed to git', () => {
+  const { repo, run } = built()
+  const victim = path.join(repo, 'pwned.txt')
+  const file = path.join(repo, '.rig/wiki/state.json')
+  const state = JSON.parse(fs.readFileSync(file, 'utf8'))
+  state.pages.alpha.builtAt = `--output=${victim}`
+  fs.writeFileSync(file, JSON.stringify(state))
+  write(repo, 'src/a.ts', A.replace('a * 2', 'a * 3'))
+  cmd(repo, ['refresh'], run)
+  assert.equal(fs.existsSync(victim), false)
+})

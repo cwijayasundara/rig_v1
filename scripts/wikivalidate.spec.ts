@@ -49,3 +49,10 @@ test('pageCitations lists every citation with its line', () => {
   assert.deepEqual(cites.map(c => c.line), [8, 9, 9])
   assert.deepEqual(cites[0]!.cite, { kind: 'code', path: 'src/a.ts', symbol: 'f' })
 })
+
+test('titles, initials and inline code do not read as two sentences', () => {
+  assert.deepEqual(rules(page('- Dr. Smith wrote the first version. [src/a.ts#f]\n')), [])
+  assert.deepEqual(rules(page('- Runs for the U.S. Army build. [src/a.ts#f]\n')), [])
+  assert.deepEqual(rules(page('- Splits on `a. B` as written. [src/a.ts#f]\n')), [])
+  assert.deepEqual(rules(page('- It adds. It subtracts. [src/a.ts#f]\n')), ['two-sentences@8'])
+})

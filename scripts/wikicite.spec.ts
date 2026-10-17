@@ -71,3 +71,20 @@ test('citeHash hashes the symbol, the whole file, and is null when missing or un
   assert.equal(citeHash({ kind: 'code', path: 'src/gone.ts', symbol: 'mul' }, read), null)
   assert.equal(citeHash({ kind: 'code', path: 'src/a.ts', symbol: 'twice' }, read), null)
 })
+
+test('findSymbol spans an arrow body on the next line, an object return type, a generic extends clause, regex literals and nested templates', () => {
+  const body = (src: string, name: string): string => findSymbol(src, name) ?? ''
+  assert.match(body('const f = (a: number) =>\n  a + 1\nconst g = 1\n', 'f'), /a \+ 1$/)
+  assert.match(body('function f(): { a: number } {\n  return { a: 1 }\n}\nconst g = 1\n', 'f'), /return \{ a: 1 \}\n\}$/)
+  assert.match(body('class A extends B<{ x: 1 }> {\n  m() {}\n}\nconst g = 1\n', 'A'), /m\(\) \{\}\n\}$/)
+  assert.equal(body("function f() { return /'/.test(x) }\nfunction h() { return 1 }\n", 'f'), "function f() { return /'/.test(x) }")
+  assert.equal(body('const s = `a ${x ? `b}` : "c"} {`\nfunction g() { return 1 }\n', 's'), 'const s = `a ${x ? `b}` : "c"} {`')
+  assert.equal(body('const r = a / b\nconst q = c / d\n', 'r'), 'const r = a / b')
+})
+
+test('an edit inside those shapes changes the hash', () => {
+  const read = (t: string) => (p: string): string | null => (p === 'a.ts' ? t : null)
+  const h = (t: string, symbol: string): string | null => citeHash({ kind: 'code', path: 'a.ts', symbol }, read(t))
+  assert.notEqual(h('const f = (a: number) =>\n  a + 1\n', 'f'), h('const f = (a: number) =>\n  a + 2\n', 'f'))
+  assert.notEqual(h('function f(): { a: number } {\n  return { a: 1 }\n}\n', 'f'), h('function f(): { a: number } {\n  return { a: 2 }\n}\n', 'f'))
+})
