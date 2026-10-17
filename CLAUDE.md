@@ -6,7 +6,7 @@ exist because one week of building this repo cost $1k and 3 hours per change (`d
 
 ## Models, pinned by role
 
-Same table as `scripts/routing.ts` uses for target repos. Set `model` on every `Agent` launch.
+`scripts/routing.ts` was deleted (commit 1f7d519); this table is the only place the roles are pinned. Set `model` on every `Agent` launch.
 
 | Role | Model | Notes |
 |---|---|---|
@@ -33,7 +33,7 @@ Never paste the plan or the conversation into it.
 
 ## Verification
 
-`npm test` runs the spec files and the e2e unit tests (the scripted e2e suite returns in step 5). `npm run typecheck` is incremental
+`npm test` runs the spec files, the e2e unit tests and the scripted e2e suite (`test:e2e:fast`). `npm run test:e2e` is the live driver and `npm run eval` the eval runner. `npm run typecheck` is incremental
 (`node_modules/.cache/rig-scripts.tsbuildinfo`). Run them yourself and quote the output; never report a pass you did not see.
 
 ## Plugin scope
