@@ -15,9 +15,10 @@ export function cmdVerify(args: Args): void {
   const { registry: config, rules, errors } = loadConfig()
   const base = defaultBase()
   const budgetMs = Number(optString(args, 'budget-ms') ?? 1_800_000)
+  const before = treeStamp()
   const r = runChecks({ point: 'ship', diffs: branchDiff(base ?? 'HEAD'), config, rules, slugs: [slug], commands: 'full', budgetMs, before: f => showAt(base ?? 'HEAD', f) ?? '', base, ratchet: false, gates: config.gates })
   const blocks = [...errors.map(e => `config: ${e}`), ...r.blocks.map(f => `${f.sensor}${f.file ? ` ${f.file}` : ''}: ${(f.message.split('\n')[0] ?? '').slice(0, 200)}`)]
-  writeVerify(slug, { at: now(), tree: treeStamp(), base, pass: !blocks.length, blocks })
+  writeVerify(slug, { at: now(), tree: treeStamp() === before ? before : null, base, pass: !blocks.length, blocks })
   out([formatFindings(r.findings) || 'verify: every commit and ci sensor passed', `verify.json: ${blocks.length ? `fail (${blocks.length} block(s))` : 'pass'}`].join('\n'))
   process.exitCode = blocks.length ? 1 : 0
 }

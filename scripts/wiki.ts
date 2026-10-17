@@ -7,7 +7,7 @@ import { claudeRunner, planConfig, buildPage, reviewPage, estimateUsd, type Runn
 import { parseWikiConfig, slugOf, snapshot, wikiStatus, type WikiConfig, type WikiPage, type WikiState } from './wikistate.ts'
 import { validatePage, pageCitations, type PageEnv } from './wikivalidate.ts'
 
-export type WikiResult = { code: number; text: string }
+type WikiResult = { code: number; text: string }
 
 const CONFIG = '.rig/wiki.json'
 const DIR = '.rig/wiki'
@@ -63,12 +63,17 @@ function loadConfig(root: string): WikiConfig | string {
   return parseWikiConfig(text)
 }
 
-function loadPages(root: string): Record<string, string> {
+// Only the pages the config names; a leftover .md the config no longer lists is an orphan (reported by status), not a page.
+function loadPages(root: string, config: WikiConfig | string): { pages: Record<string, string>; orphans: string[] } {
   const dir = path.join(root, DIR)
-  if (!fs.existsSync(dir)) return {}
-  const pages: Record<string, string> = {}
-  for (const f of fs.readdirSync(dir).filter(x => x.endsWith('.md') && x !== 'index.md')) pages[f.slice(0, -3)] = reader(root)(`${DIR}/${f}`) ?? ''
-  return pages
+  if (!fs.existsSync(dir)) return { pages: {}, orphans: [] }
+  const known = typeof config === 'string' ? null : new Set(config.pages.map(p => slugOf(p.title)))
+  const pages: Record<string, string> = {}, orphans: string[] = []
+  for (const f of fs.readdirSync(dir).filter(x => x.endsWith('.md') && x !== 'index.md')) {
+    if (known && !known.has(f.slice(0, -3))) orphans.push(f)
+    else pages[f.slice(0, -3)] = reader(root)(`${DIR}/${f}`) ?? ''
+  }
+  return { pages, orphans }
 }
 
 const loadState = (root: string): WikiState => {
@@ -154,22 +159,23 @@ function cmdBuild(root: string, args: Args, run: Runner): WikiResult {
   return buildPages(root, config, pages, args, run, () => undefined)
 }
 
-function staleSlugs(root: string): { stale: ReturnType<typeof wikiStatus>; pages: Record<string, string> } {
-  const pages = loadPages(root)
-  return { stale: wikiStatus(loadState(root), pages, reader(root)), pages }
+function staleSlugs(root: string, config: WikiConfig | string = loadConfig(root)): { stale: ReturnType<typeof wikiStatus>; pages: Record<string, string>; orphans: string[] } {
+  const { pages, orphans } = loadPages(root, config)
+  return { stale: wikiStatus(loadState(root), pages, reader(root)), pages, orphans }
 }
 
 function cmdStatus(root: string): WikiResult {
-  const { stale, pages } = staleSlugs(root)
-  if (!Object.keys(pages).length) return ok('wiki: no pages yet (wiki init, edit wiki.json, wiki build)')
+  const { stale, pages, orphans } = staleSlugs(root)
+  const warn = orphans.map(f => `warning: ${DIR}/${f} is not in ${CONFIG}; delete it or add the page`)
+  if (!Object.keys(pages).length) return ok([...warn, 'wiki: no pages yet (wiki init, edit wiki.json, wiki build)'].join('\n'))
   const names = new Set(stale.map(s => s.page))
-  return ok([...stale.map(s => `${s.page}: ${s.cite} (${s.why})`), names.size ? `wiki: ${names.size} stale page(s); \`wiki refresh\` rebuilds them` : 'wiki: fresh'].join('\n'))
+  return ok([...warn, ...stale.map(s => `${s.page}: ${s.cite} (${s.why})`), names.size ? `wiki: ${names.size} stale page(s); \`wiki refresh\` rebuilds them` : 'wiki: fresh'].join('\n'))
 }
 
 function cmdRefresh(root: string, args: Args, run: Runner): WikiResult {
   const config = loadConfig(root)
   if (typeof config === 'string') return bad(config)
-  const { stale } = staleSlugs(root)
+  const { stale } = staleSlugs(root, config)
   const names = new Set(stale.map(s => s.page))
   const pages = config.pages.filter(p => names.has(slugOf(p.title)))
   if (!pages.length) return ok('wiki: fresh; nothing to refresh')
@@ -184,7 +190,7 @@ function cmdRefresh(root: string, args: Args, run: Runner): WikiResult {
 }
 
 function cmdVerify(root: string, args: Args, run: Runner): WikiResult {
-  const pages = loadPages(root)
+  const { pages } = loadPages(root, loadConfig(root))
   if (!Object.keys(pages).length) return ok('wiki: no pages yet')
   const e = env(root)
   const lines: string[] = []

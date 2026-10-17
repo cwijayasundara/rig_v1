@@ -106,3 +106,18 @@ test('learn replay fails when the earning changes cannot be replayed', () => {
   assert.equal(r.code, 1)
   assert.match(r.stdout, /replay: fail/)
 })
+
+test('learn check accepts a CRLF lessons file', () => {
+  const repo = repoWithTwo()
+  write(repo, '.rig/lessons.md', formatLesson(LESSON).replace(/\n?$/, '\r\n'))
+  const r = sdlc(repo, ['learn', 'check'])
+  assert.equal(r.code, 0, r.stdout + r.stderr)
+})
+
+test('learn replay rejects a rule whose paths is not a list', () => {
+  const repo = repoWithTwo()
+  write(repo, '.rig/learn/rule.json', JSON.stringify({ ...RULE, paths: 'src' }))
+  const r = sdlc(repo, ['learn', 'replay', '.rig/learn/rule.json', '--earned', 'cart-add,cart-remove'])
+  assert.equal(r.code, 1)
+  assert.match(r.stderr, /paths/)
+})

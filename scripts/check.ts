@@ -41,7 +41,7 @@ const TAIL_IN_FINDING = 15
 // The pre-registry format is recognised by its keys; anything else (`{}`, a registry missing its sensors list, broken
 // JSON) goes to parseRegistry, which reports a parse error as one.
 const OLD_KEYS = ['fast', 'full', 'levels', 'quality', 'scopes', 'behavioral', 'limits', 'layers', 'githooks', 'consumers', 'scopeLimit', 'affected', 'sparseBase', 'budget', 'routing', 'points', 'value', 'ratchet', 'evals', 'bands', 'build', 'ci', 'idleGapMs']
-export const isOldShape = (raw: string): boolean => { try { const v: unknown = JSON.parse(raw); return typeof v === 'object' && v !== null && !Array.isArray((v as { sensors?: unknown }).sensors) && Object.keys(v).some(k => OLD_KEYS.includes(k)) } catch { return false } }
+const isOldShape = (raw: string): boolean => { try { const v: unknown = JSON.parse(raw); return typeof v === 'object' && v !== null && !Array.isArray((v as { sensors?: unknown }).sensors) && Object.keys(v).some(k => OLD_KEYS.includes(k)) } catch { return false } }
 // A repo that declares a registry keeps its CLAUDE.md guides in sync (spec §5); one with none declared has nothing to sync.
 export const declaresRegistry = (): boolean => isRegistryShape(read(path.join(ROOT, SENSORS_JSON)))
 const OLD_SHAPE = '.rig/sensors.json uses the pre-registry format; run sdlc.ts init --stack to print a registry for this repo, then land it on the trunk as a reviewed harness change (spec 2026-10-16 §3)'
@@ -111,7 +111,10 @@ export function runSensors(r: Registry, at: Cadence, slug: string | null, budget
 // an older change's wildcard waiver must not cover what a later PR does.
 function ciScope(slug: string, base: string | null | undefined): ((file: string | undefined) => boolean) | null {
   if (!base || showAt(base, `.rig/changes/${slug}/intent.md`) !== null) return null
-  return () => true
+  const plan = read(path.join(CHANGES, slug, 'plan.md')).split(/^## Files[ \t]*$/m)[1]?.split(/^## /m)[0] ?? ''
+  const entries = plan.split('\n').map(l => /^\s*[-*]\s+`?([^`\s]+)`?/.exec(l)?.[1]).filter((e): e is string => Boolean(e))
+  const own = `.rig/changes/${slug}/`
+  return file => file !== undefined && (file.startsWith(own) || entries.some(e => e.endsWith('/') ? file.startsWith(e) : file === e || matchesAny(file, [e])))
 }
 
 // The PR supplies its own waivers.jsonl rows, so at CI harness-tamper on harness files and contracts findings are never waivable: harness changes land on the trunk first, and the behavioural gate stays independent.
@@ -197,7 +200,7 @@ export function runChecks(i: CheckInput): CheckResult {
     ...secretsInDiff(pattern),
     ...rulesSensor(pattern, i.rules),
     ...harnessTamper(diffs, { point, toolEdited: i.toolEdited, before: i.before, after }),
-    ...frozenFindings(i.slugs, diffs.map(d => d.file), after),
+    ...frozenFindings(i.slugs, diffs.flatMap(d => d.from ? [d.file, d.from] : [d.file]), after),
   ]
   // A diff whose plan the person approved is big by design: the diff-size limit warns instead of blocking.
   if (i.slugs.length && i.slugs.every(s => approvalState(s) === 'approved')) {

@@ -15,9 +15,9 @@ test('empty text gives the default registry with every built-in', () => {
 })
 
 test('a command sensor is parsed and built-ins are appended after it', () => {
-  const { registry, errors } = reg({ sensors: [{ id: 'unit', cmd: 'make test', cadence: 'turn', blocks: true, count: 'exit', guide: 'Run the tests.' }] })
+  const { registry, errors } = reg({ sensors: [{ id: 'unit', cmd: 'make test', cadence: 'turn', blocks: true, guide: 'Run the tests.' }] })
   assert.deepEqual(errors, [])
-  assert.deepEqual(registry.sensors[0], { id: 'unit', cmd: 'make test', cadence: 'turn', blocks: true, count: 'exit', guide: 'Run the tests.', enabled: true })
+  assert.deepEqual(registry.sensors[0], { id: 'unit', cmd: 'make test', cadence: 'turn', blocks: true, guide: 'Run the tests.', enabled: true })
   assert.equal(registry.sensors.length, 1 + BUILTIN_IDS.length)
 })
 
@@ -39,19 +39,19 @@ test('a built-in can be disabled, except secrets and harness-tamper', () => {
 })
 
 test('a command sensor may not take a built-in id', () => {
-  const { errors } = reg({ sensors: [{ id: 'secrets', cmd: 'true', cadence: 'edit', blocks: true, count: 'exit', guide: 'x' }] })
+  const { errors } = reg({ sensors: [{ id: 'secrets', cmd: 'true', cadence: 'edit', blocks: true, guide: 'x' }] })
   assert.match(errors.join(), /"secrets" is a built-in id/)
 })
 
 test('rejects bad sensor fields with the field named', () => {
   const bad = { id: 'Bad Id', cmd: '', cadence: 'hourly', blocks: 'yes', count: 'json:', guide: ' ', timeoutMs: 0, extra: 1 }
   const msg = reg({ sensors: [bad] }).errors.join('\n')
-  for (const part of ['sensors[0].id must be kebab-case', 'sensors[0].cmd must be a non-empty command', 'sensors[0].cadence must be one of', 'sensors[0].blocks must be true or false', 'sensors[0].count must be', 'sensors[0].guide must be a non-empty sentence', 'sensors[0].timeoutMs must be a positive integer', 'sensors[0]: unknown key "extra"'])
+  for (const part of ['sensors[0].id must be kebab-case', 'sensors[0].cmd must be a non-empty command', 'sensors[0].cadence must be one of', 'sensors[0].blocks must be true or false', 'sensors[0].guide must be a non-empty sentence', 'sensors[0].timeoutMs must be a positive integer', 'sensors[0]: unknown key "extra"'])
     assert.ok(msg.includes(part), `missing: ${part}\n${msg}`)
 })
 
 test('rejects duplicate ids and unknown built-ins', () => {
-  const s = { id: 'unit', cmd: 'x', cadence: 'turn', blocks: true, count: 'exit', guide: 'g' }
+  const s = { id: 'unit', cmd: 'x', cadence: 'turn', blocks: true, guide: 'g' }
   assert.match(reg({ sensors: [s, s] }).errors.join(), /duplicate sensor id "unit"/)
   assert.match(reg({ sensors: [{ id: 'magic', builtin: true }] }).errors.join(), /"magic" is not a built-in sensor/)
 })
@@ -64,7 +64,7 @@ test('rejects a non-object, unparseable JSON and unknown top-level keys', () => 
 
 import { modelFamily, policyMode, runsAt, activeSensors, commandFor, type RegistrySensor } from './registry.ts'
 
-const cmd = (id: string, cadence: RegistrySensor['cadence'], c = 'run'): RegistrySensor => ({ id, cmd: c, cadence, blocks: true, count: 'exit', guide: 'g', enabled: true })
+const cmd = (id: string, cadence: RegistrySensor['cadence'], c = 'run'): RegistrySensor => ({ id, cmd: c, cadence, blocks: true, guide: 'g', enabled: true })
 
 test('model ids map to policy families; unknown, empty and null map to default', () => {
   const r = defaultRegistry()
@@ -170,7 +170,7 @@ test('contracts.covers parses as globs, defaults to empty, and losing one weaken
 
 test('a command sensor may not take a harness finding\'s name', () => {
   for (const id of ['commands', 'config', 'contracts', 'unscanned', 'plan-gate', 'human-approval', 'sync']) {
-    const { errors } = parseRegistry(JSON.stringify({ sensors: [{ id, cmd: 'true', cadence: 'turn', blocks: true, count: 'exit', guide: 'g' }] }))
+    const { errors } = parseRegistry(JSON.stringify({ sensors: [{ id, cmd: 'true', cadence: 'turn', blocks: true, guide: 'g' }] }))
     assert.ok(errors.some(e => e.includes(`"${id}" is reserved for a harness finding`)), `${id}: ${errors.join('; ')}`)
   }
 })
@@ -181,4 +181,12 @@ test('models.design is parsed and an unknown role is an error', () => {
   assert.equal(ok.registry.models.design, 'sonnet')
   const bad = reg({ models: { x: 'y' } })
   assert.ok(bad.errors.some(e => /models\.x must be build, evaluate or design/.test(e)), bad.errors.join('; '))
+})
+
+test('raising a sensor timeoutMs counts as weakening; lowering does not; a retired gates.merge still parses', () => {
+  const mk = (t: number | undefined) => JSON.stringify({ gates: { merge: true }, sensors: [{ id: 'unit', cmd: 'x', cadence: 'turn', blocks: true, guide: 'g', ...(t ? { timeoutMs: t } : {}) }] })
+  assert.ok(weakensRegistry(mk(1000), mk(5000)).some(w => /timeoutMs raised/.test(w)))
+  assert.ok(weakensRegistry(mk(1000), mk(undefined)).length === 0)
+  assert.ok(weakensRegistry(mk(undefined), mk(5000)).some(w => /timeoutMs raised/.test(w)))
+  assert.deepEqual(parseRegistry(mk(1000)).errors, [])
 })

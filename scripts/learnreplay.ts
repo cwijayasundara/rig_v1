@@ -6,7 +6,7 @@ import { gitIn } from './core.ts'
 import { parseUnifiedDiff, type FileDiff, type Rule } from './model.ts'
 import { rulesSensor } from './sensors.ts'
 
-export type Replay = { firesOn: string[]; missed: string[]; extra: string[]; skipped: string[]; pass: boolean; error?: string }
+type Replay = { firesOn: string[]; missed: string[]; extra: string[]; skipped: string[]; pass: boolean; error?: string }
 
 const MAX_PATTERN = 300
 const RUN_LIMIT_MS = 1500
@@ -29,7 +29,7 @@ function patternError(pattern: string): string | undefined {
 
 // The nested-quantifier check above is a first filter only; a regex over a regex cannot be sound, so the match itself runs under a hard time limit.
 function fires(diffs: FileDiff[], rule: Rule): boolean | 'timeout' {
-  try { return vm.runInNewContext('run()', { run: () => rulesSensor(diffs, [rule]).length > 0 }, { timeout: RUN_LIMIT_MS }) as boolean } catch { return 'timeout' }
+  try { return vm.runInNewContext('run()', { run: () => rulesSensor(diffs, [rule]).length > 0 }, { timeout: RUN_LIMIT_MS }) as boolean } catch (e) { if ((e as { code?: string }).code === 'ERR_SCRIPT_EXECUTION_TIMEOUT') return 'timeout'; throw e }
 }
 
 // pass: the pattern is safe, it fires on every earning change and on no other, every earning change could be replayed, and at least 2 distinct changes earned it.
@@ -40,7 +40,8 @@ export function replayRule(root: string, rule: Rule, earned: string[], all: stri
   for (const slug of [...new Set([...earned, ...all])]) {
     const diffs = changeDiff(root, slug)
     if (!diffs) { result.skipped.push(slug); continue }
-    const hit = fires(diffs, rule)
+    let hit: boolean | 'timeout'
+    try { hit = fires(diffs, rule) } catch (e) { return { ...result, firesOn: [], error: `the rule could not be run on ${slug}: ${e instanceof Error ? e.message : String(e)}` } }
     if (hit === 'timeout') return { ...result, firesOn: [], error: `pattern timed out after ${RUN_LIMIT_MS} ms on ${slug}: it backtracks without end` }
     if (hit) result.firesOn.push(slug)
     if (earned.includes(slug) && !hit) result.missed.push(slug)

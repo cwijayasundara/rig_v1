@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import {
   ROOT, SDLC, IS_VENDORED, skillRef, now, exists, read, out, fail, frontmatter,
-  managedSettings, scanSecrets, relPosix, sha, withLock, writeAtomic, type Args, type HookInput,
+  managedSettings, scanSecrets, relPosix, sha, readGate, updateGate, type Args, type HookInput, type GateSummary,
 } from './core.ts'
 import { activeSlug, status, nextStep, changeType } from './lifecycle.ts'
 import { snapshot, writeBaseline, readBaseline, turnDiff, showAt, diffHash } from './diffs.ts'
@@ -146,33 +146,11 @@ function hookPostEdit(input: HookInput): void {
   if (guide) out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: guide } }))
 }
 
-type GateSummary = { at: string; blocks: number; warns: number; bySensor: Record<string, number>; warnRows?: string[]; shown?: boolean }
-// trees: stamps of working trees on which the fast commands passed, kept across turns (the per-turn fields reset at each prompt).
-type Gate = { turn: string; blocks: Record<string, number>; passed: Record<string, string>; tool: string[]; guides: Record<string, string[]>; trees: string[]; last?: GateSummary }
-
-const GATE = path.join(SDLC, '.gate')
 const UNRESOLVED = path.join(SDLC, 'unresolved.json')
 const MAX_BLOCKS = 2
 const STOP_BUDGET_MS = 60_000
 const PASSED_TREES = 20
-const emptyGate = (): Gate => ({ turn: '', blocks: {}, passed: {}, tool: [], guides: {}, trees: [] })
 
-export function readGate(): Gate {
-  try {
-    const g = JSON.parse(read(GATE)) as Record<string, unknown>
-    const d = emptyGate()
-    const obj = <T>(v: unknown, dflt: T): T => (v && typeof v === 'object' && !Array.isArray(v) ? (v as T) : dflt)
-    return {
-      turn: typeof g.turn === 'string' ? g.turn : d.turn, blocks: obj(g.blocks, d.blocks), passed: obj(g.passed, d.passed),
-      tool: Array.isArray(g.tool) ? g.tool.map(String) : d.tool, guides: obj(g.guides, d.guides), trees: Array.isArray(g.trees) ? g.trees.map(String) : d.trees,
-      ...(g.last && typeof g.last === 'object' ? { last: g.last as GateSummary } : {}),
-    }
-  } catch {
-    return emptyGate()
-  }
-}
-const writeGate = (g: Gate): void => writeAtomic(GATE, JSON.stringify(g))
-const updateGate = (fn: (g: Gate) => void): void => withLock(GATE, () => { const g = readGate(); fn(g); writeGate(g) })
 const pushUnique = (list: string[], item: string): string[] => (list.includes(item) ? list : [...list, item])
 
 const more = (s: GateSummary | undefined): string[] => (s && s.warns > (s.warnRows?.length ?? 0) ? [`+${s.warns - (s.warnRows?.length ?? 0)} more`] : [])
@@ -227,7 +205,6 @@ function hookStop(input: HookInput = {}): { halt: boolean; warn?: string } {
   const snap = readBaseline()
   if (!snap) return { halt: false }
   const { registry, rules, errors } = loadConfig()
-  const config = registry
   const { mode, model } = modeNow(registry, input)
   const gate = readGate()
   const diffs = turnDiff(snap).filter(d => isSource(d.file, registry.paths) || isProtected(d.file) || matchesAny(d.file, contractGlobs(registry.contracts)))
@@ -240,7 +217,7 @@ function hookStop(input: HookInput = {}): { halt: boolean; warn?: string } {
   const stamp = treeStamp()
   const treePassed = stamp !== null && gate.trees.includes(stamp)
   const result = runChecks({
-    point: 'stop', diffs, config, rules, slugs: slug ? [slug] : [], commands: treePassed || mode === 'final' ? 'none' : 'fast', budgetMs: STOP_BUDGET_MS,
+    point: 'stop', diffs, config: registry, rules, slugs: slug ? [slug] : [], commands: treePassed || mode === 'final' ? 'none' : 'fast', budgetMs: STOP_BUDGET_MS,
     before: f => showAt(snap.sha, f) ?? '', toolEdited: new Set(gate.tool), base: null, ratchet: true,
     contracts: mode === 'continuous' && contractsTouched(registry.contracts, diffs.map(d => d.file)),
   })
@@ -252,7 +229,7 @@ function hookStop(input: HookInput = {}): { halt: boolean; warn?: string } {
   const blocks = findings.filter(f => f.severity === 'block')
   gate.last = summarize(findings)
   // Write back only what this hook owns: edits recorded while the checks ran must survive.
-  const save = (): void => updateGate(g => { g.last = gate.last; if (gate.passed.main) g.passed.main = gate.passed.main; if (gate.blocks.main) g.blocks.main = gate.blocks.main; if (gate.trees !== g.trees) g.trees = gate.trees })
+  const save = (): void => updateGate(g => { g.last = gate.last; if (gate.passed.main) g.passed.main = gate.passed.main; if (gate.blocks.main) g.blocks.main = gate.blocks.main; g.trees = gate.trees })
   if (!blocks.length) {
     gate.passed.main = hash
     if (stamp && !treePassed && mode === 'continuous') gate.trees = [...gate.trees, stamp].slice(-PASSED_TREES)

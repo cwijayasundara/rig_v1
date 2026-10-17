@@ -20,7 +20,7 @@ test('parseWikiConfig returns an error string for each bad config', () => {
   bad(cfg([pg('A'), pg('A')]), /duplicate/i)
   bad(cfg([pg('A', 'Zed')]), /unknown parent/)
   bad(cfg([pg('A', 'B'), pg('B', 'A')]), /cycle/)
-  bad(JSON.stringify({ pages: [pg('A')] }), /notes/)
+  bad('[]', /object/)
   bad(cfg([{ title: 'A' }]), /purpose/)
 })
 
@@ -70,4 +70,10 @@ test('a page may scope its sources with paths, and two titles with the same slug
   assert.match(String(parseWikiConfig(cfg([{ ...pg('A'), paths: '/etc' }]))), /paths/)
   assert.match(String(parseWikiConfig(cfg([{ ...pg('A'), paths: ['../x'] }]))), /paths/)
   assert.match(String(parseWikiConfig(cfg([pg('Order flow'), pg('Order-flow')]))), /same file name/)
+})
+
+test('a wiki.json with legacy top-level notes still loads, and the config carries none', () => {
+  const c = parseWikiConfig(JSON.stringify({ notes: ['old'], pages: [{ title: 'A', purpose: 'a' }] }))
+  assert.equal(typeof c, 'object')
+  assert.ok(!('notes' in (c as object)))
 })

@@ -430,7 +430,7 @@ test('CI waivers apply only to changes the PR adds, to any file of that change',
   const touched = ci()
   assert.equal(touched.code, 1, 'an older change\'s * waiver is not inherited by touching its folder\n' + touched.stdout)
   assert.match(touched.stdout, /suppression/)
-  // A change the PR adds: its waiver applies to its findings in any file (no plan ## Files scoping since step 4b).
+  // A change the PR adds: its waiver applies to its findings in its plan's ## Files (or its own folder) only.
   sdlc(repo, ['new', 'fresh-one', '--type', 'chore'])
   write(repo, '.rig/changes/fresh-one/plan.md', '# Plan\n## Files\n- src/app.js\n')
   write(repo, '.rig/waivers.jsonl', waiver('old-one', '*') + waiver('fresh-one', '*'))
@@ -441,7 +441,7 @@ test('CI waivers apply only to changes the PR adds, to any file of that change',
   write(repo, 'src/other.js', 'export const b = 1 // eslint-disable-line\n')
   gitIn(repo, 'add', '-A')
   gitIn(repo, 'commit', '-qm', 'file outside the plan')
-  assert.doesNotMatch(ci().stdout, /\[suppression\]/)
+  assert.match(ci().stdout, /\[suppression\][\s\S]*src\/other\.js/)
 })
 
 test('at CI a harness-tamper waiver in the PR never waives, exact file or *; other waivers on an added change still do', () => {

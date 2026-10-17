@@ -44,3 +44,11 @@ test('a behaviour with no test that names it fails traceability', () => {
   const r = sdlc(repo, ['verify', 'demo'])
   assert.match(r.stdout, /\[traceability\][\s\S]*B1/)
 })
+
+test('a tree that changes while verify runs is recorded as tree null', () => {
+  const cmd = `node -e "require('fs').writeFileSync('moved.txt', String(Math.random()))"`
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [{ id: 'mover', cmd, cadence: 'commit', blocks: true, count: 'exit', guide: 'Moves the tree.' }] }))
+  approvedChange(repo, 'demo')
+  sdlc(repo, ['verify', 'demo'])
+  assert.equal(verifyJson().tree, null)
+})

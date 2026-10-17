@@ -6,12 +6,12 @@ import { bodyLines, validatePage, type PageEnv, type WikiFinding } from './wikiv
 import { parseWikiConfig, type WikiConfig, type WikiPage } from './wikistate.ts'
 
 export type Runner = (req: { role: 'plan' | 'write' | 'review'; prompt: string }) => { text: string; usd: number }
-export type Verdict = 'supported' | 'unsupported' | 'contradicted'
-export type Verdicts = { line: number; verdict: Verdict }[]
+type Verdict = 'supported' | 'unsupported' | 'contradicted'
+type Verdicts = { line: number; verdict: Verdict }[]
 
-export const WIKI_MODEL = 'claude-sonnet-5-5'
+const WIKI_MODEL = 'claude-sonnet-5-5'
 // Sonnet 5.5 list prices, dollars per million tokens (claude-api skill table, cached 2026-10-06).
-export const PRICE_PER_MTOK = { input: 2, output: 10 }
+const PRICE_PER_MTOK = { input: 2, output: 10 }
 const MAX_PLAN_FILES = 400
 
 // Pre-flight figure: each page's sources are read by the writer and again by the reviewer; a page is about 1.8k tokens out.
@@ -50,7 +50,7 @@ const jsonSpan = (t: string, open: string, close: string): string | null => {
 export function planConfig(files: string[], run: Runner): { config: WikiConfig | string; usd: number } {
   const shown = files.slice(0, MAX_PLAN_FILES)
   const r = run({ role: 'plan', prompt: [
-    'Propose a wiki plan for this codebase as JSON only: {"notes": [], "pages": [{"title", "purpose", "paths", "parent"?}]}.',
+    'Propose a wiki plan for this codebase as JSON only: {"pages": [{"title", "purpose", "paths", "parent"?}]}.',
     'At most 30 pages. Titles are unique. Group by module or flow, not by file. "parent" must be another page title.',
     '"paths" lists the repo-relative files or directory prefixes (ending in /) that page is built from; give every page paths.',
     `Tracked source files${files.length > shown.length ? ` (first ${shown.length} of ${files.length})` : ''}:`, ...shown,
@@ -69,7 +69,7 @@ const RULES = [
 
 const fenced = (sources: Record<string, string>): string => Object.entries(sources).map(([p, t]) => `### ${p}\n\`\`\`\n${t}\n\`\`\``).join('\n\n')
 
-export function writePage(page: WikiPage, sources: Record<string, string>, run: Runner, hint?: string): { text: string; usd: number } {
+function writePage(page: WikiPage, sources: Record<string, string>, run: Runner, hint?: string): { text: string; usd: number } {
   const r = run({ role: 'write', prompt: [
     RULES, '', `Page title: ${page.title}`, `Purpose (use as the first \`> \` line): ${page.purpose}`,
     ...(page.notes?.length ? ['Notes from the team:', ...page.notes.map(n => `- ${n}`)] : []),
@@ -83,7 +83,7 @@ function cited(c: Cite, sources: Record<string, string>): string {
   if (c.kind === 'why') return `(${c.type}:${c.ref})`
   const file = sources[c.path]
   if (file === undefined) return `(${c.path}: not supplied)`
-  return c.symbol === undefined ? file : (findSymbol(file, c.symbol) ?? `(${c.path}#${c.symbol}: not found)`)
+  return c.symbol === undefined ? file : (findSymbol(file, c.symbol, c.path) ?? `(${c.path}#${c.symbol}: not found)`)
 }
 
 export function reviewPage(text: string, sources: Record<string, string>, run: Runner): { verdicts: Verdicts; usd: number; error?: string } {
@@ -123,12 +123,11 @@ export function dropClaims(text: string, verdicts: Verdicts): { text: string; dr
   return { text: lines.filter((_, i) => !bad.has(i + 1)).join('\n'), dropped: removed.length, total: verdicts.length, removed }
 }
 
-export type BuildResult = { text: string | null; findings: WikiFinding[]; dropped: number; usd: number; error?: string }
+type BuildResult = { text: string | null; findings: WikiFinding[]; dropped: number; usd: number; error?: string }
 type Attempt = BuildResult & { total: number; removed: string[] }
 
-export function buildPage(args: { page: WikiPage; sources: Record<string, string>; env: PageEnv; run: Runner; maxDropShare?: number; hint?: string }): BuildResult {
+export function buildPage(args: { page: WikiPage; sources: Record<string, string>; env: PageEnv; run: Runner; hint?: string }): BuildResult {
   const { page, sources, env, run } = args
-  const maxShare = args.maxDropShare ?? 0.3
   const once = (hint?: string): Attempt => {
     let w = writePage(page, sources, run, hint)
     let usd = w.usd
@@ -146,10 +145,10 @@ export function buildPage(args: { page: WikiPage; sources: Record<string, string
     const d = dropClaims(w.text, rv.verdicts)
     return { text: d.text, findings: [], dropped: d.dropped, usd, total: d.total, removed: d.removed }
   }
-  const over = (a: Attempt): boolean => a.total > 0 && a.dropped / a.total > maxShare
+  const over = (a: Attempt): boolean => a.total > 0 && a.dropped / a.total > 0.3
   let r = once(args.hint)
   if (r.text !== null && over(r)) {
-    const second = once(`The reviewer could not support these lines, so write them from the code or leave them out:\n${r.removed.join('\n')}`)
+    const second = once([args.hint, `The reviewer could not support these lines, so write them from the code or leave them out:\n${r.removed.join('\n')}`].filter(Boolean).join('\n'))
     r = { ...second, usd: r.usd + second.usd }
     if (r.text !== null && over(second)) r.findings = [{ rule: 'unsupported', line: 0, message: `${second.dropped} of ${second.total} claims were not supported after a regeneration` }]
   }

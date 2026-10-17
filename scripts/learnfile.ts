@@ -3,11 +3,11 @@
 export type Status = 'active' | 'retired' | `promoted:${string}`
 export type Lesson = { id: string; text: string; key: string; seen: string[]; first: string; lastFired: string; status: Status }
 
-export const MAX_WORDS = 25
-export const MAX_ACTIVE = 30
+const MAX_WORDS = 25
+const MAX_ACTIVE = 30
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const STATUS_RE = /^(?:active|retired|promoted:[a-z0-9-]+)$/
-const LESSON_LINE = /^- (L\d+|[A-Za-z]\w*) \| /
+const LESSON_LINE = /^- ([A-Za-z]\w*) \| /
 
 export const formatLesson = (l: Lesson): string =>
   `- ${l.id} | ${l.text} | key: ${l.key} | seen: ${l.seen.join(', ')} | first ${l.first} | last-fired ${l.lastFired} | ${l.status}`

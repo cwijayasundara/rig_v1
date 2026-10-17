@@ -129,3 +129,10 @@ test('an empty reply, or a page whose claims are all dropped, is not a page', ()
   assert.equal(r.text, null)
   assert.ok(r.findings.some(f => f.rule === 'unsupported'))
 })
+
+test('the regeneration write keeps the hint', () => {
+  const { run, calls } = scripted({ write: [four('a'), four('b')], review: [HALF, ALL_OK] })
+  buildPage({ page: PAGE, sources: SOURCES, env, run, hint: 'Only src/a.ts changed since the last build.' })
+  assert.match(calls[2]!.prompt, /Only src\/a\.ts changed/)
+  assert.match(calls[2]!.prompt, /Claim 2a/)
+})

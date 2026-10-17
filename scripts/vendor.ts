@@ -74,7 +74,7 @@ function humanSkill(cmd: 'approve' | 'waive', hint: string, what: string): strin
   ].join('\n')
 }
 
-function vendorStandalone(written: string[], version: string): void {
+function vendorStandalone(written: string[]): void {
   for (const name of fs.readdirSync(path.join(PLUGIN_ROOT, 'skills')).filter(n => n !== 'approve' && n !== 'waive')) {
     const src = path.join(PLUGIN_ROOT, 'skills', name, 'SKILL.md')
     if (fs.existsSync(src)) writeFile(`.claude/skills/rig-${name}/SKILL.md`, forProject(read(src)), written)
@@ -114,7 +114,7 @@ export function cmdVendor(args: Args): void {
   const version = (JSON.parse(read(path.join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json'))) as { version?: string }).version ?? 'unknown'
   writeFile('.rig/bin/VERSION', `${version}\n`, written)
   const standalone = Boolean(args.opt.standalone || args.opt.cloud)
-  if (standalone) vendorStandalone(written, version)
+  if (standalone) vendorStandalone(written)
   sanctionWrites(written)
   out(standalone
     ? `vendored sdlc ${version} standalone: .rig/bin, .claude/skills/rig-*, .claude/agents/rig-*, hooks in .claude/settings.json. Commit .rig/ and .claude/; re-run from the plugin to upgrade.`

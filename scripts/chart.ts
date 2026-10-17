@@ -6,16 +6,16 @@ import path from 'node:path'
 import { ROOT, SDLC, exists, read, sha, now, toPosix } from './core.ts'
 import { openQuestions } from './model.ts'
 import { changeDir, isShipped } from './lifecycle.ts'
-import { parseIntent, parseCases, traceReport, uncomment, type Intent, type ChartFinding } from './chartcheck.ts'
+import { parseIntent, parseCases, prdIds, traceReport, uncomment, type Intent, type ChartFinding } from './chartcheck.ts'
 
-export const PRODUCT = path.join(SDLC, 'product')
+const PRODUCT = path.join(SDLC, 'product')
 const INTENTS = path.join(PRODUCT, 'intents')
 const APPROVALS = path.join(PRODUCT, 'approvals')
 const ARCH = toPosix(path.relative(ROOT, path.join(PRODUCT, 'architecture.md')))
 const SHARED_DIRS = ['adr', 'testplan'].map(d => `${toPosix(path.relative(ROOT, path.join(PRODUCT, d)))}/`)
 export const CHART_RE = /^chart-(\d{1,4})$/
-export type ChartFile = { path: string; sha: string }
-export type ChartState = 'approved' | 'stale' | 'missing'
+type ChartFile = { path: string; sha: string }
+type ChartState = 'approved' | 'stale' | 'missing'
 type Row = { by: string; at: string; digest: string; files: ChartFile[] }
 
 export const prdPath = (n: number): string => path.join(PRODUCT, 'prd', `sprint-${n}.md`)
@@ -31,15 +31,15 @@ function walk(dir: string): string[] {
 const rel = (abs: string[]): string[] => [...new Set(abs.filter(f => exists(f)).map(f => toPosix(path.relative(ROOT, f))))].sort()
 
 const allIntents = (): Intent[] => (exists(INTENTS) ? fs.readdirSync(INTENTS).filter(f => f.endsWith('.md') && !local(f)).sort().map(f => parseIntent(f.slice(0, -3), read(path.join(INTENTS, f)))) : [])
-export const intentsOf = (n: number): Intent[] => allIntents().filter(i => i.sprint === n)
+const intentsOf = (n: number): Intent[] => allIntents().filter(i => i.sprint === n)
 export const intentOf = (slug: string): Intent | null => allIntents().find(i => i.slug === slug) ?? null
 const intentFile = (slug: string): string => path.join(INTENTS, `${slug}.md`)
 
-export function ownFiles(n: number): string[] {
+function ownFiles(n: number): string[] {
   const own = intentsOf(n)
   return rel([prdPath(n), ...own.map(i => intentFile(i.slug)), ...own.flatMap(i => [...i.contractFiles, ...i.exampleFiles]).filter(f => !path.isAbsolute(f) && !f.split(/[\\/]/).includes('..')).map(f => path.join(ROOT, f))])
 }
-export const sharedFiles = (): string[] => rel([path.join(PRODUCT, 'architecture.md'), ...walk(path.join(PRODUCT, 'adr')).filter(f => f.endsWith('.md')), ...walk(path.join(PRODUCT, 'testplan'))])
+const sharedFiles = (): string[] => rel([path.join(PRODUCT, 'architecture.md'), ...walk(path.join(PRODUCT, 'adr')).filter(f => f.endsWith('.md')), ...walk(path.join(PRODUCT, 'testplan'))])
 export const chartFiles = (n: number): string[] => [...new Set([...ownFiles(n), ...sharedFiles()])].sort()
 const manifest = (paths: string[]): ChartFile[] => paths.map(p => ({ path: p, sha: sha(read(path.join(ROOT, p))) }))
 export const chartDigest = (n: number): string => sha(manifest(chartFiles(n)).map(f => `${f.path}\n${f.sha}\n`).join(''))
@@ -117,7 +117,7 @@ export function readyIntents(): { slug: string; sprint: number; estimateDays: nu
 export function chartReport(n: number): string {
   const intents = intentsOf(n)
   const cases = parseCases(read(path.join(PRODUCT, 'testplan', 'cases.md')))
-  const ids = [...new Set(read(prdPath(n)).replace(/\r\n/g, '\n').split('\n').flatMap(l => /^#{2,4}\s+(N?FR-\d+)\b/.exec(l)?.[1] ?? /^\|\s*(N?FR-\d+)\s*\|/.exec(l)?.[1] ?? []))].sort()
+  const ids = prdIds(read(prdPath(n)))
   const inCase = (id: string): string[] => cases.filter(c => c.reqs.includes(id)).map(c => c.id)
   const chain = ids.map(id => `  ${id} → ${intents.filter(i => i.prd.includes(id)).map(i => `${i.slug}#${i.behaviours.filter(b => b.reqs.includes(id)).map(b => b.id).join(',')}`).join(' ') || '(no intent)'} → ${inCase(id).join(' ') || '(no test case)'}`)
   const started = intents.filter(i => exists(changeDir(i.slug))).length

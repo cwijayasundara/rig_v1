@@ -152,3 +152,13 @@ test('a builtAt that looks like a git option is never passed to git', () => {
   cmd(repo, ['refresh'], run)
   assert.equal(fs.existsSync(victim), false)
 })
+
+test('a page removed from wiki.json is an orphan warning in status, not a stale page', () => {
+  const { repo, run } = built()
+  write(repo, '.rig/wiki.json', JSON.stringify({ pages: [CONFIG.pages[0]] }))
+  write(repo, 'src/b.ts', B.replace('1', '2'))
+  const r = cmd(repo, ['status'], run)
+  assert.match(r.text, /warning: .*beta\.md is not in/)
+  assert.doesNotMatch(r.text, /beta:/)
+  assert.match(r.text, /wiki: fresh/)
+})

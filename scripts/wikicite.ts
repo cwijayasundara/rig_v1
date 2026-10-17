@@ -140,12 +140,36 @@ function spanEnd(source: string, from: number): number {
   return from + (last - from) + 1
 }
 
-// The declaration text of `symbol`, or null when it is absent or declared more than once (overloads, shadowing).
-export function findSymbol(source: string, symbol: string): string | null {
-  const at = heads(source, symbol)
+const JS_EXT = /\.[cm]?[jt]sx?$/
+const LANG_HEADS: Record<string, (n: string) => RegExp> = {
+  py: n => new RegExp(`^[ \\t]*(?:async\\s+)?(?:def|class)\\s+${n}\\b`, 'gm'),
+  go: n => new RegExp(`^func\\s+(?:\\([^)]*\\)\\s*)?${n}\\b|^type\\s+${n}\\b`, 'gm'),
+  rs: n => new RegExp(`^[ \\t]*(?:pub(?:\\([^)]*\\))?\\s+)?(?:(?:async|const|unsafe)\\s+)*(?:fn|struct|enum|trait|type)\\s+${n}\\b`, 'gm'),
+}
+const extOf = (file: string): string => /\.(\w+)$/.exec(file)?.[1] ?? ''
+
+// Whether `#symbol` cites can resolve in this file: TS/JS and the languages with a declaration form above.
+export const symbolSupported = (file: string): boolean => JS_EXT.test(file) || extOf(file) in LANG_HEADS
+
+// A Python body runs from its def line to the next non-blank line at the same or a lower indent.
+function pyEnd(source: string, from: number): number {
+  const [head = '', ...rest] = source.slice(from).split('\n')
+  const indent = (l: string): number => l.length - l.trimStart().length
+  let end = head.length, pos = end
+  for (const l of rest) { if (l.trim() && indent(l) <= indent(head)) break; pos += 1 + l.length; if (l.trim()) end = pos }
+  return from + end
+}
+
+// The declaration text of `symbol`, or null when it is absent or declared more than once (overloads, shadowing). `file` picks the
+// language by extension; without it, or for TS/JS, the TS/JS forms apply; a language with no forms never resolves.
+export function findSymbol(source: string, symbol: string, file = ''): string | null {
+  const lang = extOf(file)
+  const mk = LANG_HEADS[lang]
+  if (file && !JS_EXT.test(file) && !mk) return null
+  const at = mk ? [...new Set([...source.matchAll(mk(esc(symbol)))].map(m => m.index! + m[0].length - m[0].trimStart().length))] : heads(source, symbol)
   const start = at[0]
   if (at.length !== 1 || start === undefined) return null
-  return source.slice(start, spanEnd(source, start)).trim()
+  return source.slice(start, lang === 'py' ? pyEnd(source, start) : spanEnd(source, start)).trim()
 }
 
 // The hash a citation records, or null when the file is missing or the symbol does not resolve to exactly one declaration.
@@ -153,6 +177,6 @@ export function citeHash(cite: Cite & { kind: 'code' }, read: (p: string) => str
   const text = read(cite.path)
   if (text === null) return null
   if (cite.symbol === undefined) return hashText(text)
-  const decl = findSymbol(text, cite.symbol)
+  const decl = findSymbol(text, cite.symbol, cite.path)
   return decl === null ? null : hashText(decl)
 }

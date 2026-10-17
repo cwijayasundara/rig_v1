@@ -106,7 +106,7 @@ test('open-question: an unresolved question in the PRD or an intent', () => {
 
 test('capacity is a report: summed days above ten per engineer', () => {
   const big = Object.fromEntries(Array.from({ length: 6 }, (_, i) => [`i${i}`, intent(`i${i}`, { prd: '[FR-1]', days: '2' })]))
-  const f = traceReport({ prd: PRD, intents: parse(big), cases: null, exists, engineers: 1 })
+  const f = traceReport({ prd: PRD, intents: parse(big), cases: null, exists })
   assert.deepEqual(rules(f, 'report'), ['capacity'])
 })
 

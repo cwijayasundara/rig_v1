@@ -4,12 +4,12 @@
   "paths": { "tests": ["**/tests/**", "**/benches/**"], "testSupport": ["**/fixtures/**"] },
   "contracts": { "files": [], "validate": "", "run": "" },
   "sensors": [
-    { "id": "types", "cmd": "cargo check --quiet", "cadence": "turn", "blocks": true, "count": "exit", "guide": "The crate must compile before the turn ends." },
-    { "id": "lint", "cmd": "cargo clippy --quiet -- -D warnings", "cadence": "turn", "blocks": true, "count": "exit", "guide": "Clippy must pass with warnings as errors; fix the code rather than adding allow attributes." },
-    { "id": "unit", "cmd": "cargo test --quiet", "cadence": "turn", "blocks": true, "count": "exit", "guide": "Run cargo test before claiming done; fix the code, never the tests." },
-    { "id": "layers", "cmd": "cargo deny check bans", "cadence": "commit", "blocks": true, "count": "exit", "guide": "Respect the banned and allowed dependencies in deny.toml." },
-    { "id": "duplication", "cmd": "npx --yes jscpd@5 src --silent --threshold 5", "cadence": "commit", "blocks": false, "count": "exit", "guide": "Reuse existing code instead of copying it." },
-    { "id": "audit", "cmd": "cargo audit", "cadence": "ci", "blocks": false, "count": "exit", "guide": "Do not add crates with known vulnerabilities." },
-    { "id": "mutation", "cmd": "cargo mutants", "cadence": "nightly", "blocks": false, "count": "exit", "guide": "Tests must assert behaviour so that changing the code makes them fail." }
+    { "id": "types", "cmd": "cargo check --quiet", "cadence": "turn", "blocks": true, "guide": "The crate must compile before the turn ends." },
+    { "id": "lint", "cmd": "cargo clippy --quiet -- -D warnings", "cadence": "turn", "blocks": true, "guide": "Clippy must pass with warnings as errors; fix the code rather than adding allow attributes." },
+    { "id": "unit", "cmd": "cargo test --quiet", "cadence": "turn", "blocks": true, "guide": "Run cargo test before claiming done; fix the code, never the tests." },
+    { "id": "layers", "cmd": "cargo deny check bans", "cadence": "commit", "blocks": true, "guide": "Respect the banned and allowed dependencies in deny.toml." },
+    { "id": "duplication", "cmd": "npx --yes jscpd@5 src --silent --threshold 5", "cadence": "commit", "blocks": false, "guide": "Reuse existing code instead of copying it." },
+    { "id": "audit", "cmd": "cargo audit", "cadence": "ci", "blocks": false, "guide": "Do not add crates with known vulnerabilities." },
+    { "id": "mutation", "cmd": "cargo mutants", "cadence": "nightly", "blocks": false, "guide": "Tests must assert behaviour so that changing the code makes them fail." }
   ]
 }

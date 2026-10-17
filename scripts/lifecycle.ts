@@ -49,7 +49,7 @@ export function contractFiles(): string[] {
   if (!globs.length) return []
   return (git(['ls-files', '--cached', '--others', '--exclude-standard']) ?? '').split('\n').filter(f => f && globs.some(g => globToRegex(g).test(f))).sort()
 }
-export const freezeRecord = (_slug: string): Record<string, string> => Object.fromEntries(contractFiles().filter(f => exists(path.join(ROOT, f))).map(f => [f, digest(read(path.join(ROOT, f)))]))
+export const freezeRecord = (): Record<string, string> => Object.fromEntries(contractFiles().filter(f => exists(path.join(ROOT, f))).map(f => [f, digest(read(path.join(ROOT, f)))]))
 const hashes = (slug: string): Record<string, string> => Object.fromEntries(APPROVED.filter(n => exists(file(slug, n))).map(n => [n, digest(read(file(slug, n)))]))
 export const readApproval = (slug: string): Approval | null => json<Approval>(file(slug, 'approval.json'))
 export function approvalState(slug: string): 'missing' | 'stale' | 'approved' {
@@ -65,7 +65,7 @@ export function approvalRefusal(slug: string): string | null {
   return open.length ? `resolve the open question(s) first: answer each, or record the default under ## Decisions, and leave "## Open questions" as none:\n${open.map(q => `  - ${q}`).join('\n')}` : null
 }
 export function writeApproval(slug: string, by: string): Approval {
-  const a: Approval = { by, at: now(), hashes: hashes(slug), contracts: freezeRecord(slug) }
+  const a: Approval = { by, at: now(), hashes: hashes(slug), contracts: freezeRecord() }
   fs.writeFileSync(file(slug, 'approval.json'), JSON.stringify(a, null, 2) + '\n')
   return a
 }

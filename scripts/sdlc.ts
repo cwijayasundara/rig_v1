@@ -8,11 +8,11 @@ import fs from 'node:fs'
 import path from 'node:path'
 import {
   ROOT, SDLC, CHANGES, SLUG_RE, SOFT_HOOK_FAILURE, exists, read, now, defaultBase, toPosix, out, fail, git, parseArgs, optString, listChanges, scanSecrets, checkSlug,
-  WAIVERS, readJsonl, type Waiver, ensureGitignore, PLUGIN_ROOT, skillRef, sanctionWrites, type Args,
+  WAIVERS, readJsonl, type Waiver, ensureGitignore, PLUGIN_ROOT, skillRef, sanctionWrites, readGate, type Args,
 } from './core.ts'
 import { formatFindings, SENSOR_NAMES, type Finding } from './model.ts'
 import { readBaseline, branchDiff, turnDiff, type Snapshot } from './diffs.ts'
-import { cmdHook, readGate } from './hooks.ts'
+import { cmdHook } from './hooks.ts'
 import { cmdCheck, cmdCheckFile, loadConfig } from './check.ts'
 import { runCommand, recordRun } from './runs.ts'
 import { cmdVendor, installStandalone } from './vendor.ts'
@@ -110,7 +110,7 @@ function cmdApprove(args: Args): void {
   if (!slug || !exists(changeDir(slug))) fail('usage: approve <slug>')
   const refusal = approvalRefusal(slug)
   if (refusal) fail(refusal)
-  if (approvalState(slug) === 'approved' && JSON.stringify(readApproval(slug)?.contracts ?? {}) === JSON.stringify(freezeRecord(slug))) return out(`${slug} is already approved. Next: /rig:build ${slug}`)
+  if (approvalState(slug) === 'approved' && JSON.stringify(readApproval(slug)?.contracts ?? {}) === JSON.stringify(freezeRecord())) return out(`${slug} is already approved. Next: /rig:build ${slug}`)
   const by = optString(args, 'by') || whoami() || 'unknown'
   const a = writeApproval(slug, by)
   const n = Object.keys(a.contracts).length

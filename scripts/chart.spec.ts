@@ -260,3 +260,11 @@ test('sync --check still holds a change to its intent when the source line is de
   assert.equal(r.code, 1)
   assert.match(r.stdout, /B1 of alpha is missing from spec\.md/)
 })
+
+test('chartReport ignores a requirement id inside an HTML comment, as the trace check does', () => {
+  chart1()
+  write(repo, `${P}/prd/sprint-1.md`, prd(1, '\n<!--\n### FR-9: template example\n-->\n'))
+  const r = call('return C.chartReport(1)') as string
+  assert.match(r, /requirements 1:/)
+  assert.doesNotMatch(r, /FR-9/)
+})
