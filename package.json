@@ -18,6 +18,8 @@
     "eval:chart": "node eval/chart.mjs",
     "eval:chart:dry": "node eval/chart.mjs --dry --runs 1",
     "eval:wiki": "node --disable-warning=ExperimentalWarning eval/wiki.mjs",
+    "eval:learn": "node --disable-warning=ExperimentalWarning eval/learn.mjs",
+    "eval:learn:dry": "node --disable-warning=ExperimentalWarning eval/learn.mjs --dry --runs 1",
     "eval:wiki:dry": "node --disable-warning=ExperimentalWarning eval/wiki.mjs --dry --runs 1"
   },
   "devDependencies": {
