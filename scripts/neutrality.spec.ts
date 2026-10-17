@@ -23,4 +23,4 @@ test('the size cap counts non-spec scripts and holds', () => {
     .reduce((n, f) => n + fs.readFileSync(path.join(DIR, f), 'utf8').replace(/\n$/, '').split('\n').length, 0)
   assert.ok(total <= SCRIPTS_CAP, `scripts are ${total} lines (cap ${SCRIPTS_CAP})`)
 })
-const SCRIPTS_CAP = 4100 // 3 450 for the sprint outer loop; raised for the code wiki (wiki*.ts: about 650 lines), with the person's cap for the whole harness raised to 6 000 on 2026-10-17. Before that: 3 050 after step 4c; raised for the sprint outer loop (chart.ts, chartcheck.ts: 3 308 after task 4, about 3 380 at the end), with the person's cap for the whole harness at 5 000
+const SCRIPTS_CAP = 4350 // 4 100 plus the learning loop (learn*.ts: about 250 lines, 2026-10-17); before that: 3 450 for the sprint outer loop; raised for the code wiki (wiki*.ts: about 650 lines), with the person's cap for the whole harness raised to 6 000 on 2026-10-17. Before that: 3 050 after step 4c; raised for the sprint outer loop (chart.ts, chartcheck.ts: 3 308 after task 4, about 3 380 at the end), with the person's cap for the whole harness at 5 000

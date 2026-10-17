@@ -30,6 +30,7 @@
       "Skill(rig:chart)", "Skill(rig:chart *)", "Skill(rig-chart)", "Skill(rig-chart *)",
       "Skill(rig:testplan)", "Skill(rig:testplan *)", "Skill(rig-testplan)", "Skill(rig-testplan *)",
       "Skill(rig:wiki)", "Skill(rig:wiki *)", "Skill(rig-wiki)", "Skill(rig-wiki *)",
+      "Skill(rig:learn)", "Skill(rig:learn *)", "Skill(rig-learn)", "Skill(rig-learn *)",
       "Bash(gh pr comment *)",
       "Bash(gh pr view *)"
     ],

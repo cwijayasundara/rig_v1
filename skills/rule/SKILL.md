@@ -16,7 +16,7 @@ A lesson is earned only by a real, recurring finding. It becomes a regular expre
    - Use `warn` unless a mistake would be costly. Prefer narrow `paths`.
 
    If it cannot be stated as a regular expression (a design habit, a wrong assumption, a step it skips), draft one line for CLAUDE.md's `## Things Claude gets wrong` section instead: what to do, in at most 25 words, ending with `(seen: <slug>, <slug>)`. Skip step 3 for a CLAUDE.md line.
-3. **Check** with `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts check --at ship --json` on a branch that contains a known occurrence: the rule must fire exactly there.
+3. **Check** the rule fires on both changes and on no other shipped one with `sdlc.ts learn replay <rule.json> --earned <slug>,<slug>`, then with `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts check --at ship --json` on a branch that contains a known occurrence: the rule must fire exactly there.
 4. **Hand over.** `.rig/rules.json` is a harness file and CLAUDE.md is a protected harness file too, so show the person the entry or the line and ask them to add it (for CLAUDE.md, under `## Things Claude gets wrong`, adding that heading if it is missing). It goes through PR review like any harness change.
 
 
