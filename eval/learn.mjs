@@ -33,6 +33,8 @@ const recurrence = (rows, arm) => mean(late(rows, arm).map(r => (r.recurred ? 1 
 // The cut-the-feature rule: a third less recurrence for at most 10% more cost, or the same recurrence for less cost; anything else is no lift.
 export function verdict(rows) {
   if (!late(rows, 'off').length || !late(rows, 'loop').length) return 'unmeasured'
+  // A baseline that never makes the mistake leaves nothing to learn from, so cost alone must not decide.
+  if (recurrence(rows, 'off') === 0) return 'unmeasured'
   const gain = recurrence(rows, 'off') - recurrence(rows, 'loop')
   const costOk = perChangeUsd(rows, 'loop') <= perChangeUsd(rows, 'off') * COST_SLACK + 1e-9
   if (gain >= WIN_BY && costOk) return 'loop beats off'

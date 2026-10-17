@@ -56,3 +56,13 @@ test('a failed model run is not scored as learned: failed rows are left out of t
   const failed = rows('loop', [0, 0, 0, 0, 0, 0]).map(r => ({ ...r, failed: true }))
   assert.equal(verdict([...rows('off', [1, 1, 1, 1, 1, 1]), ...failed]), 'unmeasured')
 })
+
+test('a baseline that never makes the mistake measures nothing, however the cost compares', () => {
+  assert.equal(verdict([...rows('off', [0, 0, 0, 0, 0, 0], 2), ...rows('loop', [0, 0, 0, 0, 0, 0], 1)]), 'unmeasured')
+})
+
+test('the fixture tempts the mistake: its existing handlers send bare-string errors while the contract forbids them', () => {
+  const handlers = fs.readFileSync(path.join(import.meta.dirname, 'fixtures/learn/repo/src/handlers.js'), 'utf8')
+  assert.ok(handlers.split('\n').filter(l => scoreChange([l]).recurred).length >= 2)
+  assert.doesNotMatch(handlers, /fail\(/)
+})
