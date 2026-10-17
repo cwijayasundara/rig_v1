@@ -66,9 +66,12 @@ These come from the research (`docs/research/`) and from the one week this repo 
    rig files, plus nightly; one `claude-code-action` workflow for review and triage.
 5. **Maintain** (plays 14 to 16): not started. One detection script, `bands.yaml`, a scheduled routine; a breach becomes an
    `intent.md`. Scheduled scans use native routines and `/security-review`.
-6. **Learning loop** (was `brain/memory`): not started. Committed markdown, provenance, delta edits only, human-reviewed
-   candidates, demotion when a lesson stops firing, promotion of a recurring lesson to a sensor, replay gate against stored diffs.
-   Held back until there are about 30 shipped changes of evidence; Devin's memory has no published validation either.
+6. **Learning loop** (was `brain/memory`): built on `rig/learn`, not yet shown to lift. `sdlc.ts learn mine|replay|check|status` mines
+   review findings and waivers seen in at least 2 changes; `/rig:learn` proposes delta edits to the committed `.rig/lessons.md`
+   (at most 30 active, each citing 2 changes) and rule promotions; a rule is presented only after `learn replay` shows it fires on
+   the changes that earned it and on no other; a person applies every change. Design:
+   `docs/superpowers/specs/2026-10-17-learning-loop-design.md`. Judged by `npm run eval:learn` (live, costs money, person starts it):
+   cut `/rig:learn` and keep `/rig:rule` if it shows no lift after two passes. The native auto-memory arm is not run.
 
 ## How we know it worked (the gate to "production ready")
 

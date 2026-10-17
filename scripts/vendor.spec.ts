@@ -27,7 +27,7 @@ test('vendor --cloud writes project skills, agents and hooks with no plugin refe
   assert.equal(sdlc(repo, ['vendor', '--cloud']).code, 0)
   const skills = walk(path.join(repo, '.claude/skills')).filter(f => f.endsWith('SKILL.md'))
   const agents = walk(path.join(repo, '.claude/agents'))
-  assert.ok(skills.some(f => f.endsWith('rig-start/SKILL.md')) && skills.length === 12, `${skills.length} skills`)
+  assert.ok(skills.some(f => f.endsWith('rig-start/SKILL.md')) && skills.length === 13, `${skills.length} skills`)
   for (const s of ['start', 'plan', 'approve', 'waive', 'chart', 'testplan']) assert.ok(skills.some(f => f.endsWith(`rig-${s}/SKILL.md`)), `rig-${s} is vendored`)
   assert.deepEqual(agents.map(f => path.basename(f)), ['rig-architect.md', 'rig-evaluator.md'], 'the architect and the evaluator are the agents')
   for (const f of [...skills, ...agents]) {
@@ -185,7 +185,7 @@ test('the settings template protects evidence with deny rules and the harness co
   for (const f of ['approval.json', 'verify.json', 'evidence/runs.jsonl']) assert.ok(deny.has(`Edit(/.rig/changes/*/${f})`), f)
   assert.ok(deny.has('Read(.env)') && deny.has('Edit(.env)'), 'the .env rules stay')
   assert.deepEqual(settings.permissions.ask, [
-    'Edit(/.rig/sensors.json)', 'Edit(/.rig/rules.json)', 'Edit(/.rig/evals/*.json)', 'Edit(/.claude/settings.json)',
+    'Edit(/.rig/sensors.json)', 'Edit(/.rig/rules.json)', 'Edit(/.rig/lessons.md)', 'Edit(/.rig/lessons-archive.md)', 'Edit(/.rig/evals/*.json)', 'Edit(/.claude/settings.json)',
     'Edit(/.rig/bin/**)', 'Edit(/.rig/githooks/**)', 'Edit(/.rig/mod/**)', 'Edit(/.rig/guides/**)',
     'Edit(/.github/workflows/rig-*.yml)', 'Edit(/CODEOWNERS)', 'Edit(/.github/CODEOWNERS)', 'Edit(/migrations/**)', 'Edit(/infra/**)',
     'Bash(node --disable-warning=ExperimentalWarning .rig/bin/sdlc.ts evals*)',

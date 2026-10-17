@@ -30,12 +30,15 @@
       "Skill(rig:chart)", "Skill(rig:chart *)", "Skill(rig-chart)", "Skill(rig-chart *)",
       "Skill(rig:testplan)", "Skill(rig:testplan *)", "Skill(rig-testplan)", "Skill(rig-testplan *)",
       "Skill(rig:wiki)", "Skill(rig:wiki *)", "Skill(rig-wiki)", "Skill(rig-wiki *)",
+      "Skill(rig:learn)", "Skill(rig:learn *)", "Skill(rig-learn)", "Skill(rig-learn *)",
       "Bash(gh pr comment *)",
       "Bash(gh pr view *)"
     ],
     "ask": [
       "Edit(/.rig/sensors.json)",
       "Edit(/.rig/rules.json)",
+      "Edit(/.rig/lessons.md)",
+      "Edit(/.rig/lessons-archive.md)",
       "Edit(/.rig/evals/*.json)",
       "Edit(/.claude/settings.json)",
       "Edit(/.rig/bin/**)",

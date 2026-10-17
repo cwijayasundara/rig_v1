@@ -52,3 +52,8 @@ jobs:
         env:
           CLAUDE_PROJECT_DIR: ${{ github.workspace }}
         run: node --disable-warning=ExperimentalWarning "$RUNNER_TEMP/sdlc/sdlc.ts" wiki status | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Lessons check
+        env:
+          CLAUDE_PROJECT_DIR: ${{ github.workspace }}
+        run: |
+          if grep -q "learn: args" "$RUNNER_TEMP/sdlc/sdlc.ts"; then node --disable-warning=ExperimentalWarning "$RUNNER_TEMP/sdlc/sdlc.ts" learn check; else echo "::notice::the base checker predates the learn command; skipping the lessons check"; fi

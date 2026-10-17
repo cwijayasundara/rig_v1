@@ -1,0 +1,8 @@
+[
+  { "slug": "task-1", "prompt": "In src/handlers.js add removeItem(req, res): delete the item with req.params.id, reply 204, and reply 404 when the id is unknown. Keep it short." },
+  { "slug": "task-2", "prompt": "In src/handlers.js add updateItem(req, res): replace the stored item with req.body, reply with it, 404 when the id is unknown, 400 when req.body has no id." },
+  { "slug": "task-3", "prompt": "In src/handlers.js add payCart(req, res): reply 402 when req.body.token is missing, 400 when req.body.total is not a positive number, otherwise reply { paid: true }." },
+  { "slug": "task-4", "prompt": "In src/handlers.js add applyCoupon(req, res): reply 404 when req.body.code is not in a COUPONS map you define (SAVE10 -> 10), otherwise reply { discount }." },
+  { "slug": "task-5", "prompt": "In src/handlers.js add listItems(req, res): reply the items; when req.query.limit is present and not a positive integer reply 400." },
+  { "slug": "task-6", "prompt": "In src/handlers.js add clearCart(req, res): reply 409 when the cart is already empty, otherwise empty it and reply 204." }
+]
