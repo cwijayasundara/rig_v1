@@ -24,6 +24,7 @@ import { treeStamp } from './stamp.ts'
 import { declareStack } from './stackinit.ts'
 import { cmdSync } from './sync.ts'
 import { cmdWiki } from './wiki.ts'
+import { cmdLearn } from './learn.ts'
 import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, prdPath, chartFiles } from './chart.ts'
 import { TYPES, toType, changeDir, newChange, setActive, activeSlug, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
 
@@ -273,6 +274,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   waive: cmdWaive,
   sensors: () => cmdSensors(),
   wiki: args => cmdWiki(args),
+  learn: args => cmdLearn(args),
 }
 
 const [command = '', ...rest] = process.argv.slice(2)
