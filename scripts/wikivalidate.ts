@@ -3,7 +3,7 @@
 import { parseCites, citeHash, type Cite } from './wikicite.ts'
 
 export type WikiFinding = {
-  rule: 'uncited' | 'two-sentences' | 'path-missing' | 'symbol-unresolved' | 'path-escapes' | 'why-unresolved' | 'mermaid'
+  rule: 'uncited' | 'two-sentences' | 'path-missing' | 'symbol-unresolved' | 'path-escapes' | 'why-unresolved' | 'mermaid' | 'unsupported'
   line: number
   message: string
 }
