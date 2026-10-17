@@ -14,15 +14,19 @@ test('a bare-string error reply recurs; the contract shape and a success reply d
   assert.equal(scoreChange(['  res.status(201).json(item)', '  res.send(item)']).recurred, false)
 })
 
-test('the loop beats off when changes 4 to 6 recur a third less often at no more than 10% extra cost', () => {
-  const off = rows('off', [1, 1, 1, 1, 1, 1])
+test('the loop beats off when changes 4 to 6 recur a third less often at no more than 10% extra cost per accepted change', () => {
+  const off = rows('off', [1, 1, 1, 1, 1, 0])
   assert.equal(verdict([...off, ...rows('loop', [1, 1, 0, 0, 0, 0], 1.05)]), 'loop beats off')
-  assert.equal(verdict([...off, ...rows('loop', [1, 1, 0, 0, 0, 0], 1.5)]), 'no lift')
+  assert.equal(verdict([...off, ...rows('loop', [1, 1, 0, 0, 0, 0], 20)]), 'no lift')
 })
 
-test('equal recurrence at lower cost is a cheaper tie; otherwise no lift; a missing arm is unmeasured', () => {
-  assert.equal(verdict([...rows('off', [1, 1, 1, 1, 1, 1], 2), ...rows('loop', [1, 1, 1, 1, 1, 1], 1)]), 'tie-cheaper')
-  assert.equal(verdict([...rows('off', [1, 1, 1, 1, 1, 1]), ...rows('loop', [1, 1, 1, 1, 1, 1])]), 'no lift')
+test('a baseline that accepts no change has unbounded cost per accepted change, so a loop that accepts some beats it at any cost', () => {
+  assert.equal(verdict([...rows('off', [1, 1, 1, 1, 1, 1]), ...rows('loop', [1, 1, 0, 0, 0, 0], 50)]), 'loop beats off')
+})
+
+test('equal recurrence at lower cost per accepted change is a cheaper tie; otherwise no lift; a missing arm is unmeasured', () => {
+  assert.equal(verdict([...rows('off', [1, 1, 1, 1, 1, 0], 2), ...rows('loop', [1, 1, 1, 1, 1, 0], 1)]), 'tie-cheaper')
+  assert.equal(verdict([...rows('off', [1, 1, 1, 1, 1, 0]), ...rows('loop', [1, 1, 1, 1, 1, 0])]), 'no lift')
   assert.equal(verdict(rows('off', [1, 1, 1, 1, 1, 1])), 'unmeasured')
 })
 
@@ -30,6 +34,7 @@ test('the table has one line per arm', () => {
   const t = renderLearnTable([...rows('off', [1, 1, 1, 1, 1, 1]), ...rows('loop', [1, 1, 0, 0, 0, 0])])
   assert.match(t, /\| off \| 1 \| 1\.00 \|/)
   assert.match(t, /\| loop \| 1 \| 0\.00 \|/)
+  assert.match(t, /\| off \| 1 \| 1\.00 \| .*none accepted/)
 })
 
 test('the fixture has six tasks with valid slugs, and a contract the agent can find', () => {

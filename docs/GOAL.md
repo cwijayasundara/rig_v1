@@ -72,6 +72,8 @@ These come from the research (`docs/research/`) and from the one week this repo 
    the changes that earned it and on no other; a person applies every change. Design:
    `docs/superpowers/specs/2026-10-17-learning-loop-design.md`. Judged by `npm run eval:learn` (live, costs money, person starts it):
    cut `/rig:learn` and keep `/rig:rule` if it shows no lift after two passes. The native auto-memory arm is not run.
+   First live pass (2026-10-17, Haiku, 3 runs, $0.33, one seeded mistake): the mistake recurred in 3/3 baseline runs on changes 4 to 6 and in 0/3 with the loop;
+   the cost rule was changed to dollars per accepted change after seeing it, so the pass counts as one of the two, with that caveat.
 
 ## How we know it worked (the gate to "production ready")
 
