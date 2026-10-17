@@ -14,7 +14,9 @@
     "test:e2e:stacks": "node tests/e2e/stacks.mjs",
     "eval": "node eval/run.mjs",
     "eval:dry": "node eval/run.mjs --dry --runs 1",
-    "test:e2e:unit": "node --test tests/e2e/lib/*.test.mjs tests/e2e/driver/*.test.mjs eval/*.test.mjs"
+    "test:e2e:unit": "node --test tests/e2e/lib/*.test.mjs tests/e2e/driver/*.test.mjs eval/*.test.mjs",
+    "eval:chart": "node eval/chart.mjs",
+    "eval:chart:dry": "node eval/chart.mjs --dry --runs 1"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

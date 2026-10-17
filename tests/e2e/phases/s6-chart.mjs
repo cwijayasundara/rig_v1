@@ -12,14 +12,19 @@ const intent = 'stock-model'
 const SRC = `.rig/product/intents/${intent}.md`
 const json = r => { try { return JSON.parse(r.stdout) } catch { return null } }
 
+// The known-good chart: product/ lands in .rig/product/, repo/ at the repo root. The eval's dry run uses it as a perfect chart.
+export function writeFixture(sb) {
+  for (const [top, dest] of Object.entries(ROOTS)) {
+    for (const f of walk(path.join(FIXTURE, top))) sb.write(path.join(dest, path.relative(path.join(FIXTURE, top), f)), fs.readFileSync(f, 'utf8'))
+  }
+}
+
 export async function runChart(sb) {
   const c = new Checks('S6 chart')
   const start = sb.git('rev-parse', 'HEAD')
   sb.git('checkout', '-q', '-b', PROBE)
   try {
-    for (const [top, dest] of Object.entries(ROOTS)) {
-      for (const f of walk(path.join(FIXTURE, top))) sb.write(path.join(dest, path.relative(path.join(FIXTURE, top), f)), fs.readFileSync(f, 'utf8'))
-    }
+    writeFixture(sb)
     const found = json(sb.sdlc(['chart', 'check', '1', '--cases', '--json']))
     await c.check('S6: the known-good chart has no blocking finding', () => (Array.isArray(found) && !found.some(f => f.severity === 'block')) || JSON.stringify(found))
     await c.check('S6: approve chart-1 is human-only (exit 3 without SDLC_HUMAN)', () => { const r = sb.sdlc(['approve', 'chart-1']); return r.status === 3 || `exit ${r.status}` })
