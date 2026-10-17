@@ -25,22 +25,25 @@ const share = (n, of) => (of ? n / of : 0)
 export function scoreChart(key, findings, intents) {
   const defined = new Set(key.requirements)
   const cited = new Set(intents.flatMap(i => i.prd))
+  const boundary = intents.filter(i => i.kind === 'boundary')
   const invented = i => !i.prd.length || i.prd.some(r => !defined.has(r)) || i.behaviours.some(b => !b.reqs.length || b.reqs.some(r => !defined.has(r)))
   return {
     recall: share(key.requirements.filter(r => cited.has(r)).length, key.requirements.length),
     inventedIntentRate: share(intents.filter(invented).length, intents.length),
     sizeCompliance: share(intents.filter(i => i.estimateDays === 1 || i.estimateDays === 2).length, intents.length),
     dependenciesValid: !findings.some(f => f.rule === 'depends'),
+    designCoverage: share(intents.filter(i => i.design > 0).length, intents.length),
+    failureCoverage: boundary.length ? share(boundary.filter(i => i.failures.length).length, boundary.length) : 1,
   }
 }
 
 export function renderChartTable(rows) {
   const mean = (xs) => xs.reduce((a, b) => a + b, 0) / (xs.length || 1)
-  const head = '| arm | runs | recall | invented | size ok | deps valid | USD (mean) |\n|---|---|---|---|---|---|---|'
+  const head = '| arm | runs | recall | invented | size ok | deps valid | design | failure | USD (mean) |\n|---|---|---|---|---|---|---|---|---|'
   const arms = [...new Set(rows.map(r => r.arm))]
   return [head, ...arms.map(a => {
     const rs = rows.filter(r => r.arm === a)
-    return `| ${a} | ${rs.length} | ${mean(rs.map(r => r.recall))} | ${mean(rs.map(r => r.inventedIntentRate))} | ${mean(rs.map(r => r.sizeCompliance))} | ${rs.filter(r => r.dependenciesValid).length}/${rs.length} | $${mean(rs.map(r => r.usd)).toFixed(2)} |`
+    return `| ${a} | ${rs.length} | ${mean(rs.map(r => r.recall))} | ${mean(rs.map(r => r.inventedIntentRate))} | ${mean(rs.map(r => r.sizeCompliance))} | ${rs.filter(r => r.dependenciesValid).length}/${rs.length} | ${mean(rs.map(r => r.designCoverage))} | ${mean(rs.map(r => r.failureCoverage))} | $${mean(rs.map(r => r.usd)).toFixed(2)} |`
   })].join('\n')
 }
 
@@ -86,7 +89,7 @@ if (process.argv[1] === import.meta.filename) {
       const row = await runChartOne(arm, n, { dry, out, capRunUsd: Number(arg('cap-run', 3)) })
       rows.push(row)
       fs.appendFileSync(results, JSON.stringify(row) + '\n')
-      console.log(`${arm.id} #${n}: recall ${row.recall}, invented ${row.inventedIntentRate}, size ok ${row.sizeCompliance}, $${row.usd}${row.error ? ` (${row.error})` : ''}`)
+      console.log(`${arm.id} #${n}: recall ${row.recall}, invented ${row.inventedIntentRate}, size ok ${row.sizeCompliance}, design ${row.designCoverage}, failure ${row.failureCoverage}, $${row.usd}${row.error ? ` (${row.error})` : ''}`)
     }
   }
   console.log(`\n${renderChartTable(rows)}\n\n${results}`)

@@ -12,7 +12,7 @@
 
 ## Architecture
 
-<!-- The parts, where they run, and which way dependencies point. -->
+<!-- The parts, where they run, and which way dependencies point. Then a table of responsibilities and boundaries: | Part | Responsibility | Must not |. -->
 
 ## Constraints
 
@@ -25,6 +25,10 @@
 ## Behaviours
 
 <!-- - B<n>: one observable behaviour, stated from outside the system -->
+
+### Failure behaviour
+
+<!-- Resiliency rules, each a B-number with exact statuses and numbers: deferred work, throttling, invalid downstream responses, and the timeout default. -->
 
 ## Tests required
 

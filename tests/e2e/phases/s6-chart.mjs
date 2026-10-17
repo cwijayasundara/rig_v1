@@ -42,7 +42,7 @@ export async function runChart(sb) {
     await c.check('S6: a behaviour that cites no requirement is reported as intent-untraced', () => (broken ?? []).some(f => f.rule === 'intent-untraced' && f.where === 'cart-stock-limit') || JSON.stringify(broken))
     await c.check('S6: approve chart-1 is refused while a blocking finding stands', () => { const r = sb.sdlc(['approve', 'chart-1'], { human: true }); return (r.status === 1 && /intent-untraced/.test(r.stderr)) || `exit ${r.status}: ${r.stderr.trim().split('\n')[0]}` })
     const report = sb.sdlc(['chart', 'report', '1']).stdout
-    await c.check('S6: the report shows the chain from requirement to intent to case', () => /FR-3 → stock-endpoint#B1 → TC-5/.test(report) || report.split('\n').slice(0, 4).join(' | '))
+    await c.check('S6: the report shows the chain from requirement to intent to case', () => /FR-3 → stock-endpoint#B1,B2 → TC-5 TC-6/.test(report) || report.split('\n').slice(0, 4).join(' | '))
   } finally {
     sb.git('checkout', '-q', '-f', 'main')
     sb.run('git', ['clean', '-fdq'])

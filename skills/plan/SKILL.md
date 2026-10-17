@@ -11,7 +11,7 @@ allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_R
 1. Run `S status --json` and take `$0` or the active change. It must have `spec.md`; otherwise run `/rig:start` first.
 2. Write `.rig/changes/<slug>/plan.md` in at most 60 lines:
    - `## Files`: the files you expect to touch.
-   - `## Interfaces`: signatures and data shapes, never code bodies.
+   - `## Interfaces`: signatures and data shapes, never code bodies. For a change started from a charted intent, cite the intent's `## Design` rows instead of restating them, and give a test for each `### Failure behaviour` line.
    - `## Tests`: one line per behaviour, giving the B-number, the test file and the level (unit, contract or end-to-end).
    - `## Contracts`: contract files this change adds or edits, or `none`.
    - `## Verification`: the commands that prove it.

@@ -90,7 +90,9 @@ An intent file is the brief for one small piece of work, in the shape of Jain's 
 
 Frontmatter: `sprint: N`, `prd: [FR-3, NFR-2]`, `depends: [slug, slug]`, `estimate_days: 1 | 2`, `kind: boundary | internal`, `owner:` (left empty), `status: draft`.
 
-Sections: `## Intent` (why, who, what done looks like), `## Non-goals` (prohibitions, as in the product brief), `## Interfaces` (the interface this intent adds or changes), `## Behaviours`, `## Tests required`.
+Sections: `## Intent` (why, who, what done looks like), `## Non-goals` (prohibitions, as in the product brief), `## Design` (one `| Part | Responsibility | Must not |` row per part the intent adds or changes, Jain's responsibilities and boundaries), `## Interfaces` (the interface this intent adds or changes), `## Behaviours` with a `### Failure behaviour` subsection, `## Tests required`.
+
+- **Failure behaviour** holds Jain's resiliency rules (deferred work, throttling, invalid downstream responses, the timeout default) as ordinary B-numbered behaviours, so they are traced, copied into `spec.md` and tested like the rest. The subheading exists to make the architect write them: in Jain's study they are what the unharnessed model dropped. Intent and design stay in one file; there is no per-change `design.md`.
 
 - **Behaviours** are numbered `B1`, `B2`, … within the intent, one per line, stated from outside the system, each ending with the requirement it serves: `- B1 (FR-3): …`.
 - **`kind: boundary`** (the intent adds or changes an HTTP, message or downstream interface): `## Interfaces` names the contract file and the example files it adds or edits, with exact statuses, headers and numbers, as Jain's brief does. These files are contract files, so they freeze at plan approval (existing behaviour).

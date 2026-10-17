@@ -110,6 +110,14 @@ test('capacity is a report: summed days above ten per engineer', () => {
   assert.deepEqual(rules(f, 'report'), ['capacity'])
 })
 
+test('failure-behaviour is a report: a boundary intent that states no failure behaviour', () => {
+  const iface = 'Contract: api/x.yaml\nExample: ex/x.json\n'
+  const at = (behaviours: string, kind = 'boundary') => rules(traceReport({ prd: PRD, intents: parse({ ...good, b: intent('b', { prd: '[FR-2]', kind, iface, behaviours }) }), cases: null, exists }), 'report')
+  assert.deepEqual(at('- B1 (FR-2): x\n'), ['failure-behaviour'])
+  assert.deepEqual(at('- B1 (FR-2): x\n\n### Failure behaviour\n\n- B2 (FR-2): a slow store answers 503\n'), [])
+  assert.deepEqual(at('- B1 (FR-2): x\n', 'internal'), [])
+})
+
 test('intentSpecProblems: a dropped intent behaviour, and an extra one that cites nothing the intent serves', () => {
   const i = parseIntent('a', intent('a', { prd: '[FR-1]', behaviours: '- B1 (FR-1): adds\n- B2 (FR-1): more\n' }))
   const spec = (lines: string): string => `# Spec\n\n## Behaviours\n${lines}\n## Open questions\nnone\n`
@@ -153,4 +161,21 @@ test('the shipped templates read as empty: their prompts are comments, not conte
   const i = parseIntent('tpl', t('intent-format.md'))
   assert.deepEqual([i.openQuestions, i.contractFiles, i.exampleFiles, i.behaviours], [[], [], [], []])
   assert.deepEqual(traceReport({ prd: t('prd-format.md'), intents: [], cases: null, exists }).filter(f => f.rule === 'open-question'), [])
+})
+
+// Jain's application brief carries intent and design in one file, and its resiliency rules are what an unaided model drops.
+test('an intent brief holds its design and its failure behaviour, as the application brief does', () => {
+  const at = (f: string): string => fs.readFileSync(path.resolve(import.meta.dirname, '..', f), 'utf8')
+  const tpl = at('templates/intent-format.md')
+  assert.deepEqual([...tpl.matchAll(/^## (.+)$/gm)].map(m => m[1]), ['Intent', 'Non-goals', 'Design', 'Interfaces', 'Behaviours', 'Tests required', 'Open questions'])
+  assert.match(tpl, /## Design\n\n<!--[^>]*\| Part \| Responsibility \| Must not \|/)
+  for (const f of ['templates/intent-format.md', 'templates/brief.md']) assert.match(at(f), /## Behaviours\n[\s\S]*### Failure behaviour\n\n<!--[^>]*timeout/i, f)
+  assert.match(at('templates/brief.md'), /## Architecture\n\n<!--[^>]*responsibilit/i)
+  const i = parseIntent('a', intent('a', { behaviours: '- B1 (FR-1): it adds\n\n### Failure behaviour\n\n- B2 (FR-1): a slow store answers 503 after 2 s\n' }))
+  assert.deepEqual(i.behaviours.map(b => [b.id, b.reqs]), [['B1', ['FR-1']], ['B2', ['FR-1']]])
+  assert.deepEqual([i.failures, i.design], [['B2'], 0])
+  const designed = parseIntent('d', intent('d').replace('## Interfaces', '## Design\n| Part | Responsibility | Must not |\n|---|---|---|\n| Api | maps HTTP | call the store |\n| Store | keeps stock | know HTTP |\n\n## Interfaces'))
+  assert.equal(designed.design, 2)
+  assert.match(at('agents/architect.md'), /## Design[\s\S]*### Failure behaviour/)
+  assert.match(at('skills/plan/SKILL.md'), /cite[^.]*## Design/i)
 })

@@ -8,6 +8,7 @@ export type Behaviour = { id: string; reqs: string[]; text: string }
 export type Intent = {
   slug: string; sprint: number | null; prd: string[]; depends: string[]; estimateDays: number | null; kind: 'boundary' | 'internal' | null
   behaviours: Behaviour[]; contractFiles: string[]; exampleFiles: string[]; openQuestions: string[]
+  failures: string[]; design: number // B-numbers under `### Failure behaviour`; `## Design` table rows
 }
 export type TestCase = { id: string; reqs: string[]; intent: string; behaviour: string; level: string; data: string }
 export type ChartFinding = { rule: string; severity: 'block' | 'report'; where: string; message: string }
@@ -51,6 +52,8 @@ export function parseIntent(slug: string, raw: string): Intent {
     slug, sprint: whole(data.sprint), prd: listField(data.prd), depends: listField(data.depends), estimateDays: whole(data.estimate_days),
     kind: data.kind === 'boundary' || data.kind === 'internal' ? data.kind : null,
     behaviours: parseBehaviours(text), contractFiles: files('Contract'), exampleFiles: files('Example'), openQuestions: openQuestions(text),
+    failures: [...(section(text, 'Behaviours').split(/^###\s+Failure behaviour\s*$/m)[1] ?? '').matchAll(/^\s*[-*]\s+(B\d+)/gm)].map(m => m[1]!),
+    design: Math.max(0, section(text, 'Design').split('\n').filter(l => /^\s*\|/.test(l) && !/^\s*\|[\s|:-]*$/.test(l)).length - 1),
   }
 }
 
@@ -86,6 +89,7 @@ export function traceReport(i: { prd: string; intents: Intent[]; others?: Intent
     const cited = [...t.prd, ...t.behaviours.flatMap(b => b.reqs)]
     for (const id of new Set(cited)) if (!defined.has(id)) add('unknown-id', t.slug, `${t.slug} cites ${id}, which the PRD does not define`)
     if (t.estimateDays === null || t.estimateDays > MAX_DAYS || t.estimateDays < 1) add('estimate', t.slug, `${t.slug} needs estimate_days of 1 or ${MAX_DAYS} (split anything larger)`)
+    if (t.kind === 'boundary' && !t.failures.length) add('failure-behaviour', t.slug, `${t.slug} is a boundary intent with no ### Failure behaviour: state its timeouts and error responses as behaviours`, 'report')
     if (t.kind === 'boundary' && (!t.contractFiles.length || !t.exampleFiles.length)) add('boundary-contract', t.slug, `${t.slug} is a boundary intent: name a Contract: file and an Example: file under ## Interfaces`)
     for (const f of [...t.contractFiles, ...t.exampleFiles]) {
       if (escapes(f)) add('contract-path', t.slug, `${t.slug} names ${f}, which is outside the repo`)

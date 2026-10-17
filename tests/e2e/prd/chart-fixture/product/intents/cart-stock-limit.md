@@ -17,11 +17,19 @@ Adding to the cart checks the catalog's stock.
 
 - Do not reserve stock between carts.
 
+## Design
+
+| Part | Responsibility | Must not |
+|---|---|---|
+| src/cart | checks the catalog stock before adding | change the stock count |
+
 ## Interfaces
 
 none
 
 ## Behaviours
+
+### Failure behaviour
 
 - B1 (FR-2): adding more than the stock throws.
 - B2 (NFR-1): the message names the SKU.
