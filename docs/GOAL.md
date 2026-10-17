@@ -93,18 +93,19 @@ These come from the research (`docs/research/`, `reports/`, `research_notes/`) a
 - `docs/GOAL.md` this file; `CLAUDE.md` working rules; `DESIGN.md` and `ROADMAP.md` for the shipped design.
 - Designs of what is built: `docs/superpowers/specs/2026-10-16-behavioural-harness-design.md` (registry, hooks, contracts, sync),
   `2026-10-17-sprint-outer-loop-design.md`, `2026-10-17-wiki-design.md`.
-- Evidence: `docs/proposals/2026-10-08-why-slow-and-the-fix.md` (cost), `docs/research/`, `reports/`, `research_notes/`,
+- Evidence: `docs/proposals/2026-10-08-why-slow-and-the-fix.md` (cost), `docs/research/` (findings, gap analysis, raw notes,
+  `sensor-catalogue.md`),
   `docs/ai-sdlc-checklist.md` (the playbook's plays with measures), `docs/stuff.eml` (scaffold metrics digest, Sept 2026).
 - Removed 2026-10-17, in git history before this commit: all implementation plans (`docs/superpowers/plans/`, every one executed
-  and merged), the specs for the superseded chart workflow, e2e design and lite harness, the release-integration proposal
+  and merged), `reports/` and `research_notes/` (pre-rebuild audits; the useful parts are in `docs/research/`), the specs for the superseded chart workflow, e2e design and lite harness, the release-integration proposal
   (replaced by the scripted and live e2e in `tests/e2e/`), and `ai-sdlc-map.html` (a rendering of the checklist).
 
 ## Sources
 
 Anthropic AI-native SDLC playbook (16 plays); Fowler: *Harness engineering*, *Sensors for coding agents*, Jain *Are harnesses worth
 the cost?*; Devin: DeepWiki, Memory, index-repo; Claude Code docs (`https://code.claude.com/docs/en/overview`). Raw notes:
-`docs/research/raw/`, `research_notes/`. Findings: `docs/research/2026-10-17-findings.md`. Gap analysis:
-`docs/research/2026-10-17-playbook-gap-analysis.md`. Earlier audits: `reports/`.
+`docs/research/raw/`. Findings: `docs/research/2026-10-17-findings.md`. Gap analysis:
+`docs/research/2026-10-17-playbook-gap-analysis.md`. Sensor catalogue and Jain anatomy: `docs/research/sensor-catalogue.md`.
 
 ## Open
 
