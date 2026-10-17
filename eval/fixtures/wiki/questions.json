@@ -1,0 +1,73 @@
+[
+  {
+    "id": "after-payment",
+    "prompt": "When an order is placed and the payment succeeds, what happens next and which modules react?",
+    "expect": [
+      "order.placed",
+      "src/billing/invoice.js",
+      "src/notify/mailer.js",
+      "src/audit/trail.js"
+    ]
+  },
+  {
+    "id": "gateway-timeout",
+    "prompt": "If the payment gateway fails during checkout, what happens to the stock that was reserved?",
+    "expect": [
+      "releaseUnits",
+      "src/orders/checkout.js",
+      "src/inventory/stock.js"
+    ]
+  },
+  {
+    "id": "reserve-callers",
+    "prompt": "What could break if I change the signature of reserveUnits? Name the files that call it.",
+    "expect": [
+      "src/orders/checkout.js",
+      "src/returns/exchange.js"
+    ]
+  },
+  {
+    "id": "request-path",
+    "prompt": "How does a POST /orders request get from the HTTP layer to the checkout logic?",
+    "expect": [
+      "src/http/router.js",
+      "src/http/handlers/orders.js",
+      "placeOrder"
+    ]
+  },
+  {
+    "id": "opt-out",
+    "prompt": "Where is a customer's marketing opt-out honoured when emails are sent?",
+    "expect": [
+      "src/notify/mailer.js",
+      "src/users/prefs.js"
+    ]
+  },
+  {
+    "id": "express-flag",
+    "prompt": "Which feature flag changes shipping at checkout, and what does it change?",
+    "expect": [
+      "expressShipping",
+      "src/shipping/rates.js",
+      "src/orders/checkout.js"
+    ]
+  },
+  {
+    "id": "charge-retries",
+    "prompt": "How are card charges retried when they fail?",
+    "expect": [
+      "withBackoff",
+      "src/payments/gateway.js",
+      "src/payments/retry.js"
+    ]
+  },
+  {
+    "id": "event-map",
+    "prompt": "List every event emitted in the system and who listens to each.",
+    "expect": [
+      "order.placed",
+      "order.refunded",
+      "src/core/bootstrap.js"
+    ]
+  }
+]
