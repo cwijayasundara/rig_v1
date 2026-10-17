@@ -17,9 +17,13 @@ const javaOk = (): boolean => spawnSync('java', ['-version'], { stdio: 'ignore' 
 // `init --stack [name]`: with no sensors.json yet, write the detected stack pack as a registry. Onboarding only: it declares
 // only while sensors.json is absent or `{}`, uncommitted, and no change exists, so it cannot launder an edit to a reviewed config.
 // An old-shape file is a reviewed harness file: print the registry that replaces it, never overwrite it here.
-function upgradeText(opt: string | true): string {
+function packsFor(opt: string | true): { packs: ReturnType<typeof loadPacks>['packs']; found: string[] } {
   const { packs } = loadPacks(PACKS_DIR)
-  const found = typeof opt === 'string' ? [opt] : detectStacks(ROOT, packs)
+  return { packs, found: typeof opt === 'string' ? [opt] : detectStacks(ROOT, packs) }
+}
+
+function upgradeText(opt: string | true): string {
+  const { packs, found } = packsFor(opt)
   const pack = found.length === 1 ? packs.find(p => p.stack === found[0]) : undefined
   const head = '.rig/sensors.json uses the pre-registry format. Replace it with a registry and land that on the trunk as a reviewed harness change'
   return pack ? `${head}. From the ${pack.stack} pack, with the commands to adjust to this repo:\n${JSON.stringify(packFile(pack), null, 2)}` : `${head}; run init --stack <name> with one of: ${packs.map(p => p.stack).join(', ')}`
@@ -32,8 +36,7 @@ export function declareStack(opt: string | true): string {
   if (text && text !== '{}') return upgradeText(opt)
   if ((git(['ls-tree', '-r', '--name-only', 'HEAD']) ?? '').split('\n').includes('.rig/sensors.json')) return '.rig/sensors.json is committed; changing it is a reviewed harness edit, not onboarding'
   if (listChanges().length) return 'a change already exists; --stack is for onboarding only'
-  const { packs } = loadPacks(PACKS_DIR)
-  const found = typeof opt === 'string' ? [opt] : detectStacks(ROOT, packs)
+  const { packs, found } = packsFor(opt)
   if (found.length > 1) return `several stacks match (${found.sort().join(', ')}); run init --stack <name> with one of them`
   const pack = packs.find(p => p.stack === found[0])
   if (!pack) return `no stack pack for ${found[0] ?? 'this directory'} (known: ${packs.map(p => p.stack).join(', ')}); write .rig/sensors.json yourself`

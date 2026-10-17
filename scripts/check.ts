@@ -186,21 +186,25 @@ function shipVerdicts(slug: string, config: Registry, diffs: FileDiff[], base: s
   return findings
 }
 
+const onDisk = (f: string): string => read(path.join(ROOT, f))
+
+// The built-in diff sensors every point runs, edit time included; harness-tamper is added by the callers that judge a turn or more.
+function builtinFindings(diffs: FileDiff[], config: Registry, rules: Rule[], lineCounts: Record<string, number>, point: Parameters<typeof size>[3], slugs: string[], touched: string[], after: (f: string) => string): Finding[] {
+  const pattern = withoutFixtures(diffs, config)
+  return [
+    ...testTamper(pattern, config), ...suppressions(pattern, config), ...layering(pattern, config), ...size(diffs, config, lineCounts, point),
+    ...secretsInDiff(pattern), ...rulesSensor(pattern, rules), ...frozenFindings(slugs, touched, after),
+  ]
+}
+
 export function runChecks(i: CheckInput): CheckResult {
   const { diffs, config } = i
   // A commit judges a partial diff, like Stop: same severities, same sensors. Only its text source differs.
   const point = i.point === 'commit' ? 'stop' : i.point
-  const after = i.after ?? ((f: string) => read(path.join(ROOT, f)))
-  const pattern = withoutFixtures(diffs, config)
+  const after = i.after ?? onDisk
   const findings: Finding[] = [
-    ...testTamper(pattern, config),
-    ...suppressions(pattern, config),
-    ...layering(pattern, config),
-    ...size(diffs, config, fileLines(diffs.filter(d => d.status !== 'D').map(d => d.file), after), point),
-    ...secretsInDiff(pattern),
-    ...rulesSensor(pattern, i.rules),
+    ...builtinFindings(diffs, config, i.rules, fileLines(diffs.filter(d => d.status !== 'D').map(d => d.file), after), point, i.slugs, diffs.flatMap(d => d.from ? [d.file, d.from] : [d.file]), after),
     ...harnessTamper(diffs, { point, toolEdited: i.toolEdited, before: i.before, after }),
-    ...frozenFindings(i.slugs, diffs.flatMap(d => d.from ? [d.file, d.from] : [d.file]), after),
   ]
   // A diff whose plan the person approved is big by design: the diff-size limit warns instead of blocking.
   if (i.slugs.length && i.slugs.every(s => approvalState(s) === 'approved')) {
@@ -221,10 +225,8 @@ export function editFindings(rel: string): Finding[] {
   const snap = readBaseline()
   if (!snap) return []
   const { registry: config, rules } = loadConfig()
-  const diffs = fileDiff(snap, rel)
-  const pattern = withoutFixtures(diffs, config)
-  const slug = activeSlug()
-  return applyWaivers(builtinsApplied([...testTamper(pattern, config), ...suppressions(pattern, config), ...layering(pattern, config), ...size(diffs, config, fileLines([rel]), 'edit'), ...secretsInDiff(pattern), ...rulesSensor(pattern, rules), ...frozenFindings(slug ? [slug] : [], [rel], f => read(path.join(ROOT, f)))], config), slug ? [slug] : []).findings
+  const slugs = [activeSlug()].filter((s): s is string => Boolean(s))
+  return applyWaivers(builtinsApplied(builtinFindings(fileDiff(snap, rel), config, rules, fileLines([rel]), 'edit', slugs, [rel], onDisk), config), slugs).findings
 }
 
 // The changes a diff carries evidence for, as CI reads them.

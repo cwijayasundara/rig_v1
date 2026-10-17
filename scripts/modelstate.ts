@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { modelFamily, type Registry } from './registry.ts'
 import type { Finding } from './model.ts'
-import { withLock } from './core.ts'
+import { withLock, writeAtomic } from './core.ts'
 
 type Launch = { session: string; id: string; agent: string; requested: string | null; resolved: string | null; at: string }
 type ModelState = { sessions: Record<string, { model: string; source: string; at: string }>; launches: Launch[] }
@@ -19,11 +19,7 @@ export function readModelState(file: string): ModelState {
   } catch { return { sessions: {}, launches: [] } }
 }
 
-function save(file: string, s: ModelState): void {
-  const tmp = `${file}.${process.pid}.tmp`
-  fs.writeFileSync(tmp, JSON.stringify(s, null, 2) + '\n')
-  fs.renameSync(tmp, file)
-}
+const save = (file: string, s: ModelState): void => writeAtomic(file, JSON.stringify(s, null, 2) + '\n')
 
 // Parallel hooks (agent launches) share this file: every read-modify-write holds its lock.
 function update(file: string, fn: (s: ModelState) => boolean): void {

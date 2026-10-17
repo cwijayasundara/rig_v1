@@ -1,6 +1,6 @@
 // Language-agnostic sensors: pure functions from a parsed diff and config to findings.
 // Language knowledge lives in the pattern tables below, never in code paths per language.
-import { parseRules, type FileDiff, type Finding, type Layer, isTest, isSource, matchesAny, globToRegex, SECRET_PATTERNS } from './model.ts'
+import { parseRules, section, type FileDiff, type Finding, type Layer, isTest, isSource, matchesAny, globToRegex, SECRET_PATTERNS } from './model.ts'
 import { weakensRegistry, builtinOptions, type Registry } from './registry.ts'
 
 export const TAMPER_PATTERNS: { id: string; re: RegExp; what: string }[] = [
@@ -233,15 +233,11 @@ export function harnessTamper(diffs: FileDiff[], o: { point: 'stop' | 'ship' | '
   return findings
 }
 
-export function behaviourIds(text: string, heading: string): string[] {
-  const section = new RegExp(`^##\\s+${heading}\\s*\\n([\\s\\S]*?)(?=^##\\s|(?![\\s\\S]))`, 'm').exec(text)?.[1] ?? ''
-  return [...new Set(section.match(/\bB\d+\b/g) ?? [])]
-}
+export const behaviourIds = (text: string, heading: string): string[] => [...new Set(section(text, heading).match(/\bB\d+\b/g) ?? [])]
 
 // The rest of the line after the id, so a block says what the behaviour is.
 export function behaviourText(text: string, heading: string, id: string): string {
-  const section = new RegExp(`^##\\s+${heading}\\s*\\n([\\s\\S]*?)(?=^##\\s|(?![\\s\\S]))`, 'm').exec(text)?.[1] ?? ''
-  const line = section.split('\n').find(l => new RegExp(`\\b${id}\\b`).test(l)) ?? ''
+  const line = section(text, heading).split('\n').find(l => new RegExp(`\\b${id}\\b`).test(l)) ?? ''
   return line.slice(line.search(new RegExp(`\\b${id}\\b`)) + id.length).replace(/^[\s:.\-–—)]+/, '').trim().slice(0, 80)
 }
 
