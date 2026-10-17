@@ -38,6 +38,7 @@ A product moves through two loops that share one record. Greenfield and brownfie
  GOVERNANCE: human gates, sensors and CI, the same in every loop.
 ```
 
+- **Chart** (per sprint, optional) turns a large PRD into the work that feeds Build: the architect runs `/rig:chart <N>` and gets intents (each at most two engineer-days, each with a brief) and an updated architecture; the QA lead runs `/rig:testplan <N>` for the test plan, cases and data. Every intent, behaviour and case traces to a PRD requirement, checked by `chart check <N>` with no model call. A person approves the set once with `/rig:approve chart-<N>`; `ready` lists the intents engineers can start, and `/rig:start .rig/product/intents/<slug>.md` begins one. Files live under `.rig/product/`; the design is `docs/superpowers/specs/2026-10-17-sprint-outer-loop-design.md`.
 - **Build** takes one change at a time from `/rig:start` to a merged PR. The person approves the spec and plan once; `/rig:pr` refuses without that approval and a fresh passing `verify.json`.
 - **Run** deploys behind a production gate.
 
@@ -185,6 +186,8 @@ Skills and the human commands are spelled `/rig:x` in every install mode: a stan
 | `/rig:plan` | Writing `plan.md` for a specced change. | tokens |
 | `/rig:build` | Approved spec and plan: build it. | tokens |
 | `/rig:test` | After build: run the tests. | mostly zero-token |
+| `/rig:chart <N>` | The architect: a sprint's PRD becomes intents with a brief each, the updated architecture and ADRs. Ends at a branch for review. | tokens |
+| `/rig:testplan <N>` | The QA lead: the test plan, cases and data for the sprint, each case traced to a requirement. | tokens |
 | `/rig:pr` | Ship: needs a current approval and a fresh passing `verify.json`; commits on `sdlc/<slug>`, pushes, opens the PR or stays local-only, with one advisory evaluator review. | tokens |
 
 **Decide, human only** (the model cannot invoke these and cannot set `SDLC_HUMAN`)
@@ -192,6 +195,7 @@ Skills and the human commands are spelled `/rig:x` in every install mode: a stan
 | Command | Authorises |
 |---|---|
 | `/rig:approve <slug>` | `spec.md`, `plan.md` and the contract files as written. Stale if the spec or plan change afterwards. |
+| `/rig:approve chart-<N>` | A sprint's PRD, intents, architecture, ADRs, test plan and the contract files its intents name, as written. Refused while a blocking finding stands; stale when any of them changes. |
 | `/rig:waive <sensor> <file\|*> <reason>` | One sensor finding on the active change. |
 
 **Improve the harness itself**

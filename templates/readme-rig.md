@@ -32,7 +32,7 @@ This repo uses **rig**, a thin SDLC harness for Claude Code. Ideas wait in an in
 | Waive a failing sensor with a reason | `/rig:waive <sensor> <file> <reason>` (a file or `*`, for the active change; only a person can) |
 | See where a change stands | `node .rig/bin/sdlc.ts status` |
 
-Typical flow for one change (or start from an idea file: `/rig:start .rig/intent/<name>.md`):
+Typical flow for one change (or start from a charted intent: `/rig:start .rig/product/intents/<slug>.md`; a team charts a sprint first with `/rig:chart <N>` and `/rig:testplan <N>`, and a person approves it with `/rig:approve chart-<N>`):
 
 1. `/rig:start "add user signup"`, then `/rig:plan`. Read `spec.md` and `plan.md` in `.rig/changes/<slug>/`.
 2. Approve with `/rig:approve <slug>`.

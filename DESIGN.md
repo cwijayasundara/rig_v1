@@ -109,3 +109,7 @@ Open: command sensors at commit and push see the working tree rather than the in
 - The git hooks have not been trialled live; the live trials predate them.
 - Whether `autoCompactWindow` is honoured from project settings.
 - Windows is unsupported (the hook scripts are POSIX `sh`).
+
+## The sprint outer loop (2026-10-17)
+
+A sprint starts from a PRD. The architect and the QA lead use `/rig:chart` and `/rig:testplan` to produce traced, sized intents, the architecture and the test plan; one human approval covers them; engineers then run the single-change lifecycle per intent. The chain requirement → intent → behaviour → test case is checked by a script, not a model. Measured by trace coverage, estimate against actual, chart staleness and the chart-quality eval (`eval/chart.mjs`).
