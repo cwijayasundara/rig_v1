@@ -29,6 +29,7 @@
       "Skill(rig-rule)", "Skill(rig-rule *)",
       "Skill(rig:chart)", "Skill(rig:chart *)", "Skill(rig-chart)", "Skill(rig-chart *)",
       "Skill(rig:testplan)", "Skill(rig:testplan *)", "Skill(rig-testplan)", "Skill(rig-testplan *)",
+      "Skill(rig:wiki)", "Skill(rig:wiki *)", "Skill(rig-wiki)", "Skill(rig-wiki *)",
       "Bash(gh pr comment *)",
       "Bash(gh pr view *)"
     ],
