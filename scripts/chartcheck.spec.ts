@@ -1,5 +1,7 @@
 // The sprint chart's deterministic trace rules (outer-loop spec 2026-10-17 §7): no repo, no model, only text in and findings out.
 import { test } from 'node:test'
+import fs from 'node:fs'
+import path from 'node:path'
 import assert from 'node:assert/strict'
 import { prdIds, parseIntent, parseCases, traceReport, intentSpecProblems, type Intent, type TestCase } from './chartcheck.ts'
 
@@ -116,4 +118,39 @@ test('intentSpecProblems: a dropped intent behaviour, and an extra one that cite
   assert.deepEqual(intentSpecProblems(i, spec('- B1: adds\n- B2: more\n- B3 (FR-1): extra\n')), [], 'an extra that cites a requirement of the intent is fine')
   assert.match(intentSpecProblems(i, spec('- B1: adds\n- B2: more\n- B3: extra\n')).join('\n'), /B3 .*cites no requirement of a/)
   assert.match(intentSpecProblems(i, spec('- B1: adds\n- B2: more\n- B3 (FR-2): extra\n')).join('\n'), /B3 .*cites no requirement of a/)
+})
+
+// Fix pass after the final review.
+const base = parseIntent('base', intent('base', { prd: '[FR-9]', behaviours: '- B1 (FR-9): earlier sprint\n' }))
+
+test('a dependency on an intent of another sprint is fine; a missing one is still an error', () => {
+  const dep = (d: string) => traceReport({ prd: PRD, intents: parse({ ...good, b: intent('b', { prd: '[FR-2]', depends: d, behaviours: '- B1 (FR-2): removes\n' }) }), others: [base], cases: goodCases, exists })
+  assert.deepEqual(dep('[base]').filter(f => f.rule === 'depends'), [])
+  assert.equal(dep('[ghost]').filter(f => f.rule === 'depends').length, 1)
+})
+
+test('test cases of another sprint are left to that sprint; a case naming no intent anywhere is still an orphan', () => {
+  const other = cases(caseRow('TC-9', 'FR-9', 'base', 'B1'))
+  const r = (cs: TestCase[]) => traceReport({ prd: PRD, intents: parse(good), others: [base], cases: [...goodCases, ...cs], exists })
+  assert.deepEqual(r(other), [])
+  assert.ok(r(cases(caseRow('TC-9', 'FR-9', 'nobody', 'B1'))).some(f => f.rule === 'case-orphan'))
+})
+
+test('contract-path: a named contract or example must exist in the repo and stay inside it', () => {
+  const at = (iface: string) => traceReport({ prd: PRD, intents: parse({ ...good, b: intent('b', { prd: '[FR-2]', depends: '[a]', kind: 'boundary', iface, behaviours: '- B1 (FR-2): x\n' }) }), cases: goodCases, exists, repoExists: p => p === 'api/x.yaml' || p === 'ex/x.json' }).filter(f => f.rule === 'contract-path')
+  assert.deepEqual(at('Contract: api/x.yaml\nExample: ex/x.json\n'), [])
+  assert.equal(at('Contract: api/typo.yaml\nExample: ex/x.json\n').length, 1, 'missing')
+  assert.equal(at('Contract: ../../x.yaml\nExample: ex/x.json\n').length, 1, 'outside the repo')
+  assert.equal(at('Contract: /etc/x.yaml\nExample: ex/x.json\n').length, 1, 'absolute')
+})
+
+test('case data cannot point outside the testplan', () => {
+  assert.ok(rules(full(good, [...goodCases, ...cases(caseRow('TC-4', 'FR-1', 'a', 'B1', '../../secret'))])).includes('case-data-missing'))
+})
+
+test('the shipped templates read as empty: their prompts are comments, not content', () => {
+  const t = (f: string): string => fs.readFileSync(path.resolve(import.meta.dirname, '../templates', f), 'utf8')
+  const i = parseIntent('tpl', t('intent-format.md'))
+  assert.deepEqual([i.openQuestions, i.contractFiles, i.exampleFiles, i.behaviours], [[], [], [], []])
+  assert.deepEqual(traceReport({ prd: t('prd-format.md'), intents: [], cases: null, exists }).filter(f => f.rule === 'open-question'), [])
 })

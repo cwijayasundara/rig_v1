@@ -6,7 +6,7 @@ import path from 'node:path'
 import { ROOT, SDLC, exists, read, sha, now, toPosix } from './core.ts'
 import { openQuestions } from './model.ts'
 import { changeDir, isShipped } from './lifecycle.ts'
-import { parseIntent, parseCases, traceReport, type Intent, type ChartFinding } from './chartcheck.ts'
+import { parseIntent, parseCases, traceReport, uncomment, type Intent, type ChartFinding } from './chartcheck.ts'
 
 export const PRODUCT = path.join(SDLC, 'product')
 const INTENTS = path.join(PRODUCT, 'intents')
@@ -37,7 +37,7 @@ const intentFile = (slug: string): string => path.join(INTENTS, `${slug}.md`)
 
 export function ownFiles(n: number): string[] {
   const own = intentsOf(n)
-  return rel([prdPath(n), ...own.map(i => intentFile(i.slug)), ...own.flatMap(i => [...i.contractFiles, ...i.exampleFiles]).map(f => path.join(ROOT, f))])
+  return rel([prdPath(n), ...own.map(i => intentFile(i.slug)), ...own.flatMap(i => [...i.contractFiles, ...i.exampleFiles]).filter(f => !path.isAbsolute(f) && !f.split(/[\\/]/).includes('..')).map(f => path.join(ROOT, f))])
 }
 export const sharedFiles = (): string[] => rel([path.join(PRODUCT, 'architecture.md'), ...walk(path.join(PRODUCT, 'adr')).filter(f => f.endsWith('.md')), ...walk(path.join(PRODUCT, 'testplan'))])
 export const chartFiles = (n: number): string[] => [...new Set([...ownFiles(n), ...sharedFiles()])].sort()
@@ -83,13 +83,13 @@ export function chartState(n: number): { state: ChartState; changed: string[] } 
 export function chartFindings(n: number, withCases: boolean): ChartFinding[] {
   const testplan = path.join(PRODUCT, 'testplan')
   const found = traceReport({
-    prd: read(prdPath(n)), intents: intentsOf(n), cases: withCases ? parseCases(read(path.join(testplan, 'cases.md'))) : null,
+    prd: read(prdPath(n)), intents: intentsOf(n), others: allIntents().filter(i => i.sprint !== n), repoExists: p => exists(path.join(ROOT, p)), cases: withCases ? parseCases(read(path.join(testplan, 'cases.md'))) : null,
     exists: p => exists(path.join(testplan, p)),
   })
-  const arch = read(path.join(PRODUCT, 'architecture.md'))
+  const arch = uncomment(read(path.join(PRODUCT, 'architecture.md')).replace(/\r\n/g, '\n'))
   for (const q of openQuestions(arch)) found.push({ rule: 'open-question', severity: 'block', where: 'architecture', message: `architecture.md has an open question: ${q}` })
   const concerns = /^##\s+Concerns\s*\n([\s\S]*?)(?=^##\s|(?![\s\S]))/m.exec(arch)?.[1] ?? ''
-  for (const l of concerns.split('\n').map(x => x.replace(/^\s*[-*]\s*/, '').trim()).filter(x => x && !/^none\.?$/i.test(x))) found.push({ rule: 'concern', severity: 'block', where: 'architecture', message: `unresolved concern: ${l}` })
+  for (const l of concerns.split('\n').map(x => x.replace(/^\s*[-*]\s*/, '').trim()).filter(x => x && !/^none\.?$/i.test(x) && !/^\[x\]/i.test(x) && !/\(resolved\)/i.test(x))) found.push({ rule: 'concern', severity: 'block', where: 'architecture', message: `unresolved concern: ${l}` })
   return found
 }
 

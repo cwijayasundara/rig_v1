@@ -214,3 +214,49 @@ test('sync --check blocks a change whose spec.md dropped a behaviour of its inte
   assert.equal(r.code, 1)
   assert.match(r.stdout, /B1 of alpha is missing from spec\.md/)
 })
+
+// Fix pass after the final review.
+const tpl = (f: string): string => fs.readFileSync(path.resolve(import.meta.dirname, '../templates', f), 'utf8')
+const rulesOf = (n: number, cases: boolean): string[] => (call(`return C.chartFindings(${n}, ${cases})`) as { rule: string }[]).map(f => f.rule)
+
+test('an architecture document that keeps the template prompts has no concern and no open question', () => {
+  chart1()
+  write(repo, `${P}/architecture.md`, tpl('architecture-format.md'))
+  assert.deepEqual(rulesOf(1, false), [])
+})
+
+test('a real concern blocks, a resolved one does not', () => {
+  chart1()
+  write(repo, `${P}/architecture.md`, '# A\n\n## Concerns\n- the auth gap (owner: lead)\n\n## Open questions\nnone\n')
+  assert.deepEqual(rulesOf(1, false), ['concern'])
+  write(repo, `${P}/architecture.md`, '# A\n\n## Concerns\n- [x] the auth gap (owner: lead)\n- the cache gap (resolved)\n\n## Open questions\nnone\n')
+  assert.deepEqual(rulesOf(1, false), [])
+})
+
+test('sprint 2 may depend on a sprint 1 intent and keeps sprint 1 test cases in cases.md', () => {
+  chart1()
+  write(repo, `${P}/prd/sprint-2.md`, prd(2))
+  write(repo, `${P}/intents/zeta.md`, intent(2, { depends: '[alpha]' }))
+  write(repo, `${P}/testplan/cases.md`, '| ID | Req | Intent | B | Level | Data | Expected |\n| TC-1 | FR-1 | alpha | B1 | unit | - | ok |\n| TC-2 | FR-2 | zeta | B1 | unit | - | ok |\n')
+  assert.deepEqual(rulesOf(2, true), [])
+})
+
+test('a contract named outside the repo is reported and kept out of the digest', () => {
+  chart1()
+  write(repo, `${P}/intents/alpha.md`, intent(1, { iface: 'Contract: ../outside.yaml\nExample: ../outside.json\n' }))
+  fs.writeFileSync(path.join(path.dirname(repo), 'outside.yaml'), 'x\n')
+  assert.ok(rulesOf(1, false).includes('contract-path'))
+  assert.ok(!(files(1) as string[]).some(f => f.includes('outside')))
+})
+
+test('sync --check still holds a change to its intent when the source line is deleted', () => {
+  startable()
+  write(repo, '.rig/sensors.json', '{"sensors":[]}\n')
+  assert.equal(sdlc(repo, ['new', 'alpha', '--source', SRC]).code, 0)
+  assert.equal(sdlc(repo, ['sync']).code, 0)
+  write(repo, '.rig/changes/alpha/intent.md', '---\nslug: alpha\ntype: feature\n---\n# Alpha\n')
+  write(repo, '.rig/changes/alpha/spec.md', '# Spec\n\n## Behaviours\n- B9: other\n\n## Open questions\nnone\n')
+  const r = sdlc(repo, ['sync', '--check'])
+  assert.equal(r.code, 1)
+  assert.match(r.stdout, /B1 of alpha is missing from spec\.md/)
+})
