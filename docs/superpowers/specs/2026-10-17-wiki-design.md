@@ -45,7 +45,7 @@ none, because it is trusted. Every design choice below serves those two.
 ### Files
 
 - `.rig/wiki.json`: the steering file (committed). Repo-level `notes` plus `pages`: each has a unique `title`, a `purpose`, an
-  optional `parent`, optional `notes`. When present, only the listed pages are generated. When absent, a first pass proposes
+  optional `parent`, optional `notes`, and optional `paths` (repo-relative files or directory prefixes the page is built from; added at build time because a page needs a source scope, my call). When present, only the listed pages are generated. When absent, a first pass proposes
   one and stops for a person to edit it. Page cap: 30 (my call; Devin's is 30 for non-enterprise).
 - `.rig/wiki/<page>.md`: the generated pages (committed). `.rig/wiki/index.md` lists them with their status.
 - Each page starts with front matter recording, per citation, a hash of the cited symbol's code.

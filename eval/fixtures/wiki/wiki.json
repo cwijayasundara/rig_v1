@@ -1,0 +1,57 @@
+{
+  "notes": [
+    "Describe flows across modules, not file lists."
+  ],
+  "pages": [
+    {
+      "title": "Order placement",
+      "purpose": "How an order goes from the HTTP request to a paid, announced order.",
+      "paths": [
+        "src/http/",
+        "src/orders/",
+        "src/core/container.js",
+        "src/shipping/",
+        "src/config/flags.js"
+      ]
+    },
+    {
+      "title": "Events and subscribers",
+      "purpose": "Which events exist and which modules react to each.",
+      "paths": [
+        "src/core/",
+        "src/billing/",
+        "src/notify/",
+        "src/audit/",
+        "src/loyalty/",
+        "src/users/prefs.js"
+      ]
+    },
+    {
+      "title": "Payments and retries",
+      "purpose": "How cards are charged and refunded, and how failures are retried.",
+      "paths": [
+        "src/payments/",
+        "src/config/env.js"
+      ]
+    },
+    {
+      "title": "Inventory and returns",
+      "purpose": "How stock is held and released, and what refunds and exchanges do to it.",
+      "paths": [
+        "src/inventory/",
+        "src/returns/"
+      ]
+    },
+    {
+      "title": "Pricing and promotions",
+      "purpose": "How an order total, discount and tax are computed.",
+      "paths": [
+        "src/orders/pricing.js",
+        "src/orders/cart.js",
+        "src/promos/",
+        "src/billing/tax.js",
+        "src/util/money.js"
+      ]
+    }
+  ]
+}
