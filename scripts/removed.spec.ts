@@ -116,7 +116,7 @@ test('every next step the lifecycle names is a skill that exists', () => {
 
 test('4b: seven workflow skills plus the two human gates, and one agent', () => {
   assert.deepEqual(fs.readdirSync(path.join(ROOT, 'skills')).sort(), ['approve', 'build', 'init', 'plan', 'pr', 'rule', 'start', 'test', 'waive'])
-  assert.deepEqual(fs.readdirSync(path.join(ROOT, 'agents')), ['evaluator.md'])
+  assert.deepEqual(fs.readdirSync(path.join(ROOT, 'agents')), ['architect.md', 'evaluator.md'])
   gone('templates/design-format.md')
   for (const s of ['start', 'plan', 'build', 'test', 'pr']) assert.doesNotMatch(read(`skills/${s}/SKILL.md`), /tier|ratchet|slice|next --json|rig:(scout|implementer|reviewer|architect)/i, s)
 })

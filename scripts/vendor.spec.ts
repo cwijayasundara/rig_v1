@@ -29,7 +29,7 @@ test('vendor --cloud writes project skills, agents and hooks with no plugin refe
   const agents = walk(path.join(repo, '.claude/agents'))
   assert.ok(skills.some(f => f.endsWith('rig-start/SKILL.md')) && skills.length === 9, `${skills.length} skills`)
   for (const s of ['start', 'plan', 'approve', 'waive']) assert.ok(skills.some(f => f.endsWith(`rig-${s}/SKILL.md`)), `rig-${s} is vendored`)
-  assert.deepEqual(agents.map(f => path.basename(f)), ['rig-evaluator.md'], 'the evaluator is the one agent')
+  assert.deepEqual(agents.map(f => path.basename(f)), ['rig-architect.md', 'rig-evaluator.md'], 'the architect and the evaluator are the agents')
   for (const f of [...skills, ...agents]) {
     const text = fs.readFileSync(f, 'utf8')
     assert.doesNotMatch(text, /CLAUDE_PLUGIN_ROOT|<plugin>\/scripts|(?<![/\w])rig:(?:architect|evaluator|implementer|researcher|reviewer|scout)\b/, path.relative(repo, f))

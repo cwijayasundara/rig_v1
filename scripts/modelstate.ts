@@ -9,7 +9,8 @@ type Launch = { session: string; id: string; agent: string; requested: string | 
 type ModelState = { sessions: Record<string, { model: string; source: string; at: string }>; launches: Launch[] }
 const MAX_LAUNCHES = 50
 const TAIL_BYTES = 256 * 1024
-const EVALUATOR = /(?:^|[:-])evaluator$/
+// A launched agent's role by name (`rig:architect`, `rig-evaluator`) and the model its role runs on.
+const ROLES: [RegExp, 'evaluate' | 'design'][] = [[/(?:^|[:-])evaluator$/, 'evaluate'], [/(?:^|[:-])architect$/, 'design']]
 
 export function readModelState(file: string): ModelState {
   try {
@@ -92,9 +93,10 @@ export function modelRoleFindings(r: Registry, main: string | null, launches: La
     out.push({ sensor: 'model-role', severity: 'warn', message: `the main thread runs on ${main}, but this repo builds on ${r.models.build}`, fix: `switch with /model ${r.models.build}, or change models.build in .rig/sensors.json` })
   }
   for (const l of launches) {
+    const role = ROLES.find(([re]) => re.test(l.agent))?.[1]
     const got = l.resolved ?? l.requested
-    if (EVALUATOR.test(l.agent) && got && fam(got) !== fam(r.models.evaluate)) {
-      out.push({ sensor: 'model-role', severity: 'warn', message: `${l.agent} ran on ${got}, but evaluation runs on ${r.models.evaluate}`, fix: `launch ${l.agent} without a model override; its frontmatter pins ${r.models.evaluate}` })
+    if (role && got && fam(got) !== fam(r.models[role])) {
+      out.push({ sensor: 'model-role', severity: 'warn', message: `${l.agent} ran on ${got}, but ${role === 'design' ? 'design' : 'evaluation'} runs on ${r.models[role]}`, fix: `launch ${l.agent} without a model override; its frontmatter pins ${r.models[role]}` })
     }
   }
   return out

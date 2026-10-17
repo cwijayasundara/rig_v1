@@ -9,7 +9,7 @@ test('empty text gives the default registry with every built-in', () => {
   assert.deepEqual(errors, [])
   assert.deepEqual(registry.sensors.map(s => s.id), [...BUILTIN_IDS])
   assert.ok(registry.sensors.every(s => s.builtin === true && s.enabled && s.guide.length > 0))
-  assert.deepEqual(registry.models, { build: 'sonnet', evaluate: 'opus' })
+  assert.deepEqual(registry.models, { build: 'sonnet', evaluate: 'opus', design: 'opus' })
   assert.deepEqual(registry.policy, { haiku: 'continuous', sonnet: 'continuous', opus: 'final', default: 'continuous' })
   assert.deepEqual(registry, defaultRegistry())
 })
@@ -173,4 +173,12 @@ test('a command sensor may not take a harness finding\'s name', () => {
     const { errors } = parseRegistry(JSON.stringify({ sensors: [{ id, cmd: 'true', cadence: 'turn', blocks: true, count: 'exit', guide: 'g' }] }))
     assert.ok(errors.some(e => e.includes(`"${id}" is reserved for a harness finding`)), `${id}: ${errors.join('; ')}`)
   }
+})
+
+test('models.design is parsed and an unknown role is an error', () => {
+  const ok = reg({ models: { design: 'sonnet' } })
+  assert.deepEqual(ok.errors, [])
+  assert.equal(ok.registry.models.design, 'sonnet')
+  const bad = reg({ models: { x: 'y' } })
+  assert.ok(bad.errors.some(e => /models\.x must be build, evaluate or design/.test(e)), bad.errors.join('; '))
 })
