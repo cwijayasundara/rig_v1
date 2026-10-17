@@ -51,3 +51,8 @@ test('--dry exits 0, prints a verdict and writes no results file', () => {
   assert.match(r.stdout, /verdict: loop beats off/)
   assert.equal(fs.existsSync(file), false)
 })
+
+test('a failed model run is not scored as learned: failed rows are left out of the verdict', () => {
+  const failed = rows('loop', [0, 0, 0, 0, 0, 0]).map(r => ({ ...r, failed: true }))
+  assert.equal(verdict([...rows('off', [1, 1, 1, 1, 1, 1]), ...failed]), 'unmeasured')
+})

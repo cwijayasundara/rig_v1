@@ -56,3 +56,20 @@ test('an invalid, too long or nested-quantifier pattern returns an error and rep
     assert.deepEqual(got.firesOn, [])
   }
 })
+
+test('a skipped earning change fails the gate, so a rule is never passed on changes it was not tested against', () => {
+  assert.equal(replayRule(history(), rule(), ['cart-add', 'unmerged'], ALL).pass, false)
+  assert.equal(replayRule(history(), rule(), ['cart-add', 'cart-remove'], ALL).pass, true)
+  assert.equal(replayRule(history(), rule(), ['cart-add', 'cart-add'], ALL).pass, false, 'two distinct changes are required')
+})
+
+test('a pattern that backtracks without end is stopped by a time limit and reported', () => {
+  const repo = makeRepo()
+  ship(repo, 'cart-add', 'src/a.ts', `${'a'.repeat(30)}!\n`)
+  ship(repo, 'cart-remove', 'src/b.ts', `${'a'.repeat(30)}!\n`)
+  const started = Date.now()
+  const got = replayRule(repo, rule({ pattern: '^((a+))+$' }), ['cart-add', 'cart-remove'], ['cart-add', 'cart-remove'])
+  assert.match(got.error ?? '', /timed out/)
+  assert.equal(got.pass, false)
+  assert.ok(Date.now() - started < 8000)
+})

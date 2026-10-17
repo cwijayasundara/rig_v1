@@ -40,3 +40,17 @@ test('the rule skill points at the replay gate', () => {
 test('the kept-skill lists include learn', () => {
   assert.equal((at('scripts/removed.spec.ts').match(/'init', 'learn', 'plan'/g) ?? []).length, 2)
 })
+
+test('the CI lessons step skips a base checker that predates the learn command', () => {
+  const step = /- name: Lessons check[\s\S]*?(?=\n      - name:|\s*$)/.exec(at('templates/rig-check.yml'))?.[0] ?? ''
+  assert.match(step, /grep -q "learn: args" "\$RUNNER_TEMP\/sdlc\/sdlc\.ts"/)
+})
+
+test('editing the lessons files asks the person first, in project and managed settings', () => {
+  const project = at('templates/settings.json')
+  const managed = at('templates/managed-settings.json')
+  for (const f of ['lessons.md', 'lessons-archive.md']) {
+    assert.ok(project.includes(`"Edit(/.rig/${f})"`), `project ask ${f}`)
+    assert.ok(managed.includes(`"Edit(./.rig/${f})"`), `managed ask ${f}`)
+  }
+})

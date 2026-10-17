@@ -56,3 +56,9 @@ test('check rejects a bad date and a bad status', () => {
   assert.match(checkLessons(line({ first: '17/10/2026' }), SLUGS).join('\n'), /L7.*date/)
   assert.match(checkLessons(line({ status: 'maybe' as Lesson['status'] }), SLUGS).join('\n'), /L7.*status/)
 })
+
+test('check rejects any pipe in the text, and an empty text or key', () => {
+  assert.match(checkLessons(line({ text: 'use a|b shape' }), SLUGS).join('\n'), /L7/)
+  assert.match(checkLessons(line({ text: '' }), SLUGS).join('\n'), /L7/)
+  assert.match(checkLessons(line({ key: '' }), SLUGS).join('\n'), /L7/)
+})

@@ -37,6 +37,8 @@
     "ask": [
       "Edit(/.rig/sensors.json)",
       "Edit(/.rig/rules.json)",
+      "Edit(/.rig/lessons.md)",
+      "Edit(/.rig/lessons-archive.md)",
       "Edit(/.rig/evals/*.json)",
       "Edit(/.claude/settings.json)",
       "Edit(/.rig/bin/**)",

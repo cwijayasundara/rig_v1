@@ -41,6 +41,9 @@ export function checkLessons(text: string, slugs: string[]): string[] {
   for (const l of lessons) {
     if (ids.has(l.id)) out.push(`duplicate id ${l.id}`)
     ids.add(l.id)
+    if (!l.text.trim()) out.push(`${l.id}: the lesson text is empty`)
+    if (l.text.includes('|')) out.push(`${l.id}: the lesson text cannot contain "|"`)
+    if (!l.key.trim()) out.push(`${l.id}: key is empty`)
     const words = l.text.trim().split(/\s+/).filter(Boolean).length
     if (words > MAX_WORDS) out.push(`${l.id}: ${words} words, at most ${MAX_WORDS}`)
     if (new Set(l.seen).size < 2) out.push(`${l.id}: cites ${new Set(l.seen).size} change(s), at least 2 distinct changes are required`)

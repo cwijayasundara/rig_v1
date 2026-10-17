@@ -25,7 +25,8 @@ const BARE = /\.send\(\s*(['"`])/
 export const scoreChange = addedLines => ({ recurred: addedLines.some(l => BARE.test(l)) })
 
 const mean = xs => xs.reduce((a, b) => a + b, 0) / (xs.length || 1)
-const late = (rows, arm) => rows.filter(r => r.arm === arm && r.change >= LAG_FROM)
+// A run whose model call failed (no result, a crash, a timeout) says nothing about learning, so it never counts.
+const late = (rows, arm) => rows.filter(r => r.arm === arm && r.change >= LAG_FROM && !r.failed)
 const perChangeUsd = (rows, arm) => mean(rows.filter(r => r.arm === arm).map(r => r.usd))
 const recurrence = (rows, arm) => mean(late(rows, arm).map(r => (r.recurred ? 1 : 0)))
 
@@ -66,9 +67,9 @@ function implement(dir, prompt, model) {
   const tools = 'Read,Edit,Write,Grep,Glob'
   const c = spawnSync(process.env.RIG_CLAUDE || 'claude', ['-p', prompt, '--output-format', 'json', '--model', model, '--tools', tools, '--allowedTools', tools, '--setting-sources', 'project', '--disable-slash-commands', '--no-session-persistence', '--max-turns', '15'], { cwd: dir, env: cleanEnv(), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 600_000 })
   let j = {}
-  try { j = JSON.parse(c.stdout) } catch { /* an unreadable result scores as no change and no cost */ }
+  try { j = JSON.parse(c.stdout) } catch { /* an unreadable result is a failed run */ }
   const u = j.usage ?? {}
-  return { usd: j.total_cost_usd ?? 0, tokens: (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.output_tokens ?? 0) }
+  return { failed: c.status !== 0 || j.is_error === true || typeof j.result !== 'string' && j.total_cost_usd === undefined, usd: j.total_cost_usd ?? 0, tokens: (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.output_tokens ?? 0) }
 }
 
 // The scripted evaluator: it writes the review.md and pr.md a real change would leave, so `learn mine` sees the same evidence.
@@ -101,9 +102,11 @@ function dream(dir, model) {
 
 const addedLines = (dir, before) => git(dir, 'diff', '--unified=0', before, 'HEAD', '--', 'src').split('\n').filter(l => l.startsWith('+') && !l.startsWith('+++')).map(l => l.slice(1))
 
-function runArm(arm, n, model) {
+function runArm(arm, n, model, budget) {
   const dir = stage(`${arm}-${n}`)
-  return TASKS.map((task, i) => {
+  const rows = []
+  for (const [i, task] of TASKS.entries()) {
+    if (budget.spent >= budget.max) break
     const before = git(dir, 'rev-parse', 'HEAD').trim()
     const r = implement(dir, task.prompt, model)
     git(dir, 'add', '-A')
@@ -111,8 +114,11 @@ function runArm(arm, n, model) {
     const { recurred } = scoreChange(addedLines(dir, before))
     recordChange(dir, task.slug, recurred)
     const dreamUsd = arm === 'loop' && i === 1 ? dream(dir, 'claude-sonnet-5-5') : 0
-    return { arm, run: n, change: i + 1, model, recurred, usd: Number((r.usd + dreamUsd).toFixed(4)), tokens: r.tokens, at: new Date().toISOString() }
-  })
+    const usd = Number((r.usd + dreamUsd).toFixed(4))
+    budget.spent += usd
+    rows.push({ arm, run: n, change: i + 1, model, recurred, ...(r.failed ? { failed: true } : {}), usd, tokens: r.tokens, at: new Date().toISOString() })
+  }
+  return rows
 }
 
 // The dry replay: off recurs on every change, the loop only on the first three. It exercises the pipeline, not a model.
@@ -120,15 +126,11 @@ const fakeRows = (arm, n) => TASKS.map((t, i) => ({ arm, run: n, change: i + 1, 
 
 export async function runLearnEval({ dry = false, runs = 3, model = 'claude-haiku-5-5', maxUsd = Infinity } = {}) {
   const rows = []
-  let spent = 0
-  for (let n = 1; n <= runs && spent < maxUsd; n++) {
-    for (const arm of ['off', 'loop']) {
-      const got = dry ? fakeRows(arm, n) : runArm(arm, n, model)
-      rows.push(...got)
-      spent += got.reduce((a, r) => a + r.usd, 0)
-    }
+  const budget = { spent: 0, max: maxUsd }
+  for (let n = 1; n <= runs && budget.spent < maxUsd; n++) {
+    for (const arm of ['off', 'loop']) rows.push(...(dry ? fakeRows(arm, n) : runArm(arm, n, model, budget)))
   }
-  return { rows, verdict: verdict(rows), spent }
+  return { rows, verdict: verdict(rows), spent: budget.spent, failed: rows.filter(r => r.failed).length }
 }
 
 if (process.argv[1] === import.meta.filename) {
@@ -142,5 +144,5 @@ if (process.argv[1] === import.meta.filename) {
     fs.mkdirSync(path.dirname(results), { recursive: true })
     for (const row of r.rows) fs.appendFileSync(results, JSON.stringify(row) + '\n')
   }
-  console.log(`${renderLearnTable(r.rows)}\n\nspent $${r.spent.toFixed(4)}; the native auto-memory arm is not run\nverdict: ${r.verdict}${dry ? '' : `\n${results}`}`)
+  console.log(`${renderLearnTable(r.rows)}\n\nspent $${r.spent.toFixed(4)}${r.failed ? `; ${r.failed} model run(s) failed and are not counted` : ''}; the native auto-memory arm is not run\nverdict: ${r.verdict}${dry ? '' : `\n${results}`}`)
 }

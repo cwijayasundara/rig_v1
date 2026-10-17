@@ -59,12 +59,12 @@ function replay(args: Args): void {
   const earned = String(args.opt.earned ?? '').split(',').filter(Boolean)
   if (earned.length < 2) fail('replay needs --earned <slug>,<slug>: the (at least 2) changes that earned the rule')
   const r = replayRule(ROOT, rule, earned, listChanges())
-  const pass = !r.error && !r.missed.length && !r.extra.length
+  const pass = r.pass
   out([
     r.error ? `error: ${r.error}` : `fires on: ${r.firesOn.join(', ') || 'none'}`,
     r.missed.length ? `does not fire on an earning change: ${r.missed.join(', ')}` : '',
     r.extra.length ? `also fires on: ${r.extra.join(', ')}` : '',
-    r.skipped.length ? `skipped (diff not recoverable): ${r.skipped.join(', ')}` : '',
+    r.skipped.length ? `skipped (diff not recoverable${earned.some(e => r.skipped.includes(e)) ? ', and an earning change cannot be replayed' : ''}): ${r.skipped.join(', ')}` : '',
     pass ? 'replay: pass' : 'replay: fail',
   ].filter(Boolean).join('\n'))
   process.exitCode = pass ? 0 : 1

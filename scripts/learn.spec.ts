@@ -98,3 +98,11 @@ test('editing .rig/lessons.md is a harness change that CI will not take from a P
   const ci = sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main'])
   assert.match(ci.stdout + ci.stderr, /harness-tamper.*lessons\.md/s)
 })
+
+test('learn replay fails when the earning changes cannot be replayed', () => {
+  const repo = repoWithTwo()
+  write(repo, '.rig/learn/rule.json', JSON.stringify(RULE))
+  const r = sdlc(repo, ['learn', 'replay', '.rig/learn/rule.json', '--earned', 'ghost-a,ghost-b'])
+  assert.equal(r.code, 1)
+  assert.match(r.stdout, /replay: fail/)
+})
