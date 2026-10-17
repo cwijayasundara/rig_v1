@@ -27,23 +27,30 @@ export const scoreChange = addedLines => ({ recurred: addedLines.some(l => BARE.
 const mean = xs => xs.reduce((a, b) => a + b, 0) / (xs.length || 1)
 // A run whose model call failed (no result, a crash, a timeout) says nothing about learning, so it never counts.
 const late = (rows, arm) => rows.filter(r => r.arm === arm && r.change >= LAG_FROM && !r.failed)
-const perChangeUsd = (rows, arm) => mean(rows.filter(r => r.arm === arm).map(r => r.usd))
+// Dollars per accepted change: everything the arm spent over the changes that did not break the contract. An arm that accepts nothing is unbounded.
+const accepted = (rows, arm) => rows.filter(r => r.arm === arm && !r.failed && !r.recurred).length
+const spentOn = (rows, arm) => rows.filter(r => r.arm === arm && !r.failed).reduce((a, r) => a + r.usd, 0)
+const usdPerAccepted = (rows, arm) => (accepted(rows, arm) ? spentOn(rows, arm) / accepted(rows, arm) : Infinity)
 const recurrence = (rows, arm) => mean(late(rows, arm).map(r => (r.recurred ? 1 : 0)))
 
-// The cut-the-feature rule: a third less recurrence for at most 10% more cost, or the same recurrence for less cost; anything else is no lift.
+// The cut-the-feature rule: a third less recurrence for at most 10% more cost per accepted change, or the same recurrence for less cost per
+// accepted change; anything else is no lift. (First written per change; changed to per accepted change on 2026-10-17 after the first live
+// pass, where the baseline accepted nothing, because that is the goal metric. The first pass is the only data the change was made after.)
 export function verdict(rows) {
   if (!late(rows, 'off').length || !late(rows, 'loop').length) return 'unmeasured'
+  // A baseline that never makes the mistake leaves nothing to learn from, so cost alone must not decide.
+  if (recurrence(rows, 'off') === 0) return 'unmeasured'
   const gain = recurrence(rows, 'off') - recurrence(rows, 'loop')
-  const costOk = perChangeUsd(rows, 'loop') <= perChangeUsd(rows, 'off') * COST_SLACK + 1e-9
+  const costOk = usdPerAccepted(rows, 'loop') <= usdPerAccepted(rows, 'off') * COST_SLACK + 1e-9
   if (gain >= WIN_BY && costOk) return 'loop beats off'
-  if (Math.abs(gain) < 1e-9 && perChangeUsd(rows, 'loop') < perChangeUsd(rows, 'off')) return 'tie-cheaper'
+  if (Math.abs(gain) < 1e-9 && usdPerAccepted(rows, 'loop') < usdPerAccepted(rows, 'off')) return 'tie-cheaper'
   return 'no lift'
 }
 
 export function renderLearnTable(rows) {
   const arms = [...new Set(rows.map(r => r.arm))]
-  return [`| arm | runs | recurrence, changes ${LAG_FROM} to 6 (mean) | USD per change (mean) |`, '|---|---|---|---|',
-    ...arms.map(a => `| ${a} | ${new Set(rows.filter(r => r.arm === a).map(r => r.run)).size} | ${recurrence(rows, a).toFixed(2)} | $${perChangeUsd(rows, a).toFixed(4)} |`)].join('\n')
+  return [`| arm | runs | recurrence, changes ${LAG_FROM} to 6 (mean) | USD per accepted change |`, '|---|---|---|---|',
+    ...arms.map(a => `| ${a} | ${new Set(rows.filter(r => r.arm === a).map(r => r.run)).size} | ${recurrence(rows, a).toFixed(2)} | ${accepted(rows, a) ? `$${usdPerAccepted(rows, a).toFixed(4)}` : 'none accepted'} |`)].join('\n')
 }
 
 const git = (dir, ...args) => spawnSync('git', ['-c', 'user.email=e@e', '-c', 'user.name=eval', ...args], { cwd: dir, encoding: 'utf8' }).stdout ?? ''
