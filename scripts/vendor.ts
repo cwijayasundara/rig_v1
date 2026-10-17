@@ -111,14 +111,13 @@ export function cmdVendor(args: Args): void {
   const written: string[] = []
   for (const name of VENDORED) writeFile(`.rig/bin/${name}.ts`, read(path.join(PLUGIN_ROOT, 'scripts', `${name}.ts`)), written)
   writeHookScripts(written)
-  const version = (JSON.parse(read(path.join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json'))) as { version?: string }).version ?? 'unknown'
-  writeFile('.rig/bin/VERSION', `${version}\n`, written)
+  writeFile('.rig/bin/VERSION', `${next}\n`, written)
   const standalone = Boolean(args.opt.standalone || args.opt.cloud)
   if (standalone) vendorStandalone(written)
   sanctionWrites(written)
   out(standalone
-    ? `vendored sdlc ${version} standalone: .rig/bin, .claude/skills/rig-*, .claude/agents/rig-*, hooks in .claude/settings.json. Commit .rig/ and .claude/; re-run from the plugin to upgrade.`
-    : `vendored sdlc ${version} into ${path.relative(ROOT, path.join(SDLC, 'bin'))} (${VENDORED.length} files). Commit it; CI runs the base branch's copy.`)
+    ? `vendored sdlc ${next} standalone: .rig/bin, .claude/skills/rig-*, .claude/agents/rig-*, hooks in .claude/settings.json. Commit .rig/ and .claude/; re-run from the plugin to upgrade.`
+    : `vendored sdlc ${next} into ${path.relative(ROOT, path.join(SDLC, 'bin'))} (${VENDORED.length} files). Commit it; CI runs the base branch's copy.`)
 }
 
 // Settings the template wants, merged under what the project already has: arrays are unioned and a key the project

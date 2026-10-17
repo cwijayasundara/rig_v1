@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { globToRegex, SECRET_PATTERNS } from './model.ts'
+import { globToRegex, isObject, SECRET_PATTERNS } from './model.ts'
 
 export { globToRegex }
 
@@ -138,9 +138,10 @@ export function relPosix(file: string): string {
   return toPosix(path.isAbsolute(file) ? path.relative(ROOT, file) : file)
 }
 
+export const TRUNKS = ['origin/main', 'main', 'origin/master', 'master']
 export function defaultBase(): string | null {
   const head = git(['rev-parse', '--abbrev-ref', 'HEAD'])
-  for (const ref of ['origin/main', 'main', 'origin/master', 'master']) {
+  for (const ref of TRUNKS) {
     if (git(['rev-parse', '--verify', '--quiet', ref]) && head !== ref.replace('origin/', '')) return git(['merge-base', 'HEAD', ref])
   }
   return null
@@ -174,7 +175,7 @@ export function managedFiles(dir = MANAGED_DIR): string[] {
   try { drops = fs.readdirSync(d).filter(f => f.endsWith('.json')).sort().map(f => path.join(d, f)) } catch { /* none, or unreadable */ }
   return [path.join(dir, 'managed-settings.json'), ...drops].filter(f => { try { JSON.parse(fs.readFileSync(f, 'utf8')); return true } catch { return false } })
 }
-const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+const isObj = isObject as (v: unknown) => v is Record<string, unknown>
 const deepMerge = (a: Record<string, unknown>, b: Record<string, unknown>): Record<string, unknown> => Object.fromEntries([...new Set([...Object.keys(a), ...Object.keys(b)])].map(k => [k,
   isObj(a[k]) && isObj(b[k]) ? deepMerge(a[k], b[k]) : Array.isArray(a[k]) && Array.isArray(b[k]) ? [...a[k], ...b[k]] : k in b ? b[k] : a[k]]))
 export const managedSettings = (dir = MANAGED_DIR): Record<string, unknown> =>

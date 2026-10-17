@@ -43,11 +43,14 @@ export function maskSecrets(text: string): string {
   }).join('\n')
 }
 
+// The body under `## <heading>`, up to the next `## ` heading or the end.
+export const section = (text: string, heading: string): string =>
+  new RegExp(`^##\\s+${heading}\\s*\\n([\\s\\S]*?)(?=^##\\s|(?![\\s\\S]))`, 'm').exec(text)?.[1] ?? ''
+
 // Questions an artifact still leaves open: entries under `## Open questions` other than "none", and any
 // "Q<n> ... still open / is open / unresolved" line elsewhere. Approval needs none, so a build never stalls on one.
 export function openQuestions(text: string): string[] {
-  const section = /^##\s+Open questions\s*\n([\s\S]*?)(?=^##\s|$(?![\s\S]))/m.exec(text)?.[1] ?? ''
-  const listed = section.split('\n').map(l => l.replace(/^\s*[-*]\s*/, '').trim()).filter(l => l && !/^none\.?$/i.test(l))
+  const listed = section(text, 'Open questions').split('\n').map(l => l.replace(/^\s*[-*]\s*/, '').trim()).filter(l => l && !/^none\.?$/i.test(l))
   const prose = text.split('\n').filter(l => /\bQ\d+\b.*\b(?:still open|is open|unresolved)\b/i.test(l)).map(l => l.trim())
   return [...new Set([...listed, ...prose])]
 }

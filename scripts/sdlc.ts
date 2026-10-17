@@ -201,18 +201,16 @@ function cmdWaive(args: Args): void {
   out(`waived ${sensor} for ${file} in ${slug}: ${row.reason} (by ${by})`)
 }
 
+const unresolvedFindings = (): Finding[] => {
+  try { return (JSON.parse(read(path.join(SDLC, 'unresolved.json'))) as { findings: Finding[] }).findings } catch { return [] }
+}
+
 function sensorStatus(): { blocks: number; warns: number; bySensor: Record<string, number>; unresolved: number; knownRed: number; waivers: number } | null {
   if (!exists(SDLC)) return null
   const last = readGate().last
   const slug = activeSlug()
-  let unresolved = 0
-  try {
-    unresolved = (JSON.parse(read(path.join(SDLC, 'unresolved.json'))) as { findings: unknown[] }).findings.length
-  } catch {
-    unresolved = 0
-  }
   return {
-    blocks: last?.blocks ?? 0, warns: last?.warns ?? 0, bySensor: last?.bySensor ?? {}, unresolved,
+    blocks: last?.blocks ?? 0, warns: last?.warns ?? 0, bySensor: last?.bySensor ?? {}, unresolved: unresolvedFindings().length,
     knownRed: loadConfig().registry.knownRed.length,
     waivers: readJsonl<Waiver>(WAIVERS).filter(w => w.slug === slug).length,
   }
@@ -222,12 +220,7 @@ function cmdSensors(): void {
   const s = sensorStatus()
   if (!s) return out('sdlc not initialised here')
   const slug = activeSlug()
-  let unresolved: Finding[] = []
-  try {
-    unresolved = (JSON.parse(read(path.join(SDLC, 'unresolved.json'))) as { findings: Finding[] }).findings
-  } catch {
-    unresolved = []
-  }
+  const unresolved = unresolvedFindings()
   const waivers = readJsonl<Waiver>(WAIVERS).filter(w => w.slug === slug)
   out([
     `last gate: ${s.blocks} block(s), ${s.warns} warning(s)${Object.keys(s.bySensor).length ? ' · ' + Object.entries(s.bySensor).map(([k, v]) => `${k} ${v}`).join(', ') : ''}`,

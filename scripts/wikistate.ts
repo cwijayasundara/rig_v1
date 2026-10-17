@@ -1,6 +1,7 @@
 // Wiki steering file, build state and read-only staleness (wiki design 2026-10-17, "Against stale content").
 import { citeHash } from './wikicite.ts'
 import { pageCitations } from './wikivalidate.ts'
+import { isObject } from './model.ts'
 
 // `paths` scopes a page's sources: repo-relative files or directory prefixes (ending in `/`). Without it the page sees every source file.
 export type WikiPage = { title: string; purpose: string; parent?: string; notes?: string[]; paths?: string[] }
@@ -11,7 +12,7 @@ export type Stale = { page: string; cite: string; why: 'changed' | 'missing' | '
 
 const MAX_PAGES = 30
 
-const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+const isObj = isObject as (v: unknown) => v is Record<string, unknown>
 const str = (v: unknown): v is string => typeof v === 'string' && v.trim() !== ''
 const strs = (v: unknown): v is string[] => Array.isArray(v) && v.every(x => typeof x === 'string')
 

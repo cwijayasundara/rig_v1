@@ -2,7 +2,7 @@
 // where the chain requirement → intent → behaviour → test case breaks. Pure over text; no repo, no model.
 import path from 'node:path'
 import { frontmatter } from './core.ts'
-import { openQuestions } from './model.ts'
+import { openQuestions, section } from './model.ts'
 
 export type Behaviour = { id: string; reqs: string[]; text: string }
 export type Intent = {
@@ -19,11 +19,9 @@ const MAX_DAYS = 2
 // Frontmatter lists are flow style on one line; brackets, quotes and a trailing `.md` are tolerated.
 const listField = (v: string | undefined): string[] =>
   (v ?? '').replace(/^\[|\]$/g, '').split(',').map(s => s.trim().replace(/^["']|["']$/g, '').replace(/\.md$/, '')).filter(s => /^[A-Za-z0-9][\w.-]*$/.test(s))
-const section = (text: string, heading: string): string =>
-  new RegExp(`^##\\s+${heading}\\s*\\n([\\s\\S]*?)(?=^##\\s|(?![\\s\\S]))`, 'm').exec(text)?.[1] ?? ''
 // Template prompts are HTML comments: they are never content.
 export const uncomment = (text: string): string => text.replace(/<!--[\s\S]*?-->/g, '')
-const escapes = (p: string): boolean => path.isAbsolute(p) || p.split(/[\\/]/).includes('..')
+export const escapes = (p: string): boolean => path.isAbsolute(p) || p.split(/[\\/]/).includes('..')
 const whole = (v: string | undefined): number | null => (/^\d{1,4}$/.test(v ?? '') ? Number(v) : null)
 
 // Requirement ids the PRD defines: a heading `### FR-3: ...` or a table row `| NFR-2 | ...`. Ids in prose are references.

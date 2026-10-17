@@ -16,12 +16,12 @@ const URL_RE = /^https?:\/\//
 function openPr(slug: string, branch: string, title: string): string | null {
   const body = path.join(CHANGES, slug, 'pr.md')
   const gh = (argv: string[]): string => execFileSync(ghBin(), argv, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 })
-  try { return URL_RE.test(ghLast(gh(['pr', 'create', '--title', title, '--body-file', body]))) ? ghLast(gh(['pr', 'view', branch, '--json', 'url', '-q', '.url'])) : null } catch (e) {
+  try { gh(['pr', 'create', '--title', title, '--body-file', body]) } catch (e) {
     const x = e as { stdout?: unknown; stderr?: unknown }
     // The PR already exists (a rerun, or opened by hand): report its url.
     if (!/already exists/i.test(`${String(x.stdout ?? '')}${String(x.stderr ?? '')}`)) return null
-    try { const url = ghLast(gh(['pr', 'view', branch, '--json', 'url', '-q', '.url'])); return URL_RE.test(url) ? url : null } catch { return null }
   }
+  try { const url = ghLast(gh(['pr', 'view', branch, '--json', 'url', '-q', '.url'])); return URL_RE.test(url) ? url : null } catch { return null }
 }
 
 // The files a change's commit carries: its own folder, source outside .rig/, and the harness files a change may touch.

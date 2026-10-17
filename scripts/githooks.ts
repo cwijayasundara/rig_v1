@@ -1,7 +1,7 @@
 // Git hooks: the same checker as Stop, ship and CI, run at `git commit` and `git push`, so any editor, agent or person is judged.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SDLC, git, exists, out, fail, type Args } from './core.ts'
+import { ROOT, SDLC, TRUNKS, git, exists, out, fail, type Args } from './core.ts'
 import { loadConfig, runChecks, slugsIn } from './check.ts'
 import { rangeDiff, showAt } from './diffs.ts'
 import { activeSlug, verifyFresh } from './lifecycle.ts'
@@ -111,7 +111,6 @@ function parsePushRefs(stdin: string): PushRef[] {
   })
 }
 
-const TRUNKS = ['origin/main', 'main', 'origin/master', 'master']
 // The base CI would use (the merge-base with the trunk, for the pushed commit, not HEAD), so merging or rebasing on
 // the trunk never counts the trunk's own work. A push to the trunk itself judges what the remote lacks.
 function pushBase(r: PushRef): string | null {
