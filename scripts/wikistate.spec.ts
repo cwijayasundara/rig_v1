@@ -63,3 +63,11 @@ test('a why citation is never stale and snapshot records the commit', () => {
   assert.deepEqual(s, { builtAt: 'abc1234', hashes: {} })
   assert.deepEqual(wikiStatus({ pages: { w: s } }, { w: '- Chosen. [adr:0001]\n' }, files({})), [])
 })
+
+test('a page may scope its sources with paths, and two titles with the same slug are refused', () => {
+  const ok = parseWikiConfig(cfg([{ ...pg('Billing'), paths: ['src/billing/', 'src/util/money.ts'] }]))
+  assert.deepEqual((ok as { pages: { paths?: string[] }[] }).pages[0]!.paths, ['src/billing/', 'src/util/money.ts'])
+  assert.match(String(parseWikiConfig(cfg([{ ...pg('A'), paths: '/etc' }]))), /paths/)
+  assert.match(String(parseWikiConfig(cfg([{ ...pg('A'), paths: ['../x'] }]))), /paths/)
+  assert.match(String(parseWikiConfig(cfg([pg('Order flow'), pg('Order-flow')]))), /same file name/)
+})

@@ -1,0 +1,206 @@
+// `sdlc.ts wiki <init|build|status|verify|refresh>` (wiki design 2026-10-17). Everything checkable is deterministic; only page writing
+// and claim review call a model, through a Runner. Staleness is a warning: no subcommand fails because a page is stale.
+import fs from 'node:fs'
+import path from 'node:path'
+import { ROOT, out, fail, gitIn, writeAtomic, type Args } from './core.ts'
+import { claudeRunner, planConfig, buildPage, reviewPage, estimateUsd, type Runner } from './wikigen.ts'
+import { parseWikiConfig, slugOf, snapshot, wikiStatus, type WikiConfig, type WikiPage, type WikiState } from './wikistate.ts'
+import { validatePage, pageCitations, type PageEnv } from './wikivalidate.ts'
+
+export type WikiResult = { code: number; text: string }
+
+const CONFIG = '.rig/wiki.json'
+const DIR = '.rig/wiki'
+const SOURCE_EXT = /\.(?:[cm]?[jt]sx?|py|go|rs|java|kt|rb|cs|php|swift|c|cc|cpp|h|hpp|scala|exs?|lua|sh)$/
+const SKIPPED = /^(?:\.rig|\.claude|\.github|node_modules)\//
+const MAX_SOURCE_CHARS = 120_000
+
+const put = (file: string, text: string): void => { fs.mkdirSync(path.dirname(file), { recursive: true }); writeAtomic(file, text) }
+const ok = (text: string): WikiResult => ({ code: 0, text })
+const bad = (text: string, code = 1): WikiResult => ({ code, text })
+
+function reader(root: string): (p: string) => string | null {
+  return p => {
+    const abs = path.resolve(root, p)
+    if (path.isAbsolute(p) || !abs.startsWith(root + path.sep)) return null
+    try { return fs.readFileSync(abs, 'utf8').replace(/\r\n/g, '\n') } catch { return null }
+  }
+}
+
+const sourceFiles = (root: string): string[] =>
+  (gitIn(root, ['ls-files']) ?? '').split('\n').filter(f => SOURCE_EXT.test(f) && !SKIPPED.test(f))
+
+function pageSources(root: string, page: WikiPage, files: string[]): Record<string, string> {
+  const read = reader(root)
+  const mine = page.paths ? files.filter(f => page.paths!.some(p => (p.endsWith('/') ? f.startsWith(p) : f === p))) : files
+  const out: Record<string, string> = {}
+  let total = 0
+  for (const f of [...mine].sort()) {
+    const text = read(f) ?? ''
+    if (total + text.length > MAX_SOURCE_CHARS) continue
+    out[f] = text
+    total += text.length
+  }
+  return out
+}
+
+function whyExists(root: string): PageEnv['whyExists'] {
+  return c => {
+    if (c.type === 'adr') {
+      const dir = path.join(root, '.rig/product/adr')
+      return fs.existsSync(dir) && fs.readdirSync(dir).some(f => f.startsWith(c.ref.padStart(4, '0')))
+    }
+    if (c.type === 'commit') return gitIn(root, ['cat-file', '-e', `${c.ref}^{commit}`]) !== null
+    return Boolean(gitIn(root, ['log', '--all', '-1', '--format=%H', `--grep=#${c.ref}\\b`]))
+  }
+}
+
+const env = (root: string): PageEnv => ({ read: reader(root), whyExists: whyExists(root) })
+
+function loadConfig(root: string): WikiConfig | string {
+  const text = reader(root)(CONFIG)
+  if (text === null) return `no ${CONFIG}: run \`wiki init\` first, edit it, then \`wiki build\``
+  return parseWikiConfig(text)
+}
+
+function loadPages(root: string): Record<string, string> {
+  const dir = path.join(root, DIR)
+  if (!fs.existsSync(dir)) return {}
+  const pages: Record<string, string> = {}
+  for (const f of fs.readdirSync(dir).filter(x => x.endsWith('.md') && x !== 'index.md')) pages[f.slice(0, -3)] = reader(root)(`${DIR}/${f}`) ?? ''
+  return pages
+}
+
+const loadState = (root: string): WikiState => {
+  try { return JSON.parse(reader(root)(`${DIR}/state.json`) ?? '') as WikiState } catch { return { pages: {} } }
+}
+
+function indexText(config: WikiConfig, state: WikiState): string {
+  const line = (p: WikiPage, depth: number): string[] => [
+    `${'  '.repeat(depth)}- [${p.title}](${slugOf(p.title)}.md): ${p.purpose}${state.pages[slugOf(p.title)] ? ` (built ${state.pages[slugOf(p.title)]!.builtAt})` : ''}`,
+    ...config.pages.filter(c => c.parent === p.title).flatMap(c => line(c, depth + 1)),
+  ]
+  return `# Wiki\n\n${config.pages.filter(p => !p.parent).flatMap(p => line(p, 0)).join('\n')}\n`
+}
+
+const money = (n: number): string => `$${n.toFixed(4)}`
+
+function maxUsd(args: Args): number | null | string {
+  const v = args.opt['max-usd']
+  if (v === undefined) return null
+  const n = Number(v)
+  return typeof v === 'string' && Number.isFinite(n) && n >= 0 ? n : '--max-usd needs a number of dollars'
+}
+
+// Builds the given pages. `hintFor` adds what changed to a refresh; a page that cannot be built keeps its old file.
+function buildPages(root: string, config: WikiConfig, pages: WikiPage[], args: Args, run: Runner, hintFor: (p: WikiPage) => string | undefined): WikiResult {
+  const budget = maxUsd(args)
+  if (typeof budget === 'string') return bad(budget, 2)
+  const files = sourceFiles(root)
+  const sources = new Map(pages.map(p => [p.title, pageSources(root, p, files)]))
+  const chars = [...sources.values()].reduce((n, s) => n + Object.values(s).reduce((m, t) => m + t.length, 0), 0)
+  const estimate = estimateUsd(pages.length, chars)
+  const lines = [`estimate: ${money(estimate)} for ${pages.length} page(s)`]
+  if (budget !== null && estimate > budget) return bad([...lines, `over --max-usd ${budget}: nothing was run`].join('\n'))
+  const state = loadState(root)
+  const commit = gitIn(root, ['rev-parse', '--short', 'HEAD']) ?? 'none'
+  const e = env(root)
+  let usd = 0
+  let failed = 0
+  for (const page of pages) {
+    const hint = hintFor(page)
+    const r = buildPage({ page, sources: sources.get(page.title)!, env: e, run, ...(hint ? { hint } : {}) })
+    usd += r.usd
+    if (r.text === null) {
+      failed++
+      lines.push(`${page.title}: not written (${r.error ?? r.findings.map(f => `${f.rule}@${f.line}`).join(', ')}); the old page is kept`)
+      continue
+    }
+    const slug = slugOf(page.title)
+    put(path.join(root, DIR, `${slug}.md`), r.text)
+    state.pages[slug] = snapshot(r.text, e.read, commit)
+    lines.push(`${page.title}: written${r.dropped ? `, ${r.dropped} unsupported claim(s) dropped` : ''}${r.findings.length ? `; ${r.findings[0]!.message}` : ''}`)
+  }
+  put(path.join(root, DIR, 'state.json'), JSON.stringify(state, null, 2) + '\n')
+  put(path.join(root, DIR, 'index.md'), indexText(config, state))
+  lines.push(`cost: ${money(usd)}`)
+  return { code: failed ? 1 : 0, text: lines.join('\n') }
+}
+
+function cmdInit(root: string, run: Runner): WikiResult {
+  if (fs.existsSync(path.join(root, CONFIG))) return bad(`${CONFIG} already exists; edit it, then run \`wiki build\``)
+  const r = planConfig(sourceFiles(root), run)
+  if (typeof r.config === 'string') return bad(`the planner's wiki.json is not usable: ${r.config}`)
+  put(path.join(root, CONFIG), JSON.stringify(r.config, null, 2) + '\n')
+  return ok(`wrote ${CONFIG} with ${r.config.pages.length} page(s) (cost ${money(r.usd)}). Edit it, then run: wiki build`)
+}
+
+function cmdBuild(root: string, args: Args, run: Runner): WikiResult {
+  const config = loadConfig(root)
+  if (typeof config === 'string') return bad(config)
+  const only = typeof args.opt.page === 'string' ? args.opt.page.toLowerCase() : null
+  const pages = only ? config.pages.filter(p => p.title.toLowerCase() === only || slugOf(p.title) === only) : config.pages
+  if (!pages.length) return bad(`no page "${args.opt.page}" in ${CONFIG}`)
+  return buildPages(root, config, pages, args, run, () => undefined)
+}
+
+function staleSlugs(root: string): { stale: ReturnType<typeof wikiStatus>; pages: Record<string, string> } {
+  const pages = loadPages(root)
+  return { stale: wikiStatus(loadState(root), pages, reader(root)), pages }
+}
+
+function cmdStatus(root: string): WikiResult {
+  const { stale, pages } = staleSlugs(root)
+  if (!Object.keys(pages).length) return ok('wiki: no pages yet (wiki init, edit wiki.json, wiki build)')
+  const names = new Set(stale.map(s => s.page))
+  return ok([...stale.map(s => `${s.page}: ${s.cite} (${s.why})`), names.size ? `wiki: ${names.size} stale page(s); \`wiki refresh\` rebuilds them` : 'wiki: fresh'].join('\n'))
+}
+
+function cmdRefresh(root: string, args: Args, run: Runner): WikiResult {
+  const config = loadConfig(root)
+  if (typeof config === 'string') return bad(config)
+  const { stale } = staleSlugs(root)
+  const names = new Set(stale.map(s => s.page))
+  const pages = config.pages.filter(p => names.has(slugOf(p.title)))
+  if (!pages.length) return ok('wiki: fresh; nothing to refresh')
+  const state = loadState(root)
+  return buildPages(root, config, pages, args, run, p => {
+    const cited = [...new Set(stale.filter(s => s.page === slugOf(p.title)).map(s => s.cite.split('#')[0]!))]
+    const diff = gitIn(root, ['diff', '--stat', state.pages[slugOf(p.title)]?.builtAt ?? 'HEAD', '--', ...cited])
+    return `Changed since the last build: ${cited.join(', ')}${diff ? `\n${diff}` : ''}`
+  })
+}
+
+function cmdVerify(root: string, args: Args, run: Runner): WikiResult {
+  const pages = loadPages(root)
+  if (!Object.keys(pages).length) return ok('wiki: no pages yet')
+  const e = env(root)
+  const lines: string[] = []
+  for (const [slug, text] of Object.entries(pages)) {
+    for (const f of validatePage(text, e)) lines.push(`${slug}:${f.line} ${f.rule} ${f.message}`)
+    if (args.opt['no-review']) continue
+    const sources: Record<string, string> = {}
+    for (const { cite } of pageCitations(text)) if (cite.kind === 'code') sources[cite.path] = e.read(cite.path) ?? ''
+    const r = reviewPage(text, sources, run)
+    if (r.error) lines.push(`${slug}: review failed: ${r.error}`)
+    for (const v of r.verdicts) if (v.verdict !== 'supported') lines.push(`${slug}:${v.line} ${v.verdict}`)
+  }
+  return lines.length ? bad(lines.join('\n')) : ok(`wiki: ${Object.keys(pages).length} page(s) pass`)
+}
+
+export function wikiCommand(root: string, args: Args, run: Runner): WikiResult {
+  switch (args.pos[0]) {
+    case 'init': return cmdInit(root, run)
+    case 'build': return cmdBuild(root, args, run)
+    case 'status': return cmdStatus(root)
+    case 'refresh': return cmdRefresh(root, args, run)
+    case 'verify': return cmdVerify(root, args, run)
+    default: return bad('usage: wiki <init|build [--page <title>] [--max-usd N]|status|verify [--no-review]|refresh [--max-usd N]>', 2)
+  }
+}
+
+export function cmdWiki(args: Args, run: Runner = claudeRunner()): void {
+  const r = wikiCommand(ROOT, args, run)
+  if (r.code === 0) out(r.text)
+  else fail(r.text, r.code)
+}

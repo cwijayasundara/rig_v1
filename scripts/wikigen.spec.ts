@@ -100,3 +100,15 @@ test('estimateUsd is zero for nothing and grows with pages and source size', () 
   assert.ok(estimateUsd(5, 1000) > estimateUsd(1, 1000))
   assert.ok(estimateUsd(5, 100_000) > estimateUsd(5, 1000))
 })
+
+test('a hint passed to buildPage reaches the first write prompt', () => {
+  const { run, calls } = scripted({ write: [four()], review: [ALL_OK] })
+  buildPage({ page: PAGE, sources: SOURCES, env, run, hint: 'Only src/a.ts changed since the last build.' })
+  assert.match(calls[0]!.prompt, /Only src\/a\.ts changed/)
+})
+
+test('planConfig keeps the paths the planner proposes', () => {
+  const json = JSON.stringify({ notes: [], pages: [{ title: 'A', purpose: 'a', paths: ['src/'] }] })
+  const r = planConfig(['src/a.ts'], scripted({ plan: [json] }).run)
+  assert.deepEqual((r.config as { pages: { paths?: string[] }[] }).pages[0]!.paths, ['src/'])
+})

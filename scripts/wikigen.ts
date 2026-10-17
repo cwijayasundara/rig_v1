@@ -50,8 +50,9 @@ const jsonSpan = (t: string, open: string, close: string): string | null => {
 export function planConfig(files: string[], run: Runner): { config: WikiConfig | string; usd: number } {
   const shown = files.slice(0, MAX_PLAN_FILES)
   const r = run({ role: 'plan', prompt: [
-    'Propose a wiki plan for this codebase as JSON only: {"notes": [], "pages": [{"title", "purpose", "parent"?}]}.',
+    'Propose a wiki plan for this codebase as JSON only: {"notes": [], "pages": [{"title", "purpose", "paths", "parent"?}]}.',
     'At most 30 pages. Titles are unique. Group by module or flow, not by file. "parent" must be another page title.',
+    '"paths" lists the repo-relative files or directory prefixes (ending in /) that page is built from; give every page paths.',
     `Tracked source files${files.length > shown.length ? ` (first ${shown.length} of ${files.length})` : ''}:`, ...shown,
   ].join('\n') })
   const json = jsonSpan(r.text, '{', '}')
@@ -119,7 +120,7 @@ export function dropClaims(text: string, verdicts: Verdicts): { text: string; dr
 export type BuildResult = { text: string | null; findings: WikiFinding[]; dropped: number; usd: number; error?: string }
 type Attempt = BuildResult & { total: number; removed: string[] }
 
-export function buildPage(args: { page: WikiPage; sources: Record<string, string>; env: PageEnv; run: Runner; maxDropShare?: number }): BuildResult {
+export function buildPage(args: { page: WikiPage; sources: Record<string, string>; env: PageEnv; run: Runner; maxDropShare?: number; hint?: string }): BuildResult {
   const { page, sources, env, run } = args
   const maxShare = args.maxDropShare ?? 0.3
   const once = (hint?: string): Attempt => {
@@ -139,7 +140,7 @@ export function buildPage(args: { page: WikiPage; sources: Record<string, string
     return { text: d.text, findings: [], dropped: d.dropped, usd, total: d.total, removed: d.removed }
   }
   const over = (a: Attempt): boolean => a.total > 0 && a.dropped / a.total > maxShare
-  let r = once()
+  let r = once(args.hint)
   if (r.text !== null && over(r)) {
     const second = once(`The reviewer could not support these lines, so write them from the code or leave them out:\n${r.removed.join('\n')}`)
     r = { ...second, usd: r.usd + second.usd }

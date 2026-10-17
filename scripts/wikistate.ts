@@ -2,7 +2,8 @@
 import { citeHash } from './wikicite.ts'
 import { pageCitations } from './wikivalidate.ts'
 
-export type WikiPage = { title: string; purpose: string; parent?: string; notes?: string[] }
+// `paths` scopes a page's sources: repo-relative files or directory prefixes (ending in `/`). Without it the page sees every source file.
+export type WikiPage = { title: string; purpose: string; parent?: string; notes?: string[]; paths?: string[] }
 export type WikiConfig = { notes: string[]; pages: WikiPage[] }
 export type PageState = { builtAt: string; hashes: Record<string, string> }
 export type WikiState = { pages: Record<string, PageState> }
@@ -27,12 +28,18 @@ export function parseWikiConfig(json: string): WikiConfig | string {
     if (!str(p.purpose)) return `page "${p.title}" needs a purpose`
     if (p.parent !== undefined && !str(p.parent)) return `page "${p.title}" has an invalid parent`
     if (p.notes !== undefined && !strs(p.notes)) return `page "${p.title}" notes must be an array of strings`
-    pages.push({ title: p.title, purpose: p.purpose, ...(p.parent ? { parent: p.parent } : {}), ...(p.notes ? { notes: p.notes } : {}) })
+    if (p.paths !== undefined && (!strs(p.paths) || p.paths.some(x => !x || x.startsWith('/') || x.split('/').includes('..')))) return `page "${p.title}" paths must be repo-relative strings`
+    pages.push({ title: p.title, purpose: p.purpose, ...(p.parent ? { parent: p.parent } : {}), ...(p.notes ? { notes: p.notes } : {}), ...(p.paths ? { paths: p.paths } : {}) })
   }
   const titles = new Set<string>()
   for (const p of pages) {
     if (titles.has(p.title)) return `duplicate page title "${p.title}"`
     titles.add(p.title)
+  }
+  const slugs = new Set<string>()
+  for (const p of pages) {
+    if (slugs.has(slugOf(p.title))) return `page "${p.title}" has the same file name as another page`
+    slugs.add(slugOf(p.title))
   }
   const parentOf = new Map(pages.map(p => [p.title, p.parent]))
   for (const p of pages) if (p.parent && !titles.has(p.parent)) return `page "${p.title}" has unknown parent "${p.parent}"`
