@@ -14,4 +14,4 @@ allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_R
    - `## Behaviours`: one line per observable behaviour, numbered `B1`, `B2`, … A refactor lists the behaviours it must keep; a chore may write `none`. Every behaviour gets a test that names its number.
    - `## Out of scope`.
    - `## Open questions`: `none` once each is answered, or its default recorded under `## Decisions`.
-4. End with `Next: /rig:plan <slug>`.
+4. Continue with `/rig:plan <slug>` in this turn. Stop here instead only while `## Open questions` has an item a person must answer: list it and end with `Next: answer the open questions, then /rig:plan <slug>`.

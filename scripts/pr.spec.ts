@@ -65,6 +65,23 @@ test('pr commits only this change\'s folder: another change in progress stays ou
   assert.doesNotMatch(gitIn(repo, 'show', '--name-only', '--format=', 'HEAD'), /\.rig\/changes\/other\//)
 })
 
+test('pr carries a sprint chart approval that is not yet committed, so CI sees the person\'s approval', () => {
+  write(repo, '.rig/product/approvals/chart-0.json', '{"by":"a person"}\n')
+  shipReady()
+  assert.equal(pr().code, 0)
+  assert.match(gitIn(repo, 'show', '--name-only', '--format=', 'HEAD'), /\.rig\/product\/approvals\/chart-0\.json/)
+})
+
+test('a follow-up pr after the review commits review.md, with no other change', () => {
+  shipReady()
+  pr()
+  write(repo, '.rig/changes/demo/review.md', '# Review: demo\n\nverdict: approve\n')
+  const r = sdlc(repo, ['pr', 'demo', '--message', 'docs(review): demo'])
+  assert.equal(r.code, 0, r.stderr)
+  assert.match(gitIn(repo, 'show', '--name-only', '--format=', 'HEAD'), /\.rig\/changes\/demo\/review\.md/)
+  assert.equal(gitIn(repo, 'status', '--porcelain').trim(), '')
+})
+
 test('pr refuses to branch off another feature branch', () => {
   gitIn(repo, 'checkout', '-qb', 'sdlc/older')
   shipReady()

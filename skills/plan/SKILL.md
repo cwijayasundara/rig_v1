@@ -18,4 +18,4 @@ allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_R
    - `## Decisions`.
    - `## Open questions`: `none`.
 3. A change that adds or edits a contract file (`contracts.files` in `.rig/sensors.json`) makes that edit now, before approval, because approval freezes those files.
-4. Ask the person to review `spec.md` and `plan.md` and to run `/rig:approve <slug>`. Never approve yourself. End with `Next: /rig:approve <slug> (a person)`. If `.rig/sensors.json` sets `"gates": { "plan": false }`, skip the request and end with `Next: /rig:build <slug>`.
+4. Ask the person to review `spec.md` and `plan.md` and to run `/rig:approve <slug>`. Never approve yourself. End with `Next: /rig:approve <slug> (a person), then /rig:build <slug>`; from there the build runs through verify, the PR and the review's fixes without stopping. If `.rig/sensors.json` sets `"gates": { "plan": false }`, skip the request and end with `Next: /rig:build <slug>`.
