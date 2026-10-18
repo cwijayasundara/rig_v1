@@ -7,7 +7,7 @@ import { activeSlug, changeType, isShipped, nextStep, status, type Status } from
 import { chartState, prdPath, readyIntents, sprintIntents, sprintsKnown } from './chart.ts'
 
 export type StepState = 'done' | 'current' | 'gate' | 'todo'
-export type JourneyStep = { id: string; label: string; state: StepState; detail?: string }
+export type JourneyStep = { id: string; label: string; command: string; state: StepState; detail?: string }
 export type Journey = {
   initialised: boolean; kind: 'greenfield' | 'brownfield'; show: ('outer' | 'inner')[]; sprint: number | null
   outer: JourneyStep[]; inner: { slug: string; type: string; steps: JourneyStep[] } | null
@@ -18,21 +18,21 @@ export type Journey = {
 export const repoKind = (): 'greenfield' | 'brownfield' => (exists(path.join(SDLC, 'wiki.json')) ? 'brownfield' : 'greenfield')
 
 // The first step not done is where the person is; a step only a person can take is a gate.
-function mark(steps: { id: string; label: string; done: boolean; detail?: string; gate?: boolean }[]): JourneyStep[] {
+function mark(steps: { id: string; label: string; command: string; done: boolean; detail?: string; gate?: boolean }[]): JourneyStep[] {
   const at = steps.findIndex(s => !s.done)
-  return steps.map((s, i): JourneyStep => ({ id: s.id, label: s.label, state: i < at || at < 0 ? 'done' : i === at ? (s.gate ? 'gate' : 'current') : 'todo', ...(s.detail ? { detail: s.detail } : {}) }))
+  return steps.map((s, i): JourneyStep => ({ id: s.id, label: s.label, command: s.command, state: i < at || at < 0 ? 'done' : i === at ? (s.gate ? 'gate' : 'current') : 'todo', ...(s.detail ? { detail: s.detail } : {}) }))
 }
 
 // Inner loop: lifecycle.ts's status maps onto seven steps ('build' covers build and test: the verify stamp is what moves it on).
 const INNER: Status[] = ['spec', 'plan', 'approve', 'build', 'pr', 'review', 'shipped']
-function innerSteps(s: Status, gates: boolean): JourneyStep[] {
+function innerSteps(s: Status, gates: boolean, slug: string): JourneyStep[] {
   const at = INNER.indexOf(s)
   const done = (i: number): boolean => at > i
   const rows = [
-    { id: 'start', label: 'Start', done: done(0) }, { id: 'plan', label: 'Plan', done: done(1) },
-    { id: 'approve', label: gates ? 'Approve' : 'Approve (off)', done: done(2) || !gates, gate: true },
-    { id: 'build', label: 'Build', done: at > 3 }, { id: 'test', label: 'Test', done: at > 3 },
-    { id: 'pr', label: 'PR', done: done(5) }, { id: 'merge', label: 'Merge', done: s === 'shipped', gate: true },
+    { id: 'start', label: 'Start', command: `${k('start')} ${slug}`, done: done(0) }, { id: 'plan', label: 'Plan', command: `${k('plan')} ${slug}`, done: done(1) },
+    { id: 'approve', label: gates ? 'Approve' : 'Approve (off)', command: `${k('approve')} ${slug}`, done: done(2) || !gates, gate: true },
+    { id: 'build', label: 'Build', command: `${k('build')} ${slug}`, done: at > 3 }, { id: 'test', label: 'Test', command: `${k('test')} ${slug}`, done: at > 3 },
+    { id: 'pr', label: 'PR', command: `${k('pr')} ${slug}`, done: done(5) }, { id: 'merge', label: 'Merge', command: 'review and merge the PR', done: s === 'shipped', gate: true },
   ]
   return mark(rows)
 }
@@ -48,12 +48,12 @@ export function journey(i: { gates: { plan: boolean }; tree: string | null }): J
   const approved = slugs.length > 0 && chartState(n).state === 'approved'
   const ready = readyIntents().map(r => r.slug)
   const outer = mark([
-    { id: 'init', label: 'Init', done: initialised },
-    { id: 'prd', label: 'PRD', done: exists(prdPath(n)), detail: `sprint ${n}` },
-    { id: 'chart', label: 'Chart', done: slugs.length > 0, detail: slugs.length ? `${slugs.length} intents` : undefined },
-    { id: 'testplan', label: 'Test plan', done: cases },
-    { id: 'approve', label: 'Approve', done: approved, gate: true },
-    { id: 'build', label: 'Build', done: slugs.length > 0 && shipped === slugs.length, detail: slugs.length ? `${shipped}/${slugs.length} shipped` : undefined },
+    { id: 'init', label: 'Init', command: k('init'), done: initialised },
+    { id: 'prd', label: 'PRD', command: `write prd/sprint-${n}.md`, done: exists(prdPath(n)), detail: `sprint ${n}` },
+    { id: 'chart', label: 'Chart', command: `${k('chart')} ${n}`, done: slugs.length > 0, detail: slugs.length ? `${slugs.length} intents` : undefined },
+    { id: 'testplan', label: 'Test plan', command: `${k('testplan')} ${n}`, done: cases },
+    { id: 'approve', label: 'Approve', command: `${k('approve')} chart-${n}`, done: approved, gate: true },
+    { id: 'build', label: 'Build', command: `${k('start')} <intent>`, done: slugs.length > 0 && shipped === slugs.length, detail: slugs.length ? `${shipped}/${slugs.length} shipped` : undefined },
   ])
   const active = activeSlug()
   const act = active && !isShipped(active) ? active : null
@@ -68,11 +68,11 @@ export function journey(i: { gates: { plan: boolean }; tree: string | null }): J
     return shipped === slugs.length ? { command: `write .rig/product/prd/sprint-${n + 1}.md, then ${k('chart')} ${n + 1}`, by: 'person', why: `sprint ${n} is shipped` } : { command: 'a change in flight must ship first', by: 'person', why: 'the remaining intents wait on their dependencies' }
   })()
   const next: Journey['next'] = act && st ? { command: nextStep(act, st), by: st === 'approve' || st === 'review' ? 'person' : 'model', why: `change ${act}` } : outerNext
-  return { initialised, kind, show, sprint: initialised ? n : null, outer, inner: act && st ? { slug: act, type: changeType(act), steps: innerSteps(st, i.gates.plan) } : null, next, ready }
+  return { initialised, kind, show, sprint: initialised ? n : null, outer, inner: act && st ? { slug: act, type: changeType(act), steps: innerSteps(st, i.gates.plan, act) } : null, next, ready }
 }
 
 export function journeyText(j: Journey): string {
-  const row = (steps: JourneyStep[]): string => steps.map(s => `${{ done: '✓', current: '●', gate: '◆', todo: '○' }[s.state]} ${s.label}${s.detail ? ` (${s.detail})` : ''}`).join('  ')
+  const row = (steps: JourneyStep[]): string => steps.map(s => `${{ done: '✓', current: '●', gate: '◆', todo: '○' }[s.state]} ${s.command}${s.detail && s.id === 'build' ? ` (${s.detail})` : ''}`).join('  ')
   return [
     ...(j.show.includes('outer') ? [`sprint ${j.sprint ?? '-'}  ${row(j.outer)}`] : []),
     ...(j.show.includes('inner') && j.inner ? [`change ${j.inner.slug}  ${row(j.inner.steps)}`] : []),
