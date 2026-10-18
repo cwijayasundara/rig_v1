@@ -35,9 +35,9 @@ test('init skill: writes rig docs into README.md between markers, brownfield in 
   assert.doesNotMatch(tpl, /\{\{BRAIN\}\}/)
 })
 
-test('init skill: warns when the main model is Opus, without blocking', () => {
-  assert.match(skill, /\*\*Model check:\*\*[^\n]*Opus/)
-  assert.match(skill, /Never stop on it/)
+test('init skill: pins Sonnet in its frontmatter, so an Opus session does not run init', () => {
+  assert.match(skill, /^---\n[\s\S]*?\nmodel: sonnet\n[\s\S]*?\n---/)
+  assert.doesNotMatch(skill, /Model check/)
 })
 
 test('init skill: the baseline runs through `sdlc.ts baseline`, never `run` or `quality` (both need a change, and init has none)', () => {

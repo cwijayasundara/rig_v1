@@ -2,13 +2,14 @@
 name: init
 description: One-time setup of a repo for the sdlc harness. Brownfield writes a compact CLAUDE.md from a cheap parallel scout sweep; greenfield scaffolds a walking skeleton with test and lint commands. Never rerun per task.
 argument-hint: '[--quick | --defaults] [greenfield "<stack and goal>"]'
+model: sonnet
 effort: medium
 allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Bash(git init*), Bash(git add *), Bash(git commit *), Bash(git status*), Bash(git remote*), Bash(git rev-parse*), Bash(npm test*), Bash(npm run *), Bash(node --test*), Bash(node --check *), Bash(node --version), Bash(make test*), Bash(make lint*), Read, Write, Edit, Glob, Grep, AskUserQuestion, Agent
 ---
 # Initialise this repo
 **Subagents:** run them in the foreground (never `run_in_background`) and wait; never end your turn while one is running. Every agent of one step goes in one message. Run each command as its own Bash call (no `cd`, pipes, redirects, `&&`, variables or heredocs); read files with Read; one-line commit messages — compound commands are denied in unattended runs and stall the install.
 
-Run `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts init` first. **Model check:** if this session's main model is an Opus model, say so in one line before any other step (init is orchestration and file writes, so Sonnet does it at a fraction of the cost; `templates/settings.json` pins Sonnet only for later sessions) and offer to continue after `/model sonnet`. Never stop on it; with `--defaults` or `--quick` just note it in the final table.
+Run `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts init` first.
 ## `--defaults` mode
 When the arguments contain `--defaults`, the person has pre-approved every recommended answer below, so ask no AskUserQuestion at all. Use these answers:
 - Greenfield: stack, deployment target and test framework come from the quoted goal; anything it leaves out takes the recommended default (deployment: local only).
