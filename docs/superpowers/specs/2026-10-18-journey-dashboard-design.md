@@ -35,7 +35,7 @@ Add `sdlc.ts status --journey --json`, pure functions in `lifecycle.ts` over fil
 | State | Test (files only) | Next |
 |---|---|---|
 | not initialised | no `.rig/` | `/rig:init` |
-| no PRD | `.rig/product/prd/sprint-N.md` absent for the lowest unshipped N | write `prd/sprint-N.md`, then `/rig:chart N` |
+| no PRD | `.rig/product/prd/sprint-N.md` absent for the lowest unshipped N | add the PRD at `.rig/product/prd/sprint-N.md`, then `/rig:chart N` |
 | uncharted | PRD present, no intents with that sprint | `/rig:chart N` |
 | no test plan | intents present, no test plan | `/rig:testplan N` |
 | chart unapproved | `approval.json` for `chart-N` missing or stale | a person runs `/rig:approve chart-N` |

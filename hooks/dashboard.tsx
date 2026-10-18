@@ -79,7 +79,7 @@ export const register: Register = on => {
         {j.show.includes('inner') ? (j.inner ? rail(j.inner.slug, j.inner.steps) : <Text dimColor>{'CHANGE'.padEnd(10)} none in flight</Text>) : null}
         <Box columnGap={1}>
           <Text color="cyan" bold>▸ next</Text>
-          <Text dimColor>{j.next.by === 'person' ? 'a person runs' : 'run'}</Text>
+          <Text dimColor>{j.next.by === 'person' ? (j.next.command.startsWith('/') ? 'a person runs' : 'a person:') : 'run'}</Text>
           <Text bold>{j.next.command}</Text>
           <Text dimColor>{'   ◆ you  ⟳ runs by itself  ● now'}</Text>
         </Box>
