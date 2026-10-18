@@ -82,6 +82,21 @@ test('a follow-up pr after the review commits review.md, with no other change', 
   assert.equal(gitIn(repo, 'status', '--porcelain').trim(), '')
 })
 
+test('the review fixes run with the change active again, and the follow-up pr clears it; another active change stays', () => {
+  shipReady()
+  pr()
+  sdlc(repo, ['activate', 'demo'])
+  write(repo, '.rig/changes/demo/review.md', '# Review: demo\n')
+  const active = (): unknown => JSON.parse(sdlc(repo, ['status', '--json']).stdout).active
+  assert.equal(active(), 'demo')
+  assert.equal(sdlc(repo, ['pr', 'demo', '--message', 'docs(review): demo']).code, 0)
+  assert.equal(active(), null)
+  sdlc(repo, ['new', 'other'])
+  write(repo, '.rig/changes/demo/review.md', '# Review: demo\n\nedited\n')
+  assert.equal(sdlc(repo, ['pr', 'demo', '--message', 'docs(review): demo']).code, 0)
+  assert.equal(active(), 'other')
+})
+
 test('pr refuses to branch off another feature branch', () => {
   gitIn(repo, 'checkout', '-qb', 'sdlc/older')
   shipReady()

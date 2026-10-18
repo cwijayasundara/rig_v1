@@ -70,7 +70,8 @@ export function cmdPr(args: Args): void {
   if (git(['add', '--', ...files]) === null) { undo(false); fail('git add failed') }
   // verify judged this tree with waivers applied: the git hooks would only run the same checks again.
   if (git(['commit', '-q', '--no-verify', '-m', message]) === null) { undo(false); fail('git commit failed') }
-  if (!followUp) setActive(null)
+  // The review's fix wave re-activates the change so the hooks guard it; its follow-up ends it. Another active change stays.
+  if (!followUp || activeSlug() === slug) setActive(null)
   if (!remote) return out(`pr ${slug}: committed on ${branch}${followUp ? ' (follow-up)' : ''}; no origin remote, local only`)
   const retry = `gh pr create --title ${JSON.stringify(title)} --body-file .rig/changes/${slug}/pr.md`
   if (git(['push', '--no-verify', '-u', 'origin', branch]) === null) { undo(true); fail(`git push failed; ${followUp ? `the follow-up is committed on ${branch}: push it` : 'nothing was kept: fix the remote and rerun pr'}`) }

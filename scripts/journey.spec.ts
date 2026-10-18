@@ -92,7 +92,7 @@ test('journey: every step carries the full command to run, and the text form sho
   const j = view()
   assert.deepEqual(j.outer.map(x => x.command), ['/rig:init', 'add PRD → .rig/product/prd/sprint-0.md', '/rig:chart 0', '/rig:testplan 0', '/rig:approve chart-0', '/rig:start <intent>'])
   assert.equal(sdlc(repo, ['new', 'add-login', '--type', 'feature']).code, 0)
-  assert.deepEqual(view().inner?.steps.map(x => x.command), ['/rig:start add-login', '/rig:plan add-login', '/rig:approve add-login', '/rig:build add-login', '/rig:test add-login', '/rig:pr add-login', 'advisory review (evaluator)', 'review and merge the PR'])
+  assert.deepEqual(view().inner?.steps.map(x => x.command), ['/rig:start add-login', '/rig:plan add-login', '/rig:approve add-login', '/rig:build add-login', '/rig:test add-login', '/rig:pr add-login', 'review and its fixes (evaluator)', 'review and merge the PR'])
   assert.match(sdlc(repo, ['status', '--journey']).stdout, /✓ \/rig:init {2}● add PRD → \.rig\/product\/prd\/sprint-0\.md {2}○ \/rig:chart 0/)
 })
 

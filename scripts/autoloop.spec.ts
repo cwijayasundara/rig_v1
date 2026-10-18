@@ -29,6 +29,8 @@ test('pr fixes every review finding without asking, re-verifies with the script 
   assert.match(pr, /S pr <slug> --message "fix\(review\): [^"]*"/)
   assert.match(pr, /S pr <slug> --message "docs\(review\): <slug>"/)
   assert.match(pr, /never a second review/i)
+  assert.match(pr, /`S activate <slug>` so the hooks guard the fixes/)
+  assert.match(pr, /After a stop in step 3, still ship review\.md/)
   assert.match(pr, /same (check|finding) fails twice[^.]*stop/i)
   assert.match(pr, /stop and tell the person[^.]*plan\.md does not list/i)
 })
