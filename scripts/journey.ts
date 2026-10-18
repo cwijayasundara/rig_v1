@@ -66,7 +66,7 @@ export function journey(i: { gates: { plan: boolean }; tree: string | null }): J
   const st = act ? status(act, i.gates, i.tree) : null
   const outerNext = ((): Journey['next'] => {
     if (!initialised) return { command: k('init'), by: 'model', why: 'set this repo up for rig' }
-    if (!exists(prdPath(n))) return { command: `add the PRD at .rig/product/prd/sprint-${n}.md, then ${k('chart')} ${n}`, by: 'person', why: 'the sprint starts from a PRD with FR-n requirement ids' }
+    if (!exists(prdPath(n))) return { command: `add the PRD at .rig/product/prd/sprint-${n}.md, then ${k('chart')} ${n}`, by: 'person', why: 'the sprint starts from your PRD, in any format and from any path' }
     if (!slugs.length) return { command: `${k('chart')} ${n}`, by: 'model', why: 'turn the PRD into traced intents, architecture and ADRs' }
     if (!cases) return { command: `${k('testplan')} ${n}`, by: 'model', why: 'write the test plan and cases for the sprint' }
     if (!approved) return { command: `${k('approve')} chart-${n}`, by: 'person', why: 'review the chart branch, then approve the sprint once' }
