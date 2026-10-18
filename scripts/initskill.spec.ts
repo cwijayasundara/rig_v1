@@ -30,7 +30,7 @@ test('init skill: writes rig docs into README.md between markers, brownfield in 
   assert.match(tpl, /### Architecture/)
   assert.match(tpl, /### User guide/)
   assert.match(tpl, /### Layout/)
-  for (const dir of ['.claude/skills/', '.claude/agents/', '.rig/bin/', '.rig/githooks/', '.rig/guides/', '.rig/templates/', '.rig/product/', '.rig/changes/']) assert.ok(tpl.includes(`| \`${dir}`), `layout map lists ${dir}`)
+  for (const dir of ['.claude/skills/', '.claude/agents/', '.rig/bin/', '.rig/mod/', '.rig/githooks/', '.rig/guides/', '.rig/templates/', '.rig/product/', '.rig/changes/']) assert.ok(tpl.includes(`| \`${dir}`), `layout map lists ${dir}`)
   assert.doesNotMatch(tpl, /\{\{P\}\}|\/rig-(start|next|approve|waive|status)\b/, 'skills are /rig:x in every install mode')
   assert.doesNotMatch(tpl, /\{\{BRAIN\}\}/)
 })

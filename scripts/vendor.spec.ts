@@ -131,18 +131,27 @@ test('standalone vendoring ships the v0.4 skills and REVIEW.md template', () => 
   assert.ok(fs.existsSync(path.join(repo, '.rig/templates/REVIEW.md')))
 })
 
-test('standalone vendoring installs no mod; re-vendoring drops an old mod copy and its local marketplace', () => {
+test('standalone vendoring installs the journey dashboard as the local plugin rig and drops an old mod', () => {
   const repo = makeRepo()
   write(repo, '.rig/mod/hooks/register.ts', 'old\n')
-  write(repo, '.claude-plugin/marketplace.json', JSON.stringify({ name: 'rig-local', plugins: [{ name: 'rig', source: './.rig/mod' }] }))
-  write(repo, '.claude/settings.json', JSON.stringify({ extraKnownMarketplaces: { 'rig-local': {}, mine: {} }, enabledPlugins: { 'rig@rig-local': true, 'rig-mod@rig-local': true, 'x@mine': true } }))
+  write(repo, '.claude/settings.json', JSON.stringify({ extraKnownMarketplaces: { mine: {} }, enabledPlugins: { 'rig-mod@rig-local': true, 'x@mine': true } }))
   assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
-  assert.ok(!fs.existsSync(path.join(repo, '.rig/mod')))
-  assert.ok(!fs.existsSync(path.join(repo, '.claude-plugin/marketplace.json')))
+  assert.ok(!fs.existsSync(path.join(repo, '.rig/mod/hooks/register.ts')), 'the old module is removed')
+  for (const f of ['hooks/dashboard.tsx', 'hooks/hooks.json', '.claude-plugin/plugin.json', 'types/index.d.ts']) assert.ok(fs.existsSync(path.join(repo, '.rig/mod', f)), f)
+  assert.equal(JSON.parse(fs.readFileSync(path.join(repo, '.rig/mod/.claude-plugin/plugin.json'), 'utf8')).name, 'rig')
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(repo, '.rig/mod/hooks/hooks.json'), 'utf8')), { modules: ['./dashboard.tsx'] })
+  assert.equal(JSON.parse(fs.readFileSync(path.join(repo, '.claude-plugin/marketplace.json'), 'utf8')).plugins[0].source, './.rig/mod')
   const settings = JSON.parse(fs.readFileSync(path.join(repo, '.claude/settings.json'), 'utf8'))
-  assert.deepEqual(settings.enabledPlugins, { 'x@mine': true })
-  assert.deepEqual(Object.keys(settings.extraKnownMarketplaces), ['mine'])
+  assert.deepEqual(settings.enabledPlugins, { 'x@mine': true, 'rig@rig-local': true })
+  assert.deepEqual(Object.keys(settings.extraKnownMarketplaces).sort(), ['mine', 'rig-local'])
   for (const cmd of ['approve', 'waive']) assert.doesNotMatch(fs.readFileSync(path.join(repo, `.claude/skills/rig-${cmd}/SKILL.md`), 'utf8'), /CLAUDE_PLUGIN_ROOT/)
+})
+
+test('vendoring leaves a team\'s own .claude-plugin/marketplace.json alone', () => {
+  const repo = makeRepo()
+  write(repo, '.claude-plugin/marketplace.json', JSON.stringify({ name: 'team', plugins: [] }))
+  assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
+  assert.equal(JSON.parse(fs.readFileSync(path.join(repo, '.claude-plugin/marketplace.json'), 'utf8')).name, 'team')
 })
 
 test('init --full vendors, wires git hooks and merges the settings template without overriding the project', () => {

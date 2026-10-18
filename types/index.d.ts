@@ -1,4 +1,4 @@
-export type JourneyStep = { id: string; label: string; command: string; state: 'done' | 'current' | 'gate' | 'todo'; detail?: string }
+export type JourneyStep = { id: string; label: string; command: string; state: 'done' | 'current' | 'gate' | 'todo'; by: 'model' | 'person'; auto?: true; detail?: string }
 export type Journey = {
   initialised: boolean; kind: 'greenfield' | 'brownfield'; show: ('outer' | 'inner')[]; sprint: number | null
   outer: JourneyStep[]; inner: { slug: string; type: string; steps: JourneyStep[] } | null

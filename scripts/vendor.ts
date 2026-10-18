@@ -52,12 +52,13 @@ function mergeHooks(written: string[]): void {
   }
   // The template's permissions too (deny and ask rules guard the evidence), merged under the project's own.
   mergeMissing(settings, { permissions: (JSON.parse(read(path.join(PLUGIN_ROOT, 'templates', 'settings.json'))) as { permissions: object }).permissions })
-  // Step 4a deleted the mod: drop the local marketplace and plugin entries an older vendoring added for it.
-  const { 'rig-local': _market, ...markets } = (settings.extraKnownMarketplaces ?? {}) as Record<string, unknown>
-  const { 'rig@rig-local': _mod, 'rig-mod@rig-local': _oldMod, ...enabled } = settings.enabledPlugins ?? {}
-  const merged: Record<string, unknown> = { ...settings, hooks, extraKnownMarketplaces: markets, enabledPlugins: enabled }
-  if (!Object.keys(markets).length) delete merged.extraKnownMarketplaces
-  if (!Object.keys(enabled).length) delete merged.enabledPlugins
+  // The dashboard mod is a local plugin: register its marketplace and enable it (an older 'rig-mod' entry is dropped).
+  const { 'rig-mod@rig-local': _oldMod, ...enabled } = settings.enabledPlugins ?? {}
+  const merged: Record<string, unknown> = {
+    ...settings, hooks,
+    extraKnownMarketplaces: { ...settings.extraKnownMarketplaces, 'rig-local': { source: { source: 'directory', path: '.' } } },
+    enabledPlugins: { ...enabled, 'rig@rig-local': true },
+  }
   writeFile('.claude/settings.json', JSON.stringify(merged, null, 2) + '\n', written)
 }
 
@@ -74,6 +75,21 @@ function humanSkill(cmd: 'approve' | 'waive', hint: string, what: string): strin
   ].join('\n')
 }
 
+// The journey dashboard (GOAL Scope 7) as a local plugin named 'rig': its state atoms are owned by plugin 'rig', so the copy must
+// carry that name or the host refuses its writes. Its marketplace file is rewritten only when it is rig's own.
+function vendorDashboard(written: string[]): void {
+  const version = (JSON.parse(read(path.join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json'))) as { version?: string }).version ?? 'unknown'
+  fs.rmSync(path.join(ROOT, '.rig', 'mod'), { recursive: true, force: true })
+  const json = (v: object): string => JSON.stringify(v, null, 2) + '\n'
+  writeFile('.rig/mod/hooks/dashboard.tsx', read(path.join(PLUGIN_ROOT, 'hooks', 'dashboard.tsx')), written)
+  writeFile('.rig/mod/hooks/hooks.json', json({ modules: ['./dashboard.tsx'] }), written)
+  writeFile('.rig/mod/.claude-plugin/plugin.json', json({ name: 'rig', version, types: './types/index.d.ts' }), written)
+  writeFile('.rig/mod/types/index.d.ts', read(path.join(PLUGIN_ROOT, 'types', 'index.d.ts')), written)
+  const market = path.join(ROOT, '.claude-plugin', 'marketplace.json')
+  const mine = ((): boolean => { try { return !read(market) || (JSON.parse(read(market)) as { name?: string }).name === 'rig-local' } catch { return false } })()
+  if (mine) writeFile('.claude-plugin/marketplace.json', json({ name: 'rig-local', owner: { name: 'rig' }, plugins: [{ name: 'rig', source: './.rig/mod' }] }), written)
+}
+
 function vendorStandalone(written: string[]): void {
   for (const name of fs.readdirSync(path.join(PLUGIN_ROOT, 'skills')).filter(n => n !== 'approve' && n !== 'waive')) {
     const src = path.join(PLUGIN_ROOT, 'skills', name, 'SKILL.md')
@@ -88,10 +104,7 @@ function vendorStandalone(written: string[]): void {
   for (const file of (fs.readdirSync(templates, { recursive: true }) as string[]).filter(f => fs.statSync(path.join(templates, f)).isFile()).sort()) {
     writeFile(`.rig/templates/${file}`, read(path.join(templates, file)), written)
   }
-  // An older vendoring installed the mod as a local plugin; remove that copy and its marketplace file (only rig's own).
-  fs.rmSync(path.join(ROOT, '.rig', 'mod'), { recursive: true, force: true })
-  const market = path.join(ROOT, '.claude-plugin', 'marketplace.json')
-  try { if ((JSON.parse(read(market) || '{}') as { name?: string }).name === 'rig-local') fs.rmSync(market) } catch { /* not ours to remove */ }
+  vendorDashboard(written)
   mergeHooks(written)
 }
 

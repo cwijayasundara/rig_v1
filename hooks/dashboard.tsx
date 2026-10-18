@@ -43,14 +43,24 @@ export const register: Register = on => {
     if (e.props.hasSurvey || !j || (await read($, isHidden))) return next(e)
     const s = await read($, spend)
     const { Box, Text, Button } = $.ui.resolve(e)
+    const one = (st: JourneyStep, last: boolean) => (
+      <Text key={st.id} color={COLOR[st.state]} dimColor={st.state === 'todo'} bold={st.state === 'current' || st.state === 'gate'}>
+        {`${GLYPH[st.state]} ${st.command}${st.id === 'build' && st.detail ? ` (${st.detail})` : ''}${last ? '' : ' ─'}`}
+      </Text>
+    )
+    // Consecutive unattended steps (build, test, fix, PR, advisory review) are drawn as one run: nobody gates it until merge.
+    const segments = (steps: JourneyStep[]): JourneyStep[][] =>
+      steps.reduce<JourneyStep[][]>((acc, st) => { const tail = acc[acc.length - 1]; if (tail && !!tail[0]?.auto === !!st.auto) tail.push(st); else acc.push([st]); return acc }, [])
     const rail = (name: string, steps: JourneyStep[]) => (
       <Box flexWrap="wrap" columnGap={1}>
         <Text bold>{name.toUpperCase().padEnd(10)}</Text>
-        {steps.map((st, i) => (
-          <Text key={st.id} color={COLOR[st.state]} dimColor={st.state === 'todo'} bold={st.state === 'current' || st.state === 'gate'}>
-            {`${GLYPH[st.state]} ${st.command}${st.id === 'build' && st.detail ? ` (${st.detail})` : ''}${i < steps.length - 1 ? ' ─' : ''}`}
-          </Text>
-        ))}
+        {segments(steps).map((seg, g) => {
+          const last = g === segments(steps).length - 1
+          const nodes = seg.map((st, i) => one(st, last && i === seg.length - 1))
+          return seg[0]?.auto
+            ? <Box key={`auto${g}`} columnGap={1}><Text color="magenta" bold>⟳ auto⟦</Text>{nodes}<Text color="magenta" bold>⟧{last ? '' : ' ─'}</Text></Box>
+            : <Box key={`seg${g}`} columnGap={1}>{nodes}</Box>
+        })}
       </Box>
     )
     if (!j.initialised) return <Box><Text bold>rig </Text><Text dimColor>not set up here · run </Text><Text bold color="cyan">/rig:init</Text></Box>
@@ -71,6 +81,7 @@ export const register: Register = on => {
           <Text color="cyan" bold>▸ next</Text>
           <Text dimColor>{j.next.by === 'person' ? 'a person runs' : 'run'}</Text>
           <Text bold>{j.next.command}</Text>
+          <Text dimColor>{'   ◆ you  ⟳ runs by itself  ● now'}</Text>
         </Box>
       </Box>
     )

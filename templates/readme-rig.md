@@ -32,6 +32,7 @@ Claude Code only discovers skills, agents and hooks under `.claude/`; everything
 | `.claude/agents/rig-*.md` | The architect and evaluator subagents | `vendor --standalone` |
 | `.claude/settings.json` | Hook wiring and permission rules (ask/deny protect evidence) | `init --full`, a person |
 | `.rig/bin/` | The vendored checker (`sdlc.ts` and its modules, `VERSION`) | `vendor --standalone` |
+| `.rig/mod/` | The journey dashboard: a band above the prompt with the sprint rail, the change rail, the next command and spend (a local plugin named `rig`) | `vendor --standalone` |
 | `.rig/githooks/` | `pre-commit` and `pre-push`, run by git via `core.hooksPath` | `hooks install` |
 | `.rig/guides/` | Engineering, testing and contract guides injected at edit time | a person (asks first) |
 | `.rig/templates/` | Formats for intents, specs, test plans and the README block | `vendor --standalone` |

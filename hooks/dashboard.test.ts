@@ -11,7 +11,12 @@ const journey = {
     { id: 'approve', label: 'Approve', command: '/rig:approve chart-0', state: 'todo' },
     { id: 'build', label: 'Build', command: '/rig:start <intent>', state: 'todo' },
   ],
-  inner: null, next: { command: '/rig:chart 0', by: 'model', why: 'x' }, ready: [], sensors: { blocks: 0 },
+  inner: { slug: 'add-cart', type: 'feature', steps: [
+    { id: 'approve', label: 'Approve', command: '/rig:approve add-cart', state: 'done', by: 'person' },
+    { id: 'build', label: 'Build', command: '/rig:build add-cart', state: 'current', by: 'model', auto: true },
+    { id: 'test', label: 'Test', command: '/rig:test add-cart', state: 'todo', by: 'model', auto: true },
+    { id: 'merge', label: 'Merge', command: 'review and merge the PR', state: 'todo', by: 'person' },
+  ] }, next: { command: '/rig:chart 0', by: 'model', why: 'x' }, ready: [], sensors: { blocks: 0 },
 }
 
 test('helpers: kilo, meter and the script path in plugin and vendored mode', () => {
@@ -35,6 +40,8 @@ test('the band shows every step as its full command and the next command, on eac
     for (const c of ['/rig:init', '/rig:chart 0', '/rig:testplan 0', '/rig:approve chart-0']) {
       expect(await ui.find({ type: 'Text', text: new RegExp(c.replace(/[/]/g, '\\/')) })).toBeDefined()
     }
+    expect(await ui.find({ type: 'Text', text: /⟳ auto/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /\/rig:build add-cart/ })).toBeDefined()
     await ui.unmount()
   }
 })

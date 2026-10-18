@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { makeRepo, write, sdlc } from './testkit.ts'
 
-type J = { initialised: boolean; kind: string; show: string[]; sprint: number | null; outer: { id: string; state: string; command: string; detail?: string }[]; inner: { slug: string; steps: { id: string; state: string; command: string }[] } | null; next: { command: string; by: string }; ready: string[]; sensors?: unknown }
+type J = { initialised: boolean; kind: string; show: string[]; sprint: number | null; outer: { id: string; state: string; command: string; by: string; detail?: string }[]; inner: { slug: string; steps: { id: string; state: string; command: string; by: string; auto?: true }[] } | null; next: { command: string; by: string }; ready: string[]; sensors?: unknown }
 let repo: string
 const view = (): J => JSON.parse(sdlc(repo, ['status', '--journey', '--json']).stdout) as J
 const states = (j: J): string => j.outer.map(s => `${s.id}:${s.state}`).join(' ')
@@ -92,8 +92,17 @@ test('journey: every step carries the full command to run, and the text form sho
   const j = view()
   assert.deepEqual(j.outer.map(x => x.command), ['/rig:init', 'write prd/sprint-0.md', '/rig:chart 0', '/rig:testplan 0', '/rig:approve chart-0', '/rig:start <intent>'])
   assert.equal(sdlc(repo, ['new', 'add-login', '--type', 'feature']).code, 0)
-  assert.deepEqual(view().inner?.steps.map(x => x.command), ['/rig:start add-login', '/rig:plan add-login', '/rig:approve add-login', '/rig:build add-login', '/rig:test add-login', '/rig:pr add-login', 'review and merge the PR'])
+  assert.deepEqual(view().inner?.steps.map(x => x.command), ['/rig:start add-login', '/rig:plan add-login', '/rig:approve add-login', '/rig:build add-login', '/rig:test add-login', '/rig:pr add-login', 'advisory review (evaluator)', 'review and merge the PR'])
   assert.match(sdlc(repo, ['status', '--journey']).stdout, /✓ \/rig:init {2}● write prd\/sprint-0\.md {2}○ \/rig:chart 0/)
+})
+
+test('journey: build, test, PR and the advisory review are one unattended run; only approve and merge are a person', () => {
+  sdlc(repo, ['new', 'add-login', '--type', 'feature'])
+  const steps = view().inner?.steps ?? []
+  assert.deepEqual(steps.filter(x => x.auto).map(x => x.id), ['build', 'test', 'pr', 'review'])
+  assert.deepEqual(steps.filter(x => x.by === 'person').map(x => x.id), ['approve', 'merge'])
+  assert.equal(view().outer.find(x => x.id === 'prd')?.by, 'person')
+  assert.ok(view().outer.every(x => !('auto' in x)), 'the outer rail has no unattended run')
 })
 
 test('journey: the text form is one line per loop plus the next command', () => {
