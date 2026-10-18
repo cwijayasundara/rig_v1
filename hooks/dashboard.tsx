@@ -19,23 +19,48 @@ export const meter = (used: number, total: number, cells = 5): string => {
   const on = total > 0 ? Math.min(cells, Math.round((used / total) * cells)) : 0
   return '▮'.repeat(on) + '▯'.repeat(cells - on)
 }
+export const modelLabel = (model: string): string => model.replace(/^claude-/, '')
+const agentName = (agent: string): string => agent.replace(/^rig[:-]/, '')
 export const parseJourney = (stdout: string): Journey | null => { try { return JSON.parse(stdout) as Journey } catch { return null } }
 
 // A failed refresh keeps the last band: a hook on prompt.submit must never block the person's prompt.
 async function refresh($: EngineInterface): Promise<void> {
   try { await load($) } catch { /* keep the previous band */ }
 }
+// Tokens, context and dollars only: no process call, so it can run every 2 s. The atom is written only when a number moved, so an idle session redraws nothing.
+let turnBase = 0
+async function tick($: EngineInterface): Promise<void> {
+  try {
+    const u = await $.session.usage()
+    const next: Spend = { contextTokens: u.context.tokens ?? 0, contextWindow: u.context.window, usd: u.cost?.usd ?? 0, turnUsd: Math.max(0, (u.cost?.usd ?? 0) - turnBase) }
+    await update($, spend, cur => (cur.contextTokens === next.contextTokens && cur.usd === next.usd && cur.turnUsd === next.turnUsd ? cur : next))
+  } catch { /* keep the last numbers; the timer keeps running */ }
+}
 async function load($: EngineInterface): Promise<void> {
   const j = parseJourney((await $.process.run(sdlcArgv($.plugin.root, 'status', '--journey', '--json'))).stdout)
-  const u = await $.session.usage()
   await update($, journey, () => j)
-  await update($, spend, () => ({ contextTokens: u.context.tokens ?? 0, contextWindow: u.context.window, usd: u.cost?.usd ?? 0 }))
-  if (j?.initialised) $.ui.status(`rig · ${j.next.command} · $${(u.cost?.usd ?? 0).toFixed(2)}`)
+  await tick($)
+  if (j?.initialised) $.ui.status(`rig · ${j.next.command} · $${((await $.session.usage()).cost?.usd ?? 0).toFixed(2)}`)
 }
 
+let timer: { cancel: () => void } | null = null
+let lastRefresh = 0
+
 export const register: Register = on => {
-  on('session.start', async ($, e, next) => { await refresh($); return next(e) })
-  on('prompt.submit', async ($, e, next) => { await refresh($); return next(e) })
+  on('session.start', async ($, e, next) => {
+    timer?.cancel()
+    timer = $.clock.every(2000, () => { void tick($) })
+    await refresh($)
+    return next(e)
+  })
+  on('session.end', async ($, e, next) => { timer?.cancel(); timer = null; return next(e) })
+  on('prompt.submit', async ($, e, next) => { turnBase = (await $.session.usage()).cost?.usd ?? 0; await refresh($); return next(e) })
+  // A finished step shows without waiting for the turn to end; at most one process call every 3 s.
+  on('tool.call', async ($, e, next) => {
+    const now = await $.clock.now()
+    if (now - lastRefresh > 3000) { lastRefresh = now; void refresh($) }
+    return next(e)
+  })
   on('turn.complete', async ($, e, next) => { await refresh($); return next(e) })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
@@ -70,13 +95,14 @@ export const register: Register = on => {
         <Box justifyContent="space-between">
           <Text bold>{`rig ▸ ${j.kind}`}</Text>
           <Box columnGap={1}>
-            <Text dimColor>{`ctx ${kilo(s.contextTokens)} ${meter(s.contextTokens, s.contextWindow)} · $${s.usd.toFixed(2)}`}</Text>
+            <Text dimColor>{`ctx ${kilo(s.contextTokens)} ${meter(s.contextTokens, s.contextWindow)} · $${s.usd.toFixed(2)}${s.turnUsd ? ` (+$${s.turnUsd.toFixed(2)} this turn)` : ''}`}</Text>
             <Text color={blocks ? 'red' : 'green'}>{blocks ? `✗ ${blocks} blocking` : '✓ sensors'}</Text>
             <Button key="hide" label="Hide" onPress={() => update($, isHidden, () => true)} />
           </Box>
         </Box>
         {j.show.includes('outer') ? rail(`sprint ${j.sprint ?? 0}`, j.outer) : null}
         {j.show.includes('inner') ? (j.inner ? rail(j.inner.slug, j.inner.steps) : <Text dimColor>{'CHANGE'.padEnd(10)} none in flight</Text>) : null}
+        {j.agents?.length ? <Text dimColor>{`agents    ${j.agents.map(a => `${agentName(a.agent)} ${modelLabel(a.model)}`).join(' · ')}`}</Text> : null}
         <Box columnGap={1}>
           <Text color="cyan" bold>▸ next</Text>
           <Text dimColor>{j.next.by === 'person' ? (j.next.command.startsWith('/') ? 'a person runs' : 'a person:') : 'run'}</Text>

@@ -6,7 +6,7 @@ export type Journey = {
   next: { command: string; by: 'model' | 'person'; why: string }; ready: string[]
   sensors?: { blocks: number } | null
 }
-export type Spend = { contextTokens: number; contextWindow: number; usd: number }
+export type Spend = { contextTokens: number; contextWindow: number; usd: number; turnUsd?: number }
 
 declare module 'claude-code' {
   interface PluginState {
