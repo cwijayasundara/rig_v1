@@ -194,3 +194,20 @@ test('a risks list with no owner or decision is not reported', () => {
 test('the finding never blocks approval', () => {
   assert.equal(parkedDecisions('a.md', '## Notes\n- a decision for the owner\n')[0]?.severity, 'report')
 })
+
+const repoText = (f: string): string => fs.readFileSync(path.resolve(import.meta.dirname, '..', f), 'utf8')
+
+test('evaluator documents a chart mode with the seven chart categories', () => {
+  const ev = repoText('agents/evaluator.md')
+  assert.match(ev, /## Chart mode/)
+  for (const c of ['scope', 'coverage', 'duplication', 'concerns', 'answers', 'sequence', 'cases']) assert.match(ev, new RegExp(`\\b${c}\\b`), c)
+  assert.match(ev, /review the chart bundle for sprint/i)
+  assert.match(ev, /You advise[^\n]*never edit and never block/, 'it advises, a person approves')
+})
+
+test('architect fills brief.md and reports open questions instead of settling them in architecture.md', () => {
+  const ar = repoText('agents/architect.md')
+  assert.match(ar, /fill[^\n]*brief\.md/i)
+  assert.match(ar, /see the intents/i)
+  assert.match(ar, /Open questions[^.]*(?:reply|return|report)|(?:reply|return|report)[^.]*open questions/i)
+})

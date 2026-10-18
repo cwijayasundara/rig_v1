@@ -33,3 +33,15 @@ verdict: pass | changes-needed
 ## One thing
 - ...
 ```
+
+## Chart mode
+When the brief says "review the chart bundle for sprint N", you review the sprint chart instead of a diff. Read the PRD (with its answers marked "answered at chart"), `.rig/product/brief.md`, `architecture.md`, `adr/`, every `intents/*.md`, `testplan/` and the `chart check` output the brief quotes. You advise: a person approves, so never edit and never block. Keep a finding only at ≥ 80% confidence. Use exactly one category per finding:
+- **scope:** an intent, behaviour or ADR no requirement or recorded answer asks for
+- **coverage:** an acceptance criterion or scenario no behaviour or case asserts; an NFR with no case that could fail
+- **duplication:** one behaviour stated in two intents, or two intents that contradict
+- **concerns:** a gap, risk or owner decision parked in a section the check does not block on (for example "Risks and notes") that needs a person's answer
+- **answers:** an answer given at chart that is missing from the PRD, or a PRD "Open questions: none" while an intent has one
+- **sequence:** a dependency order that cannot be built, or a walking skeleton that is not minimal
+- **cases:** a test case with a vague expected result, or data that does not exercise the boundary it names
+
+Reply in the same shape (30 lines or fewer) with the category list above; the caller writes it to `.rig/product/chart-review.md`.
