@@ -55,6 +55,16 @@ test('chart skill: ends at the approve gate and does not hand the person a secon
   assert.match(skill, /\/rig:approve chart-<N>/)
 })
 
+// A live run of `/rig:chart 1` in shop_app committed the chart on `rig/chart-1` in a repo with no commits: init's output was
+// never committed, so there was no `main` for approve, the PR or CI to diff against.
+test('chart skill: stops before any work when the repo has no base commit or init output is uncommitted', () => {
+  assert.match(skill, /allowed-tools:[^\n]*Bash\(git rev-parse\*\)/)
+  const step1 = skill.slice(skill.indexOf('1. **Which sprint'), skill.indexOf('2. **Architect'))
+  assert.match(step1, /git rev-parse --verify HEAD[^\n]*stop/i)
+  assert.match(step1, /git status --porcelain[^\n]*\.rig\/sensors\.json[^\n]*stop/i)
+  assert.ok(skill.indexOf('git rev-parse --verify HEAD') < skill.indexOf('**Take it as given.**'), 'checked before the PRD is copied')
+})
+
 test('chart skill: names the QA agent model by alias and never launches the architect with a model override', () => {
   assert.match(skill, /model `?sonnet`?/)
   assert.doesNotMatch(skill, /claude-(?:opus|sonnet|haiku)-\d/)
