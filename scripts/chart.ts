@@ -6,7 +6,7 @@ import path from 'node:path'
 import { ROOT, SDLC, exists, read, sha, now, toPosix } from './core.ts'
 import { openQuestions, section } from './model.ts'
 import { changeDir, isShipped } from './lifecycle.ts'
-import { parseIntent, parseCases, prdIds, traceReport, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
+import { parseIntent, parseCases, parkedDecisions, prdIds, traceReport, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
 
 const PRODUCT = path.join(SDLC, 'product')
 const INTENTS = path.join(PRODUCT, 'intents')
@@ -89,6 +89,7 @@ export function chartFindings(n: number, withCases: boolean): ChartFinding[] {
   const arch = uncomment(read(path.join(PRODUCT, 'architecture.md')).replace(/\r\n/g, '\n'))
   for (const q of openQuestions(arch)) found.push({ rule: 'open-question', severity: 'block', where: 'architecture', message: `architecture.md has an open question: ${q}` })
   for (const l of section(arch, 'Concerns').split('\n').map(x => x.replace(/^\s*[-*]\s*/, '').trim()).filter(x => x && !/^none\.?$/i.test(x) && !/^\[x\]/i.test(x) && !/\(resolved\)/i.test(x))) found.push({ rule: 'concern', severity: 'block', where: 'architecture', message: `unresolved concern: ${l}` })
+  for (const [where, file] of [['architecture.md', path.join(PRODUCT, 'architecture.md')], ...intentsOf(n).map(i => [`${i.slug}.md`, path.join(PRODUCT, 'intents', `${i.slug}.md`)] as const)]) found.push(...parkedDecisions(where, read(file)))
   return found
 }
 

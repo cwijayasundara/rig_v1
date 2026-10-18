@@ -121,6 +121,14 @@ export function traceReport(i: { prd: string; intents: Intent[]; others?: Intent
   return out
 }
 
+// An owner decision parked in a section the check does not block on (`## Risks`, `## Risks and notes`, `## Notes`) is reported, never blocked:
+// a risk with an owner is legitimate, but a gap that needs a person's answer belongs under `## Concerns`.
+export function parkedDecisions(where: string, text: string): ChartFinding[] {
+  const body = uncomment(text.replace(/\r\n/g, '\n'))
+  return (['Risks', 'Risks and notes', 'Notes'] as const).flatMap(h => section(body, h).split('\n').map(l => l.replace(/^\s*[-*]\s*/, '').trim())
+    .filter(l => /\bowner\s*:|\bdecision\b/i.test(l)).map((l): ChartFinding => ({ rule: 'parked-decision', severity: 'report', where, message: `${where} parks a decision under "${h}": ${l}` })))
+}
+
 // A change started from an intent keeps its behaviours (spec.md may drop the citations) and adds only ones that serve a requirement of the intent.
 export function intentSpecProblems(intent: Intent, spec: string): string[] {
   const inSpec = parseBehaviours(spec)

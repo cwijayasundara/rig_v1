@@ -100,6 +100,13 @@ test('chartFindings runs the trace rules over the files and adds concerns and ar
   assert.deepEqual((call('return C.chartFindings(1, false)') as { rule: string }[]).map(f => f.rule).sort(), ['concern', 'open-question'])
 })
 
+test('chartFindings reports an owner decision parked under Risks and notes, without blocking', () => {
+  chart1()
+  write(repo, `${P}/architecture.md`, '# A\n\n## Concerns\nnone\n\n## Risks and notes\n- No bench sensor. Owner: repo owner.\n\n## Open questions\nnone\n')
+  const f = call('return C.chartFindings(1, false)') as { rule: string; severity: string; where: string }[]
+  assert.deepEqual(f.map(x => [x.rule, x.severity, x.where]), [['parked-decision', 'report', 'architecture.md']])
+})
+
 test('intentReady explains why not: unapproved, stale, blocked by an unshipped dependency, already started', () => {
   chart1()
   write(repo, `${P}/intents/beta.md`, intent(1, { depends: '[alpha]' }))

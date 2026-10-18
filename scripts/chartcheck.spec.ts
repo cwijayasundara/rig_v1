@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import fs from 'node:fs'
 import path from 'node:path'
 import assert from 'node:assert/strict'
-import { prdIds, parseIntent, parseCases, traceReport, intentSpecProblems, type Intent, type TestCase } from './chartcheck.ts'
+import { prdIds, parseIntent, parseCases, traceReport, intentSpecProblems, parkedDecisions, type Intent, type TestCase } from './chartcheck.ts'
 
 const PRD = '---\nsprint: 1\nengineers: 1\n---\n# Sprint 1\n\n### FR-1: add\n### FR-2: remove\n| NFR-1 | fast |\n\nMentioned only in prose: FR-9.\n\n## Open questions\nnone\n'
 const intent = (slug: string, o: { prd?: string; depends?: string; days?: string; kind?: string; behaviours?: string; iface?: string; open?: string } = {}): string =>
@@ -178,4 +178,19 @@ test('an intent brief holds its design and its failure behaviour, as the applica
   assert.equal(designed.design, 2)
   assert.match(at('agents/architect.md'), /## Design[\s\S]*### Failure behaviour/)
   assert.match(at('skills/plan/SKILL.md'), /cite[^.]*## Design/i)
+})
+
+// Reviewer design 2026-10-18 §5: an owner decision parked in a section the check does not block on is reported, never blocked.
+test('parked owner decision under Risks and notes is reported', () => {
+  const arch = '# A\n\n## Concerns\nnone\n\n## Risks and notes\n- No bench sensor for NFR-1. Owner: repo owner.\n'
+  assert.deepEqual(parkedDecisions('architecture.md', arch), [{ rule: 'parked-decision', severity: 'report', where: 'architecture.md', message: 'architecture.md parks a decision under "Risks and notes": No bench sensor for NFR-1. Owner: repo owner.' }])
+})
+
+test('a risks list with no owner or decision is not reported', () => {
+  assert.deepEqual(parkedDecisions('architecture.md', '# A\n\n## Risks\n- The disk may fill.\n'), [])
+  assert.deepEqual(parkedDecisions('architecture.md', '# A\n\n## Concerns\n- the auth gap (owner: lead)\n'), [], 'Concerns already blocks')
+})
+
+test('the finding never blocks approval', () => {
+  assert.equal(parkedDecisions('a.md', '## Notes\n- a decision for the owner\n')[0]?.severity, 'report')
 })
