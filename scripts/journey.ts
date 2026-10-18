@@ -2,9 +2,13 @@
 // files only. The outer loop is a sprint (init, PRD, chart, test plan, approval, build); the inner loop is one change.
 // `show` says which loops a person should see: a greenfield repo has both, a brownfield repo is entered through the outer loop.
 import path from 'node:path'
-import { SDLC, CHANGES, exists, skillRef as k } from './core.ts'
+import { SDLC, CHANGES, exists } from './core.ts'
 import { activeSlug, changeType, isShipped, nextStep, status, type Status } from './lifecycle.ts'
 import { chartState, prdPath, readyIntents, sprintIntents, sprintsKnown } from './chart.ts'
+
+// Skills are /rig:<name> in every install mode (their frontmatter names), so the journey never prints the vendored directory spelling /rig-<name>.
+const k = (name: string): string => `/rig:${name}`
+const plain = (text: string): string => text.replace(/\/rig-([a-z]+)\b/g, '/rig:$1')
 
 export type StepState = 'done' | 'current' | 'gate' | 'todo'
 // `by` says who takes the step; `auto` marks the unattended run (build, test, fix, PR, advisory review) that one approval starts and no person gates until merge.
@@ -69,7 +73,7 @@ export function journey(i: { gates: { plan: boolean }; tree: string | null }): J
     if (ready[0]) return { command: `${k('start')} .rig/product/intents/${ready[0]}.md`, by: 'model', why: `${ready.length} intent(s) ready to build` }
     return shipped === slugs.length ? { command: `write .rig/product/prd/sprint-${n + 1}.md, then ${k('chart')} ${n + 1}`, by: 'person', why: `sprint ${n} is shipped` } : { command: 'a change in flight must ship first', by: 'person', why: 'the remaining intents wait on their dependencies' }
   })()
-  const next: Journey['next'] = act && st ? { command: nextStep(act, st), by: st === 'approve' || st === 'review' ? 'person' : 'model', why: `change ${act}` } : outerNext
+  const next: Journey['next'] = act && st ? { command: plain(nextStep(act, st)), by: st === 'approve' || st === 'review' ? 'person' : 'model', why: `change ${act}` } : outerNext
   return { initialised, kind, show, sprint: initialised ? n : null, outer, inner: act && st ? { slug: act, type: changeType(act), steps: innerSteps(st, i.gates.plan, act, exists(path.join(CHANGES, act, 'review.md'))) } : null, next, ready }
 }
 

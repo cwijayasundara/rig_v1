@@ -147,6 +147,18 @@ test('standalone vendoring installs the journey dashboard as the local plugin ri
   for (const cmd of ['approve', 'waive']) assert.doesNotMatch(fs.readFileSync(path.join(repo, `.claude/skills/rig-${cmd}/SKILL.md`), 'utf8'), /CLAUDE_PLUGIN_ROOT/)
 })
 
+test('the vendored journey prints /rig:<name>, the skills\' own names, never the directory spelling /rig-<name>', () => {
+  const repo = makeRepo()
+  sdlc(repo, ['init'])
+  write(repo, '.rig/sensors.json', JSON.stringify({ stack: 'x', paths: { tests: ['**/*.test.ts'] }, sensors: [] }))
+  assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
+  sdlc(repo, ['new', 'add-x', '--type', 'feature'])
+  const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', '.rig/bin/sdlc.ts', 'status', '--journey'], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo } })
+  assert.match(r.stdout, /\/rig:init/)
+  assert.match(r.stdout, /next: \/rig:start add-x/)
+  assert.doesNotMatch(r.stdout, /\/rig-/)
+})
+
 test('vendoring leaves a team\'s own .claude-plugin/marketplace.json alone', () => {
   const repo = makeRepo()
   write(repo, '.claude-plugin/marketplace.json', JSON.stringify({ name: 'team', plugins: [] }))
