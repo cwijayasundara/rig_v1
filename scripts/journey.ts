@@ -4,6 +4,7 @@
 import path from 'node:path'
 import { SDLC, CHANGES, exists } from './core.ts'
 import { activeSlug, changeType, isShipped, nextStep, status, type Status } from './lifecycle.ts'
+import { latestAgents } from './modelstate.ts'
 import { chartState, prdPath, readyIntents, sprintIntents, sprintsKnown } from './chart.ts'
 
 // Skills are /rig:<name> in every install mode (their frontmatter names), so the journey never prints the vendored directory spelling /rig-<name>.
@@ -14,6 +15,7 @@ export type StepState = 'done' | 'current' | 'gate' | 'todo'
 // `by` says who takes the step; `auto` marks the unattended run (build, test, fix, PR, advisory review) that one approval starts and no person gates until merge.
 export type JourneyStep = { id: string; label: string; command: string; state: StepState; by: 'model' | 'person'; auto?: true; detail?: string }
 export type Journey = {
+  agents: { agent: string; model: string; at: string }[]
   initialised: boolean; kind: 'greenfield' | 'brownfield'; show: ('outer' | 'inner')[]; sprint: number | null
   outer: JourneyStep[]; inner: { slug: string; type: string; steps: JourneyStep[] } | null
   next: { command: string; by: 'model' | 'person'; why: string }; ready: string[]
@@ -74,7 +76,7 @@ export function journey(i: { gates: { plan: boolean }; tree: string | null }): J
     return shipped === slugs.length ? { command: `add the PRD at .rig/product/prd/sprint-${n + 1}.md, then ${k('chart')} ${n + 1}`, by: 'person', why: `sprint ${n} is shipped` } : { command: 'a change in flight must ship first', by: 'person', why: 'the remaining intents wait on their dependencies' }
   })()
   const next: Journey['next'] = act && st ? { command: plain(nextStep(act, st)), by: st === 'approve' || st === 'review' ? 'person' : 'model', why: `change ${act}` } : outerNext
-  return { initialised, kind, show, sprint: initialised ? n : null, outer, inner: act && st ? { slug: act, type: changeType(act), steps: innerSteps(st, i.gates.plan, act, exists(path.join(CHANGES, act, 'review.md'))) } : null, next, ready }
+  return { agents: latestAgents(path.join(SDLC, 'state', 'model.json')), initialised, kind, show, sprint: initialised ? n : null, outer, inner: act && st ? { slug: act, type: changeType(act), steps: innerSteps(st, i.gates.plan, act, exists(path.join(CHANGES, act, 'review.md'))) } : null, next, ready }
 }
 
 export function journeyText(j: Journey): string {

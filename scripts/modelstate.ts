@@ -27,6 +27,13 @@ function update(file: string, fn: (s: ModelState) => boolean): void {
   withLock(file, () => { const s = readModelState(file); if (fn(s)) save(file, s) })
 }
 
+// The newest launch of each agent that has a model (resolved, else requested): what the dashboard shows.
+export function latestAgents(file: string): { agent: string; model: string; at: string }[] {
+  const by = new Map<string, { agent: string; model: string; at: string }>()
+  for (const l of readModelState(file).launches) if (l.resolved ?? l.requested) by.set(l.agent, { agent: l.agent, model: (l.resolved ?? l.requested) as string, at: l.at })
+  return [...by.values()]
+}
+
 export function recordSessionModel(file: string, session: string, model: string, source: string, at: string): void {
   if (!model.trim()) return
   update(file, s => { s.sessions[session] = { model: model.trim(), source, at }; return true })

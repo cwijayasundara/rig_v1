@@ -1,5 +1,6 @@
 export type JourneyStep = { id: string; label: string; command: string; state: 'done' | 'current' | 'gate' | 'todo'; by: 'model' | 'person'; auto?: true; detail?: string }
 export type Journey = {
+  agents: { agent: string; model: string; at: string }[]
   initialised: boolean; kind: 'greenfield' | 'brownfield'; show: ('outer' | 'inner')[]; sprint: number | null
   outer: JourneyStep[]; inner: { slug: string; type: string; steps: JourneyStep[] } | null
   next: { command: string; by: 'model' | 'person'; why: string }; ready: string[]

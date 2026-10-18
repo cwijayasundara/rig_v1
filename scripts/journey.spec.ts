@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { makeRepo, write, sdlc } from './testkit.ts'
 
-type J = { initialised: boolean; kind: string; show: string[]; sprint: number | null; outer: { id: string; state: string; command: string; by: string; detail?: string }[]; inner: { slug: string; steps: { id: string; state: string; command: string; by: string; auto?: true }[] } | null; next: { command: string; by: string }; ready: string[]; sensors?: unknown }
+type J = { agents: { agent: string; model: string; at: string }[]; initialised: boolean; kind: string; show: string[]; sprint: number | null; outer: { id: string; state: string; command: string; by: string; detail?: string }[]; inner: { slug: string; steps: { id: string; state: string; command: string; by: string; auto?: true }[] } | null; next: { command: string; by: string }; ready: string[]; sensors?: unknown }
 let repo: string
 const view = (): J => JSON.parse(sdlc(repo, ['status', '--journey', '--json']).stdout) as J
 const states = (j: J): string => j.outer.map(s => `${s.id}:${s.state}`).join(' ')
@@ -109,4 +109,10 @@ test('journey: the text form is one line per loop plus the next command', () => 
   const t = sdlc(repo, ['status', '--journey']).stdout
   assert.match(t, /^sprint 0 {2}✓ \/rig:init/m)
   assert.match(t, /^next: /m)
+})
+
+test('journey: agents come from model.json, empty without it', () => {
+  assert.deepEqual(view().agents, [])
+  write(repo, '.rig/state/model.json', JSON.stringify({ sessions: {}, launches: [{ session: 's', id: '1', agent: 'rig-architect', requested: null, resolved: 'claude-sonnet-5-5', at: 'now' }] }))
+  assert.deepEqual(view().agents, [{ agent: 'rig-architect', model: 'claude-sonnet-5-5', at: 'now' }])
 })

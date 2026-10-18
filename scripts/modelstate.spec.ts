@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { readModelState, recordSessionModel, recordLaunch, recordResolved, transcriptModel, pinnedModel, sessionModel, modelRoleFindings } from './modelstate.ts'
+import { readModelState, recordSessionModel, recordLaunch, recordResolved, transcriptModel, pinnedModel, sessionModel, modelRoleFindings, latestAgents } from './modelstate.ts'
 import { defaultRegistry } from './registry.ts'
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'rig-model-'))
@@ -101,4 +101,20 @@ test('parallel launch records are all kept', async () => {
   })
   await Promise.all([run('a'), run('b'), run('c')])
   assert.equal(readModelState(state).launches.length, 45)
+})
+
+test('latestAgents keeps the newest resolved launch per agent and tolerates a missing file', () => {
+  const state = path.join(tmp(), 'state', 'model.json')
+  assert.deepEqual(latestAgents(state), [])
+  fs.mkdirSync(path.dirname(state), { recursive: true })
+  fs.writeFileSync(state, '{"launches":')
+  assert.deepEqual(latestAgents(state), [], 'a malformed file reads as empty')
+  recordLaunch(state, { session: 's', id: '1', agent: 'rig-architect', requested: null, resolved: 'claude-opus-5-5', at: '2026-10-18T08:00:00Z' })
+  recordLaunch(state, { session: 's', id: '2', agent: 'rig-architect', requested: null, resolved: 'claude-sonnet-5-5', at: '2026-10-18T09:00:00Z' })
+  recordLaunch(state, { session: 's', id: '3', agent: 'rig-evaluator', requested: 'opus', resolved: null, at: '2026-10-18T09:30:00Z' })
+  recordLaunch(state, { session: 's', id: '4', agent: 'Explore', requested: null, resolved: null, at: '2026-10-18T09:40:00Z' })
+  assert.deepEqual(latestAgents(state), [
+    { agent: 'rig-architect', model: 'claude-sonnet-5-5', at: '2026-10-18T09:00:00Z' },
+    { agent: 'rig-evaluator', model: 'opus', at: '2026-10-18T09:30:00Z' },
+  ])
 })
