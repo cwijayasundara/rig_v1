@@ -107,6 +107,13 @@ export function intentReady(slug: string): { ready: boolean; why: string[] } {
   return { ready: !why.length, why }
 }
 
+// Sprint numbers that have a PRD or an intent, ascending: the journey view's way to find the sprint in flight.
+export function sprintsKnown(): number[] {
+  const prds = exists(path.join(PRODUCT, 'prd')) ? fs.readdirSync(path.join(PRODUCT, 'prd')).flatMap(f => { const m = /^sprint-(\d{1,4})\.md$/.exec(f); return m?.[1] ? [Number(m[1])] : [] }) : []
+  return [...new Set([...prds, ...allIntents().flatMap(i => (i.sprint === null ? [] : [i.sprint]))])].sort((a, b) => a - b)
+}
+export const sprintIntents = (n: number): string[] => intentsOf(n).map(i => i.slug)
+
 // Every intent that can start now.
 export function readyIntents(): { slug: string; sprint: number; estimateDays: number | null }[] {
   return allIntents().filter(i => i.sprint !== null && intentReady(i.slug).ready).map(i => ({ slug: i.slug, sprint: i.sprint as number, estimateDays: i.estimateDays }))

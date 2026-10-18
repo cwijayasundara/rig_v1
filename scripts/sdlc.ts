@@ -26,6 +26,7 @@ import { cmdSync } from './sync.ts'
 import { cmdWiki } from './wiki.ts'
 import { cmdLearn } from './learn.ts'
 import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, prdPath, chartFiles } from './chart.ts'
+import { journey, journeyText } from './journey.ts'
 import { TYPES, toType, changeDir, newChange, setActive, activeSlug, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
 
 // ---------- commands ----------
@@ -84,6 +85,11 @@ function cmdActivate(args: Args): void {
 
 function cmdStatus(args: Args): void {
   const json = Boolean(args.opt.json)
+  if (args.opt.journey) {
+    if (!exists(SDLC)) return out(json ? JSON.stringify({ initialised: false }) : `rig not initialised here: run ${skillRef('init')}`)
+    const j = journey({ gates: loadConfig().registry.gates, tree: treeStamp() })
+    return out(json ? JSON.stringify({ ...j, sensors: sensorStatus() }) : journeyText(j))
+  }
   if (!exists(SDLC)) return out(json ? JSON.stringify({ initialised: false }) : `rig not initialised here: run ${skillRef('init')}`)
   const gates = loadConfig().registry.gates
   const tree = treeStamp()

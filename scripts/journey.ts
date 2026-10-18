@@ -1,0 +1,81 @@
+// The journey view (dashboard spec 2026-10-18): where a repo is in the AI SDLC and the one command to run next, computed from
+// files only. The outer loop is a sprint (init, PRD, chart, test plan, approval, build); the inner loop is one change.
+// `show` says which loops a person should see: a greenfield repo has both, a brownfield repo is entered through the outer loop.
+import path from 'node:path'
+import { SDLC, exists, skillRef as k } from './core.ts'
+import { activeSlug, changeType, isShipped, nextStep, status, type Status } from './lifecycle.ts'
+import { chartState, prdPath, readyIntents, sprintIntents, sprintsKnown } from './chart.ts'
+
+export type StepState = 'done' | 'current' | 'gate' | 'todo'
+export type JourneyStep = { id: string; label: string; state: StepState; detail?: string }
+export type Journey = {
+  initialised: boolean; kind: 'greenfield' | 'brownfield'; show: ('outer' | 'inner')[]; sprint: number | null
+  outer: JourneyStep[]; inner: { slug: string; type: string; steps: JourneyStep[] } | null
+  next: { command: string; by: 'model' | 'person'; why: string }; ready: string[]
+}
+
+// Brownfield is the repo init indexed (`wiki init` writes wiki.json); everything else entered empty.
+export const repoKind = (): 'greenfield' | 'brownfield' => (exists(path.join(SDLC, 'wiki.json')) ? 'brownfield' : 'greenfield')
+
+// The first step not done is where the person is; a step only a person can take is a gate.
+function mark(steps: { id: string; label: string; done: boolean; detail?: string; gate?: boolean }[]): JourneyStep[] {
+  const at = steps.findIndex(s => !s.done)
+  return steps.map((s, i): JourneyStep => ({ id: s.id, label: s.label, state: i < at || at < 0 ? 'done' : i === at ? (s.gate ? 'gate' : 'current') : 'todo', ...(s.detail ? { detail: s.detail } : {}) }))
+}
+
+// Inner loop: lifecycle.ts's status maps onto seven steps ('build' covers build and test: the verify stamp is what moves it on).
+const INNER: Status[] = ['spec', 'plan', 'approve', 'build', 'pr', 'review', 'shipped']
+function innerSteps(s: Status, gates: boolean): JourneyStep[] {
+  const at = INNER.indexOf(s)
+  const done = (i: number): boolean => at > i
+  const rows = [
+    { id: 'start', label: 'Start', done: done(0) }, { id: 'plan', label: 'Plan', done: done(1) },
+    { id: 'approve', label: gates ? 'Approve' : 'Approve (off)', done: done(2) || !gates, gate: true },
+    { id: 'build', label: 'Build', done: at > 3 }, { id: 'test', label: 'Test', done: at > 3 },
+    { id: 'pr', label: 'PR', done: done(5) }, { id: 'merge', label: 'Merge', done: s === 'shipped', gate: true },
+  ]
+  return mark(rows)
+}
+
+export function journey(i: { gates: { plan: boolean }; tree: string | null }): Journey {
+  const kind = repoKind(), show: ('outer' | 'inner')[] = kind === 'greenfield' ? ['outer', 'inner'] : ['outer']
+  const initialised = exists(path.join(SDLC, 'sensors.json'))
+  const sprints = sprintsKnown()
+  const open = sprints.find(n => { const s = sprintIntents(n); return !exists(prdPath(n)) || !s.length || s.some(x => !isShipped(x)) })
+  const n = open ?? (sprints.length ? (sprints[sprints.length - 1] as number) + 1 : 0)
+  const slugs = sprintIntents(n), shipped = slugs.filter(isShipped).length
+  const cases = exists(path.join(SDLC, 'product', 'testplan', 'cases.md'))
+  const approved = slugs.length > 0 && chartState(n).state === 'approved'
+  const ready = readyIntents().map(r => r.slug)
+  const outer = mark([
+    { id: 'init', label: 'Init', done: initialised },
+    { id: 'prd', label: 'PRD', done: exists(prdPath(n)), detail: `sprint ${n}` },
+    { id: 'chart', label: 'Chart', done: slugs.length > 0, detail: slugs.length ? `${slugs.length} intents` : undefined },
+    { id: 'testplan', label: 'Test plan', done: cases },
+    { id: 'approve', label: 'Approve', done: approved, gate: true },
+    { id: 'build', label: 'Build', done: slugs.length > 0 && shipped === slugs.length, detail: slugs.length ? `${shipped}/${slugs.length} shipped` : undefined },
+  ])
+  const active = activeSlug()
+  const act = active && !isShipped(active) ? active : null
+  const st = act ? status(act, i.gates, i.tree) : null
+  const outerNext = ((): Journey['next'] => {
+    if (!initialised) return { command: k('init'), by: 'model', why: 'set this repo up for rig' }
+    if (!exists(prdPath(n))) return { command: `write .rig/product/prd/sprint-${n}.md, then ${k('chart')} ${n}`, by: 'person', why: 'the sprint starts from a PRD with FR-n requirement ids' }
+    if (!slugs.length) return { command: `${k('chart')} ${n}`, by: 'model', why: 'turn the PRD into traced intents, architecture and ADRs' }
+    if (!cases) return { command: `${k('testplan')} ${n}`, by: 'model', why: 'write the test plan and cases for the sprint' }
+    if (!approved) return { command: `${k('approve')} chart-${n}`, by: 'person', why: 'review the chart branch, then approve the sprint once' }
+    if (ready[0]) return { command: `${k('start')} .rig/product/intents/${ready[0]}.md`, by: 'model', why: `${ready.length} intent(s) ready to build` }
+    return shipped === slugs.length ? { command: `write .rig/product/prd/sprint-${n + 1}.md, then ${k('chart')} ${n + 1}`, by: 'person', why: `sprint ${n} is shipped` } : { command: 'a change in flight must ship first', by: 'person', why: 'the remaining intents wait on their dependencies' }
+  })()
+  const next: Journey['next'] = act && st ? { command: nextStep(act, st), by: st === 'approve' || st === 'review' ? 'person' : 'model', why: `change ${act}` } : outerNext
+  return { initialised, kind, show, sprint: initialised ? n : null, outer, inner: act && st ? { slug: act, type: changeType(act), steps: innerSteps(st, i.gates.plan) } : null, next, ready }
+}
+
+export function journeyText(j: Journey): string {
+  const row = (steps: JourneyStep[]): string => steps.map(s => `${{ done: '✓', current: '●', gate: '◆', todo: '○' }[s.state]} ${s.label}${s.detail ? ` (${s.detail})` : ''}`).join('  ')
+  return [
+    ...(j.show.includes('outer') ? [`sprint ${j.sprint ?? '-'}  ${row(j.outer)}`] : []),
+    ...(j.show.includes('inner') && j.inner ? [`change ${j.inner.slug}  ${row(j.inner.steps)}`] : []),
+    `next: ${j.next.command}${j.next.by === 'person' ? '  (a person)' : ''}`,
+  ].join('\n')
+}
