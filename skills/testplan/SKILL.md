@@ -6,6 +6,8 @@ allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_R
 ---
 # Test plan for a sprint
 
+`/rig:chart <N>` already runs this as its step 4. Use this skill alone to redo the plan after the PRD or an intent changed.
+
 `S` means `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts`. Run each command as its own Bash call.
 
 1. **Which sprint.** `N` is `$ARGUMENTS`. Run `S chart check <N>`. It needs the PRD and the intents from `/rig:chart <N>`; without them, stop and say so.

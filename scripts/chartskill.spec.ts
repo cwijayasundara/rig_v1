@@ -36,3 +36,26 @@ test('chart skill: asks the person for the technology and the NFRs the PRD lacks
   assert.match(skill, /NFR/)
   assert.match(skill, /never invent/i)
 })
+
+// The first live run of `/rig-chart 1` found four PRD gaps only after the architect ran, kept the answers out of the PRD, ended at
+// "Next: /rig:testplan" and had no independent review (design 2026-10-18-chart-one-turn-and-reviewer).
+test('chart skill: runs gap pass, architect, QA and review before one commit', () => {
+  for (const w of ['answered at chart', 'chart-review.md', 'rig:evaluator', 'general-purpose', 'sonnet']) assert.ok(skill.includes(w), w)
+  assert.ok(skill.indexOf('chart-review.md') < skill.lastIndexOf('git commit'), 'the commit comes after the review')
+  assert.equal(skill.match(/git commit/g)?.length, 2, 'one commit instruction plus the allowed-tools grant')
+})
+
+test('chart skill: the gap pass is one batched question set that skips when there are no gaps', () => {
+  assert.match(skill, /one `AskUserQuestion`[^\n]*(?:batch|at most 4)/i)
+  assert.match(skill, /no gaps[^\n]*skip|skip[^\n]*no gaps/i)
+})
+
+test('chart skill: ends at the approve gate and does not hand the person a second command', () => {
+  assert.doesNotMatch(skill, /Next: `?\/rig:testplan/)
+  assert.match(skill, /\/rig:approve chart-<N>/)
+})
+
+test('chart skill: names the QA agent model by alias and never launches the architect with a model override', () => {
+  assert.match(skill, /model `?sonnet`?/)
+  assert.doesNotMatch(skill, /claude-(?:opus|sonnet|haiku)-\d/)
+})
