@@ -1,14 +1,15 @@
 ---
 name: chart
 description: Chart a sprint - turn its PRD into intents (a brief each), the updated architecture and ADRs, every one traced to a PRD requirement. For the architect.
-argument-hint: '<sprint number | .rig/product/prd/sprint-N.md>'
+argument-hint: '<sprint number | .rig/product/prd/sprint-N.md | any PRD path>'
 allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Bash(git checkout*), Bash(git add*), Bash(git commit*), Bash(git status*), Bash(git diff*), Read, Grep, Glob, Write, Edit, Agent
 ---
 # Chart a sprint
 
 `S` means `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts`. Run each command as its own Bash call.
 
-1. **Which sprint.** `N` is `$ARGUMENTS` as a number, or the `sprint:` of the PRD path it names. The PRD is `.rig/product/prd/sprint-<N>.md`, written by the product owner and BA from `${CLAUDE_PLUGIN_ROOT}/templates/prd-format.md`. If it is missing, stop and say so. If `.rig/sensors.json` is missing, stop and tell the person to initialise a greenfield repo first, giving the stack and goal from the PRD.
+1. **Which sprint.** `N` is `$ARGUMENTS` as a number, or the `sprint:` of the PRD path it names. The PRD is `.rig/product/prd/sprint-<N>.md`, written by the product owner and BA from `${CLAUDE_PLUGIN_ROOT}/templates/prd-format.md`. If it is missing and no path was given, stop and say so.
+   **Draft PRD.** If a path to another file was given (`sprint 0: docs/prd/app.md`, `N` is the number before the colon), it is a draft: convert it, do not stop. Read `${CLAUDE_PLUGIN_ROOT}/templates/prd-format.md` and write `.rig/product/prd/sprint-<N>.md` from the draft with `sprint:`, `engineers:` and `FR-n`/`NFR-n` ids (keep the draft's own ids when it has them, number the rest in order), keeping its text and acceptance criteria; never invent a requirement, a number or an answer, put every gap under `## Open questions`. The product owner reviews it with the branch in step 4. If `.rig/sensors.json` is missing, stop and tell the person to initialise a greenfield repo first, giving the stack and goal from the PRD.
 2. **Architect.** Launch the `rig:architect` agent in the foreground with no model override (its frontmatter pins the design model) and a brief of at most 40 lines:
    - the PRD path, `.rig/product/brief.md` and `.rig/product/architecture.md` when they exist, and the formats `${CLAUDE_PLUGIN_ROOT}/templates/intent-format.md` and `architecture-format.md`;
    - write `.rig/product/intents/<slug>.md` (slug of at least two characters, `estimate_days` 1 or 2, every behaviour citing a requirement the PRD defines, a `kind: boundary` intent naming its `Contract:` and `Example:` files), update `architecture.md` and add ADRs under `.rig/product/adr/`;
