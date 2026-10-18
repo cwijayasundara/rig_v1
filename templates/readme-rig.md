@@ -22,6 +22,24 @@ This repo uses **rig**, a thin SDLC harness for Claude Code. Ideas wait in an in
 - **State lives in files:** `.rig/sensors.json` (config), `.rig/product/brief.md` (the product brief), `.rig/intent/` (the inbox), `.rig/changes/<slug>/` (intent, spec, plan, `approval.json`, `evidence/`, `verify.json`, `pr.md`), `.rig/bin/` (vendored harness), `.claude/` (hooks and settings), `CLAUDE.md` (project context for Claude).
 - **Local equals CI:** `rig-check` in CI runs the same checks as the git hooks.
 
+### Layout: what rig put in this repo
+
+Claude Code only discovers skills, agents and hooks under `.claude/`; everything else is rig's own state under `.rig/`.
+
+| Path | What it is | Who changes it |
+|---|---|---|
+| `.claude/skills/rig-*/` | The slash commands (`/rig:start`, `/rig:plan`, …) | `vendor --standalone` (upgrade) |
+| `.claude/agents/rig-*.md` | The architect and evaluator subagents | `vendor --standalone` |
+| `.claude/settings.json` | Hook wiring and permission rules (ask/deny protect evidence) | `init --full`, a person |
+| `.rig/bin/` | The vendored checker (`sdlc.ts` and its modules, `VERSION`) | `vendor --standalone` |
+| `.rig/githooks/` | `pre-commit` and `pre-push`, run by git via `core.hooksPath` | `hooks install` |
+| `.rig/guides/` | Engineering, testing and contract guides injected at edit time | a person (asks first) |
+| `.rig/templates/` | Formats for intents, specs, test plans and the README block | `vendor --standalone` |
+| `.rig/sensors.json` | The sensor registry: commands, cadences, `knownRed` | a person (asks first) |
+| `.rig/product/` | The product brief and charted intents | a person, `/rig:chart` |
+| `.rig/changes/<slug>/` | One folder per change: spec, plan, approval, evidence, `verify.json`, `pr.md` | the build steps |
+| `.rig/.gate`, `.rig/.gitignore` | Local gate state, never committed | rig |
+
 ### User guide
 
 | You want to | Run |
