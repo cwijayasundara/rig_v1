@@ -21,13 +21,15 @@ test('4a: the rig-brain plugin is gone', () => {
   assert.ok(commands().includes('check'), 'the usage line still parses')
 })
 
-test('4a: the mod UI and its type and test scaffolding are gone', () => {
-  gone('hooks/band.tsx', 'hooks/mission.tsx', 'hooks/driver.ts', 'hooks/gates.ts', 'hooks/register.ts', 'hooks/shared.ts', 'tests/register.test.ts', 'types', 'tsconfig.json', '.claude-plugin/types')
+// The 2026-10-16 mod (band, mission control, driver, gates, spend) stays gone. GOAL Scope 7 (2026-10-18) allows one read-only
+// journey dashboard in its place: hooks/dashboard.tsx, with its state contract in types/.
+test('4a: the old mod UI is gone; only the journey dashboard module is registered', () => {
+  gone('hooks/band.tsx', 'hooks/mission.tsx', 'hooks/driver.ts', 'hooks/gates.ts', 'hooks/register.ts', 'hooks/shared.ts', 'tests/register.test.ts', 'tsconfig.json')
   const hooks = JSON.parse(read('hooks/hooks.json')) as { modules?: unknown; hooks: Record<string, unknown> }
-  assert.equal(hooks.modules, undefined)
+  assert.deepEqual(hooks.modules, ['./dashboard.tsx'])
   assert.deepEqual(Object.keys(hooks.hooks).sort(), ['PostModelSwitch', 'PostToolUse', 'PreToolUse', 'SessionStart', 'Stop', 'UserPromptSubmit'])
   assert.doesNotMatch(read('package.json'), /typecheck:mod|claude plugin test/)
-  assert.equal((JSON.parse(read('.claude-plugin/plugin.json')) as { types?: string }).types, undefined)
+  assert.equal((JSON.parse(read('.claude-plugin/plugin.json')) as { types?: string }).types, './types/index.d.ts')
 })
 
 test('4a: a retired hook name from an old vendored settings file exits quietly', () => {

@@ -11,5 +11,6 @@
     "harness",
     "metrics",
     "workflow"
-  ]
+  ],
+  "types": "./types/index.d.ts"
 }

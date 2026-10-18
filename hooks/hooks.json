@@ -1,5 +1,8 @@
 {
   "description": "rig: session context, turn baselines, the end-of-turn quality gate, the per-edit check, and model recording (session start, /model switches, agent launches). No hook runs on Bash.",
+  "modules": [
+    "./dashboard.tsx"
+  ],
   "hooks": {
     "UserPromptSubmit": [
       {
