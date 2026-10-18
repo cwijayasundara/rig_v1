@@ -54,10 +54,14 @@ export const register: Register = on => {
     return next(e)
   })
   on('session.end', async ($, e, next) => { timer?.cancel(); timer = null; return next(e) })
-  on('prompt.submit', async ($, e, next) => { turnBase = (await $.session.usage()).cost?.usd ?? 0; await refresh($); return next(e) })
+  on('prompt.submit', async ($, e, next) => {
+    try { turnBase = (await $.session.usage()).cost?.usd ?? 0 } catch { /* keep the last turn base */ }
+    await refresh($)
+    return next(e)
+  })
   // A finished step shows without waiting for the turn to end; at most one process call every 3 s.
   on('tool.call', async ($, e, next) => {
-    const now = await $.clock.now()
+    const now = Date.now()
     if (now - lastRefresh > 3000) { lastRefresh = now; void refresh($) }
     return next(e)
   })

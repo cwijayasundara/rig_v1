@@ -124,3 +124,12 @@ test('a second session.start leaves one timer', async ($, on) => {
   await clock.advance(2000)
   expect(calls).toBe(1)
 })
+
+// Review finding: the usage read at prompt.submit ran outside any guard, so a throw would have blocked the person's prompt.
+test('a failing usage call never blocks the prompt', async ($, on) => {
+  on('process.run', async () => ({ value: { stdout: JSON.stringify(journey), stderr: '', exitCode: 0 } }))
+  on('session.usage', async () => { throw new Error('boom') })
+  on('prompt.submit', async (_$, e) => ({ text: e.text }))
+  on('ui.status', async () => ({ value: undefined }))
+  expect((await $.prompt.submit({ text: 'hi' })).text).toBe('hi')
+})

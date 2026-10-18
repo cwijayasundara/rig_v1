@@ -30,7 +30,7 @@ function update(file: string, fn: (s: ModelState) => boolean): void {
 // The newest launch of each agent that has a model (resolved, else requested): what the dashboard shows.
 export function latestAgents(file: string): { agent: string; model: string; at: string }[] {
   const by = new Map<string, { agent: string; model: string; at: string }>()
-  for (const l of readModelState(file).launches) if (l.resolved ?? l.requested) by.set(l.agent, { agent: l.agent, model: (l.resolved ?? l.requested) as string, at: l.at })
+  for (const l of readModelState(file).launches) if (l && (l.resolved ?? l.requested)) by.set(l.agent, { agent: l.agent, model: (l.resolved ?? l.requested) as string, at: l.at })
   return [...by.values()]
 }
 

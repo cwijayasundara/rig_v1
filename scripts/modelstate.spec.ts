@@ -118,3 +118,9 @@ test('latestAgents keeps the newest resolved launch per agent and tolerates a mi
     { agent: 'rig-evaluator', model: 'opus', at: '2026-10-18T09:30:00Z' },
   ])
 })
+
+test('latestAgents tolerates a null or non-object launch entry', () => {
+  const state = path.join(tmp(), 'model.json')
+  fs.writeFileSync(state, JSON.stringify({ launches: [null, 7, { agent: 'rig-architect', requested: 'sonnet', resolved: null, at: 'a' }] }))
+  assert.deepEqual(latestAgents(state), [{ agent: 'rig-architect', model: 'sonnet', at: 'a' }])
+})
