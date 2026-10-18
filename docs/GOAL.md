@@ -75,6 +75,16 @@ These come from the research (`docs/research/`) and from the one week this repo 
    First live pass (2026-10-17, Haiku, 3 runs, $0.33, one seeded mistake): the mistake recurred in 3/3 baseline runs on changes 4 to 6 and in 0/3 with the loop;
    the cost rule was changed to dollars per accepted change after seeing it, so the pass counts as one of the two, with that caveat.
 
+7. **Journey dashboard (a mod):** not started. Allowed by the owner on 2026-10-18, reversing the 2026-10-16 deletion of the mod UI
+   (634244c) and its "dashboards" non-goal. It reads and never decides: tokens, context and dollars of the session (from the
+   session, not a ledger we keep), where the person is in the AI SDLC journey (init, chart, testplan, approve, build, test, pr, review,
+   merge) with the active change or sprint, any blocking finding, and the **next rig command to run**. It reuses `sdlc.ts status`,
+   which already knows the next step, so the mod holds no lifecycle logic of its own. The reason it passes rule 2: Claude Code has
+   `/cost` and a status line for spend, but nothing that knows rig's artefacts, so the "where am I, what next" half has no native
+   equivalent. The spend half stays native where it can (status line first); the mod is the minimum glue. Zero tokens, no hook calls
+   a model. Judged by a person using it on a real sprint, and cut if it costs more context or latency than it saves (rule 4).
+   Old code: `git show 634244c^:hooks/band.tsx` and `mission.tsx`. Design first, in `docs/superpowers/specs/`.
+
 ## How we know it worked (the gate to "production ready")
 
 - **Lift:** on the paired task set, harness arms beat bare arms on accepted rate or on dollars per accepted run, with enough runs
@@ -89,7 +99,7 @@ These come from the research (`docs/research/`) and from the one week this repo 
 ## Not goals
 
 - A state machine that reimplements the playbook's six stages. Artefacts are files; status comes from which files exist.
-- Spend ledgers, tiers, mission-control UI, story points. `/cost`, `/context` and settings cover them.
+- Spend ledgers, tiers, story points, budgets and caps. `/cost`, `/context` and settings cover them. (A read-only journey dashboard is a goal, see Scope 7.)
 - Auto-approval, a Bash-command hook, or anything that lets the agent mark its own work done.
 - Competing with Claude Code on code generation.
 
@@ -116,5 +126,6 @@ the cost?*; Devin: DeepWiki, Memory, index-repo; Claude Code docs (`https://code
 
 - Run the first honest paired eval; the brief that does not state the contract is the known next fix.
 - Re-fetch the secondhand claims before leaning on them: Jain's exact results, the ETH Zurich AGENTS.md study, Bugbot figures.
+- Journey dashboard: does the mod API still exist in the current Claude Code, and can a status line alone show the journey and next command?
 - Confirm `PostModelSwitch` data and whether the hook input carries the model name.
 - Specmatic: needs Java and the bundled jar's licence is unconfirmed; packs ship zero-dependency contract tools meanwhile.
