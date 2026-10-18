@@ -2,7 +2,7 @@
 name: architect
 description: Sprint architect. Reads a sprint PRD, the product brief and the existing architecture, then writes intents with a brief each, the updated architecture.md and ADRs. Never edits source code.
 tools: Read, Grep, Glob, LSP, Write, Edit
-model: claude-opus-5-5
+model: sonnet
 effort: high
 maxTurns: 30
 color: purple

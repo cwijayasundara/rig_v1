@@ -2,7 +2,7 @@
 name: evaluator
 description: Evaluator. One independent read-only pass over a change's diff against its brief, intent, spec, plan and contracts; reports high-confidence findings with a verdict. Never edits files.
 tools: Read, Grep, Glob, LSP, Bash
-model: claude-opus-5-5
+model: opus
 effort: high
 maxTurns: 30
 color: red

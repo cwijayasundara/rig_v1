@@ -49,7 +49,7 @@ export function defaultRegistry(): Registry {
     stack: null,
     gates: { plan: true },
     contracts: { files: [], covers: [], validate: '', run: '' },
-    models: { build: 'sonnet', evaluate: 'opus', design: 'opus' },
+    models: { build: 'sonnet', evaluate: 'opus', design: 'sonnet' },
     paths: { tests: [...GENERIC_TESTS], testSupport: [], fixtures: [], ignore: ['**/*.md', '**/*.lock'] },
     sensors: BUILTIN_IDS.map(builtinSensor),
     knownRed: [],

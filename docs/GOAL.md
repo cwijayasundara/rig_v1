@@ -37,7 +37,7 @@ These come from the research (`docs/research/`) and from the one week this repo 
 5. **Cadence follows model grade.** The only cost study (Jain, two OpenAI models, one task) found a harness was pure overhead on the
    strong model (7x cost, no gain) and decisive on the cheap one (3/10 to 10/10). Sensors run continuously for cheaper models and
    as a final gate for stronger ones; CI always runs everything. No Claude model has been measured, so ours is a hypothesis.
-6. **Bounded context and cost.** Sonnet main thread, Haiku reads, Opus only for design and final review. Project-scope plugins only.
+6. **Bounded context and cost.** Sonnet main thread and generators (architect, QA), Haiku reads, Opus evaluates (the change review and the chart review). Project-scope plugins only.
    One review per change. Briefs under 60 lines. See `CLAUDE.md` and `docs/proposals/2026-10-08-why-slow-and-the-fix.md`.
 7. **Fix the harness, not its output.** When rig produces wrong output in a target repo, fix and test the cause here and regenerate.
 

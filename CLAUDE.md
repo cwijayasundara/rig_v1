@@ -14,6 +14,7 @@ exist because one week of building this repo cost $1k and 3 hours per change (`d
 | Reads: code search, docs lookup, Explore | `haiku` | read-only |
 | Writes: implementer, test writer | `sonnet` | one fresh context per independent group of tasks |
 | Final review of a change's diff | `sonnet` (tier S, M) / `opus` (tier L only) | one review per change, at the end |
+| Chart reviewer (`rig:evaluator`, chart mode) | `opus` | one per chart, after the generators |
 | Design of a tier L change | `opus` | only when the person asks for it |
 
 Never run Opus as the coordinator. Never use `SendMessage` to hand a subagent's result back as a new user turn (each one

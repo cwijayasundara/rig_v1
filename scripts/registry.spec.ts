@@ -9,7 +9,7 @@ test('empty text gives the default registry with every built-in', () => {
   assert.deepEqual(errors, [])
   assert.deepEqual(registry.sensors.map(s => s.id), [...BUILTIN_IDS])
   assert.ok(registry.sensors.every(s => s.builtin === true && s.enabled && s.guide.length > 0))
-  assert.deepEqual(registry.models, { build: 'sonnet', evaluate: 'opus', design: 'opus' })
+  assert.deepEqual(registry.models, { build: 'sonnet', evaluate: 'opus', design: 'sonnet' })
   assert.deepEqual(registry.policy, { haiku: 'continuous', sonnet: 'continuous', opus: 'final', default: 'continuous' })
   assert.deepEqual(registry, defaultRegistry())
 })

@@ -84,10 +84,10 @@ test('model-role warns when the main thread is off the build model or the evalua
 test('model-role warns when the architect ran off the design model', () => {
   const r = defaultRegistry()
   const run = (resolved: string) => modelRoleFindings(r, 'claude-sonnet-5-5', [{ session: 's1', id: 'a', agent: 'rig:architect', requested: null, resolved, at: 'now' }])
-  assert.deepEqual(run('claude-opus-5-5'), [])
-  const f = run('claude-sonnet-5-5')
+  assert.deepEqual(run('claude-sonnet-5-5'), [])
+  const f = run('claude-opus-5-5')
   assert.equal(f.length, 1)
-  assert.match(f[0]?.message ?? '', /rig:architect ran on claude-sonnet-5-5.*design runs on opus/)
+  assert.match(f[0]?.message ?? '', /rig:architect ran on claude-opus-5-5.*design runs on sonnet/)
 })
 
 import { spawn } from 'node:child_process'

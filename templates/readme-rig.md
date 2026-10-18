@@ -8,7 +8,7 @@ This repo uses **rig**, a thin SDLC harness for Claude Code. Ideas wait in an in
 ```
  YOU        /rig:start  /rig:approve                               intent, approval
  SKILLS     start · plan · build · test · pr                       the steps
- AGENTS     evaluator·opus (one advisory review per change)        model by role
+ AGENTS     architect·sonnet  evaluator·opus (reviews change and chart)  model by role
  HOOKS      session-start · prompt-submit · post-edit · stop     guardrails, zero tokens
             git: pre-commit · pre-push                           any editor or agent
  SCRIPTS    .rig/bin/sdlc.ts → check · sensors · graph · …     the deterministic brain
@@ -67,4 +67,5 @@ Good to know:
 - Run the project's checks by hand with the commands in `CLAUDE.md`; `.rig/bin/sdlc.ts check` runs the gate.
 - A teammate who never opens Claude Code runs `node .rig/bin/sdlc.ts hooks install` once so the git hooks apply to them.
 - To upgrade rig, re-run `vendor --standalone` from a newer plugin checkout. Re-running `/rig:init` only replaces this section.
+- **Model versions:** agents name a model by alias (`sonnet`, `opus`), never a version. `ANTHROPIC_DEFAULT_SONNET_MODEL` and `ANTHROPIC_DEFAULT_OPUS_MODEL` in `.claude/settings.json` `env` map each alias to a release; change those two lines when a new model ships (unset, the aliases follow the newest). `models.*` in `.rig/sensors.json` name a role's family, so a bump never trips `model-role`.
 <!-- rig:end -->
