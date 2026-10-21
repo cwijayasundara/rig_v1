@@ -28,7 +28,7 @@ const BUILTIN_DEFAULTS: Record<BuiltinId, Base> = {
   'rules': { cadence: 'edit', blocks: true, guide: 'Follow the project rules in .rig/rules.json.' },
   'red-proof': { cadence: 'commit', blocks: true, guide: 'A new test must fail before the change and pass after it.' },
   'traceability': { cadence: 'commit', blocks: true, guide: 'Every behaviour in the change spec.md needs a test that names its B-number; brief behaviours with no test yet only warn.' },
-  'model-role': { cadence: 'turn', blocks: false, guide: 'Build on the build model; leave review to the evaluator agent.' },
+  'model-role': { cadence: 'turn', blocks: false, guide: 'Build on the build model; leave diff review to /code-review and /security-review; the evaluator agent reviews charts.' },
 }
 const GENERIC_TESTS = ['**/test/**', '**/tests/**', '**/__tests__/**']
 const DEFAULT_POLICY: Policy = { haiku: 'continuous', sonnet: 'continuous', opus: 'final', default: 'continuous' }

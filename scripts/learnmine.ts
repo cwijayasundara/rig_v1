@@ -1,4 +1,4 @@
-// Mining committed evidence for the learning loop (design 2026-10-17): evaluator findings in review.md and waivers. Zero tokens.
+// Mining committed evidence for the learning loop (design 2026-10-17): review findings (/code-review, /security-review) in review.md and waivers. Zero tokens.
 // Only a key seen in at least two distinct changes is a candidate; one occurrence is never a lesson.
 import fs from 'node:fs'
 import path from 'node:path'

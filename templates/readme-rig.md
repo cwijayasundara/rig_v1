@@ -8,7 +8,7 @@ This repo uses **rig**, a thin SDLC harness for Claude Code. Ideas wait in an in
 ```
  YOU        /rig:start  /rig:approve                               intent, approval
  SKILLS     start · plan · build · test · pr                       the steps
- AGENTS     architect·sonnet  evaluator·opus (reviews change and chart)  model by role
+ AGENTS     architect·sonnet  evaluator·opus (reviews the chart)  model by role
  HOOKS      session-start · prompt-submit · post-edit · stop     guardrails, zero tokens
             git: pre-commit · pre-push                           any editor or agent
  SCRIPTS    .rig/bin/sdlc.ts → check · sensors · graph · …     the deterministic brain

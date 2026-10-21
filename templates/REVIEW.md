@@ -1,6 +1,6 @@
 # REVIEW.md: how changes are reviewed here
 
-Read by rig's pr-review node and by the rig-review workflow. Edit it to match your team.
+Read by the managed GitHub Code Review service. The local review in `/rig:pr` (`/code-review` and `/security-review`) follows `CLAUDE.md` instead: the rules for contracts and non-goals live there under `## Review`. Edit this file to match your team.
 
 ## Review passes
 1. **Correctness:** behaviour matches the spec's B-numbers; edge cases the intent names are handled.
