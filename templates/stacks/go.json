@@ -8,7 +8,7 @@
     { "id": "lint", "cmd": "golangci-lint run", "cadence": "turn", "blocks": true, "guide": "golangci-lint must pass; fix the code rather than adding nolint." },
     { "id": "unit", "cmd": "go test ./...", "cadence": "turn", "blocks": true, "guide": "Run go test before claiming done; fix the code, never the tests." },
     { "id": "layers", "cmd": "go-arch-lint check", "cadence": "commit", "blocks": true, "guide": "Respect the component rules in .go-arch-lint.yml." },
-    { "id": "duplication", "cmd": "npx --yes jscpd@5 . --silent --threshold 5", "cadence": "commit", "blocks": false, "guide": "Reuse existing code instead of copying it." },
+    { "id": "duplication", "cmd": "d=$(mktemp -d) && npx --yes jscpd@5 . --silent --reporters json --output \"$d\" >/dev/null 2>&1 && node -p \"require('$d/jscpd-report.json').statistics.total.percentage\"", "cadence": "commit", "blocks": true, "ratchet": "down", "guide": "Reuse existing code instead of copying it; the duplicated share may not grow past its baseline." },
     { "id": "audit", "cmd": "govulncheck ./...", "cadence": "ci", "blocks": false, "guide": "Do not call code with known vulnerabilities." },
     { "id": "mutation", "cmd": "go-mutesting ./...", "cadence": "nightly", "blocks": false, "guide": "Tests must assert behaviour so that changing the code makes them fail." }
   ]

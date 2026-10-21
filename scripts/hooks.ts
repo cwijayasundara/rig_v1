@@ -218,7 +218,7 @@ function hookStop(input: HookInput = {}): { halt: boolean; warn?: string } {
   const treePassed = stamp !== null && gate.trees.includes(stamp)
   const result = runChecks({
     point: 'stop', diffs, config: registry, rules, slugs: slug ? [slug] : [], commands: treePassed || mode === 'final' ? 'none' : 'fast', budgetMs: STOP_BUDGET_MS,
-    before: f => showAt(snap.sha, f) ?? '', toolEdited: new Set(gate.tool), base: null, ratchet: true,
+    before: f => showAt(snap.sha, f) ?? '', toolEdited: new Set(gate.tool), base: null, ratchet: true, ratchetWrite: 'write',
     contracts: mode === 'continuous' && contractsTouched(registry.contracts, diffs.map(d => d.file)),
   })
   const configBlocks: Finding[] = errors.map(e => ({ sensor: 'config', severity: 'block', file: '.rig/sensors.json', message: e, fix: 'fix the file' }))

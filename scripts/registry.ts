@@ -11,11 +11,11 @@ type BuiltinId = typeof BUILTIN_IDS[number]
 const RESERVED_IDS = ['commands', 'config', 'contracts', 'unscanned', 'plan-gate', 'human-approval', 'sync'] as const
 export const ALWAYS_ON: BuiltinId[] = ['secrets', 'harness-tamper']
 
-export type RegistrySensor = { id: string; cmd?: string; builtin?: true; cadence: Cadence; blocks: boolean; guide: string; timeoutMs?: number; enabled: boolean; options?: Record<string, unknown> }
+export type RegistrySensor = { id: string; cmd?: string; builtin?: true; cadence: Cadence; blocks: boolean; guide: string; timeoutMs?: number; enabled: boolean; options?: Record<string, unknown>; ratchet?: 'down' | 'up' }
 export type Paths = { tests: string[]; testSupport: string[]; fixtures: string[]; ignore: string[] }
 export type Contracts = { files: string[]; covers: string[]; validate: string; run: string }
 type Policy = Record<string, Mode> & { default: Mode }
-export type Registry = { stack: string | null; gates: { plan: boolean }; contracts: Contracts; models: { build: string; evaluate: string; design: string }; paths: Paths; sensors: RegistrySensor[]; knownRed: string[]; policy: Policy }
+export type Registry = { ratchets?: Record<string, number>; stack: string | null; gates: { plan: boolean }; contracts: Contracts; models: { build: string; evaluate: string; design: string }; paths: Paths; sensors: RegistrySensor[]; knownRed: string[]; policy: Policy }
 
 type Base = { cadence: Cadence; blocks: boolean; guide: string }
 const BUILTIN_DEFAULTS: Record<BuiltinId, Base> = {
@@ -32,7 +32,7 @@ const BUILTIN_DEFAULTS: Record<BuiltinId, Base> = {
 }
 const GENERIC_TESTS = ['**/test/**', '**/tests/**', '**/__tests__/**']
 const DEFAULT_POLICY: Policy = { haiku: 'continuous', sonnet: 'continuous', opus: 'final', default: 'continuous' }
-const SENSOR_KEYS = ['id', 'cmd', 'builtin', 'cadence', 'blocks', 'count', 'guide', 'timeoutMs', 'enabled', 'options']
+const SENSOR_KEYS = ['id', 'cmd', 'builtin', 'cadence', 'blocks', 'count', 'guide', 'timeoutMs', 'enabled', 'options', 'ratchet']
 const TOP_KEYS = ['stack', 'gates', 'contracts', 'models', 'paths', 'sensors', 'policy', 'knownRed']
 const KEBAB = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
@@ -81,6 +81,7 @@ function parseSensor(raw: unknown, at: string, errors: string[]): RegistrySensor
   if (typeof enabled !== 'boolean') errors.push(`${at}.enabled must be true or false`)
   if (enabled === false && (ALWAYS_ON as string[]).includes(id)) errors.push(`${at}: ${id} cannot be disabled`)
   if (blocks === false && (ALWAYS_ON as string[]).includes(id)) errors.push(`${at}: ${id} must block`)
+  if ('ratchet' in raw && (builtin || (raw.ratchet !== 'down' && raw.ratchet !== 'up'))) errors.push(`${at}.ratchet must be "down" or "up" on a command sensor (its last output line is the number)`)
   if ('options' in raw && !builtin) errors.push(`${at}: only built-in sensors take options`)
   else if ('options' in raw && !isObject(raw.options)) errors.push(`${at}.options must be an object`)
   const opts = isObject(raw.options) ? raw.options : {}
@@ -92,7 +93,7 @@ function parseSensor(raw: unknown, at: string, errors: string[]): RegistrySensor
   const options = raw.options
   const common = { cadence: cadence as Cadence, blocks: blocks as boolean, guide: (guide as string).trim(), enabled: enabled as boolean, ...(posInt(timeout) ? { timeoutMs: timeout } : {}) }
   if (builtin) return { id, builtin: true, ...common, ...(isObject(options) ? { options } : {}) }
-  return { id, cmd: raw.cmd as string, ...common }
+  return { id, cmd: raw.cmd as string, ...common, ...(raw.ratchet === 'down' || raw.ratchet === 'up' ? { ratchet: raw.ratchet } : {}) }
 }
 
 function parseSensors(raw: unknown, errors: string[]): RegistrySensor[] {
@@ -260,6 +261,7 @@ export function weakensRegistry(beforeText: string, afterText: string): string[]
     if (s.enabled && !n.enabled) out.push(`sensor ${s.id} disabled`)
     if (s.blocks && !n.blocks) out.push(`sensor ${s.id} no longer blocks`)
     if ((s.cmd ?? '') !== (n.cmd ?? '')) out.push(`sensor ${s.id} command changed`)
+    if (s.ratchet && s.ratchet !== n.ratchet) out.push(`sensor ${s.id} ${n.ratchet ? `ratchet turned from ${s.ratchet} to ${n.ratchet}` : 'no longer ratchets'}`)
     if (n.timeoutMs !== undefined && (s.timeoutMs === undefined || n.timeoutMs > s.timeoutMs)) out.push(`sensor ${s.id} timeoutMs raised${s.timeoutMs === undefined ? '' : ` ${s.timeoutMs} → ${n.timeoutMs}`}`)
     if (RANK[n.cadence] > RANK[s.cadence]) out.push(`sensor ${s.id} moved from ${s.cadence} to ${n.cadence}`)
     if (s.id === 'size') for (const k of Object.keys(LIMIT_DEFAULTS)) {
