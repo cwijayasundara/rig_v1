@@ -35,6 +35,16 @@ export async function assertProductionGate(c, sb) {
     return got === 'block,allow' || `decisions: ${got}`
   })
   await c.check('deploy gate: never logs the command text', () => !/deploy|npm/.test(sb.read('.rig/gates.jsonl')) || 'command text found in gates.jsonl')
+
+  // The rest of "irreversible pauses" (guides/irreversible.md): a force-push and dropping data are gated like a production deploy; a plain push is not.
+  const force = gate(sb, 'git push --force origin main')
+  await c.check('irreversible gate: a force-push exits 2 and says what it is', () => (force.status === 2 && /force-pushing[\s\S]*RELEASE_APPROVAL/.test(force.stderr)) || `exit ${force.status}: ${force.stderr.trim()}`)
+  const drop = gate(sb, 'psql -c "DROP TABLE orders"')
+  await c.check('irreversible gate: dropping a table exits 2', () => (drop.status === 2 && /dropping data/.test(drop.stderr)) || `exit ${drop.status}: ${drop.stderr.trim()}`)
+  const push = gate(sb, 'git push origin sdlc/add-cart')
+  await c.check('irreversible gate: an ordinary push to a branch is not gated', () => push.status === 0 || `exit ${push.status}`)
+  const approvedForce = gate(sb, 'git push -f origin main', { RELEASE_APPROVAL: 'CHG-2' })
+  await c.check('irreversible gate: a force-push with an approval goes through', () => approvedForce.status === 0 || `exit ${approvedForce.status}`)
 }
 
 // RIG_ROLLBACK_COMMAND is a script the project owns; the rehearsal is that command running and succeeding.

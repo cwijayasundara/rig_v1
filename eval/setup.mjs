@@ -5,6 +5,7 @@ import { install, REGISTRY, copyContractTool } from '../tests/e2e/phases/s0-inst
 import { installedPlugins } from '../tests/e2e/lib/sandbox.mjs'
 import { runBrief } from '../tests/e2e/phases/s1-brief.mjs'
 import { briefFor, dryOverlay } from './variants/links.mjs'
+import { applyAblation } from './ablation.mjs'
 
 const BRIEF = path.resolve(import.meta.dirname, '../tests/e2e/prd/shop-brief.md')
 const FX = path.resolve(import.meta.dirname, '../tests/e2e/fixtures')
@@ -44,6 +45,8 @@ export async function setupRig(sb, arm, { dry = false, variant = null } = {}) {
     if (a.status !== 0) throw new Error(`arch approve failed: ${(a.stderr || a.stdout).trim().split('\n')[0]}`)
     sb.commitAll('chore: approved layers')
   }
+  // An ablation arm is rig with one component removed (eval/ablation.mjs).
+  if (arm.ablate) applyAblation(sb, arm.ablate)
   return base
 }
 

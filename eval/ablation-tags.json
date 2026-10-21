@@ -1,0 +1,262 @@
+[
+  {
+    "id": "sensor:secrets",
+    "kind": "sensor",
+    "weakness": "models paste credentials they have seen, or invent plausible ones, into code",
+    "ablatable": false,
+    "why": "always on: a sensor that cannot be disabled cannot be ablated"
+  },
+  {
+    "id": "sensor:test-tamper",
+    "kind": "sensor",
+    "weakness": "models make a failing test pass by weakening, skipping or deleting it",
+    "ablatable": true
+  },
+  {
+    "id": "sensor:suppression",
+    "kind": "sensor",
+    "weakness": "models silence a linter or type error instead of fixing the code",
+    "ablatable": true
+  },
+  {
+    "id": "sensor:harness-tamper",
+    "kind": "sensor",
+    "weakness": "models edit the checks that judge them",
+    "ablatable": false,
+    "why": "always on"
+  },
+  {
+    "id": "sensor:size",
+    "kind": "sensor",
+    "weakness": "models grow god files and diffs too big to review",
+    "ablatable": true
+  },
+  {
+    "id": "sensor:layering",
+    "kind": "sensor",
+    "weakness": "models import across a boundary the design forbids",
+    "ablatable": true
+  },
+  {
+    "id": "sensor:rules",
+    "kind": "sensor",
+    "weakness": "models repeat a mistake a pattern over added lines can catch",
+    "ablatable": true
+  },
+  {
+    "id": "sensor:red-proof",
+    "kind": "sensor",
+    "weakness": "models write tests that pass without the change",
+    "ablatable": true
+  },
+  {
+    "id": "sensor:traceability",
+    "kind": "sensor",
+    "weakness": "models skip a stated behaviour and leave no test naming it",
+    "ablatable": true
+  },
+  {
+    "id": "sensor:model-role",
+    "kind": "sensor",
+    "weakness": "work runs on the wrong model for its role, so cost and quality drift",
+    "ablatable": true
+  },
+  {
+    "id": "sensor:lint",
+    "kind": "sensor",
+    "weakness": "models leave lint errors the compiler does not catch",
+    "ablatable": true
+  },
+  {
+    "id": "sensor:types",
+    "kind": "sensor",
+    "weakness": "models leave type errors unnoticed until late",
+    "ablatable": true
+  },
+  {
+    "id": "sensor:unit",
+    "kind": "sensor",
+    "weakness": "models claim done without running the tests",
+    "ablatable": true
+  },
+  {
+    "id": "sensor:layers",
+    "kind": "sensor",
+    "weakness": "the layering sensor only sees added import lines; the stack analyser sees the whole graph",
+    "ablatable": true
+  },
+  {
+    "id": "sensor:duplication",
+    "kind": "sensor",
+    "weakness": "models copy code instead of reusing it",
+    "ablatable": true
+  },
+  {
+    "id": "sensor:coverage",
+    "kind": "sensor",
+    "weakness": "models add code with no test that executes it",
+    "ablatable": true
+  },
+  {
+    "id": "sensor:audit",
+    "kind": "sensor",
+    "weakness": "models add dependencies with known vulnerabilities",
+    "ablatable": true
+  },
+  {
+    "id": "sensor:mutation",
+    "kind": "sensor",
+    "weakness": "models write tests that assert nothing a code change would break",
+    "ablatable": true
+  },
+  {
+    "id": "sensor:build",
+    "kind": "sensor",
+    "weakness": "models leave the project not compiling, so the next step builds on broken code",
+    "ablatable": true
+  },
+  {
+    "id": "skill:start",
+    "kind": "skill",
+    "weakness": "work begins with no stated intent",
+    "ablatable": false,
+    "why": "the eval flow itself runs this skill, so an arm without it cannot run"
+  },
+  {
+    "id": "skill:plan",
+    "kind": "skill",
+    "weakness": "building starts with no reviewed plan",
+    "ablatable": false,
+    "why": "the eval flow itself runs this skill, so an arm without it cannot run"
+  },
+  {
+    "id": "skill:approve",
+    "kind": "skill",
+    "weakness": "the model approves its own plan",
+    "ablatable": false,
+    "why": "the eval flow itself runs this skill, so an arm without it cannot run"
+  },
+  {
+    "id": "skill:build",
+    "kind": "skill",
+    "weakness": "the model builds before the plan and the tests are agreed",
+    "ablatable": false,
+    "why": "the eval flow itself runs this skill, so an arm without it cannot run"
+  },
+  {
+    "id": "skill:test",
+    "kind": "skill",
+    "weakness": "the model claims a change is verified without running the gates",
+    "ablatable": false,
+    "why": "the eval flow itself runs this skill, so an arm without it cannot run"
+  },
+  {
+    "id": "skill:pr",
+    "kind": "skill",
+    "weakness": "a change ships without an independent review",
+    "ablatable": false,
+    "why": "the eval flow itself runs this skill, so an arm without it cannot run"
+  },
+  {
+    "id": "skill:app",
+    "kind": "skill",
+    "weakness": "unit tests pass while the running app is broken",
+    "ablatable": true
+  },
+  {
+    "id": "skill:arch",
+    "kind": "skill",
+    "weakness": "layers are never declared, so nothing stops a bad dependency",
+    "ablatable": true
+  },
+  {
+    "id": "skill:chart",
+    "kind": "skill",
+    "weakness": "sprint-scale work starts with no traced intents",
+    "ablatable": true
+  },
+  {
+    "id": "skill:init",
+    "kind": "skill",
+    "weakness": "a repo is not onboarded, so no check runs",
+    "ablatable": true
+  },
+  {
+    "id": "skill:learn",
+    "kind": "skill",
+    "weakness": "the same mistake recurs across changes and nobody consolidates it",
+    "ablatable": true
+  },
+  {
+    "id": "skill:rule",
+    "kind": "skill",
+    "weakness": "conventions live in prose that models skip",
+    "ablatable": true
+  },
+  {
+    "id": "skill:testplan",
+    "kind": "skill",
+    "weakness": "no test plan exists before the build",
+    "ablatable": true
+  },
+  {
+    "id": "skill:waive",
+    "kind": "skill",
+    "weakness": "a human exception has no record (human-only)",
+    "ablatable": true
+  },
+  {
+    "id": "skill:wiki",
+    "kind": "skill",
+    "weakness": "the model re-searches the repo every session",
+    "ablatable": true
+  },
+  {
+    "id": "agent:architect",
+    "kind": "agent",
+    "weakness": "intents are written without reading the whole spec and architecture",
+    "ablatable": true
+  },
+  {
+    "id": "agent:evaluator",
+    "kind": "agent",
+    "weakness": "a chart is judged by the same context that wrote it",
+    "ablatable": true
+  },
+  {
+    "id": "hook:UserPromptSubmit",
+    "kind": "hook",
+    "weakness": "the turn gate has no baseline to judge the turn against",
+    "ablatable": true
+  },
+  {
+    "id": "hook:Stop",
+    "kind": "hook",
+    "weakness": "the model says it is done while checks still fail",
+    "ablatable": true
+  },
+  {
+    "id": "hook:SessionStart",
+    "kind": "hook",
+    "weakness": "the model forgets the active change and the guides each session",
+    "ablatable": true
+  },
+  {
+    "id": "hook:PostToolUse",
+    "kind": "hook",
+    "weakness": "an error is found only at the end of the turn, after more work built on it",
+    "ablatable": true
+  },
+  {
+    "id": "hook:PreToolUse",
+    "kind": "hook",
+    "weakness": "the model writes protected files or runs forbidden commands",
+    "ablatable": true
+  },
+  {
+    "id": "hook:PostModelSwitch",
+    "kind": "hook",
+    "weakness": "the model in use is recorded wrongly, so the model-role check misjudges",
+    "ablatable": true
+  }
+]

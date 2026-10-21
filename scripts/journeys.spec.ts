@@ -185,7 +185,8 @@ test('CI runs only approved journeys: a changed driver is not executed there, bu
   gitIn(repo, 'checkout', '-q', 'main')
   gitIn(repo, 'merge', '-q', 'work')
   gitIn(repo, 'checkout', '-qb', 'pr')
-  setDriver(original().replace("const call =", "import('node:fs').then(fs => fs.writeFileSync('ran.txt', 'x'))\n  const call ="))
+  // The marker is written synchronously: an unawaited promise could lose a race with the process exiting under load.
+  setDriver(original().replace("import { verify }", "import { writeFileSync } from 'node:fs'\nimport { verify }").replace("const call =", "writeFileSync('ran.txt', 'x')\n  const call ="))
   gitIn(repo, 'add', '-A')
   gitIn(repo, 'commit', '-qm', 'a PR that supplies its own driver')
   const ci = sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main', '--json'])

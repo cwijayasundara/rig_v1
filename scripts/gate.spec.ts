@@ -101,7 +101,7 @@ const edit = (rel: string, session = 's1') => {
 
 test('init copies the default guides into .rig/guides', () => {
   sdlc(repo, ['init'])
-  assert.deepEqual(fs.readdirSync(path.join(repo, '.rig/guides')).sort(), ['contracts.md', 'engineering.md', 'testing.md'])
+  assert.deepEqual(fs.readdirSync(path.join(repo, '.rig/guides')).sort(), ['contracts.md', 'engineering.md', 'irreversible.md', 'testing.md'])
 })
 
 test('a guide is injected the first time a matching file is edited in a session, and again after compaction', () => {
@@ -120,7 +120,7 @@ test('a guide is injected the first time a matching file is edited in a session,
 test('session start lists guide names without their bodies', () => {
   sdlc(repo, ['new', 'xx', '--type', 'chore'])
   const ctx = JSON.parse(hook(repo, 'session-start', { session_id: 's1', source: 'startup' }).stdout).hookSpecificOutput.additionalContext
-  assert.match(ctx, /Guides \(injected when you first touch matching files\): contracts, engineering, testing/)
+  assert.match(ctx, /Guides \(injected when you first touch matching files\): contracts, engineering, irreversible, testing/)
   assert.doesNotMatch(ctx, /Iron rules/)
 })
 
