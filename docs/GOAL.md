@@ -94,7 +94,7 @@ These come from the research (`docs/research/`) and from the one week this repo 
 - **Outer loop:** trace coverage, estimate against actual, rework per intent, chart-quality eval (`eval/chart.mjs`).
 - **Wiki:** answers match the code and stale pages are flagged; it beats native by 2 of 8 questions, or is cheaper at a tie.
 - **CI and PR:** first-pass CI success, share of review comments resolved without a human, repeat-mistake rate.
-- **Thinness:** harness stays under the size cap (6,000 lines today); anything over it needs a named lift.
+- **Thinness:** harness stays under the size cap (8,000 lines, enforced by `scripts/size.spec.ts`; 7,256 on 2026-10-21); anything over it needs a named lift.
 
 ## Not goals
 

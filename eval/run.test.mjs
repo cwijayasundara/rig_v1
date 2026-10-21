@@ -61,3 +61,11 @@ test('orderArms: the same seed repeats an order, and across runs no arm is alway
   assert.ok(firsts.size > 1, [...firsts].join())
   assert.deepEqual(orderArms(ARMS, 7, 2).map(a => a.id).sort(), ARMS.map(a => a.id).sort())
 })
+
+test('a dry rules run is accepted with full marks for a rig arm and a bare arm at $0', async () => {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-run-'))
+  for (const id of ['haiku-rig', 'haiku-bare']) {
+    const row = await runOne(ARMS.find(a => a.id === id), 1, { dry: true, out, capRunUsd: 6, variant: 'rules' })
+    assert.deepEqual([row.accepted, row.checks, row.of, row.rules.b8, row.rules.b9, row.usd, row.error], [true, 11, 11, 6, true, 0, undefined], JSON.stringify(row))
+  }
+})

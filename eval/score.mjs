@@ -10,6 +10,8 @@ import { PLUGIN } from '../tests/e2e/lib/sandbox.mjs'
 import { assertShopHttp } from '../tests/e2e/acceptance/shop-http.mjs'
 import { linksHttp } from './variants/links.mjs'
 
+const RULES = path.resolve(import.meta.dirname, 'variants/rules.mjs')
+
 const SDLC = path.join(PLUGIN, 'scripts/sdlc.ts')
 const ACCEPTANCE = path.resolve(import.meta.dirname, '../tests/e2e/acceptance/shop.mjs')
 
@@ -81,14 +83,21 @@ export async function scoreRun(sb, base, { timeoutMs = 300_000, sdlc = SDLC, var
   // The sandbox's env: the runner's own (a test context, a CI event path) must not leak into the model's suite.
   const t = await runBounded('npm', ['test', '--silent'], { cwd: sb.dir, timeoutMs, env: sb.env })
   const npmTest = t.status === 0
-  const a = await runBounded('node', [ACCEPTANCE, sb.dir, 'remove'], { cwd: sb.dir, timeoutMs, env: sb.env })
+  const a = await runBounded('node', [ACCEPTANCE, sb.dir, 'remove', ...(variant === 'rules' ? ['rules'] : [])], { cwd: sb.dir, timeoutMs, env: sb.env })
   const last = a.out.trim().split('\n').at(-1) ?? ''
   const acceptance = a.timedOut ? `timed out after ${timeoutMs} ms` : (() => { try { return JSON.parse(last) } catch { return `acceptance exited ${a.status}: ${last.slice(0, 200)}` } })()
   const c = new Checks('score')
   await assertShopHttp(c, sb.dir, 'remove')
   const http = c.results[0].status === 'PASS' ? true : c.results[0].why
-  const links = variant === 'links' ? await linksHttp(sb.dir).catch(e => `links acceptance crashed: ${e.message}`) : null
-  const all = [npmTest, acceptance === true, http === true, ...(variant === 'links' ? [links === true] : [])]
+  const withLinks = variant === 'links' || variant === 'rules'
+  const links = withLinks ? await linksHttp(sb.dir).catch(e => `links acceptance crashed: ${e.message}`) : null
+  // B8's six edge cases and B9 each count, so a near miss scores above a total miss.
+  let rules = null
+  if (variant === 'rules') {
+    const r = await runBounded('node', [RULES, sb.dir], { cwd: sb.dir, timeoutMs, env: sb.env })
+    try { rules = JSON.parse(r.out.trim().split('\n').at(-1)) } catch { rules = { b8: 0, b9: false, failures: [r.timedOut ? `rules acceptance timed out after ${timeoutMs} ms` : `rules acceptance exited ${r.status}`] } }
+  }
+  const all = [npmTest, acceptance === true, http === true, ...(withLinks ? [links === true] : []), ...(rules ? [...Array.from({ length: 6 }, (_, i) => i < rules.b8), rules.b9] : [])]
   const checks = all.filter(Boolean).length
-  return { checks, of: all.length, accepted: checks === all.length, npmTest, acceptance, http, ...(variant === 'links' ? { links } : {}), layerViolations: variant === 'links' && links !== true ? null : layerViolations(sb.dir), tamper: tamperOf(sb, judgeFrom, sdlc) }
+  return { checks, of: all.length, accepted: checks === all.length, npmTest, acceptance, http, ...(withLinks ? { links } : {}), ...(rules ? { rules } : {}), layerViolations: withLinks && links !== true ? null : layerViolations(sb.dir), tamper: tamperOf(sb, judgeFrom, sdlc) }
 }

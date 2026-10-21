@@ -13,10 +13,10 @@ const FACTS = {
   // shop.mjs (import)
   'catalog accepted a bad SKU': /three capital letters, a hyphen and three digits[^\n]*`invalid sku: <sku>`/,
   'catalog accepted a non-positive price': /`priceCents` must be a positive integer/,
-  'subtotal …, want 2550 (FR-2)': /`subtotalCents\(\)` is the sum of `qty × unitCents`/,
+  'subtotal …, want … (FR-2)': /`subtotalCents\(\)` is the sum of `qty × unitCents`/,
   'cart accepted an unknown SKU': /`unknown sku: <sku>`/,
   'cart accepted qty 0': /`qty` defaults to 1 and must be a positive integer/,
-  'SAVE10 on 2550 did not total 2295 (FR-3)': /`SAVE10` takes 10% off and `SAVE20` 20%; `discountCents` is rounded to the nearest cent/,
+  'SAVE10 on … did not total … (FR-3)': /`SAVE10` takes 10% off and `SAVE20` 20%; `discountCents` is rounded to the nearest cent/,
   'unknown discount code accepted': /`unknown discount code: <code>`/,
   'empty checkout accepted': /`cart is empty`/,
   'GET /products not 200 (FR-4)': /`GET \/products` → 200/,
@@ -92,4 +92,46 @@ test('the links variant adds B7 to the interfaces, the behaviours and the tests,
   assert.match(v, /- B6: [^\n]*\n- B7: GET \/products\/<sku>/)
   assert.match(v, /B7: unit tests in test\/links\.test\.js/)
   for (const b of ['B1', 'B2', 'B3', 'B4', 'B5', 'B6']) assert.ok(v.includes(`- ${b}:`), b)
+})
+
+import { briefFor as rulesBriefFor } from './variants/rules.mjs'
+
+const rulesBase = fs.readFileSync(path.join(E2E, 'prd/shop-brief.md'), 'utf8')
+const rulesBrief = rulesBriefFor(rulesBase)
+
+// The rules variant's hidden acceptance (eval/variants/rules.mjs): every message it can report → the brief statement behind it.
+const RULES_FACTS = {
+  'get did not return the stock the product was added with': /`get` and `list` return it as `stock` when it is set/,
+  'an order for more than the stock did not fail with insufficient stock: <sku>': /the whole order fails with `insufficient stock: <sku>`/,
+  'a failed order changed the stock or the cart': /nothing is reserved, and the stock and the cart are unchanged/,
+  'a line of exactly 10 was rejected': /\(exactly 10 is allowed\)/,
+  'a line of 11 did not fail with quantity over limit: <sku>': /a line with `qty` over 10 fails with `quantity over limit: <sku>`/,
+  'a line over both the stock and the limit did not fail with the stock check first': /applies these rules in this order\. \(1\) Stock:[\s\S]*\(2\) Line limit:/,
+  'an order of exactly 5000 cents did not get a 500 cent discount': /5000 or more \(exactly 5000 qualifies\), `discountCents` is 10%/,
+  'an order under 5000 cents got a discount': /when no code is given and `subtotalCents` is 5000 or more/,
+  'a 5005 cent order got discountCents …, not rounded half up': /rounded half up to whole cents/,
+  'two lines totalling 6000 cents, each under 5000, did not get a 600 cent discount on the order': /10% of the order's subtotal \(not per line\)/,
+  'a successful checkout did not reduce the stock': /A successful checkout reduces each line's product stock by its `qty`/,
+  'adding a SKU already in the cart did not replace its quantity': /From B9 on, adding a SKU already in the cart replaces its quantity with the new `qty` \(still one line per SKU\)/,
+}
+
+test('every failure the rules acceptance can report is stated in the rules brief', () => {
+  const src = fs.readFileSync(path.resolve(import.meta.dirname, 'variants/rules.mjs'), 'utf8')
+  const ms = [...src.matchAll(/(?:return|\|\|) (['`])((?:(?!\1).)+)\1/g)].map(m => m[2].replace(/\$\{[^}]*\}/g, '…')).filter(m => m !== 'check crashed: …' && !/^rules acceptance/.test(m))
+  assert.ok(ms.length >= 12, `${ms.length} messages`)
+  for (const m of ms) {
+    assert.ok(RULES_FACTS[m], `rules acceptance message with no brief entry: "${m}"`)
+    assert.match(rulesBrief, RULES_FACTS[m], `the brief does not state what "${m}" checks`)
+  }
+  assert.deepEqual(Object.keys(RULES_FACTS).filter(k => !ms.includes(k)), [])
+})
+
+test('the rules variant starts from the links brief, adds B8 and B9, keeps the old re-add sentence, and reads as a product brief', () => {
+  assert.ok(rulesBrief.startsWith(briefFor(rulesBase).slice(0, 200)))
+  assert.match(rulesBrief, /adding a SKU again adds to its quantity\. From B9 on/)
+  assert.match(rulesBrief, /- B7: [^\n]*\n- B8: [^\n]*\n- B9: [^\n]*\n/)
+  assert.match(rulesBrief, /B8–B9: unit tests in test\/rules\.test\.js/)
+  assert.match(rulesBrief, /optional `stock` \(a non-negative integer; omitted means unlimited\)/)
+  for (const b of ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7']) assert.ok(rulesBrief.includes(`- ${b}:`), b)
+  assert.doesNotMatch(rulesBrief, /\barm\b|\beval\b|hidden|acceptance/i)
 })
