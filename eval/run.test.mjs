@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { nextRunAllowed, resultsAllowed, runOne } from './run.mjs'
+import { orderArms, nextRunAllowed, resultsAllowed, runOne } from './run.mjs'
 import { ARMS } from './arms.mjs'
 
 test('nextRunAllowed refuses a run that could cross the total cap', () => {
@@ -53,4 +53,11 @@ import { BARE_PROMPT } from './setup.mjs'
 test('final review (denials): the bare prompt gives the same tool advice rig sessions get', () => {
   assert.match(BARE_PROMPT, /read files with Read, Grep and Glob and change them with Edit or Write/)
   assert.match(BARE_PROMPT, /run each command as its own Bash call/)
+})
+
+test('orderArms: the same seed repeats an order, and across runs no arm is always first', () => {
+  assert.deepEqual(orderArms(ARMS, 7, 1).map(a => a.id), orderArms(ARMS, 7, 1).map(a => a.id))
+  const firsts = new Set([1, 2, 3, 4, 5, 6, 7, 8].map(n => orderArms(ARMS, 7, n)[0].id))
+  assert.ok(firsts.size > 1, [...firsts].join())
+  assert.deepEqual(orderArms(ARMS, 7, 2).map(a => a.id).sort(), ARMS.map(a => a.id).sort())
 })
