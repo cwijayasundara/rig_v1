@@ -1,4 +1,4 @@
-// Native review (design 2026-10-21): /rig:pr reviews the delta with the bundled /code-review and /security-review before the PR opens.
+// Review (designs 2026-10-21, native review then clean-context review): /rig:pr reviews the delta with a fresh reviewer agent and the bundled /security-review before the PR opens.
 import { test } from 'node:test'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -7,20 +7,34 @@ import assert from 'node:assert/strict'
 const repoText = (f: string): string => fs.readFileSync(path.resolve(import.meta.dirname, '..', f), 'utf8')
 const pr = (): string => repoText('skills/pr/SKILL.md')
 
-test('pr skill reviews with /code-review and /security-review before sdlc.ts pr', () => {
+test('pr skill reviews with a clean-context agent and /security-review before sdlc.ts pr', () => {
   const t = pr()
-  assert.match(t, /\/code-review/)
+  assert.match(t, /review-brief\.md/)
   assert.match(t, /\/security-review/)
   const body = t.slice(t.indexOf('\n---\n', 4))
-  assert.ok(body.indexOf('/code-review') < body.indexOf('pr <slug> --message'), 'the review comes before the PR is opened')
+  assert.ok(body.indexOf('review-brief.md') < body.indexOf('pr <slug> --message'), 'the review comes before the PR is opened')
   assert.match(body, /\/security-review all changes since <base>, committed and uncommitted/, 'its built-in diff misses uncommitted work')
+  assert.doesNotMatch(body, /\/code-review/, 'the code pass is no longer the in-session native command')
 })
 
-test('pr skill reviews the delta since the verified base, and passes an explicit effort', () => {
+test('the reviewer is a fresh agent that is given the brief and nothing else', () => {
+  const t = pr()
+  assert.match(t, /launch one `Agent` \(`general-purpose`, `model: sonnet`, foreground\)/)
+  assert.match(t, /Give it nothing else: not the plan's reasoning, not this conversation/)
+  assert.match(t, /`<base>` and `<slug>`/)
+})
+
+test('the builder triages: a dismissal needs a reason, security and contract findings are never dismissed by the builder, and dismissals carry no category tag', () => {
+  const t = pr()
+  assert.match(t, /A dismissal needs a reason that cites a spec line, a non-goal, or code you read/)
+  assert.match(t, /Never dismiss a `security` or `contract` finding yourself/)
+  assert.match(t, /## Dismissed[^\n]*no category tag/)
+})
+
+test('pr skill reviews the delta since the verified base and scales scrutiny with contract changes', () => {
   const t = pr()
   assert.match(t, /all changes since <base>, committed and uncommitted/)
-  assert.match(t, /`medium`/)
-  assert.match(t, /`high`[^\n]*## Contracts/)
+  assert.match(t, /plan\.md `## Contracts` lists a change[^\n]*This change edits contracts/)
 })
 
 test('pr skill no longer launches the evaluator', () => {
