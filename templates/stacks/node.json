@@ -7,7 +7,7 @@
     { "id": "lint", "cmd": "npx --no-install eslint {files}", "cadence": "edit", "blocks": true, "guide": "Lint must pass on every file you touch; fix the code rather than the rule." },
     { "id": "types", "cmd": "npx --no-install tsc --noEmit --pretty false", "cadence": "turn", "blocks": true, "guide": "The project must typecheck before the turn ends." },
     { "id": "unit", "cmd": "npm test", "cadence": "turn", "blocks": true, "guide": "Run the unit suite before claiming done; fix the code, never the tests." },
-    { "id": "layers", "cmd": "npx --no-install depcruise src --output-type err", "cadence": "commit", "blocks": true, "guide": "Respect the dependency rules in .dependency-cruiser config; do not import across a forbidden boundary." },
+    { "id": "layers", "cmd": "if [ -f .rig/gen/dependency-cruiser.cjs ]; then npx --no-install depcruise src --config .rig/gen/dependency-cruiser.cjs --ignore-known .rig/gen/known-violations.json --output-type err; fi", "cadence": "commit", "blocks": true, "guide": "Respect the approved layers in architecture.md; do not import across a forbidden boundary." },
     { "id": "duplication", "cmd": "npx --yes jscpd@5 src --silent --threshold 5", "cadence": "commit", "blocks": false, "guide": "Reuse existing code instead of copying it." },
     { "id": "coverage", "cmd": "npx --no-install c8 --check-coverage --lines 80 npm test", "cadence": "ci", "blocks": false, "guide": "New code comes with tests that execute it; coverage alone does not prove behaviour." },
     { "id": "audit", "cmd": "npm audit --audit-level=high", "cadence": "ci", "blocks": false, "guide": "Do not add dependencies with known high-severity vulnerabilities." },

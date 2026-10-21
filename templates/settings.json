@@ -26,6 +26,8 @@
       "Skill(rig-pr)", "Skill(rig-pr *)",
       "Skill(rig:rule)",
       "Skill(rig:rule *)",
+      "Skill(rig:arch)",
+      "Skill(rig:arch *)",
       "Skill(rig-rule)", "Skill(rig-rule *)",
       "Skill(rig:chart)", "Skill(rig:chart *)", "Skill(rig-chart)", "Skill(rig-chart *)",
       "Skill(rig:testplan)", "Skill(rig:testplan *)", "Skill(rig-testplan)", "Skill(rig-testplan *)",
@@ -37,6 +39,8 @@
     "ask": [
       "Edit(/.rig/sensors.json)",
       "Edit(/.rig/rules.json)",
+      "Edit(/.rig/layers.approved.json)",
+      "Edit(/.rig/gen/**)",
       "Edit(/.rig/lessons.md)",
       "Edit(/.rig/lessons-archive.md)",
       "Edit(/.rig/evals/*.json)",

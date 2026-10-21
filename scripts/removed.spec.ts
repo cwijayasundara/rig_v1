@@ -84,7 +84,7 @@ test('4a: the review workflow, the rig-spec CI template and three non-lifecycle 
   const ci = fs.readdirSync(path.join(ROOT, 'templates')).filter(f => /^rig-.*\.yml$/.test(f))
   assert.deepEqual(ci, ['rig-check.yml'])
   const kept = fs.readdirSync(path.join(ROOT, 'skills')).sort()
-  assert.deepEqual(kept, ['approve', 'build', 'chart', 'init', 'learn', 'plan', 'pr', 'rule', 'start', 'test', 'testplan', 'waive', 'wiki'])
+  assert.deepEqual(kept, ['approve', 'arch', 'build', 'chart', 'init', 'learn', 'plan', 'pr', 'rule', 'start', 'test', 'testplan', 'waive', 'wiki'])
 })
 
 test('5a: the scripted e2e suite runs in npm test and in CI again', () => {
@@ -117,7 +117,7 @@ test('every next step the lifecycle names is a skill that exists', () => {
 })
 
 test('4b: seven workflow skills, the chart and testplan skills and the two human gates, and two agents', () => {
-  assert.deepEqual(fs.readdirSync(path.join(ROOT, 'skills')).sort(), ['approve', 'build', 'chart', 'init', 'learn', 'plan', 'pr', 'rule', 'start', 'test', 'testplan', 'waive', 'wiki'])
+  assert.deepEqual(fs.readdirSync(path.join(ROOT, 'skills')).sort(), ['approve', 'arch', 'build', 'chart', 'init', 'learn', 'plan', 'pr', 'rule', 'start', 'test', 'testplan', 'waive', 'wiki'])
   assert.deepEqual(fs.readdirSync(path.join(ROOT, 'agents')), ['architect.md', 'evaluator.md'])
   gone('templates/design-format.md')
   for (const s of ['start', 'plan', 'build', 'test', 'pr']) assert.doesNotMatch(read(`skills/${s}/SKILL.md`), /tier|ratchet|slice|next --json|rig:(scout|implementer|reviewer|architect)/i, s)

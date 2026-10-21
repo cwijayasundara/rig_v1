@@ -12,6 +12,7 @@ import { readBaseline, snapshot, turnDiff, fileDiff, branchDiff, showAt, fileLin
 import { runCommand, recordRun, normCmd } from './runs.ts'
 import { withBaseTree } from './basetree.ts'
 import { activeSlug, approvalState, changeType } from './lifecycle.ts'
+import { approvedLayers } from './arch.ts'
 import { isRegistryShape, parseRegistry, defaultRegistry, updateKnownRed, activeSensors, commandFor, builtinOptions, inertSensors, type Registry, type Cadence, type Inert } from './registry.ts'
 import { frozenFindings, runContracts } from './contracts.ts'
 import { syncFindings } from './sync.ts'
@@ -55,6 +56,9 @@ export function loadConfig(ref: string | null = null): { registry: Registry; rul
   const ruleErrors = r.errors.map(e => `rules.json: ${e}`)
   if (isOldShape(raw)) return { registry: defaultRegistry(), rules: r.rules, errors: [OLD_SHAPE, ...ruleErrors] }
   const p = parseRegistry(raw)
+  // The approved layer rules (read from the same ref as the rest of the config, so a PR cannot loosen them) fill an empty layering option.
+  const lay = p.registry.sensors.find(x => x.builtin && x.id === 'layering'), approved = approvedLayers(text('.rig/layers.approved.json'))
+  if (lay && approved.length && !lay.options?.layers) lay.options = { ...lay.options, layers: approved }
   return { registry: p.registry, rules: r.rules, errors: [...p.errors.map(e => `sensors: ${e}`), ...ruleErrors] }
 }
 
