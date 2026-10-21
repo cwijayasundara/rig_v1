@@ -7,9 +7,9 @@ class {{Name}}Error(Exception):
         self.code = code
 
 
-def create_{{snake}}(id: str, name: str) -> dict:
-    if not isinstance(id, str) or not id.strip():
+def create_{{snake}}(item_id: str, name: str) -> dict:
+    if not isinstance(item_id, str) or not item_id.strip():
         raise {{Name}}Error("invalid-id", "id is required")
     if not isinstance(name, str) or not name.strip():
         raise {{Name}}Error("invalid-name", "name is required")
-    return {"id": id.strip(), "name": name.strip()}
+    return {"id": item_id.strip(), "name": name.strip()}

@@ -6,13 +6,13 @@ class {{Name}}Service:
     def __init__(self, store) -> None:
         self._store = store
 
-    def add(self, id: str, name: str) -> dict:
-        item = create_{{snake}}(id, name)
+    def add(self, item_id: str, name: str) -> dict:
+        item = create_{{snake}}(item_id, name)
         self._store.save(item)
         return item
 
-    def get(self, id: str) -> dict:
-        item = self._store.get(id)
+    def get(self, item_id: str) -> dict:
+        item = self._store.get(item_id)
         if item is None:
-            raise {{Name}}Error("not-found", f"no {{name}} {id}")
+            raise {{Name}}Error("not-found", f"no {{name}} {item_id}")
         return item

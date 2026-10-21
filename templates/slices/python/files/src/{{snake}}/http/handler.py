@@ -1,4 +1,6 @@
 """The edge: a request becomes a use case call, and a domain error becomes a status. It imports the use cases and the domain, never the store."""
+from __future__ import annotations
+
 from urllib.parse import unquote
 
 from {{snake}}.domain.{{snake}} import {{Name}}Error

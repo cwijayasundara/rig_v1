@@ -1,6 +1,6 @@
 // Golden slices (harness readiness 1.4) and the generator tests that judge their output (1.6): a scaffolded feature must pass the repo's own
 // checks, the layers it follows (1.1) and its own tests, and a cross-layer import in it must be rejected.
-import { test } from 'node:test'
+import { test, after } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -19,8 +19,11 @@ const STACKS = [
   { stack: 'python', feature: 'invoice-line', bad: 'from invoice_line.infra.memory_store import MemoryStore\n', domain: 'src/invoice_line/domain/invoice_line.py', test: (repo: string) => spawnSync('python3', ['-m', 'unittest', 'discover', '-s', 'tests'], { cwd: repo, encoding: 'utf8' }), ok: have('python3') },
 ]
 
+const made: string[] = []
+after(() => { for (const d of made) fs.rmSync(d, { recursive: true, force: true }) })
 function repoFor(stack: string): string {
   const repo = makeRepo()
+  made.push(repo)
   sdlc(repo, ['init', '--stack', stack])
   gitIn(repo, 'add', '-A')
   gitIn(repo, 'commit', '-qm', 'rig')
@@ -45,6 +48,10 @@ test('names: kebab case in, three spellings out, and anything that could clash i
   assert.deepEqual(names('invoice-line'), { kebab: 'invoice-line', snake: 'invoice_line', pascal: 'InvoiceLine' })
   for (const bad of ['', 'ab', 'Invoice', '1abc', 'a--b', 'abc-', 'domain', 'app', 'tests', 'has space']) assert.match(nameProblem(bad) ?? '', /is not a usable feature name/, bad)
   assert.equal(nameProblem('invoice-line'), null)
+  for (const layered of ['http-client', 'infra-sync', 'app-store', 'order-domain']) assert.match(nameProblem(layered) ?? '', /contains the layer word/, layered)
+  assert.equal(nameProblem('happy-path'), null, 'a word that merely starts like a layer is fine')
+  for (const py of ['class', 'import', 'async', 'json', 'logging', 'types', 'queue', 'email']) assert.match(nameProblem(py, 'python') ?? '', /Python keyword or a standard-library module/, py)
+  assert.equal(nameProblem('json', 'node'), null, 'the Python rule is for the Python stack')
 })
 
 for (const s of STACKS) {
@@ -92,7 +99,7 @@ for (const s of STACKS) {
     assert.equal(sdlc(other, ['arch', 'approve'], { env: HUMAN }).code, 0)
     const refused = sdlc(other, ['slice', 'scaffold', s.feature])
     assert.equal(refused.code, 1)
-    assert.match(refused.stderr, /approved layers do not include the slice's/)
+    assert.match(refused.stderr, /approved layers do not include the slice's \(layer domain src\/\*\/domain\/\*\*/)
     assert.ok(!fs.existsSync(path.join(other, s.domain)), 'nothing was written')
   })
 
@@ -135,6 +142,75 @@ for (const s of STACKS) {
     assert.match(stop.reason, /layering[\s\S]*must not import infra/)
   })
 }
+
+test('a name holding a layer word is refused before anything is written, so the scaffold cannot break its own layers', () => {
+  const repo = repoFor('node')
+  const r = sdlc(repo, ['slice', 'scaffold', 'http-client'])
+  assert.equal(r.code, 1)
+  assert.match(r.stderr, /contains the layer word "http"/)
+  assert.ok(!fs.existsSync(path.join(repo, 'src/http-client')))
+  assert.match(sdlc(repoFor('python'), ['slice', 'scaffold', 'json']).stderr, /standard-library module/)
+})
+
+test('scaffold writes nothing through a dangling symlink, and undoes a half-written feature', () => {
+  const repo = repoFor('node')
+  fs.mkdirSync(path.join(repo, 'src/invoice/domain'), { recursive: true })
+  fs.symlinkSync(path.join(repo, 'outside.txt'), path.join(repo, 'src/invoice/domain/invoice.js'))
+  const r = sdlc(repo, ['slice', 'scaffold', 'invoice'])
+  assert.equal(r.code, 1)
+  assert.match(r.stderr, /not overwriting: src\/invoice\/domain\/invoice\.js already exists/)
+  assert.ok(!fs.existsSync(path.join(repo, 'outside.txt')), 'nothing was written through the link')
+  assert.ok(!fs.existsSync(path.join(repo, 'src/invoice/app')), 'and nothing else was written either')
+  // a target that cannot be written part-way leaves no partial feature
+  const other = repoFor('node')
+  fs.mkdirSync(path.join(other, 'src/billing'), { recursive: true })
+  fs.writeFileSync(path.join(other, 'src/billing/infra'), 'a file where a directory must go')
+  const bad = sdlc(other, ['slice', 'scaffold', 'billing'])
+  assert.equal(bad.code, 1)
+  assert.match(bad.stderr, /scaffold stopped and removed what it wrote/)
+  assert.ok(!fs.existsSync(path.join(other, 'src/billing/domain')), 'what was written first was removed')
+  assert.equal(fs.readFileSync(path.join(other, 'src/billing/infra'), 'utf8'), 'a file where a directory must go', 'what was already there is untouched')
+})
+
+test('compatibility is judged on the approved layers themselves: a repo that allows more is fine, one that allows less is refused', () => {
+  const approve = (stack: string, block: string): string => {
+    const repo = repoFor(stack)
+    fs.mkdirSync(path.join(repo, '.rig/product'), { recursive: true })
+    fs.writeFileSync(path.join(repo, '.rig/product/architecture.md'), `# Architecture\n\n## Layers\n\n\`\`\`rig-layers\n${block}\n\`\`\`\n`)
+    assert.equal(sdlc(repo, ['arch', 'approve'], { env: HUMAN }).code, 0)
+    return repo
+  }
+  const FOUR = 'layer domain src/*/domain/**\nlayer app src/*/app/**\nlayer infra src/*/infra/**\nlayer http src/*/http/**'
+  const more = approve('node', `${FOUR}\nallow app -> domain, infra\nallow infra -> domain\nallow http -> app, domain, infra`)
+  assert.equal(sdlc(more, ['slice', 'scaffold', 'invoice']).code, 0, 'allowing more than the slice needs is compatible')
+  const exact = approve('node', `${FOUR}\nallow app -> domain\nallow infra -> domain\nallow http -> app, domain`)
+  assert.equal(sdlc(exact, ['slice', 'scaffold', 'invoice']).code, 0, 'a layer that bans nothing extra is not wrongly refused')
+  const less = approve('node', `${FOUR}\nallow infra -> domain\nallow http -> app`)
+  const r = sdlc(less, ['slice', 'scaffold', 'invoice'])
+  assert.equal(r.code, 1)
+  assert.match(r.stderr, /allow app -> domain; allow http -> domain/)
+})
+
+test('slice gen puts the layers under an existing "## Layers" heading that has no block, and says earlier approvals still apply', () => {
+  const repo = repoFor('node')
+  fs.mkdirSync(path.join(repo, '.rig/product'), { recursive: true })
+  fs.writeFileSync(path.join(repo, '.rig/product/architecture.md'), '# Architecture\n\n## Context\nx\n\n## Layers\n\nThe layers, in prose.\n\n## Data\ny\n')
+  const r = sdlc(repo, ['slice', 'gen'])
+  assert.equal(r.code, 0, r.stderr)
+  const text = fs.readFileSync(path.join(repo, '.rig/product/architecture.md'), 'utf8')
+  assert.equal(text.match(/## Layers/g)?.length, 1, 'one heading, not two')
+  assert.match(text, /## Layers\n\n```rig-layers\nlayer domain/)
+  assert.match(text, /The layers, in prose\./, 'the architect\'s text is kept')
+})
+
+test('the node scaffold says when package.json is not ES modules', () => {
+  const repo = repoFor('node')
+  fs.writeFileSync(path.join(repo, 'package.json'), '{ "name": "x", "type": "commonjs" }\n')
+  assert.match(sdlc(repo, ['slice', 'scaffold', 'invoice']).stdout, /note: this slice is ES modules: set "type": "module"/)
+  const ok = repoFor('node')
+  fs.writeFileSync(path.join(ok, 'package.json'), '{ "name": "x", "type": "module" }\n')
+  assert.doesNotMatch(sdlc(ok, ['slice', 'scaffold', 'invoice']).stdout, /note:/)
+})
 
 test('a stack with no slice says so instead of failing in a confusing way', () => {
   const repo = repoFor('go')

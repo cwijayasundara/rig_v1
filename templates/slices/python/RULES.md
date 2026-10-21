@@ -15,3 +15,5 @@ Conventions the exemplar shows:
 - Wire things at the edge or in a composition file: `make_handler(<Feature>Service(MemoryStore()))`.
 
 Start a new feature with `node .rig/bin/sdlc.ts slice scaffold <name>` (it never overwrites a file). When this repo's own layout differs, follow the repo and say so.
+
+The exemplar needs Python 3.8 or newer.

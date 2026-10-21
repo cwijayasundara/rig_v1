@@ -8,5 +8,5 @@ class MemoryStore:
     def save(self, item: dict) -> None:
         self._items[item["id"]] = item
 
-    def get(self, id: str):
-        return self._items.get(id)
+    def get(self, item_id: str):
+        return self._items.get(item_id)
