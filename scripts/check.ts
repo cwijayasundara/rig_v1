@@ -14,7 +14,7 @@ import { withBaseTree } from './basetree.ts'
 import { activeSlug, approvalState, changeType } from './lifecycle.ts'
 import { approvedLayers } from './arch.ts'
 import { journeyFindings, draftApps } from './app.ts'
-import { scopeFindings } from './scope.ts'
+import { scopeFindings, intentScope } from './scope.ts'
 import { RATCHET_FILE, lastNumber, loadRatchets, judge, tighten, type RatchetWrite } from './counts.ts'
 import { isRegistryShape, parseRegistry, defaultRegistry, updateKnownRed, activeSensors, commandFor, builtinOptions, inertSensors, type Registry, type RegistrySensor, type Cadence, type Inert } from './registry.ts'
 import { frozenFindings, runContracts } from './contracts.ts'
@@ -218,11 +218,13 @@ function shipVerdicts(slug: string, config: Registry, diffs: FileDiff[], base: s
 const onDisk = (f: string): string => read(path.join(ROOT, f))
 
 // The built-in diff sensors every point runs, edit time included; harness-tamper is added by the callers that judge a turn or more.
-function builtinFindings(diffs: FileDiff[], config: Registry, rules: Rule[], lineCounts: Record<string, number>, point: Parameters<typeof size>[3], slugs: string[], touched: string[], after: (f: string) => string): Finding[] {
+function builtinFindings(diffs: FileDiff[], config: Registry, rules: Rule[], lineCounts: Record<string, number>, point: Parameters<typeof size>[3], slugs: string[], touched: string[], after: (f: string) => string, base: string | null): Finding[] {
+  // At ship and CI the scope comes from the base branch (the PR cannot edit it); a slug with no intent there falls back to the working tree.
+  const scopeOf = (slug: string): ReturnType<typeof intentScope> => ((point === 'ship' || point === 'ci') && base ? intentScope(slug, rel => showAt(base, rel) ?? '') : null) ?? intentScope(slug)
   const pattern = withoutFixtures(diffs, config)
   return [
     ...testTamper(pattern, config), ...suppressions(pattern, config), ...layering(pattern, config), ...size(diffs, config, lineCounts, point),
-    ...secretsInDiff(pattern), ...rulesSensor(pattern, rules), ...frozenFindings(slugs, touched, after), ...scopeFindings(diffs, slugs, config.paths, point),
+    ...secretsInDiff(pattern), ...rulesSensor(pattern, rules), ...frozenFindings(slugs, touched, after), ...scopeFindings(diffs, slugs, config.paths, point, scopeOf),
   ]
 }
 
@@ -232,7 +234,7 @@ export function runChecks(i: CheckInput): CheckResult {
   const point = i.point === 'commit' ? 'stop' : i.point
   const after = i.after ?? onDisk
   const findings: Finding[] = [
-    ...builtinFindings(diffs, config, i.rules, fileLines(diffs.filter(d => d.status !== 'D').map(d => d.file), after), point, i.slugs, diffs.flatMap(d => d.from ? [d.file, d.from] : [d.file]), after),
+    ...builtinFindings(diffs, config, i.rules, fileLines(diffs.filter(d => d.status !== 'D').map(d => d.file), after), point, i.slugs, diffs.flatMap(d => d.from ? [d.file, d.from] : [d.file]), after, i.base),
     ...harnessTamper(diffs, { point, toolEdited: i.toolEdited, before: i.before, after }),
   ]
   // A diff whose plan the person approved is big by design: the diff-size limit warns instead of blocking.
@@ -257,7 +259,7 @@ export function editFindings(rel: string): Finding[] {
   if (!snap) return []
   const { registry: config, rules } = loadConfig()
   const slugs = [activeSlug()].filter((s): s is string => Boolean(s))
-  return applyWaivers(builtinsApplied(builtinFindings(fileDiff(snap, rel), config, rules, fileLines([rel]), 'edit', slugs, [rel], onDisk), config), slugs).findings
+  return applyWaivers(builtinsApplied(builtinFindings(fileDiff(snap, rel), config, rules, fileLines([rel]), 'edit', slugs, [rel], onDisk, null), config), slugs).findings
 }
 
 // The changes a diff carries evidence for, as CI reads them.

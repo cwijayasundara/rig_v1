@@ -29,6 +29,7 @@ import { cmdLearn } from './learn.ts'
 import { cmdReport } from './report.ts'
 import { cmdArch, layerState, layerStateText } from './arch.ts'
 import { cmdQueue } from './queue.ts'
+import { intentScope } from './scope.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'
 import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, prdPath, chartFiles } from './chart.ts'
 import { journey, journeyText } from './journey.ts'
@@ -244,6 +245,7 @@ function cmdSensors(): void {
     ...(s.inert.length ? [`not configured (passing checks nothing): ${s.inert.map(i => `${i.id} (${i.reason})`).join('; ')}`] : []),
     `layers: ${s.layers}`,
     `journeys: ${appStates().map(a => `${a.name} ${a.state}`).join(', ') || 'none'}`,
+    `scope: ${slug && intentScope(slug) ? `${slug} is checked against ${intentScope(slug)?.scope.join(', ')}` : 'not checked (the active change has no scope: in its product intent)'}`,
     `ratchets: ${Object.entries(registry.ratchets ?? {}).map(([k, v]) => `${k} ${v}${registry.sensors.some(x => x.id === k && x.ratchet) ? '' : ' (no sensor ratchets it now)'}`).join(', ') || 'none'}`,
     `known red: ${registry.knownRed.join(', ') || 'none'}`,
     `waivers (${slug ?? 'no change'}): ${waivers.map(w => `${w.sensor} ${w.file} ${w.reason} (by ${!w.by || w.by === 'unknown' ? 'no owner' : w.by}, ${Number.isFinite(ageDays(w.at)) ? `${ageDays(w.at)}d` : 'age unknown'}, ${expiryText(w)}${ageDays(w.at) > STALE_WAIVER_DAYS ? ', stale: review it' : ''})`).join('; ') || 'none'}`,

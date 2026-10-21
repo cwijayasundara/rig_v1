@@ -1,9 +1,11 @@
 // The scope check (harness readiness 1.3): a charted intent says which paths its change may touch; a diff outside them is a finding.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { scopeFindings } from './scope.ts'
+import { scopeFindings, fmList, intentScope } from './scope.ts'
 import { defaultRegistry } from './registry.ts'
 import { type FileDiff } from './model.ts'
+import fs from 'node:fs'
+import path from 'node:path'
 import { makeRepo, sdlc, hook, write, gitIn } from './testkit.ts'
 
 const fd = (file: string): FileDiff => ({ file, status: 'M', added: [{ n: 1, text: 'x' }], removed: [] })
@@ -29,6 +31,32 @@ test('a change with no scoped intent is not checked, and several changes in one 
   assert.deepEqual(run(['anything.js'], []), [])
   assert.deepEqual(run(['src/cart/a.js', 'src/pay/b.js'], ['cart-add', 'pay-now']), [])
   assert.deepEqual(run(['src/pay/b.js'], ['cart-add']).map(f => f.file), ['src/pay/b.js'], 'cart-add alone does not cover pay')
+})
+
+test('the intent frontmatter reads in every form a person might write it, and drops comments', () => {
+  const doc = (body: string): string => `---\nsprint: 1\n${body}\n---\n# t\n`
+  assert.deepEqual(fmList(doc('scope: [src/cart/**, test/**]'), 'scope'), ['src/cart/**', 'test/**'])
+  assert.deepEqual(fmList(doc('scope: src/cart/**'), 'scope'), ['src/cart/**'])
+  assert.deepEqual(fmList(doc('scope: ["./src/cart/", \'src/pay\']'), 'scope'), ['src/cart', 'src/pay'], 'quotes, ./ and a trailing slash')
+  assert.deepEqual(fmList(doc('scope: [src/cart/**] # the cart only'), 'scope'), ['src/cart/**'], 'a trailing comment')
+  assert.deepEqual(fmList(doc('scope:\n  - src/cart/**\n  - src/pay\ntouches: []'), 'scope'), ['src/cart/**', 'src/pay'], 'a multi-line list')
+  assert.deepEqual(fmList(doc('touches: []'), 'scope'), [])
+  assert.equal(intentScope('x', () => doc('scope: []')), null, 'an empty scope is no scope')
+})
+
+test('a bare directory covers what is under it, and root config, lockfiles, CI files and a pack\'s docs are not product code', () => {
+  const s = (files: string[]) => scopeFindings(files.map(fd), ['bare'], paths, 'ship', () => ({ scope: ['src/cart'], touches: [] })).map(f => f.file)
+  assert.deepEqual(s(['src/cart/a.js', 'src/cart/deep/b.js', 'src/cart']), [])
+  assert.deepEqual(s(['package.json', 'package-lock.json', 'pnpm-lock.yaml', 'tsconfig.json', '.github/workflows/ci.yml', 'README.md', 'docs/guide.md']), [])
+  assert.deepEqual(s(['index.js', 'src/cartography/x.js']), ['index.js', 'src/cartography/x.js'], 'root code and a sibling that shares a name prefix are still outside')
+})
+
+test('a rename is judged at both ends', () => {
+  const rename = (from: string, file: string): FileDiff => ({ file, from, status: 'R', added: [], removed: [] })
+  const out = (d: FileDiff) => scopeFindings([d], ['cart-add'], paths, 'ship', s => scopes[s] ?? null).map(f => f.file)
+  assert.deepEqual(out(rename('src/cart/a.js', 'src/cart/b.js')), [])
+  assert.deepEqual(out(rename('src/orders/a.js', 'src/cart/a.js')), ['src/orders/a.js'], 'moved in from outside the scope')
+  assert.deepEqual(out(rename('src/cart/a.js', 'src/orders/a.js')), ['src/orders/a.js'], 'moved out of it')
 })
 
 // ---------- end to end ----------
@@ -79,4 +107,22 @@ test('scope: a touches line, or a waiver from a person, clears the finding; a re
   gitIn(none, 'add', '-A')
   gitIn(none, 'commit', '-qm', 'work')
   assert.deepEqual(findings(ship(none)), [], 'no scope, no check')
+})
+
+test('scope: at ship the scope is read from the base branch, so a PR cannot widen or delete its own', () => {
+  const repo = scoped('[src/cart/**]')
+  write(repo, 'src/orders/orders.js', 'export const b = 2\n')
+  write(repo, '.rig/product/intents/cart-add.md', INTENT('[src/cart/**, src/orders/**]'))
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', 'work, and widen the scope in the same PR')
+  assert.deepEqual(findings(ship(repo)).map(f => f.file), ['src/orders/orders.js'], 'the widened scope in the PR is ignored')
+  fs.rmSync(path.join(repo, '.rig/product/intents/cart-add.md'))
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', 'delete the intent')
+  assert.deepEqual(findings(ship(repo)).map(f => f.file), ['src/orders/orders.js'], 'deleting the intent does not switch the check off')
+})
+
+test('scope: `sdlc sensors` says whether the active change is checked', () => {
+  assert.match(sdlc(scoped('[src/cart/**]'), ['sensors']).stdout, /scope: cart-add is checked against src\/cart\/\*\*/)
+  assert.match(sdlc(scoped('[]'), ['sensors']).stdout, /scope: not checked \(the active change has no scope: in its product intent\)/)
 })
