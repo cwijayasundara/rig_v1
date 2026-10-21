@@ -34,7 +34,7 @@ The biggest lever is **bounded context**. Everything below follows from that.
 
 ```
 skills/      the stages, /rig:* (start plan build test pr rule init, plus human-only approve and waive), prompts only
-agents/      evaluator (advisory review, once per change in /rig:pr)
+agents/      evaluator (sprint chart review; a change's diff is reviewed by /code-review and /security-review in /rig:pr)
 hooks/       hooks.json = four settings hooks, none on Bash (work in -p and CI)
 scripts/     zero-dependency Node, no build step; sdlc.ts is the CLI; check.ts is the one checker
 templates/   CI workflow (rig-check), settings.json, stacks/ (stack packs), brief.md, REVIEW.md
@@ -76,7 +76,7 @@ Evidence files (`approval.json`, waivers, `runs.jsonl`, `verify.json`, `pr.md`, 
 | Bounded context | Small fresh contexts per subagent (briefs of ≤ 60 lines); `/compact` rather than a handoff skill |
 | Context sensor: a session whose first call is over 25k tokens, or a turn over 150k, gets a toast naming the cause (`scripts/context.ts`) | Live guard for the 50% finding above, not a retrospective; two review systems per turn is the single biggest waste found (proposal 2026-10-08) |
 | Sonnet main thread, Opus advisor **off** | Template sets `CLAUDE_CODE_DISABLE_ADVISOR_TOOL` (the advisor was a third of each run's cost; a user-level `advisorModel` otherwise still applies) |
-| One review per change | One advisory evaluator review in `/rig:pr`; findings below confidence 80 dropped |
+| One review per change | One native `/code-review` + `/security-review` on the delta before the PR opens; findings below confidence 80 dropped |
 | Stamp, don't re-run | `verify` runs every commit and ci sensor once against the current tree and writes `verify.json`, tied to the working tree; `/rig:pr` checks it instead of re-running, and a stale one re-runs. CI reads no stamp |
 | Lean plans | No code in plans |
 | Plugin diet | Project `enabledPlugins` turns off unrelated plugins |

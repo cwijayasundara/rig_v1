@@ -22,7 +22,7 @@ Replace rig's custom diff review (the `rig:evaluator` agent, diff mode) with Cla
 ## Decisions
 1. Keep the evaluator for chart mode only. Its diff-mode text is removed.
 2. Rig review rules live in the target repo's `CLAUDE.md` (decision 2), because local `/code-review` reads `CLAUDE.md` and ignores `REVIEW.md`. Contract and non-goal checks are therefore advisory text; B-number coverage and frozen contracts remain enforced by sensors.
-3. Effort: `medium` by default, `high` for tier L, always passed explicitly (the command otherwise reuses the last typed level). *Builder's call.*
+3. Effort: `medium` by default, `high` when plan.md `## Contracts` lists a contract change (rig has no tiers; tier is this repo's working convention), always passed explicitly (the command otherwise reuses the last typed level). *Builder's call.*
 4. Order in `/rig:pr`: verify is fresh and passing, review and fix, verify again if anything was fixed, then `sdlc.ts pr` commits, pushes and opens the PR once.
 
 ## Flow (skills/pr/SKILL.md)

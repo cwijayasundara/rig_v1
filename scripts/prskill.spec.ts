@@ -18,7 +18,7 @@ test('pr skill reviews the delta since the verified base, and passes an explicit
   const t = pr()
   assert.match(t, /all changes since <base>, committed and uncommitted/)
   assert.match(t, /`medium`/)
-  assert.match(t, /`high`[^\n]*tier L/)
+  assert.match(t, /`high`[^\n]*## Contracts/)
 })
 
 test('pr skill no longer launches the evaluator', () => {

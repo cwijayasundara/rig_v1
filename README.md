@@ -138,7 +138,7 @@ These are the principles, and [DESIGN.md](DESIGN.md) §2 gives the reason for ea
  │                rule init · approve waive (human only)                  │
  ├────────────────────────────────────────────────────────────────────────┤
  │ AGENTS (2)     architect (Opus, charts a sprint)                       │  small fresh contexts
- │                evaluator (Opus, one advisory review per change)        │
+ │                evaluator (Opus, reviews each sprint chart)             │
  ├────────────────────────────────────────────────────────────────────────┤
  │ HOOKS          session-start · prompt-submit · post-edit · stop        │  guardrails: run in
  │                + model recording (agent launch/done, /model switch)    │  -p and CI, zero tokens
@@ -177,8 +177,8 @@ Dependencies point downward and evidence flows upward. Skills never decide anyth
  /rig:test                       sdlc.ts verify → verify.json: every commit and ci sensor,
      │                           contracts, traceability, red-proof
      ▼
- /rig:pr                         commit on sdlc/<slug>, push, open the PR (or stay local-only);
-     │                           one advisory evaluator review → review.md
+ /rig:pr                         /code-review + /security-review on the delta, fix, then commit on sdlc/<slug>,
+     │                           push, open the PR (or stay local-only); review.md rides in the PR
      ▼
  CI: rig-check  (base branch's checker)  ─►  merge
 
@@ -202,7 +202,7 @@ A change's status comes from which of its files exist: spec, plan, approve, buil
 | `/rig:plan` | Writing `plan.md` for a specced change. | tokens |
 | `/rig:build` | Approved spec and plan: build test-first. | tokens |
 | `/rig:test` | After the build: run `verify` and record `verify.json`. | mostly zero-token |
-| `/rig:pr` | Ship: commits, pushes, opens the PR, then one evaluator review. | tokens |
+| `/rig:pr` | Ship: native /code-review and /security-review on the delta, fixes, then one commit, push and PR. | tokens |
 | `/rig:chart <N>` | Architect: the sprint's PRD becomes intents, architecture and ADRs on branch `rig/chart-<N>`. | tokens (Opus) |
 | `/rig:testplan <N>` | QA lead: the sprint's test plan, cases and data. | tokens |
 | `/rig:wiki init \| build \| status \| refresh \| verify` | Build and keep the code wiki current. `status` is free and only warns. | tokens, bounded by `--max-usd` |
@@ -347,7 +347,7 @@ Small work during a sprint (a hotfix, a chore) still goes straight to `/rig:star
 2. **Optional:** write `.rig/product/brief.md` from [`templates/brief.md`](templates/brief.md) (context, non-goals, architecture, constraints). `/rig:start` reads the brief and keeps each change inside its non-goals.
 3. **Commit** `README.md`, `.rig/`, `.claude/` and `CLAUDE.md`.
 4. **First change:** run `/rig:start "add user signup"`, then `/rig:plan`. Read `spec.md` and `plan.md` in `.rig/changes/<slug>/`, then type `/rig:approve <slug>` yourself.
-5. **Build:** run `/rig:build`. It works test-first on `sdlc/<slug>` and continues through `/rig:test` and `/rig:pr`. Review the PR and the evaluator's `review.md`, then merge.
+5. **Build:** run `/rig:build`. It works test-first on `sdlc/<slug>` and continues through `/rig:test` and `/rig:pr`. Review the PR and `review.md` (the native review's findings), then merge.
 
 ### Path B: brownfield, one change at a time
 
@@ -417,7 +417,7 @@ Long builds belong in a Claude Code cloud session (claude.ai/code or `claude --c
 |---|---|
 | `skills/` (13) | The stages, run by the main thread (Sonnet). Only `/rig:learn` pins a model, because a model switch re-reads the whole conversation uncached. |
 | `agents/architect.md` | Opus. Charts a sprint; never edits source code. |
-| `agents/evaluator.md` | Opus. One read-only advisory review per change, in `/rig:pr`. |
+| `agents/evaluator.md` | Opus. Reviews each sprint chart in `/rig:chart`; diffs go to the native `/code-review`. |
 | `hooks/hooks.json` | Session start, prompt submit, post-edit and Stop guardrails, plus model recording. None runs on Bash, and all of them hold in `-p`. |
 | `scripts/*.ts` | Zero-dependency Node with no build step. The main files: `sdlc` (the CLI), `core` (paths, change state, approvals), `model` (the pure diff, config and glob model), `registry` (sensors.json and policy), `sensors` (the pure sensors), `check` (one entry point for Stop, git hooks and CI), `hooks`, `verify`, `pr`, `chart` / `chartcheck`, `wiki` / `wikicite`, `learn*`, `vendor`, `githooks`. |
 | `guides/` | Short per-area guides (contracts, engineering, testing). |
