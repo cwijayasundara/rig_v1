@@ -48,3 +48,9 @@ Replace rig's custom diff review (the `rig:evaluator` agent, diff mode) with Cla
 - Can a plugin skill start `/code-review` and `/security-review` (Skill tool or plain-language request) and read the findings back? If not, fall back to launching a general-purpose agent whose brief says to run them.
 - Whether `/security-review` accepts a base target or only the pending changes on the branch. If only the latter, the delta is the branch diff, which is the same set.
 - Verification: `npm test` plus `npm run typecheck`; a scripted e2e stage for the new `/rig:pr` order.
+
+## Resolved by the spike (2026-10-21, Claude Code 2.1.306)
+- Resolved: `/code-review medium all changes since <base-sha>, committed and uncommitted` reviews exactly the delta, uncommitted and untracked files included, headless. Target text is free-form for non-ultra runs.
+- Resolved: `/code-review` returns findings as `{file, line, summary, failure_scenario}` with no severity or category, so `/rig:pr` assigns both when it writes `review.md`.
+- Resolved: `/security-review` needs an `origin` remote. In a repo without one it prints nothing headless (or fails on setup when asked in plain words). Rig supports local-only repos, so when it reports it cannot run, `/rig:pr` runs the security pass through a `general-purpose` agent (`model: sonnet`) briefed with the same delta and a security-only scope (injection, authn/authz, secrets, unsafe input, crypto, path traversal). It never skips the pass silently.
+- Resolved: both commands can be requested in plain words from a session; no Skill-tool call is needed.
