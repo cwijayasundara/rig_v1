@@ -120,3 +120,39 @@ test('answer(): the person\'s reply tells the model to take its recommended defa
   assert.match(prompts[0].prompt, /which file\?/)
   assert.equal(prompts[0].o.cont, true)
 })
+
+test('build(): when the build stops asking the person to re-approve a plan it changed, the driver re-approves as the person would and builds on', async () => {
+  const calls = []
+  const state = { status: 'approve' }
+  const sb = {
+    run: () => ({ status: 0, stdout: result(0.1), stderr: '' }),
+    read: () => '# Plan\n\n## Decisions\n- test/shop.test.js B3 gains href. Needs re-approval.\n\n## Open questions\nnone\n',
+    sdlc: (args, o = {}) => {
+      calls.push(['sdlc', args[0], Boolean(o.human)])
+      if (args[0] === 'approve') { state.status = 'build'; return { status: 0, stdout: 'approved', stderr: '' } }
+      return { status: 0, stdout: JSON.stringify({ changes: [{ slug: 'c', status: state.status }] }), stderr: '' }
+    },
+  }
+  const sessions = { sessions: [], run: (label, prompt) => { calls.push(['session', label, prompt.split(' ')[0]]); if (label.endsWith('build-2') && state.status === 'build') state.status = 'review'; return {} } }
+  const d = liveDriver(sb, { id: 'S9' }, { sessions })
+  await d.build('c')
+  assert.ok(calls.some(c => c[0] === 'sdlc' && c[1] === 'approve' && c[2] === true), 'a person approves')
+  assert.deepEqual(calls.filter(c => c[0] === 'session').map(c => c[1]), ['S9-build', 'S9-build-2'])
+  assert.equal(d.reapproved, 1)
+  assert.match(d.reapprovalNotes[0], /test\/shop\.test\.js B3 gains href/, 'what the stand-in approved is recorded')
+})
+
+test('build(): a re-approval the harness refuses stops the run with the reason instead of building on an unapproved plan', async () => {
+  const sb = { read: () => '', sdlc: args => (args[0] === 'approve' ? { status: 1, stdout: '', stderr: 'resolve the open question(s) first' } : { status: 0, stdout: JSON.stringify({ changes: [{ slug: 'c', status: 'approve' }] }), stderr: '' }) }
+  const calls = []
+  const d = liveDriver(sb, { id: 'S9' }, { sessions: { sessions: [], run: label => { calls.push(label); return {} } } })
+  await assert.rejects(d.build('c'), /re-approval refused: resolve the open question/)
+  assert.deepEqual(calls, ['S9-build'], 'no second build session')
+})
+
+test('build(): a change already in review is not re-approved', async () => {
+  const sb = { sdlc: (args) => (args[0] === 'approve' ? { status: 1, stdout: '', stderr: 'unexpected' } : { status: 0, stdout: JSON.stringify({ changes: [{ slug: 'c', status: 'review' }] }), stderr: '' }) }
+  const d = liveDriver(sb, { id: 'S9' }, { sessions: { sessions: [], run: () => ({}) } })
+  await d.build('c')
+  assert.equal(d.reapproved, 0)
+})

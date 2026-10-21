@@ -58,9 +58,20 @@ export function liveDriver(sb, phase, { sessions }) {
     async answer(slug, why) {
       sessions.run(`${phase.id}-answer`, `/rig-plan ${slug}. The person answers your open questions: for each one take the option you recommend, record it under ## Decisions in spec.md and plan.md, and set ## Open questions to none in both, then stop for approval. Open now:\n${why}`, { cont: true })
     },
+    reapproved: 0,
+    reapprovalNotes: [], // the plan's Decisions at each re-approval, so a reader of the results sees what the stand-in approved
     async build(slug) {
       sessions.run(`${phase.id}-build`, `/rig-build ${slug}. The person approved the plan: build test-first, then /rig-test and /rig-pr in this turn.`, { cont: true })
       const st = () => (JSON.parse(sb.sdlc(['status', '--json']).stdout || '{}').changes ?? []).find(c => c.slug === slug)?.status
+      // A build that must touch a file outside the approved plan records it and stops for the person. The person reads the note and
+      // re-approves (the same stand-in as answer()); the build then carries on in the next session.
+      if (st() === 'approve') {
+        const decisions = /^## Decisions\n([\s\S]*?)(?=^## |$(?![\s\S]))/m.exec(sb.read?.(`.rig/changes/${slug}/plan.md`) ?? '')?.[1]?.trim() ?? ''
+        const a = sb.sdlc(['approve', slug], { human: true })
+        if (a.status !== 0) throw new Error(`re-approval refused: ${(a.stderr || a.stdout).trim().split('\n')[0]}`)
+        this.reapproved++
+        this.reapprovalNotes.push(decisions.slice(0, 300))
+      }
       if (st() !== 'review') sessions.run(`${phase.id}-build-2`, `/rig-build ${slug}. Continue from where it stopped: finish the tests, then /rig-test and /rig-pr until the PR is open.`, { cont: true })
     },
   }
