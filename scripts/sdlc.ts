@@ -39,6 +39,8 @@ import { TYPES, toType, changeDir, newChange, setActive, activeSlug, status, nex
 // NaN (a missing or unreadable date) is treated as infinitely old, so it can never hide from the stale check.
 const ageDays = (at: string): number => { const n = Math.floor((Date.now() - Date.parse(at)) / 86_400_000); return Number.isFinite(n) ? Math.max(0, n) : Infinity }
 const STALE_WAIVER_DAYS = 30
+const MAX_WAIVER_DAYS = 180
+const expiryText = (w: Waiver): string => (!w.expires ? 'no expiry' : Date.parse(w.expires) <= Date.now() ? 'expired' : `expires in ${Math.max(1, Math.ceil((Date.parse(w.expires) - Date.now()) / 86_400_000))}d`)
 
 function cmdInit(args: Args): void {
   // Ship and the PR gate read git, so a directory outside any repo gets one.
@@ -206,9 +208,11 @@ function cmdWaive(args: Args): void {
   const commandIds = loadConfig().registry.sensors.filter(s => s.cmd).map(s => s.id)
   if (!SENSOR_NAMES.includes(sensor) && !commandIds.includes(sensor)) fail(`unknown sensor "${sensor}"; known: ${[...SENSOR_NAMES, ...commandIds].join(', ')}`)
   const by = ownerOrFail(args, 'waivers')
-  const row: Waiver = { slug, sensor, file, reason: reason.join(' '), by, at: now() }
+  const days = optString(args, 'days') === undefined ? 30 : Number(optString(args, 'days'))
+  if (!Number.isInteger(days) || days < 1 || days > MAX_WAIVER_DAYS) fail(`--days must be a whole number from 1 to ${MAX_WAIVER_DAYS}: a waiver ends, and is renewed by waiving again`)
+  const row: Waiver = { slug, sensor, file, reason: reason.join(' '), by, at: now(), expires: new Date(Date.now() + days * 86_400_000).toISOString() }
   fs.appendFileSync(WAIVERS, JSON.stringify(row) + '\n')
-  out(`waived ${sensor} for ${file} in ${slug}: ${row.reason} (by ${by})`)
+  out(`waived ${sensor} for ${file} in ${slug}: ${row.reason} (by ${by}, expires in ${days} day${days === 1 ? '' : 's'})`)
 }
 
 const unresolvedFindings = (): Finding[] => {
@@ -242,7 +246,7 @@ function cmdSensors(): void {
     `journeys: ${appStates().map(a => `${a.name} ${a.state}`).join(', ') || 'none'}`,
     `ratchets: ${Object.entries(registry.ratchets ?? {}).map(([k, v]) => `${k} ${v}${registry.sensors.some(x => x.id === k && x.ratchet) ? '' : ' (no sensor ratchets it now)'}`).join(', ') || 'none'}`,
     `known red: ${registry.knownRed.join(', ') || 'none'}`,
-    `waivers (${slug ?? 'no change'}): ${waivers.map(w => `${w.sensor} ${w.file} ${w.reason} (by ${!w.by || w.by === 'unknown' ? 'no owner' : w.by}, ${Number.isFinite(ageDays(w.at)) ? `${ageDays(w.at)}d` : 'age unknown'}${ageDays(w.at) > STALE_WAIVER_DAYS ? ', stale: review it' : ''})`).join('; ') || 'none'}`,
+    `waivers (${slug ?? 'no change'}): ${waivers.map(w => `${w.sensor} ${w.file} ${w.reason} (by ${!w.by || w.by === 'unknown' ? 'no owner' : w.by}, ${Number.isFinite(ageDays(w.at)) ? `${ageDays(w.at)}d` : 'age unknown'}, ${expiryText(w)}${ageDays(w.at) > STALE_WAIVER_DAYS ? ', stale: review it' : ''})`).join('; ') || 'none'}`,
   ].join('\n'))
 }
 

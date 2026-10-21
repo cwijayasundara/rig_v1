@@ -147,7 +147,9 @@ function ciScope(slug: string, base: string | null | undefined): ((file: string 
 // The PR supplies its own waivers.jsonl rows, so at CI harness-tamper on harness files and contracts findings are never waivable: harness changes land on the trunk first, and the behavioural gate stays independent.
 function applyWaivers(findings: Finding[], slugs: string[], ci?: { base: string | null | undefined }): CheckResult {
   const scopes = new Map(slugs.map(s => [s, ci ? ciScope(s, ci.base) : () => true] as const))
-  const waivers = readJsonl<Waiver>(WAIVERS).filter(w => slugs.includes(w.slug) && scopes.get(w.slug) !== null)
+  // An exception ends: past its expiry a waiver no longer covers anything, so the finding it hid comes back.
+  const live = (w: Waiver): boolean => !w.expires || !(Date.parse(w.expires) <= Date.now())
+  const waivers = readJsonl<Waiver>(WAIVERS).filter(w => slugs.includes(w.slug) && scopes.get(w.slug) !== null && live(w))
   // Never waivable: plan-gate (only a person's approval clears it); at CI also contracts and harness-tamper on harness files.
   const never = (f: Finding): boolean => f.sensor === 'plan-gate' || (Boolean(ci) && ((f.sensor === 'harness-tamper' && (!f.file || isProtected(f.file))) || f.sensor === 'contracts'))
   const waived = (f: Finding): boolean => waivers.some(w => w.sensor === f.sensor && (w.file === '*' || w.file === f.file) && !never(f) && (scopes.get(w.slug) as (file: string | undefined) => boolean)(f.file))
