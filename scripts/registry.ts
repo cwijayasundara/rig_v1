@@ -293,6 +293,6 @@ export function inertSensors(r: Registry, ruleCount: number): Inert[] {
   return [
     ...(on('layering') && !(Array.isArray(layers) && layers.length) ? [{ id: 'layering', reason: 'no layers declared in .rig/sensors.json (options.layers)' }] : []),
     ...(on('rules') && !ruleCount ? [{ id: 'rules', reason: 'no rules in .rig/rules.json' }] : []),
-    ...(on('red-proof') && !r.sensors.some(s => s.id === unit && !s.builtin && s.enabled) ? [{ id: 'red-proof', reason: `no "${unit}" command sensor to run new tests on the base` }] : []),
+    ...(on('red-proof') && !r.sensors.some(s => s.id === unit && s.cmd && s.enabled) ? [{ id: 'red-proof', reason: `no "${unit}" command sensor to run new tests on the base` }] : []),
   ]
 }

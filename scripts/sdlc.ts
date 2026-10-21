@@ -227,6 +227,7 @@ function sensorStatus(): { blocks: number; warns: number; bySensor: Record<strin
 function cmdSensors(): void {
   const s = sensorStatus()
   if (!s) return out('sdlc not initialised here')
+  const { registry } = loadConfig()
   const slug = activeSlug()
   const unresolved = unresolvedFindings()
   const waivers = readJsonl<Waiver>(WAIVERS).filter(w => w.slug === slug)
@@ -234,7 +235,7 @@ function cmdSensors(): void {
     `last gate: ${s.blocks} block(s), ${s.warns} warning(s)${Object.keys(s.bySensor).length ? ' · ' + Object.entries(s.bySensor).map(([k, v]) => `${k} ${v}`).join(', ') : ''}`,
     unresolved.length ? `unresolved:\n${formatFindings(unresolved)}` : 'unresolved: none',
     ...(s.inert.length ? [`not configured (passing checks nothing): ${s.inert.map(i => `${i.id} (${i.reason})`).join('; ')}`] : []),
-    `known red: ${loadConfig().registry.knownRed.join(', ') || 'none'}`,
+    `known red: ${registry.knownRed.join(', ') || 'none'}`,
     `waivers (${slug ?? 'no change'}): ${waivers.map(w => `${w.sensor} ${w.file} ${w.reason}`).join('; ') || 'none'}`,
   ].join('\n'))
 }

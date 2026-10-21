@@ -17,8 +17,8 @@ const withOptions = (id: string, options: Record<string, unknown>): Registry => 
 const layered = withOptions('layering', { layers: [{ from: 'src/domain/**', mustNotImport: ['infra'], why: 'the domain stays framework-free' }] })
 const RULE = { id: 'R1', pattern: 'console\\.log', message: 'no console.log', why: 'use the logger', action: 'block' as const }
 
-// id -> a seeded violation the sensor must flag, or the spec that proves it (the sensor needs git, a clock or session state).
-const SEEDED: Record<string, (() => Finding[]) | { spec: string }> = {
+// id -> a seeded violation the sensor must flag, or the titled test that proves it (the sensor needs git, a clock or session state).
+const SEEDED: Record<string, (() => Finding[]) | { spec: string; title: string }> = {
   'secrets': () => secretsInDiff([fd('src/c.js', ['const key = "AKIAABCDEFGHIJKLMNOP"'])]),
   'test-tamper': () => testTamper([fd('test/a.test.js', ["it.skip('adds', () => {})"])], defaultRegistry()),
   'suppression': () => suppressions([fd('src/a.js', ['// eslint-disable-next-line'])], defaultRegistry()),
@@ -26,16 +26,16 @@ const SEEDED: Record<string, (() => Finding[]) | { spec: string }> = {
   'size': () => size([fd('src/a.js', ['x'])], defaultRegistry(), { 'src/a.js': 401 }, 'stop'),
   'rules': () => rulesSensor([fd('src/a.js', ['console.log(1)'])], [RULE]),
   'harness-tamper': () => harnessTamper([fd('.rig/bin/sdlc.ts', ['x'])], { point: 'ci', before: () => '', after: () => '' }),
-  'red-proof': { spec: 'check.spec.ts' },
-  'traceability': { spec: 'seeded.spec.ts' },
-  'model-role': { spec: 'modelstate.spec.ts' },
+  'red-proof': { spec: 'check.spec.ts', title: 'ship: new tests that fail on the base prove red; tests that already pass there do not' },
+  'traceability': { spec: 'seeded.spec.ts', title: 'seeded: a B-number with no test blocks at ship' },
+  'model-role': { spec: 'modelstate.spec.ts', title: 'model-role warns when the main thread is off the build model or the evaluator ran on another model' },
 }
 
 test('every built-in sensor has a seeded violation it rejects, or names the spec that proves it', () => {
   assert.deepEqual(Object.keys(SEEDED).sort(), [...BUILTIN_IDS].sort(), 'a new built-in needs an entry here')
   for (const [id, proof] of Object.entries(SEEDED)) {
     if (typeof proof === 'function') assert.ok(proof().some(f => f.sensor === id), `${id} did not flag its seeded violation`)
-    else assert.ok(fs.readFileSync(path.join(import.meta.dirname, proof.spec), 'utf8').includes(id), `${proof.spec} does not mention ${id}`)
+    else assert.ok(fs.readFileSync(path.join(import.meta.dirname, proof.spec), 'utf8').includes(`test('${proof.title}'`), `${proof.spec} has no test titled "${proof.title}"`)
   }
 })
 
