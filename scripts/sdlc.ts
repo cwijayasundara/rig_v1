@@ -6,7 +6,7 @@
 // scope drift, sensors and hook decisions. This file is the CLI.
 import fs from 'node:fs'
 import path from 'node:path'
-import {
+import { whoami, ownerOrFail,
   ROOT, SDLC, CHANGES, SLUG_RE, SOFT_HOOK_FAILURE, exists, read, now, defaultBase, toPosix, out, fail, git, parseArgs, optString, listChanges, scanSecrets, checkSlug,
   WAIVERS, readJsonl, type Waiver, ensureGitignore, PLUGIN_ROOT, skillRef, sanctionWrites, readGate, type Args,
 } from './core.ts'
@@ -34,19 +34,8 @@ import { TYPES, toType, changeDir, newChange, setActive, activeSlug, status, nex
 
 // ---------- commands ----------
 
-// Who approvals, waivers and a scaffolded policy owner are recorded as: the git identity, then the OS user.
-function whoami(): string | null {
-  return git(['config', 'user.name']) || process.env.USER || process.env.USERNAME || null
-}
-
-// Every approval and waiver names the person who made it. An identity-less one is refused, not recorded as "unknown": an owner is what
-// lets a code owner or a later reader ask who stands behind it.
-function ownerOrFail(args: Args, what: string): string {
-  const by = optString(args, 'by') || whoami()
-  if (!by || by === 'unknown') fail(`${what} need an owner: set git user.name (git config user.name "<name>") or pass --by "<name>"`)
-  return by
-}
-const ageDays = (at: string): number => Math.max(0, Math.floor((Date.now() - Date.parse(at)) / 86_400_000))
+// NaN (a missing or unreadable date) is treated as infinitely old, so it can never hide from the stale check.
+const ageDays = (at: string): number => { const n = Math.floor((Date.now() - Date.parse(at)) / 86_400_000); return Number.isFinite(n) ? Math.max(0, n) : Infinity }
 const STALE_WAIVER_DAYS = 30
 
 function cmdInit(args: Args): void {
@@ -250,7 +239,7 @@ function cmdSensors(): void {
     `layers: ${s.layers}`,
     `ratchets: ${Object.entries(registry.ratchets ?? {}).map(([k, v]) => `${k} ${v}${registry.sensors.some(x => x.id === k && x.ratchet) ? '' : ' (no sensor ratchets it now)'}`).join(', ') || 'none'}`,
     `known red: ${registry.knownRed.join(', ') || 'none'}`,
-    `waivers (${slug ?? 'no change'}): ${waivers.map(w => `${w.sensor} ${w.file} ${w.reason} (by ${w.by || 'no owner'}, ${ageDays(w.at)}d${ageDays(w.at) > STALE_WAIVER_DAYS ? ', stale: review it' : ''})`).join('; ') || 'none'}`,
+    `waivers (${slug ?? 'no change'}): ${waivers.map(w => `${w.sensor} ${w.file} ${w.reason} (by ${!w.by || w.by === 'unknown' ? 'no owner' : w.by}, ${Number.isFinite(ageDays(w.at)) ? `${ageDays(w.at)}d` : 'age unknown'}${ageDays(w.at) > STALE_WAIVER_DAYS ? ', stale: review it' : ''})`).join('; ') || 'none'}`,
   ].join('\n'))
 }
 

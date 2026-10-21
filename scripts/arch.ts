@@ -4,7 +4,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { ROOT, SDLC, PLUGIN_ROOT, out, fail, read, exists, git, sha, writeAtomic, sanctionWrites, type Args } from './core.ts'
+import { ROOT, SDLC, PLUGIN_ROOT, ownerOrFail, out, fail, read, exists, sha, writeAtomic, sanctionWrites, type Args } from './core.ts'
 import { parseRegistry } from './registry.ts'
 import type { Layer } from './model.ts'
 
@@ -203,9 +203,7 @@ export function cmdArch(args: Args): void {
       notes.push(`the ${tool.analyser} commit check scans ${tool.root}/ only, and a layer lives elsewhere, so no analyser config was written and only the edit-time sensor enforces; keep layers under ${tool.root}/`)
       tool = null
     }
-    const owner = String(args.opt.by || git(['config', 'user.name']) || process.env.USER || '')
-    if (!owner) fail('layer approvals need an owner: set git user.name or pass --by "<name>"')
-    const rec: Record_ = { by: owner, at: new Date().toISOString(), blockHash: sha(raw.block), analyser: tool?.analyser ?? null, def: raw.def, layers: deriveLayering(raw.def) }
+    const rec: Record_ = { by: ownerOrFail(args, 'layer approvals'), at: new Date().toISOString(), blockHash: sha(raw.block), analyser: tool?.analyser ?? null, def: raw.def, layers: deriveLayering(raw.def) }
     const gen = (rel: string, text: string): void => { fs.mkdirSync(path.dirname(path.join(ROOT, rel)), { recursive: true }); writeAtomic(path.join(ROOT, rel), text) }
     const oldCfg = tool ? read(path.join(ROOT, tool.config)) : ''
     const hadRecord = readRecord() !== null

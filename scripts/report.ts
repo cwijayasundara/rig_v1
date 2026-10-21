@@ -13,7 +13,7 @@ export type Report = {
   reverted: number // merged changes a later commit says it reverts
   hoursToApproval: { median: number; of: number } | null // first commit on the change to its person approval; of: the changes with both dates (a squash can hide the first commit)
   waiversPerChange: number
-  waiverRows: { unowned: number; oldestDays: number | null } // every waiver on record: rows with no owner, and the age of the oldest
+  waiverRows: { unowned: number; oldestDays: number | null } // Infinity: a row with no readable date; every waiver on record: rows with no owner, and the age of the oldest
   repeat: { classes: number; changes: number } // finding and waiver classes seen in 2+ changes, and the changes carrying one
   unavailable: string[]
 }
@@ -48,7 +48,7 @@ export function buildReport(root: string, since: string | null = null): Report {
   const slugs = new Set(shipped.map(c => c.slug))
   const all = readJsonl<{ slug: string; by?: string; at?: string }>(path.join(root, '.rig', 'waivers.jsonl'))
   const waivers = all.filter(w => slugs.has(w.slug)).length
-  const ages = all.map(w => (w.at ? Math.floor((Date.now() - Date.parse(w.at)) / 86_400_000) : null)).filter((n): n is number => n !== null && Number.isFinite(n))
+  const ages = all.map(w => { const n = Math.floor((Date.now() - Date.parse(w.at ?? '')) / 86_400_000); return Number.isFinite(n) ? n : Infinity })
   const classes = mineCandidates(root).map(c => ({ ...c, changes: c.changes.filter(s => slugs.has(s)) })).filter(c => c.changes.length >= 2)
   return {
     merged: merges.length, shipped: shipped.length, since,
@@ -70,7 +70,7 @@ export function reportText(r: Report): string {
     `  first-pass runs            ${pct(r.firstPass.clean, r.firstPass.measured)} (${r.firstPass.clean} of ${r.firstPass.measured} changes with recorded runs)`,
     `  reverted                   ${r.reverted} of ${r.merged}`,
     `  hours, first commit to approval  ${r.hoursToApproval ? `median ${r.hoursToApproval.median} (${r.hoursToApproval.of} change(s))` : 'n/a'}`,
-    `  waivers per change         ${r.waiversPerChange} (${r.waiverRows.unowned} with no owner; oldest ${r.waiverRows.oldestDays === null ? 'n/a' : `${r.waiverRows.oldestDays} day(s)`})`,
+    `  waivers per change         ${r.waiversPerChange} (${r.waiverRows.unowned} with no owner; oldest ${r.waiverRows.oldestDays === null ? 'n/a' : (Number.isFinite(r.waiverRows.oldestDays) ? `${r.waiverRows.oldestDays} day(s)` : 'age unknown')})`,
     `  repeat mistakes            ${r.repeat.classes} class(es) across ${r.repeat.changes} of ${r.shipped} change(s)`,
     `not available here: ${r.unavailable.join('; ')}`,
   ].join('\n')

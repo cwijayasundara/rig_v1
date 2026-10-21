@@ -64,12 +64,40 @@ test('rig report counts waivers with no owner and shows the oldest', () => {
   assert.match(reportText(r), /1 with no owner; oldest 12 day\(s\)/)
 })
 
-test('the CODEOWNERS template covers every path the harness-tamper sensor protects', () => {
+test('the CODEOWNERS template covers every protected path and nothing wider: ordinary change records need no owner review', () => {
   const lines = fs.readFileSync(path.resolve(import.meta.dirname, '../templates/CODEOWNERS'), 'utf8').split('\n').filter(l => l.trim() && !l.startsWith('#'))
+  assert.ok(lines.every(l => /\s@\S+$/.test(l)), 'every line names an owner')
+  // GitHub: a leading / anchors at the root, a trailing / is the whole directory, * stays inside one directory.
   const owned = lines.map(l => l.trim().split(/\s+/)[0] as string).map(p => globToRegex(p.replace(/^\//, '').replace(/\/$/, '/**')))
+  const isOwned = (p: string): boolean => owned.some(re => re.test(p))
   for (const glob of PROTECTED) {
     const sample = glob.replace(/\*\*/g, 'x/y').replace(/\*/g, 'x')
-    assert.ok(owned.some(re => re.test(sample)), `no CODEOWNERS line covers ${glob} (e.g. ${sample})`)
-    assert.ok(lines.every(l => /\s@\S+$/.test(l)), 'every line names an owner')
+    assert.ok(isOwned(sample), `no CODEOWNERS line covers ${glob} (e.g. ${sample})`)
   }
+  for (const p of ['.rig/changes/add-login/spec.md', '.rig/changes/add-login/evidence/runs.jsonl', '.rig/product/brief.md', '.rig/wiki.json', 'src/app.js']) assert.ok(!isOwned(p), `${p} would need an owner review`)
+})
+
+test('an unreadable or missing waiver date counts as stale, and a stored "unknown" owner reads as no owner', () => {
+  const repo = makeRepo()
+  sdlc(repo, ['init'])
+  sdlc(repo, ['new', 'wv', '--type', 'feature'])
+  sdlc(repo, ['activate', 'wv'])
+  write(repo, '.rig/waivers.jsonl', [{ slug: 'wv', sensor: 'size', file: '*', reason: 'no date', by: 'unknown' }].map(r => JSON.stringify(r)).join('\n') + '\n')
+  const text = sdlc(repo, ['sensors']).stdout
+  assert.match(text, /size \* no date \(by no owner, age unknown, stale: review it\)/)
+  assert.match(reportText(buildReport(repo)), /1 with no owner; oldest age unknown/)
+})
+
+test('a generic OS account is not an owner, and --by is trimmed', () => {
+  const repo = anonymous()
+  sdlc(repo, ['init'])
+  sdlc(repo, ['new', 'wv', '--type', 'feature'])
+  for (const user of ['root', 'runner', 'Administrator']) {
+    const r = sdlc(repo, ['waive', 'size', '*', 'x', '--slug', 'wv'], { env: { ...NOBODY, USER: user } })
+    assert.equal(r.code, 1, user)
+  }
+  assert.equal(sdlc(repo, ['waive', 'size', '*', 'x', '--slug', 'wv', '--by', '  '], { env: NOBODY }).code, 1, 'a blank --by is nobody')
+  assert.equal(sdlc(repo, ['waive', 'size', '*', 'x', '--slug', 'wv'], { env: { ...NOBODY, USER: 'pat' } }).code, 0, 'a real OS user is fine')
+  const arch = sdlc(repo, ['arch', 'approve'], { env: { ...NOBODY, USER: 'root' } })
+  assert.equal(arch.code, 1)
 })

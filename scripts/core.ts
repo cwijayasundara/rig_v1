@@ -245,3 +245,20 @@ export const updateGate = (fn: (g: Gate) => void): void => withLock(GATE, () => 
 export function sanctionWrites(rels: string[]): void {
   updateGate(g => { g.tool = [...new Set([...g.tool, ...rels.map(toPosix)])] })
 }
+
+// Who approvals, waivers and a scaffolded policy owner are recorded as: the git identity, then the OS user, except a generic account
+// (root, a CI runner) that names no person.
+const GENERIC_USERS = ['root', 'runner', 'administrator', 'admin', 'ubuntu', 'node', 'user', 'unknown']
+export function whoami(): string | null {
+  const os = process.env.USER || process.env.USERNAME || ''
+  return git(['config', 'user.name']) || (GENERIC_USERS.includes(os.trim().toLowerCase()) ? null : os.trim()) || null
+}
+
+// Every approval and waiver names the person who made it. An identity-less one is refused, not recorded as "unknown": an owner is what
+// lets a code owner or a later reader ask who stands behind it. --by is the person's own declaration (these commands are human-only).
+export function ownerOrFail(args: Args, what: string): string {
+  const given = typeof args.opt.by === 'string' ? args.opt.by.trim() : ''
+  const by = given || whoami()
+  if (!by || GENERIC_USERS.includes(by.toLowerCase())) fail(`${what} need an owner: set git user.name (git config user.name "<name>") or pass --by "<name>"`)
+  return by
+}
