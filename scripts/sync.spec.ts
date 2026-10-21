@@ -142,3 +142,25 @@ test('final review: the traceability guide names what blocks (the change spec), 
   assert.match(g, /spec\.md/)
   assert.doesNotMatch(g, /^Every behaviour in the brief/)
 })
+
+test('sync writes a short AGENTS.md pointer to CLAUDE.md once, and never touches an AGENTS.md the repo already has', () => {
+  const repo = makeRepo()
+  sdlc(repo, ['init', '--stack', 'node'])
+  const first = sdlc(repo, ['sync'])
+  assert.match(first.stdout, /AGENTS\.md pointer written/)
+  assert.match(fs.readFileSync(path.join(repo, 'AGENTS.md'), 'utf8'), /\[CLAUDE\.md\]\(CLAUDE\.md\)[\s\S]*one source/)
+  assert.doesNotMatch(sdlc(repo, ['sync']).stdout, /AGENTS\.md pointer written/, 'written once')
+  const own = makeRepo()
+  sdlc(own, ['init', '--stack', 'node'])
+  fs.writeFileSync(path.join(own, 'AGENTS.md'), '# Our own agent rules\n')
+  sdlc(own, ['sync'])
+  assert.equal(fs.readFileSync(path.join(own, 'AGENTS.md'), 'utf8'), '# Our own agent rules\n')
+})
+
+test('the model-role guide names the /rig:pr reviewer, not the old /code-review', () => {
+  const repo = makeRepo()
+  sdlc(repo, ['init', '--stack', 'node'])
+  const claude = fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8')
+  assert.match(claude, /leave diff review to the \/rig:pr reviewer and \/security-review/)
+  assert.doesNotMatch(claude, /\/code-review/)
+})

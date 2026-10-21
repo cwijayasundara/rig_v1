@@ -7,8 +7,16 @@ input=$(cat)
 cmd=$(printf '%s' "$input" | grep -oE '"command"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*"')
 [ -n "$cmd" ] || cmd=$input
 env_name=${RIG_PRODUCTION_ENV:-production}
-printf '%s' "$cmd" | grep -qiF deploy || exit 0
-printf '%s' "$cmd" | grep -qiF -- "$env_name" || exit 0
+# What pauses for a person (guides/irreversible.md): a deploy to production, a force-push, dropping data. Reversible work never reaches this.
+if printf '%s' "$cmd" | grep -qiF deploy && printf '%s' "$cmd" | grep -qiF -- "$env_name"; then
+  what="deploying to $env_name"
+elif printf '%s' "$cmd" | grep -qiE 'git[^;&|]*[[:space:]]push[^"]*([[:space:]]--force|[[:space:]]-f([^[:alnum:]-]|$)|[[:space:]]-[A-Za-z]*f[A-Za-z]*([^[:alnum:]-]|$)|--force-with-lease)'; then
+  what="force-pushing, which rewrites history others rely on,"
+elif printf '%s' "$cmd" | grep -qiE 'drop[[:space:]]+(table|database|schema)|truncate[[:space:]]+table'; then
+  what="dropping data, which cannot be undone,"
+else
+  exit 0
+fi
 if [ -n "$RELEASE_APPROVAL" ]; then decision=allow; else decision=block; fi
 session=$(printf '%s' "$input" | sed -nE 's/.*"session_id"[[:space:]]*:[[:space:]]*"([A-Za-z0-9-]*)".*/\1/p')
 dir=${CLAUDE_PROJECT_DIR:-$PWD}/.rig
@@ -16,5 +24,5 @@ if [ -d "$dir" ] && [ ! -L "$dir/gates.jsonl" ]; then
   { printf '{"at":"%s","decision":"%s","session":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$decision" "$session" >> "$dir/gates.jsonl"; } 2>/dev/null || :
 fi
 [ "$decision" = allow ] && exit 0
-echo "Blocked: deploying to $env_name needs a release manager's approval. Prepare the release, ask the release manager to authorize it, and resume this session with the approved change ticket: RELEASE_APPROVAL=<ticket> claude --resume." >&2
+echo "Blocked: $what needs a release manager's approval. Prepare the release, ask the release manager to authorize it, and resume this session with the approved change ticket: RELEASE_APPROVAL=<ticket> claude --resume." >&2
 exit 2
