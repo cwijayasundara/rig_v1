@@ -110,3 +110,21 @@ test('a waiver naming no-x-y does not count against the promoted rule no-x', () 
   const exact = ['a', 'b', 'c'].map(s => ({ sensor: 'rules', reason: `"no-x", ${s}` }))
   assert.equal(lessonStatus([lesson({ status: 'promoted:no-x' })], [], exact).retire.length, 1)
 })
+
+test('a tagged line under ## Dismissed or ## Deferred is not a kept finding', async () => {
+  const { mineCandidates } = await import('./learnmine.ts')
+  const fs = await import('node:fs')
+  const os = await import('node:os')
+  const path = await import('node:path')
+  const { execFileSync } = await import('node:child_process')
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-lm-'))
+  const git = (...a: string[]): void => { execFileSync('git', a, { cwd: root, stdio: 'ignore' }) }
+  git('init', '-q', '-b', 'main'); git('config', 'user.email', 't@e'); git('config', 'user.name', 'T')
+  for (const slug of ['aa-one', 'bb-two']) {
+    fs.mkdirSync(path.join(root, '.rig/changes', slug), { recursive: true })
+    fs.writeFileSync(path.join(root, '.rig/changes', slug, 'pr.md'), '# PR\n')
+    fs.writeFileSync(path.join(root, '.rig/changes', slug, 'review.md'), `## Findings\n\n## Dismissed\n- x.js:1 p [category: tests] → dismissed: spec says so\n\n## Deferred\n- y.js:2 [category: tests] style\n`)
+  }
+  git('add', '.'); git('commit', '-qm', 'two shipped changes')
+  assert.deepEqual(mineCandidates(root), [], 'the same category under Dismissed and Deferred in two changes is not a recurring finding')
+})

@@ -22,7 +22,7 @@ The biggest lever is **bounded context**. Everything below follows from that.
 
 ## 2. Principles
 
-1. **Thin layer, built-ins first.** Own three things: the artifact chain, human gates and guardrails. Plan mode, `/code-review`, `/security-review`, `/goal` and worktrees are Claude Code's.
+1. **Thin layer, built-ins first.** Own three things: the artifact chain, human gates and guardrails. Plan mode, `/security-review`, `/goal` and worktrees are Claude Code's.
 2. **State lives in files, not chat.** `.rig/changes/<slug>/` is the memory; status is derived from which files exist.
 3. **Humans gate; models never self-approve.** Approval and waiver are human-only skills; `approval.json` goes stale when the spec or plan changes.
 4. **Deterministic checks decide; models advise.** Sensors, red-proof and secrets are scripts at zero tokens; one advisory review per change.
@@ -34,7 +34,7 @@ The biggest lever is **bounded context**. Everything below follows from that.
 
 ```
 skills/      the stages, /rig:* (start plan build test pr rule init, plus human-only approve and waive), prompts only
-agents/      evaluator (sprint chart review; a change's diff is reviewed by /code-review and /security-review in /rig:pr)
+agents/      evaluator (sprint chart review; a change's diff is reviewed by a clean-context reviewer agent and /security-review in /rig:pr)
 hooks/       hooks.json = four settings hooks, none on Bash (work in -p and CI)
 scripts/     zero-dependency Node, no build step; sdlc.ts is the CLI; check.ts is the one checker
 templates/   CI workflow (rig-check), settings.json, stacks/ (stack packs), brief.md, REVIEW.md
@@ -76,7 +76,7 @@ Evidence files (`approval.json`, waivers, `runs.jsonl`, `verify.json`, `pr.md`, 
 | Bounded context | Small fresh contexts per subagent (briefs of ≤ 60 lines); `/compact` rather than a handoff skill |
 | Context sensor: a session whose first call is over 25k tokens, or a turn over 150k, gets a toast naming the cause (`scripts/context.ts`) | Live guard for the 50% finding above, not a retrospective; two review systems per turn is the single biggest waste found (proposal 2026-10-08) |
 | Sonnet main thread, Opus advisor **off** | Template sets `CLAUDE_CODE_DISABLE_ADVISOR_TOOL` (the advisor was a third of each run's cost; a user-level `advisorModel` otherwise still applies) |
-| One review per change | One native `/code-review` + `/security-review` on the delta before the PR opens; findings below confidence 80 dropped |
+| One review per change | One clean-context reviewer agent (diff and intent only, builder triage with recorded dismissals) + native `/security-review` on the delta before the PR opens |
 | Stamp, don't re-run | `verify` runs every commit and ci sensor once against the current tree and writes `verify.json`, tied to the working tree; `/rig:pr` checks it instead of re-running, and a stale one re-runs. CI reads no stamp |
 | Lean plans | No code in plans |
 | Plugin diet | Project `enabledPlugins` turns off unrelated plugins |
