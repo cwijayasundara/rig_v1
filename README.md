@@ -95,7 +95,7 @@ All of it is committed: the repo is the record. CI (`rig-check`) re-judges it wi
 
 ## Status
 
-As of 2026-10-17. `.claude-plugin/plugin.json` says **0.6.0**; the last git tag is `v0.4.1`. Everything since is on `main` under *Unreleased* in [CHANGELOG.md](CHANGELOG.md). The measured progress against the goal is in [docs/GOAL.md](docs/GOAL.md).
+As of 2026-10-21. `.claude-plugin/plugin.json` says **0.6.0**; the last git tag is `v0.4.1`. Everything since is on `main` under *Unreleased* in [CHANGELOG.md](CHANGELOG.md). The measured progress against the goal is in [docs/GOAL.md](docs/GOAL.md).
 
 | Area | State | Evidence |
 |---|---|---|
@@ -106,10 +106,11 @@ As of 2026-10-17. `.claude-plugin/plugin.json` says **0.6.0**; the last git tag 
 | Learning loop (`/rig:learn`) | Built; first live pass promising (0/3 repeats with the loop against 3/3 without), one of the two passes needed | `npm run eval:learn` |
 | Run loop: production gate | Shipped as a managed-only hook | e2e S4, SECURITY.md |
 | Git hooks: `pre-commit`, `pre-push`, wired at session start | Covered by tests that drive real `git`. There is no bypass guard: CI plus branch protection is the boundary | DESIGN §9, [SECURITY.md](SECURITY.md) |
-| CI evals and a PR review loop; Maintain (drift bands, scheduled scans) | Not started | docs/GOAL.md |
+| Harness readiness plan (docs/proposals/2026-10-21-harness-readiness-consolidated.md): inert-sensor self-test, CI least-privilege spec, `sdlc arch`, promotion ladder, scope check, golden slices, journeys, clean-context review, Maintain, CI evals, ablation, `rig readiness`, waiver owner and age | Built and merged; every item has specs | `npm test`; evals under `eval/results/` |
+| Whether rig beats a bare model | **Not shown.** On the `links` task rig matched bare Haiku (3/3 each) at about 25x the cost. The harder `rules` task is built and dry-run clean; its live run has not happened | `eval/results/2026-10-21-links2.md`, docs/superpowers/specs/2026-10-21-harder-eval-design.md |
 | Windows | **Not supported.** The hook scripts are POSIX `sh` and the Windows CI jobs are red | SECURITY.md |
 
-**Quality gates on `main`:** `npm test` (567 spec tests, the e2e unit tests and the scripted e2e phases), `npm run typecheck` and `claude plugin validate`.
+**Quality gates on `main`:** `npm test` (the spec files, the e2e unit tests and the scripted e2e phases; run it for the current count), `npm run typecheck` and `claude plugin validate`.
 
 ## How the harness is put together
 
@@ -468,3 +469,18 @@ npm run eval:wiki                                      # wiki accuracy and stale
 npm run eval:learn                                     # learning loop on against off
 node eval/report.mjs eval/results/<date>.jsonl --out eval/results/<date>.md
 ```
+
+#### The `rules` variant (harder paired eval; built, not yet run live)
+
+The `links` task is too easy for Haiku, so rig and bare tied. `--variant rules` adds B8 (stock check, per-line cap of 10, 10% discount from 5000 cents, rounded half up) and B9 (re-adding a SKU now replaces its quantity, which reverses an earlier rule). Design and decision rule: [docs/superpowers/specs/2026-10-21-harder-eval-design.md](docs/superpowers/specs/2026-10-21-harder-eval-design.md). Rig arms run five changes (S2, S3, S7, S8, S9); bare gets one prompt. A run scores 11 checks: `npm test`, the earlier acceptance, B7, six B8 edge cases and B9.
+
+```bash
+# $0, safe to run any time: replays fixtures, a perfect run must score 11/11
+node eval/run.mjs --dry --runs 1 --variant rules --arms haiku-rig,haiku-bare,sonnet-bare --out "$(mktemp -d)"
+npm run test:e2e:unit                                  # includes the rules brief, score and dry-run specs
+
+# LIVE, costs money (estimate $11 to $15, hard cap $20); a person starts it
+node eval/run.mjs --variant rules --arms haiku-rig,haiku-bare,sonnet-bare --runs 5 --cap-run 4 --cap-total 20
+```
+
+Read the result by the rule fixed in advance: rig lifts only if it beats haiku-bare by at least 2 of 5 runs with no regression; within 1 run is no lift; bare passing 5/5 means the task was too easy. Known limits: the B9 honesty measure only bites the rig arms (bare sees B2 and B9 together), B8 is checked at module level not over HTTP, and the "a code replaces the automatic discount" rule is stated but not checked.
