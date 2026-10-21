@@ -39,6 +39,16 @@ function whoami(): string | null {
   return git(['config', 'user.name']) || process.env.USER || process.env.USERNAME || null
 }
 
+// Every approval and waiver names the person who made it. An identity-less one is refused, not recorded as "unknown": an owner is what
+// lets a code owner or a later reader ask who stands behind it.
+function ownerOrFail(args: Args, what: string): string {
+  const by = optString(args, 'by') || whoami()
+  if (!by || by === 'unknown') fail(`${what} need an owner: set git user.name (git config user.name "<name>") or pass --by "<name>"`)
+  return by
+}
+const ageDays = (at: string): number => Math.max(0, Math.floor((Date.now() - Date.parse(at)) / 86_400_000))
+const STALE_WAIVER_DAYS = 30
+
 function cmdInit(args: Args): void {
   // Ship and the PR gate read git, so a directory outside any repo gets one.
   const newRepo = git(['rev-parse', '--is-inside-work-tree']) !== 'true' && git(['init', '-q', '-b', 'main']) !== null
@@ -120,7 +130,7 @@ function cmdApprove(args: Args): void {
   const refusal = approvalRefusal(slug)
   if (refusal) fail(refusal)
   if (approvalState(slug) === 'approved' && JSON.stringify(readApproval(slug)?.contracts ?? {}) === JSON.stringify(freezeRecord())) return out(`${slug} is already approved. Next: /rig:build ${slug}`)
-  const by = optString(args, 'by') || whoami() || 'unknown'
+  const by = ownerOrFail(args, 'approvals')
   const a = writeApproval(slug, by)
   const n = Object.keys(a.contracts).length
   out(`approved ${slug} by ${by}: spec.md and plan.md${n ? `, ${n} contract file(s) frozen` : ''}. Next: /rig:build ${slug}`)
@@ -131,7 +141,7 @@ function approveChart(n: number, args: Args): void {
   const block = chartFindings(n, true).filter(f => f.severity === 'block')
   if (block.length) fail(`chart-${n} has ${block.length} blocking finding(s); fix them, then approve:\n${block.map(f => `  [${f.rule}] ${f.message}`).join('\n')}`)
   if (chartState(n).state === 'approved') return out(`chart-${n} is already approved`)
-  const by = optString(args, 'by') || whoami() || 'unknown'
+  const by = ownerOrFail(args, 'approvals')
   writeChartApproval(n, by)
   out(`approved chart-${n} by ${by}: ${chartFiles(n).length} file(s). Next: engineers run \`ready\` to see which intents can start, then ${skillRef('start')} .rig/product/intents/<slug>.md`)
 }
@@ -204,7 +214,7 @@ function cmdWaive(args: Args): void {
   if (!sensor || !file || !reason.length || !slug) fail('usage: waive <sensor> <file|*> <reason...>  (needs an active change)')
   const commandIds = loadConfig().registry.sensors.filter(s => s.cmd).map(s => s.id)
   if (!SENSOR_NAMES.includes(sensor) && !commandIds.includes(sensor)) fail(`unknown sensor "${sensor}"; known: ${[...SENSOR_NAMES, ...commandIds].join(', ')}`)
-  const by = whoami() || 'unknown'
+  const by = ownerOrFail(args, 'waivers')
   const row: Waiver = { slug, sensor, file, reason: reason.join(' '), by, at: now() }
   fs.appendFileSync(WAIVERS, JSON.stringify(row) + '\n')
   out(`waived ${sensor} for ${file} in ${slug}: ${row.reason} (by ${by})`)
@@ -240,7 +250,7 @@ function cmdSensors(): void {
     `layers: ${s.layers}`,
     `ratchets: ${Object.entries(registry.ratchets ?? {}).map(([k, v]) => `${k} ${v}${registry.sensors.some(x => x.id === k && x.ratchet) ? '' : ' (no sensor ratchets it now)'}`).join(', ') || 'none'}`,
     `known red: ${registry.knownRed.join(', ') || 'none'}`,
-    `waivers (${slug ?? 'no change'}): ${waivers.map(w => `${w.sensor} ${w.file} ${w.reason}`).join('; ') || 'none'}`,
+    `waivers (${slug ?? 'no change'}): ${waivers.map(w => `${w.sensor} ${w.file} ${w.reason} (by ${w.by || 'no owner'}, ${ageDays(w.at)}d${ageDays(w.at) > STALE_WAIVER_DAYS ? ', stale: review it' : ''})`).join('; ') || 'none'}`,
   ].join('\n'))
 }
 

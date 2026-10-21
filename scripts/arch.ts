@@ -203,7 +203,9 @@ export function cmdArch(args: Args): void {
       notes.push(`the ${tool.analyser} commit check scans ${tool.root}/ only, and a layer lives elsewhere, so no analyser config was written and only the edit-time sensor enforces; keep layers under ${tool.root}/`)
       tool = null
     }
-    const rec: Record_ = { by: String(args.opt.by || git(['config', 'user.name']) || 'unknown'), at: new Date().toISOString(), blockHash: sha(raw.block), analyser: tool?.analyser ?? null, def: raw.def, layers: deriveLayering(raw.def) }
+    const owner = String(args.opt.by || git(['config', 'user.name']) || process.env.USER || '')
+    if (!owner) fail('layer approvals need an owner: set git user.name or pass --by "<name>"')
+    const rec: Record_ = { by: owner, at: new Date().toISOString(), blockHash: sha(raw.block), analyser: tool?.analyser ?? null, def: raw.def, layers: deriveLayering(raw.def) }
     const gen = (rel: string, text: string): void => { fs.mkdirSync(path.dirname(path.join(ROOT, rel)), { recursive: true }); writeAtomic(path.join(ROOT, rel), text) }
     const oldCfg = tool ? read(path.join(ROOT, tool.config)) : ''
     const hadRecord = readRecord() !== null
