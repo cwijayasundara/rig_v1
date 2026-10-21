@@ -21,8 +21,9 @@ export const EVAL_ALLOW = ['Bash(npm *)', 'Bash(node *)', 'Bash(git *)', 'Bash(l
 
 // Arm order is shuffled per run from a seed (recorded in the row), so no arm always goes first and meets the quiet hours or the cold cache.
 export function orderArms(arms, seed, n) {
-  let x = (Number(seed) * 2654435761 + n * 40503) >>> 0
-  const rand = () => { x = (Math.imul(x, 1664525) + 1013904223) >>> 0; return x / 2 ** 32 }
+  // mulberry32 over a hash of (seed, run): successive runs are not linear in each other
+  let x = (Math.imul(Math.trunc(Number(seed)) ^ 0x9e3779b9, 2654435761) + Math.imul(n, 40503)) >>> 0
+  const rand = () => { x = (x + 0x6d2b79f5) >>> 0; let t = x; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 2 ** 32 }
   return arms.map(a => [rand(), a]).sort((a, b) => a[0] - b[0]).map(([, a]) => a)
 }
 
@@ -82,12 +83,14 @@ if (process.argv[1] === import.meta.filename) {
   const capTotal = Number(arg('cap-total', 300))
   fs.mkdirSync(path.dirname(results), { recursive: true })
   const seed = Number(arg('seed', Date.now() % 1_000_000))
+  if (!Number.isInteger(seed) || seed < 0) { console.error('--seed must be a non-negative integer'); process.exit(2) }
   console.log(`arm order seed ${seed} (pass --seed ${seed} to repeat it)`)
   let spent = 0
-  let stopped = false
-  for (let n = 1; n <= runs && !stopped; n++) {
-    for (const [position, arm] of orderArms(armsFrom(arg('arms')), seed, n).entries()) {
-      if (!dry && !nextRunAllowed(spent, capRunUsd, capTotal)) { console.log(`stopped at cap: $${spent.toFixed(2)} spent of $${capTotal}`); stopped = true; break }
+  for (let n = 1; n <= runs; n++) {
+    const round = orderArms(armsFrom(arg('arms')), seed, n)
+    // The cap is checked once per round, for every arm in it, so a stop never leaves a round with some arms missing (an unpaired run).
+    if (!dry && !nextRunAllowed(spent, capRunUsd * round.length, capTotal)) { console.log(`stopped at cap before round ${n}: $${spent.toFixed(2)} spent of $${capTotal}`); break }
+    for (const [position, arm] of round.entries()) {
       const row = await runOne(arm, n, { dry, out, capRunUsd, seed, position })
       spent += row.usd
       fs.appendFileSync(results, JSON.stringify(row) + '\n')
