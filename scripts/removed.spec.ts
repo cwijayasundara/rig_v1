@@ -162,6 +162,7 @@ test('6: the eval runner is wired: dry in CI, live by hand, results committed un
   assert.match(pkg.scripts['test:e2e:unit'], /eval\/\*\.test\.mjs/)
   const ci = fs.readFileSync('.github/workflows/ci.yml', 'utf8')
   assert.match(ci, /npm run eval:dry/)
-  assert.doesNotMatch(ci, /npm run eval(?!:dry)\b/, 'live evals never run in CI (spec §9)')
+  const evalRuns = [...ci.matchAll(/npm run (eval\S*)/g)].map(m => m[1] as string)
+  assert.ok(evalRuns.length > 0 && evalRuns.every(r => r.endsWith(':dry')), `live evals never run in CI (spec §9); CI runs ${evalRuns.join(', ')}`)
   assert.ok(fs.existsSync('eval/results/.gitkeep'))
 })
