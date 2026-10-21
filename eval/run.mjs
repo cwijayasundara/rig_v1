@@ -93,7 +93,7 @@ if (process.argv[1] === import.meta.filename) {
   for (let n = 1; n <= runs; n++) {
     const round = orderArms(armsFrom(arg('arms')), seed, n)
     // The cap is checked once per round, for every arm in it, so a stop never leaves a round with some arms missing (an unpaired run).
-    if (!dry && !nextRunAllowed(spent, capRunUsd * round.length, capTotal)) { console.log(`stopped at cap before round ${n}: $${spent.toFixed(2)} spent of $${capTotal}`); break }
+    if (!dry && !nextRunAllowed(spent, capRunUsd * round.length, capTotal)) { console.log(`stopped before round ${n}: $${spent.toFixed(2)} spent, and a round of ${round.length} arm(s) can cost up to $${(capRunUsd * round.length).toFixed(2)} (--cap-run ${capRunUsd} x arms) against --cap-total ${capTotal}; lower --cap-run or raise --cap-total`); break }
     for (const [position, arm] of round.entries()) {
       const row = await runOne(arm, n, { dry, out, capRunUsd, seed, position, variant })
       spent += row.usd
