@@ -283,3 +283,16 @@ export function weakensRegistry(beforeText: string, afterText: string): string[]
 // The contract files, as the freeze sees them: commands with no files declared default to .rig/contracts/**.
 export const contractGlobs = (c: Contracts): string[] => (c.files.length ? c.files : c.validate || c.run ? ['.rig/contracts/**'] : [])
 export const builtinOptions = (r: Registry, id: BuiltinId): Record<string, unknown> => r.sensors.find(s => s.builtin && s.id === id)?.options ?? {}
+
+// A sensor that passes only because nothing configures it must not read as a green check: status and check list these.
+export type Inert = { id: string; reason: string }
+export function inertSensors(r: Registry, ruleCount: number): Inert[] {
+  const on = (id: BuiltinId) => r.sensors.some(s => s.builtin && s.id === id && s.enabled)
+  const layers = builtinOptions(r, 'layering').layers
+  const unit = String(builtinOptions(r, 'red-proof').sensor ?? 'unit')
+  return [
+    ...(on('layering') && !(Array.isArray(layers) && layers.length) ? [{ id: 'layering', reason: 'no layers declared in .rig/sensors.json (options.layers)' }] : []),
+    ...(on('rules') && !ruleCount ? [{ id: 'rules', reason: 'no rules in .rig/rules.json' }] : []),
+    ...(on('red-proof') && !r.sensors.some(s => s.id === unit && !s.builtin && s.enabled) ? [{ id: 'red-proof', reason: `no "${unit}" command sensor to run new tests on the base` }] : []),
+  ]
+}
