@@ -6,7 +6,7 @@
 // scope drift, sensors and hook decisions. This file is the CLI.
 import fs from 'node:fs'
 import path from 'node:path'
-import {
+import { whoami, ownerOrFail,
   ROOT, SDLC, CHANGES, SLUG_RE, SOFT_HOOK_FAILURE, exists, read, now, defaultBase, toPosix, out, fail, git, parseArgs, optString, listChanges, scanSecrets, checkSlug,
   WAIVERS, readJsonl, type Waiver, ensureGitignore, PLUGIN_ROOT, skillRef, sanctionWrites, readGate, type Args,
 } from './core.ts'
@@ -34,10 +34,9 @@ import { TYPES, toType, changeDir, newChange, setActive, activeSlug, status, nex
 
 // ---------- commands ----------
 
-// Who approvals, waivers and a scaffolded policy owner are recorded as: the git identity, then the OS user.
-function whoami(): string | null {
-  return git(['config', 'user.name']) || process.env.USER || process.env.USERNAME || null
-}
+// NaN (a missing or unreadable date) is treated as infinitely old, so it can never hide from the stale check.
+const ageDays = (at: string): number => { const n = Math.floor((Date.now() - Date.parse(at)) / 86_400_000); return Number.isFinite(n) ? Math.max(0, n) : Infinity }
+const STALE_WAIVER_DAYS = 30
 
 function cmdInit(args: Args): void {
   // Ship and the PR gate read git, so a directory outside any repo gets one.
@@ -120,7 +119,7 @@ function cmdApprove(args: Args): void {
   const refusal = approvalRefusal(slug)
   if (refusal) fail(refusal)
   if (approvalState(slug) === 'approved' && JSON.stringify(readApproval(slug)?.contracts ?? {}) === JSON.stringify(freezeRecord())) return out(`${slug} is already approved. Next: /rig:build ${slug}`)
-  const by = optString(args, 'by') || whoami() || 'unknown'
+  const by = ownerOrFail(args, 'approvals')
   const a = writeApproval(slug, by)
   const n = Object.keys(a.contracts).length
   out(`approved ${slug} by ${by}: spec.md and plan.md${n ? `, ${n} contract file(s) frozen` : ''}. Next: /rig:build ${slug}`)
@@ -131,7 +130,7 @@ function approveChart(n: number, args: Args): void {
   const block = chartFindings(n, true).filter(f => f.severity === 'block')
   if (block.length) fail(`chart-${n} has ${block.length} blocking finding(s); fix them, then approve:\n${block.map(f => `  [${f.rule}] ${f.message}`).join('\n')}`)
   if (chartState(n).state === 'approved') return out(`chart-${n} is already approved`)
-  const by = optString(args, 'by') || whoami() || 'unknown'
+  const by = ownerOrFail(args, 'approvals')
   writeChartApproval(n, by)
   out(`approved chart-${n} by ${by}: ${chartFiles(n).length} file(s). Next: engineers run \`ready\` to see which intents can start, then ${skillRef('start')} .rig/product/intents/<slug>.md`)
 }
@@ -204,7 +203,7 @@ function cmdWaive(args: Args): void {
   if (!sensor || !file || !reason.length || !slug) fail('usage: waive <sensor> <file|*> <reason...>  (needs an active change)')
   const commandIds = loadConfig().registry.sensors.filter(s => s.cmd).map(s => s.id)
   if (!SENSOR_NAMES.includes(sensor) && !commandIds.includes(sensor)) fail(`unknown sensor "${sensor}"; known: ${[...SENSOR_NAMES, ...commandIds].join(', ')}`)
-  const by = whoami() || 'unknown'
+  const by = ownerOrFail(args, 'waivers')
   const row: Waiver = { slug, sensor, file, reason: reason.join(' '), by, at: now() }
   fs.appendFileSync(WAIVERS, JSON.stringify(row) + '\n')
   out(`waived ${sensor} for ${file} in ${slug}: ${row.reason} (by ${by})`)
@@ -240,7 +239,7 @@ function cmdSensors(): void {
     `layers: ${s.layers}`,
     `ratchets: ${Object.entries(registry.ratchets ?? {}).map(([k, v]) => `${k} ${v}${registry.sensors.some(x => x.id === k && x.ratchet) ? '' : ' (no sensor ratchets it now)'}`).join(', ') || 'none'}`,
     `known red: ${registry.knownRed.join(', ') || 'none'}`,
-    `waivers (${slug ?? 'no change'}): ${waivers.map(w => `${w.sensor} ${w.file} ${w.reason}`).join('; ') || 'none'}`,
+    `waivers (${slug ?? 'no change'}): ${waivers.map(w => `${w.sensor} ${w.file} ${w.reason} (by ${!w.by || w.by === 'unknown' ? 'no owner' : w.by}, ${Number.isFinite(ageDays(w.at)) ? `${ageDays(w.at)}d` : 'age unknown'}${ageDays(w.at) > STALE_WAIVER_DAYS ? ', stale: review it' : ''})`).join('; ') || 'none'}`,
   ].join('\n'))
 }
 

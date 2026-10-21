@@ -13,6 +13,7 @@ export type Report = {
   reverted: number // merged changes a later commit says it reverts
   hoursToApproval: { median: number; of: number } | null // first commit on the change to its person approval; of: the changes with both dates (a squash can hide the first commit)
   waiversPerChange: number
+  waiverRows: { unowned: number; oldestDays: number | null } // Infinity: a row with no readable date; every waiver on record: rows with no owner, and the age of the oldest
   repeat: { classes: number; changes: number } // finding and waiver classes seen in 2+ changes, and the changes carrying one
   unavailable: string[]
 }
@@ -45,7 +46,9 @@ export function buildReport(root: string, since: string | null = null): Report {
     if (first && approved && Date.parse(approved) >= Date.parse(first)) hours.push((Date.parse(approved) - Date.parse(first)) / 3_600_000)
   }
   const slugs = new Set(shipped.map(c => c.slug))
-  const waivers = readJsonl<{ slug: string }>(path.join(root, '.rig', 'waivers.jsonl')).filter(w => slugs.has(w.slug)).length
+  const all = readJsonl<{ slug: string; by?: string; at?: string }>(path.join(root, '.rig', 'waivers.jsonl'))
+  const waivers = all.filter(w => slugs.has(w.slug)).length
+  const ages = all.map(w => { const n = Math.floor((Date.now() - Date.parse(w.at ?? '')) / 86_400_000); return Number.isFinite(n) ? n : Infinity })
   const classes = mineCandidates(root).map(c => ({ ...c, changes: c.changes.filter(s => slugs.has(s)) })).filter(c => c.changes.length >= 2)
   return {
     merged: merges.length, shipped: shipped.length, since,
@@ -53,6 +56,7 @@ export function buildReport(root: string, since: string | null = null): Report {
     firstPass: { measured, clean }, reverted,
     hoursToApproval: hours.length ? { median: Math.round(median(hours) * 10) / 10, of: hours.length } : null,
     waiversPerChange: shipped.length ? Math.round((waivers / shipped.length) * 100) / 100 : 0,
+    waiverRows: { unowned: all.filter(w => !w.by || w.by === 'unknown').length, oldestDays: ages.length ? Math.max(...ages) : null },
     repeat: { classes: classes.length, changes: new Set(classes.flatMap(c => c.changes)).size },
     unavailable: ['CI first-pass rate (the CI provider holds it)', 'review time and findings fixed without a person (not recorded anywhere in the repo)'],
   }
@@ -66,7 +70,7 @@ export function reportText(r: Report): string {
     `  first-pass runs            ${pct(r.firstPass.clean, r.firstPass.measured)} (${r.firstPass.clean} of ${r.firstPass.measured} changes with recorded runs)`,
     `  reverted                   ${r.reverted} of ${r.merged}`,
     `  hours, first commit to approval  ${r.hoursToApproval ? `median ${r.hoursToApproval.median} (${r.hoursToApproval.of} change(s))` : 'n/a'}`,
-    `  waivers per change         ${r.waiversPerChange}`,
+    `  waivers per change         ${r.waiversPerChange} (${r.waiverRows.unowned} with no owner; oldest ${r.waiverRows.oldestDays === null ? 'n/a' : (Number.isFinite(r.waiverRows.oldestDays) ? `${r.waiverRows.oldestDays} day(s)` : 'age unknown')})`,
     `  repeat mistakes            ${r.repeat.classes} class(es) across ${r.repeat.changes} of ${r.shipped} change(s)`,
     `not available here: ${r.unavailable.join('; ')}`,
   ].join('\n')
