@@ -99,14 +99,16 @@ test('the gate also pauses a force-push and dropping data, and leaves ordinary w
   const repo = makeRepo()
   fs.mkdirSync(path.join(repo, '.rig'), { recursive: true })
   const env = { CLAUDE_PROJECT_DIR: repo }
-  for (const cmd of ['git push --force origin main', 'git push -f', 'git push origin main --force-with-lease', 'git -C sub push -f origin x', 'git push -uf origin x', 'psql -c "DROP TABLE users"', 'mysql -e "drop database shop"', 'echo "TRUNCATE TABLE t" | psql']) {
+  for (const cmd of ['git push --force origin main', 'git push -f', 'git push origin main --force-with-lease', 'git -C sub push -f origin x', 'git push -uf origin x', 'psql -c "DROP TABLE users"', 'mysql -e "drop database shop"', 'echo "TRUNCATE TABLE t" | psql', 'git push origin +main', 'git push origin +refs/heads/main:main', 'git push --mirror backup', 'git push --delete origin old', 'git push -fu origin x']) {
     const r = gate(cmd, env)
     assert.equal(r.status, 2, cmd)
     assert.match(r.stderr, /release manager[\s\S]*RELEASE_APPROVAL/i, cmd)
   }
   assert.match(gate('git push --force origin main', env).stderr, /force-pushing, which rewrites history/)
   assert.match(gate('psql -c "DROP TABLE users"', env).stderr, /dropping data, which cannot be undone/)
-  for (const cmd of ['git push origin sdlc/add-cart', 'git push -u origin feature', 'git push --follow-tags', 'git commit -m "docs: about force pushes"', 'git status', 'psql -c "SELECT 1"', 'npm test']) assert.equal(gate(cmd, env).status, 0, cmd)
+  // The hook input is JSON: a real newline, tab or quote in the command arrives as \n, \t or \", and must not hide the act.
+  for (const real of ['psql -c "DROP\nTABLE x"', 'git push\n--force origin x', 'git push origin x "y" --force', 'psql -c "TRUNCATE\ttable x"']) assert.equal(gate(real, env).status, 2, JSON.stringify(real))
+  for (const cmd of ['git push origin sdlc/add-cart', 'git push -u origin feature', 'git push --follow-tags', 'git commit -m "docs: about force pushes"', 'git status', 'psql -c "SELECT 1"', 'npm test', 'grep -r "drop table" migrations/', 'cat migrations/001_drop_table_old.sql', 'git push -o ci.skip origin x', 'git push --set-upstream origin x', 'git push --no-verify origin x']) assert.equal(gate(cmd, env).status, 0, cmd)
   assert.equal(gate('git push --force origin main', { ...env, RELEASE_APPROVAL: 'CHG-9' }).status, 0, 'an approval lets it through')
   const rows = fs.readFileSync(path.join(repo, '.rig', 'gates.jsonl'), 'utf8')
   assert.doesNotMatch(rows, /force|DROP|psql/i, 'command text is never logged')

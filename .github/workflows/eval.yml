@@ -5,7 +5,7 @@ name: eval
 on:
   push:
     branches: [main]
-    paths: ['CLAUDE.md', '.claude/**', 'skills/**', 'agents/**', 'templates/**', 'scripts/**', 'eval/**', 'tests/e2e/**']
+    paths: ['CLAUDE.md', '.claude/**', '.claude-plugin/**', 'skills/**', 'agents/**', 'guides/**', 'hooks/**', 'templates/**', 'scripts/**', 'eval/**', 'tests/e2e/**', 'package.json', 'package-lock.json', '.github/workflows/eval.yml']
   schedule:
     - cron: '17 5 * * *'
   workflow_dispatch:
@@ -27,7 +27,8 @@ jobs:
       - run: npm run eval:app:dry
       - run: npm run eval:ablate:dry
   live:
-    if: github.event_name != 'push'
+    # The live job holds a secret, so it runs only from main: a manual dispatch on another branch would run that branch's code with it.
+    if: github.event_name != 'push' && github.ref == 'refs/heads/main'
     needs: dry
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -45,6 +46,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: node eval/run.mjs --variant links --arms haiku-bare,haiku-rig --runs 3 --cap-run 4 --cap-total 15 --results "$RUNNER_TEMP/paired.jsonl"
       - name: Regression gate
+        shell: bash # bash -eo pipefail: the gate's exit code survives the pipe to tee
         run: node eval/gate.mjs "$RUNNER_TEMP/paired.jsonl" --variant links | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()

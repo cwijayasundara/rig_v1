@@ -4,10 +4,12 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { read, out, git, type Args } from './core.ts'
+import { read, out, fail, git, type Args } from './core.ts'
 
 export type QueueRow = { worktree: string; branch: string; slug: string; status: string; next: string; person: boolean; files: string[] }
 export type Overlap = { file: string; changes: string[] }
+// unreadable: worktrees that have a .rig whose status could not be read, so a clean answer would not cover them.
+export type Queue = { rows: QueueRow[]; overlaps: Overlap[]; unreadable?: string[] }
 
 const WAITS_ON_PERSON = ['approve', 'review']
 
@@ -42,17 +44,18 @@ export function overlaps(rows: { slug: string; worktree: string; files: string[]
   return [...found].map(([file, changes]) => ({ file, changes: [...changes].sort() })).sort((a, b) => a.file.localeCompare(b.file))
 }
 
-export function buildQueue(): { rows: QueueRow[]; overlaps: Overlap[] } {
+export function buildQueue(): Queue {
   const rows: QueueRow[] = []
+  const unreadable: string[] = []
   for (const w of worktrees()) {
     const r = spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', process.argv[1] ?? '', 'status', '--json'], { encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: w.dir } })
     let changes: { slug: string; status: string; next: string }[] = []
-    try { changes = (JSON.parse(r.stdout) as { changes?: typeof changes }).changes ?? [] } catch { /* a worktree rig cannot read: skipped */ }
+    try { changes = (JSON.parse(r.stdout) as { changes?: typeof changes }).changes ?? [] } catch { unreadable.push(w.dir); continue }
     for (const c of changes.filter(x => x.status !== 'shipped')) {
       rows.push({ worktree: w.dir, branch: w.branch, slug: c.slug, status: c.status, next: c.next, person: WAITS_ON_PERSON.includes(c.status), files: planFiles(read(path.join(w.dir, '.rig/changes', c.slug, 'plan.md'))) })
     }
   }
-  return { rows, overlaps: overlaps(rows) }
+  return { rows, overlaps: overlaps(rows), unreadable }
 }
 
 // A command meant to be pasted into a shell: every path is single-quoted. The worktree's own vendored checker when it has one, else the script that ran this.
@@ -63,7 +66,7 @@ const command = (r: QueueRow): string => {
   return `cd ${quote(r.worktree)} && SDLC_HUMAN=1 CLAUDE_PROJECT_DIR=${quote(r.worktree)} node --disable-warning=ExperimentalWarning ${script} approve ${r.slug}`
 }
 
-export function queueText(q: ReturnType<typeof buildQueue>): string {
+export function queueText(q: Queue): string {
   const wait = q.rows.filter(r => r.person), run = q.rows.filter(r => !r.person)
   const line = (r: QueueRow): string => `  ${r.slug.padEnd(24)} ${r.status.padEnd(8)} ${path.basename(r.worktree)}`
   return [
@@ -71,20 +74,24 @@ export function queueText(q: ReturnType<typeof buildQueue>): string {
     ...wait.flatMap(r => [line(r), `    ${command(r)}`]),
     run.length ? `With the model (${run.length}):` : 'With the model: nothing',
     ...run.map(r => `${line(r)} next: ${r.next}`),
+    ...(q.unreadable?.length ? [`Could not read ${q.unreadable.length} worktree(s), so they are not in this list: ${q.unreadable.join(', ')}`] : []),
     ...(q.overlaps.length ? [`Plans that touch the same file (${q.overlaps.length}): land one first, or split the work:`, ...q.overlaps.map(o => `  ${o.file}: ${o.changes.join(' and ')}`)] : []),
   ].join('\n')
 }
 
 // The files another instance's plan already holds that this change's plan also names (file claims, harness readiness 3.4): one writer per file.
-export function conflictsFor(slug: string, q = buildQueue()): Overlap[] {
+export function conflictsFor(slug: string, q: Queue = buildQueue()): Overlap[] {
   return q.overlaps.filter(o => o.changes.some(c => c.startsWith(`${slug} (`)))
 }
 
 export function cmdQueue(args: Args): void {
+  if (args.opt.check === true) fail('usage: queue --check <slug>')
   const check = typeof args.opt.check === 'string' ? args.opt.check : null
   if (check) {
-    const found = conflictsFor(check)
-    out(found.length ? [`${check} names a file another in-flight plan already holds:`, ...found.map(o => `  ${o.file}: ${o.changes.join(' and ')}`), 'Land the other change first, or split the work so each file has one writer.'].join('\n') : `${check}: no other in-flight plan names the same files`)
+    const q = buildQueue()
+    const found = conflictsFor(check, q)
+    const blind = q.unreadable?.length ? `\nwarning: could not read ${q.unreadable.length} worktree(s), so this check does not cover them: ${q.unreadable.join(', ')}` : ''
+    out((found.length ? [`${check} names a file another in-flight plan already holds:`, ...found.map(o => `  ${o.file}: ${o.changes.join(' and ')}`), 'Land the other change first, or split the work so each file has one writer.'].join('\n') : `${check}: no other in-flight plan names the same files`) + blind)
     process.exitCode = found.length ? 1 : 0
     return
   }

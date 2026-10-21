@@ -75,3 +75,48 @@ test('maintain: a finding is proposed once, and the cap holds the rest back for 
   assert.deepEqual(new Set([...first.proposed, ...second.proposed].map((p: { kind: string }) => p.kind)), new Set(['duplicate', 'dead', 'drift']))
   assert.match(sdlc(repo, ['maintain']).stdout, /nothing new to propose/)
 })
+
+// ---------- review findings ----------
+test('scan: migrations and numbered files, history and decision records, rig\'s own files and generated paths are not proposed or cited', () => {
+  const found = scan({
+    'db/migrations/0001_initial.py': 'x = 1\n', 'app/versions/abc.py': 'y = 1\n', 'src/12-seed.js': 'z\n', 'src/orphan.js': 'export const lonely = 1\n',
+    'CHANGELOG.md': 'Removed `src/old/gone.js`.\n', 'docs/adr/0003.md': 'We dropped `src/legacy/thing.js`.\n', '.rig/maintain/proposals/dead-1-x.md': 'Cites `src/orphan.js` and `src/missing/a.js`.\n',
+    'README.md': 'The bundle is `dist/app.js` and the state `.rig/state/x.json`.\n',
+  }, never)
+  assert.deepEqual(found.map(f => `${f.kind}:${f.files[0]}`), ['dead:src/orphan.js'], 'only the genuine orphan')
+})
+
+test('scan: a block shared by many files is boilerplate, not a duplicate', () => {
+  const header = Array.from({ length: 10 }, (_, i) => `// header line number ${i} of the licence`).join('\n').replace(/\/\/ /g, 'const h = ')
+  const files = Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`src/f${i}.js`, `${header}\nexport const own${i} = ${i}\n`]))
+  assert.deepEqual(scan(files, never).filter(f => f.kind === 'duplicate'), [])
+})
+
+test('maintain: its own proposals are not scanned, a lost seen.json never overwrites a proposal, and a broken one is an error', () => {
+  const repo = garden()
+  sdlc(repo, ['maintain'])
+  const dir = path.join(repo, '.rig/maintain/proposals')
+  const before = fs.readdirSync(dir).sort()
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', 'the proposals', '--no-verify')
+  fs.rmSync(path.join(repo, '.rig/maintain/seen.json'))
+  const again = JSON.parse(sdlc(repo, ['maintain', '--json']).stdout)
+  assert.equal(again.proposed.length, 3, 'the same three findings, and nothing new from the proposals themselves')
+  const after = fs.readdirSync(dir).sort()
+  assert.equal(after.length, 6, 'numbered past the existing files')
+  assert.deepEqual(after.filter(f => before.includes(f)), before, 'the first three are untouched')
+  fs.writeFileSync(path.join(repo, '.rig/maintain/seen.json'), '{ nope')
+  const broken = sdlc(repo, ['maintain'])
+  assert.equal(broken.code, 1)
+  assert.match(broken.stderr, /seen\.json is not valid JSON/)
+})
+
+test('maintain: a path with non-ASCII characters is scanned, not silently skipped', () => {
+  const repo = makeRepo()
+  write(repo, 'src/café.js', 'export const lonely = 1\n')
+  write(repo, 'src/alpha.js', 'export const alpha = 1\n')
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', 'accents')
+  const r = JSON.parse(sdlc(repo, ['maintain', '--json']).stdout)
+  assert.deepEqual(r.proposed.filter((p: { kind: string }) => p.kind === 'dead').map((p: { files: string[] }) => p.files[0]).sort(), ['src/alpha.js', 'src/café.js'])
+})

@@ -19,7 +19,7 @@ test('the eval workflow passes the least-privilege audit and never triggers on a
 test('the dry job runs scripts that exist, and the live job runs only on a schedule or on demand, after the dry job', () => {
   for (const s of w.jobs.dry!.steps.flatMap(s => /npm run (\S+)/.exec(s.run ?? '')?.[1] ?? [])) if (s.startsWith('eval')) assert.ok(pkg.scripts[s], `npm script ${s} exists`)
   assert.ok(w.jobs.dry!.steps.some(s => s.run === 'npm run eval:dry'))
-  assert.equal(w.jobs.live!.if, "github.event_name != 'push'")
+  assert.equal(w.jobs.live!.if, "github.event_name != 'push' && github.ref == 'refs/heads/main'", 'only from main: the job holds a secret')
   assert.equal(w.jobs.live!.needs, 'dry')
 })
 
@@ -31,5 +31,9 @@ test('the secret reaches exactly one step, the capped paired eval, and the gate 
   assert.match(run, /--cap-total 15/)
   assert.match(run, /--results "\$RUNNER_TEMP\/paired\.jsonl"/)
   assert.ok(live.findIndex(s => /eval\/gate\.mjs/.test(s.run ?? '')) > live.findIndex(s => /eval\/run\.mjs/.test(s.run ?? '')), 'the gate follows the eval')
-  assert.match(live.find(s => /eval\/gate\.mjs/.test(s.run ?? ''))?.run ?? '', /paired\.jsonl" --variant links/)
+  const gateStep = live.find(s => /eval\/gate\.mjs/.test(s.run ?? '')) as { run?: string; shell?: string }
+  assert.match(gateStep.run ?? '', /paired\.jsonl" --variant links/)
+  assert.equal(gateStep.shell, 'bash', 'a pipe to tee needs pipefail, or the gate can never fail the job')
+  const paths = (w.on as { push: { paths: string[] } }).push.paths
+  for (const p of ['guides/**', 'hooks/**', '.claude-plugin/**', 'package.json', '.github/workflows/eval.yml']) assert.ok(paths.includes(p), p)
 })

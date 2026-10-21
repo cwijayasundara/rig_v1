@@ -16,9 +16,14 @@ export function criteria(): Criterion[] {
   const has = (id: string): boolean => reg.sensors.some(s => s.id === id && s.cmd && s.enabled)
   const claude = read(path.join(ROOT, 'CLAUDE.md'))
   // The hooks sit in core.hooksPath when rig installed them there, else in .git/hooks.
-  const hooksDir = git(['config', 'core.hooksPath'])
-  const hooks = [hooksDir ? path.resolve(ROOT, hooksDir) : '', path.join(ROOT, '.git/hooks')].filter(Boolean).some(d => ['pre-commit', 'pre-push'].some(h => read(path.join(d, h)).includes('sdlc')))
+  // In a linked worktree .git is a file, so ask git where the hooks are.
+  const hooksDir = git(['config', 'core.hooksPath']), gitHooks = git(['rev-parse', '--git-path', 'hooks'])
+  const hooks = [hooksDir ? path.resolve(ROOT, hooksDir) : '', gitHooks ? path.resolve(ROOT, gitHooks) : ''].filter(Boolean).some(d => ['pre-commit', 'pre-push'].some(h => read(path.join(d, h)).includes('sdlc')))
   const waivers = readJsonl<Waiver>(WAIVERS)
+  // Existence alone would let an empty file satisfy a criterion: these need content.
+  const filled = (rel: string): boolean => read(path.join(ROOT, rel)).trim().length > 0
+  const owners = (read(path.join(ROOT, 'CODEOWNERS')) + '\n' + read(path.join(ROOT, '.github/CODEOWNERS'))).split('\n').filter(l => l.trim() && !l.trim().startsWith('#'))
+  const wiki = ((): boolean => { try { return Object.keys(JSON.parse(read(path.join(SDLC, 'wiki.json')))).length > 0 } catch { return false } })()
   const c = (level: Criterion['level'], id: string, what: string, fix: string, ok: boolean): Criterion => ({ id, level, what, fix, ok })
   return [
     c(1, 'git', 'the repo is under git', '`git init`', git(['rev-parse', '--is-inside-work-tree']) === 'true'),
@@ -36,10 +41,10 @@ export function criteria(): Criterion[] {
     c(3, 'contracts', 'contract files are declared and checked', 'set "contracts" in .rig/sensors.json', reg.contracts.files.length > 0 || Boolean(reg.contracts.validate || reg.contracts.run)),
     c(3, 'journeys', 'the running app has an approved journey', '`/rig:app`, then a person runs `app approve`', appStates().some(a => a.state === 'current')),
     c(3, 'ratchets', 'a count ratchet holds a baseline', 'give a command sensor "ratchet": "down" (duplication ships in every pack)', Object.keys(loadRatchets(read(path.join(SDLC, 'ratchets.json')))).length > 0),
-    c(3, 'codeowners', 'CODEOWNERS covers .rig', 'copy templates/CODEOWNERS', /\.rig\//.test(read(path.join(ROOT, 'CODEOWNERS')) + read(path.join(ROOT, '.github/CODEOWNERS')))),
-    c(4, 'lessons', 'the learning loop has a lessons file', '`/rig:learn`', exists(path.join(SDLC, 'lessons.md'))),
+    c(3, 'codeowners', 'CODEOWNERS covers .rig', 'copy templates/CODEOWNERS', owners.some(l => /^\S*\.rig\//.test(l.trim()))),
+    c(4, 'lessons', 'the learning loop has a lessons file', '`/rig:learn`', filled('.rig/lessons.md')),
     c(4, 'waivers', 'every waiver has an owner and none has lapsed unrenewed', 'renew or remove them (`sensors` lists each)', waivers.every(w => w.by && w.by !== 'unknown' && waiverLive(w))),
-    c(4, 'wiki', 'the code wiki exists', '`/rig:wiki init`', exists(path.join(SDLC, 'wiki.json'))),
+    c(4, 'wiki', 'the code wiki exists', '`/rig:wiki init`', wiki),
     c(4, 'maintain', 'Maintain has run at least once', 'schedule `sdlc.ts maintain`', exists(path.join(SDLC, 'maintain'))),
   ]
 }
