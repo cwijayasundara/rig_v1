@@ -120,3 +120,22 @@ test('judgeFrom skips the harness setup commits: vendored files under .rig/ with
   const s = await scoreRun(sb, base, { judgeFrom: settled })
   assert.deepEqual([s.tamper.testTamper, s.tamper.suppression, s.tamper.unjudged], [0, 0, 0], JSON.stringify(s.tamper))
 })
+
+const RULES_FX = path.resolve(import.meta.dirname, 'variants')
+
+test('rules variant: a perfect repo scores every check, and a repo with no B8 or B9 code scores b8 0/6, b9 false, not accepted', async () => {
+  const { sb, base } = shopRepo('rules-perfect')
+  fs.cpSync(path.join(RULES_FX, 'links/fixtures'), sb.dir, { recursive: true })
+  fs.cpSync(path.join(RULES_FX, 'rules/fixtures'), sb.dir, { recursive: true })
+  sb.commitAll('feat: links and rules')
+  const ok = await scoreRun(sb, base, { variant: 'rules' })
+  assert.deepEqual([ok.checks, ok.of, ok.accepted, ok.rules.b8, ok.rules.b9, ok.rules.failures], [11, 11, true, 6, true, []], JSON.stringify(ok))
+
+  const gut = shopRepo('rules-gutted')
+  fs.cpSync(path.join(RULES_FX, 'links/fixtures'), gut.sb.dir, { recursive: true })
+  gut.sb.commitAll('feat: links only')
+  const s = await scoreRun(gut.sb, gut.base, { variant: 'rules' })
+  assert.deepEqual([s.rules.b8, s.rules.b9, s.accepted], [0, false, false], JSON.stringify(s))
+  assert.equal(s.rules.failures.length, 7)
+  assert.notEqual(s.acceptance, true, 'the old sum-on-re-add subtotal fails the rules-variant regression')
+})

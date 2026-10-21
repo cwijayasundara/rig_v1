@@ -1,4 +1,4 @@
-// The eval runner (spec §9): node eval/run.mjs [--arms all|a,b] [--runs 10] [--seed N] [--variant links] [--cap-run 6] [--cap-total 300] [--out DIR] [--results FILE] [--dry]
+// The eval runner (spec §9): node eval/run.mjs [--arms all|a,b] [--runs 10] [--seed N] [--variant links|rules] [--cap-run 6] [--cap-total 300] [--out DIR] [--results FILE] [--dry]
 // Live runs cost money and are started by a person; --dry replays fixtures at $0 and never writes under eval/results.
 import fs from 'node:fs'
 import os from 'node:os'
@@ -13,8 +13,9 @@ import { PHASE as S2 } from '../tests/e2e/phases/s2-greenfield.mjs'
 import { PHASE as S3 } from '../tests/e2e/phases/s3-delete.mjs'
 import { armsFrom } from './arms.mjs'
 import { scoreRun } from './score.mjs'
-import { setupBare, setupRig, dryBare, BARE_PROMPT, BARE_PROMPT_LINKS } from './setup.mjs'
+import { setupBare, setupRig, dryBare, BARE_PROMPT, BARE_PROMPT_LINKS, BARE_PROMPT_RULES } from './setup.mjs'
 import { PHASE as S7 } from './variants/links.mjs'
+import { PHASE_S8 as S8, PHASE_S9 as S9 } from './variants/rules.mjs'
 
 const RESULTS = path.resolve(import.meta.dirname, 'results')
 // The same extra permissions for every arm: a bare model must be able to run its own tests, as a rig arm does through sdlc.ts.
@@ -31,6 +32,7 @@ export function orderArms(arms, seed, n) {
 export const nextRunAllowed = (spent, capRun, capTotal) => spent + capRun <= capTotal + 1e-9
 export const resultsAllowed = (file, dry) => (dry && path.resolve(file).startsWith(RESULTS + path.sep) ? 'dry runs never write under eval/results: they replay fixtures, not a model' : null)
 
+const PHASES = { links: [S2, S3, S7], rules: [S2, S3, S7, S8, S9] }
 const failing = (driver, failAt) => (failAt ? { ...driver, [failAt]: async () => { throw new Error(`injected failure at ${failAt}`) } } : driver)
 
 export async function runOne(arm, n, { dry, out, capRunUsd, failAt, seed = null, position = null, variant = null }) {
@@ -46,7 +48,7 @@ export async function runOne(arm, n, { dry, out, capRunUsd, failAt, seed = null,
     if (arm.rig) {
       base = await setupRig(sb, arm, { dry, variant })
       settled = sb.git('rev-parse', 'HEAD')
-      for (const phase of variant === 'links' ? [S2, S3, S7] : [S2, S3]) {
+      for (const phase of PHASES[variant] ?? [S2, S3]) {
         const driver = failing(dry ? scriptedDriver(sb, phase) : liveDriver(sb, phase, { sessions }), failAt)
         const { slug, answered } = await runChange(sb, phase, driver)
         row.reapproved = (row.reapproved ?? 0) + (driver.reapproved ?? 0)
@@ -58,7 +60,7 @@ export async function runOne(arm, n, { dry, out, capRunUsd, failAt, seed = null,
       base = setupBare(sb, { dry, variant })
       if (dry) dryBare(sb, { variant })
       if (failAt) throw new Error(`injected failure at ${failAt}`)
-      if (!dry) sessions.run('bare', variant === 'links' ? BARE_PROMPT_LINKS : BARE_PROMPT)
+      if (!dry) sessions.run('bare', { links: BARE_PROMPT_LINKS, rules: BARE_PROMPT_RULES }[variant] ?? BARE_PROMPT)
     }
   } catch (err) {
     row.error = String(err?.message ?? err).split('\n')[0]
@@ -89,7 +91,7 @@ if (process.argv[1] === import.meta.filename) {
   const capTotal = Number(arg('cap-total', 300))
   fs.mkdirSync(path.dirname(results), { recursive: true })
   const variant = arg('variant', null)
-  if (variant && variant !== 'links') { console.error('--variant must be: links'); process.exit(2) }
+  if (variant && variant !== 'links' && variant !== 'rules') { console.error('--variant must be: links or rules'); process.exit(2) }
   const seed = Number(arg('seed', Date.now() % 1_000_000))
   if (!Number.isInteger(seed) || seed < 0) { console.error('--seed must be a non-negative integer'); process.exit(2) }
   console.log(`arm order seed ${seed} (pass --seed ${seed} to repeat it)`)

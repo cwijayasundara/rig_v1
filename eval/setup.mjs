@@ -5,6 +5,7 @@ import { install, REGISTRY, copyContractTool } from '../tests/e2e/phases/s0-inst
 import { installedPlugins } from '../tests/e2e/lib/sandbox.mjs'
 import { runBrief } from '../tests/e2e/phases/s1-brief.mjs'
 import { briefFor, dryOverlay } from './variants/links.mjs'
+import { briefFor as rulesBrief, dryOverlay as rulesOverlay } from './variants/rules.mjs'
 import { applyAblation } from './ablation.mjs'
 
 const BRIEF = path.resolve(import.meta.dirname, '../tests/e2e/prd/shop-brief.md')
@@ -13,7 +14,9 @@ const FX = path.resolve(import.meta.dirname, '../tests/e2e/fixtures')
 export const BARE_PROMPT = 'Build the shop described in BRIEF.md: behaviours B1–B6, in src/, with node --test tests in test/ whose names start with their B-number, `npm test` passing, and `npm start` serving the HTTP API as the brief says. Keep the HTTP contract in api/openapi.yaml and contracts/examples/ (node scripts/contract.mjs validate|run checks it). Work until it is done. In this unattended session, read files with Read, Grep and Glob and change them with Edit or Write; run each command as its own Bash call (no cd, pipes, redirects, &&, ; or heredocs): compound commands are denied.'
 
 export const BARE_PROMPT_LINKS = BARE_PROMPT.replace('behaviours B1–B6', 'behaviours B1–B7')
-const briefText = variant => (variant === 'links' ? briefFor(fs.readFileSync(BRIEF, 'utf8')) : fs.readFileSync(BRIEF, 'utf8'))
+export const BARE_PROMPT_RULES = BARE_PROMPT.replace('behaviours B1–B6', 'behaviours B1–B9')
+const BRIEFS = { links: briefFor, rules: rulesBrief }
+const briefText = variant => (BRIEFS[variant] ?? (b => b))(fs.readFileSync(BRIEF, 'utf8'))
 
 // The layers the shop brief's own Architecture section states: http on top, nothing depends on http.
 const LAYERS = '# Architecture\n\n## Layers\n\n```rig-layers\nlayer catalog src/catalog/**\nlayer cart src/cart/**\nlayer orders src/orders/**\nlayer http src/http/**\nallow cart -> catalog\nallow orders -> cart, catalog\nallow http -> catalog, cart, orders\nexample catalog src/catalog/products.js\n```\n'
@@ -54,5 +57,6 @@ export async function setupRig(sb, arm, { dry = false, variant = null } = {}) {
 export function dryBare(sb, { variant = null } = {}) {
   fs.cpSync(path.join(FX, 'shop'), sb.dir, { recursive: true })
   fs.cpSync(path.join(FX, 'remove'), sb.dir, { recursive: true })
-  if (variant === 'links') dryOverlay(sb)
+  if (variant === 'links' || variant === 'rules') dryOverlay(sb)
+  if (variant === 'rules') rulesOverlay(sb)
 }

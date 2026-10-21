@@ -1,5 +1,6 @@
 // Hidden acceptance for the shop lane. Lives outside the sandbox repo, so the model never sees it.
 // `shop` re-checks every promise of the brief's B1–B4; `remove` adds the delete-item change and re-checks `shop` first.
+// A third argument `rules` expects the B9 semantics (re-adding a SKU replaces its quantity); the default keeps the sum-on-re-add rule.
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -17,17 +18,19 @@ async function shopOf(repo) {
 }
 
 const PROMISES = {
-  async shop(repo) {
+  async shop(repo, variant) {
+    const replace = variant === 'rules'
+    const [want, wantSave10] = replace ? [1650, 1485] : [2550, 2295]
     const { catalog, Cart, checkout, createHandler } = await shopOf(repo)
     const bad = (fn, re) => { try { fn() } catch (e) { return re.test(e.message) } return false }
     if (!bad(() => catalog.add({ sku: 'tea', name: 'x', priceCents: 1 }), /invalid sku/)) return 'catalog accepted a bad SKU'
     if (!bad(() => catalog.add({ sku: 'TEA-001', name: 'x', priceCents: 0 }), /./)) return 'catalog accepted a non-positive price'
     const cart = new Cart(catalog)
     cart.add('TEA-001', 2); cart.add('MUG-002'); cart.add('TEA-001')
-    if (cart.subtotalCents() !== 2550) return `subtotal ${cart.subtotalCents()}, want 2550 (FR-2)`
+    if (cart.subtotalCents() !== want) return `subtotal ${cart.subtotalCents()}, want ${want} (FR-2)`
     if (!bad(() => cart.add('NOPE-999'), /unknown sku/)) return 'cart accepted an unknown SKU'
     if (!bad(() => cart.add('TEA-001', 0), /./)) return 'cart accepted qty 0'
-    if (checkout(cart, { code: 'SAVE10' }).totalCents !== 2295) return 'SAVE10 on 2550 did not total 2295 (FR-3)'
+    if (checkout(cart, { code: 'SAVE10' }).totalCents !== wantSave10) return `SAVE10 on ${want} did not total ${wantSave10} (FR-3)`
     if (!bad(() => checkout(cart, { code: 'FREE' }), /unknown discount/)) return 'unknown discount code accepted'
     if (!bad(() => checkout(new Cart(catalog)), /empty/)) return 'empty checkout accepted'
     const h = createHandler(catalog)
@@ -40,8 +43,8 @@ const PROMISES = {
     if (Object.keys(pkg.dependencies ?? {}).length) return 'runtime dependencies declared (NFR-2)'
     return true
   },
-  async remove(repo) {
-    const first = await PROMISES.shop(repo)
+  async remove(repo, variant) {
+    const first = await PROMISES.shop(repo, variant)
     if (first !== true) return `regression before remove: ${first}`
     const { catalog, Cart, createHandler } = await shopOf(repo)
     const cart = new Cart(catalog)
@@ -75,6 +78,6 @@ export async function assertShop(c, repo, phase) {
 }
 
 if (process.argv[1] === import.meta.filename) {
-  const [repo, phase] = process.argv.slice(2)
-  console.log(JSON.stringify(await PROMISES[phase](repo)))
+  const [repo, phase, variant] = process.argv.slice(2)
+  console.log(JSON.stringify(await PROMISES[phase](repo, variant)))
 }
