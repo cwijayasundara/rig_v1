@@ -13,9 +13,10 @@ import { names, nameProblem } from './slice.ts'
 
 const HUMAN = { SDLC_HUMAN: '1' }
 const SLICES = path.resolve(import.meta.dirname, '../templates/slices')
+const cleanEnv = (): NodeJS.ProcessEnv => { const e = { ...process.env }; delete e.NODE_TEST_CONTEXT; return e }
 const have = (cmd: string): boolean => spawnSync(cmd, ['--version'], { stdio: 'ignore' }).status === 0
 const STACKS = [
-  { stack: 'node', feature: 'invoice', bad: "import { makeMemoryStore } from '../infra/memory-store.js'\n", domain: 'src/invoice/domain/invoice.js', test: (repo: string) => spawnSync('node', ['--test'], { cwd: repo, encoding: 'utf8', env: { ...process.env, NODE_TEST_CONTEXT: '' } }), ok: true },
+  { stack: 'node', feature: 'invoice', bad: "import { makeMemoryStore } from '../infra/memory-store.js'\n", domain: 'src/invoice/domain/invoice.js', test: (repo: string) => spawnSync('node', ['--test'], { cwd: repo, encoding: 'utf8', env: cleanEnv() }), ok: true },
   { stack: 'python', feature: 'invoice-line', bad: 'from invoice_line.infra.memory_store import MemoryStore\n', domain: 'src/invoice_line/domain/invoice_line.py', test: (repo: string) => spawnSync('python3', ['-m', 'unittest', 'discover', '-s', 'tests'], { cwd: repo, encoding: 'utf8' }), ok: have('python3') },
 ]
 
