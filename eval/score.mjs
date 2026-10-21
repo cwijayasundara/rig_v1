@@ -77,7 +77,7 @@ export function layerViolations(dir) {
   return found
 }
 
-export async function scoreRun(sb, base, { timeoutMs = 300_000, sdlc = SDLC, variant = null } = {}) {
+export async function scoreRun(sb, base, { timeoutMs = 300_000, sdlc = SDLC, variant = null, judgeFrom = base } = {}) {
   // The sandbox's env: the runner's own (a test context, a CI event path) must not leak into the model's suite.
   const t = await runBounded('npm', ['test', '--silent'], { cwd: sb.dir, timeoutMs, env: sb.env })
   const npmTest = t.status === 0
@@ -90,5 +90,5 @@ export async function scoreRun(sb, base, { timeoutMs = 300_000, sdlc = SDLC, var
   const links = variant === 'links' ? await linksHttp(sb.dir).catch(e => `links acceptance crashed: ${e.message}`) : null
   const all = [npmTest, acceptance === true, http === true, ...(variant === 'links' ? [links === true] : [])]
   const checks = all.filter(Boolean).length
-  return { checks, of: all.length, accepted: checks === all.length, npmTest, acceptance, http, ...(variant === 'links' ? { links } : {}), layerViolations: variant === 'links' && links !== true ? null : layerViolations(sb.dir), tamper: tamperOf(sb, base, sdlc) }
+  return { checks, of: all.length, accepted: checks === all.length, npmTest, acceptance, http, ...(variant === 'links' ? { links } : {}), layerViolations: variant === 'links' && links !== true ? null : layerViolations(sb.dir), tamper: tamperOf(sb, judgeFrom, sdlc) }
 }

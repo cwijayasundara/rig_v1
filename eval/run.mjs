@@ -41,9 +41,11 @@ export async function runOne(arm, n, { dry, out, capRunUsd, failAt, seed = null,
   const sessions = dry ? null : createSessions({ sb, out: sb.root, capUsd: capRunUsd, model: arm.model, allow: EVAL_ALLOW, env: { CLAUDE_CODE_SUBAGENT_MODEL: arm.model } })
   const row = { arm: arm.id, run: n, model: arm.model, rig: arm.rig, policy: arm.policy ?? null, variant, seed, position, at: new Date().toISOString() }
   let base = null
+  let settled = null // HEAD once rig's own setup commits are down: tamper judges the builder's commits, not the harness's
   try {
     if (arm.rig) {
       base = await setupRig(sb, arm, { dry, variant })
+      settled = sb.git('rev-parse', 'HEAD')
       for (const phase of variant === 'links' ? [S2, S3, S7] : [S2, S3]) {
         const driver = failing(dry ? scriptedDriver(sb, phase) : liveDriver(sb, phase, { sessions }), failAt)
         const { slug, answered } = await runChange(sb, phase, driver)
@@ -64,7 +66,7 @@ export async function runOne(arm, n, { dry, out, capRunUsd, failAt, seed = null,
     // Whatever the run left, committed, so tamper judges it even when the session or a change failed midway.
     if (base) { try { sb.commitAll('chore: run result') } catch {} }
   }
-  const score = base ? await scoreRun(sb, base, { variant }).catch(e => ({ checks: 0, of: 3, accepted: false, layerViolations: null, error: e.message })) : { checks: 0, of: 3, accepted: false, layerViolations: null }
+  const score = base ? await scoreRun(sb, base, { variant, judgeFrom: settled ?? base }).catch(e => ({ checks: 0, of: 3, accepted: false, layerViolations: null, error: e.message })) : { checks: 0, of: 3, accepted: false, layerViolations: null }
   const t = sessions ? totals(sessions.sessions) : { costUsd: 0, inputTokens: 0, outputTokens: 0, denials: [], models: {} }
   const commits = base ? Number(sb.git('rev-list', '--count', `${base}..HEAD`)) : 0
   return {

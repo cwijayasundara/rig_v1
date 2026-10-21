@@ -111,3 +111,12 @@ test('layerViolations: only an import that points up the layers counts, however 
   assert.equal(layerViolations(shop({ 'src/cart/cart.js': "import x from 'left-pad'\n// import { y } from '../http/handler.js'\n" })), 0, 'a package, and a comment')
   assert.equal(layerViolations(shop({})), 0, 'no src at all')
 })
+
+test('judgeFrom skips the harness setup commits: vendored files under .rig/ with a noqa are not the builder\'s tamper', async () => {
+  const { sb, base } = shopRepo('onboard')
+  sb.write('.rig/templates/t.py', 'import x  # noqa: E402\n')
+  sb.commitAll('chore: onboard rig')
+  const settled = sb.git('rev-parse', 'HEAD')
+  const s = await scoreRun(sb, base, { judgeFrom: settled })
+  assert.deepEqual([s.tamper.testTamper, s.tamper.suppression, s.tamper.unjudged], [0, 0, 0], JSON.stringify(s.tamper))
+})
