@@ -26,14 +26,16 @@ export function planFiles(plan: string): string[] {
   return section.split('\n').map(l => /^\s*[-*]\s+`?([^`\s]+)`?/.exec(l)?.[1]).filter((e): e is string => Boolean(e))
 }
 
-// Two plans overlap on a file when one names it, or names a directory holding it.
+// Two plans overlap on a file when one names it, or names a directory holding it (with or without a trailing slash).
+const norm = (p: string): string => p.trim().replace(/\\/g, '/').replace(/^(\.\/)+/, '')
+const holds = (a: string, b: string): boolean => { const x = norm(a).replace(/\/$/, ''), y = norm(b).replace(/\/$/, ''); return x === y || y.startsWith(`${x}/`) || x.startsWith(`${y}/`) }
 export function overlaps(rows: { slug: string; worktree: string; files: string[] }[]): Overlap[] {
   const found = new Map<string, Set<string>>()
-  const holds = (a: string, b: string): boolean => a === b || (a.endsWith('/') && b.startsWith(a)) || (b.endsWith('/') && a.startsWith(b))
-  for (const x of rows) for (const y of rows) {
-    if (x === y || x.slug >= y.slug || x.worktree === y.worktree) continue
+  // By position, not by slug: two instances may both create a change with the same name.
+  for (const [i, x] of rows.entries()) for (const y of rows.slice(i + 1)) {
+    if (x.worktree === y.worktree) continue
     for (const f of x.files) for (const g of y.files) if (holds(f, g)) {
-      const key = f.length >= g.length ? f : g
+      const key = norm(f).length >= norm(g).length ? norm(f) : norm(g)
       found.set(key, (found.get(key) ?? new Set()).add(`${x.slug} (${path.basename(x.worktree)})`).add(`${y.slug} (${path.basename(y.worktree)})`))
     }
   }
@@ -53,9 +55,13 @@ export function buildQueue(): { rows: QueueRow[]; overlaps: Overlap[] } {
   return { rows, overlaps: overlaps(rows) }
 }
 
-const command = (r: QueueRow): string => r.status === 'approve'
-  ? `cd ${r.worktree} && SDLC_HUMAN=1 node --disable-warning=ExperimentalWarning .rig/bin/sdlc.ts approve ${r.slug}`
-  : `review the PR for ${r.slug} (branch sdlc/${r.slug}), then merge it`
+// A command meant to be pasted into a shell: every path is single-quoted. The worktree's own vendored checker when it has one, else the script that ran this.
+const quote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`
+const command = (r: QueueRow): string => {
+  if (r.status !== 'approve') return `review the PR for ${r.slug} (branch sdlc/${r.slug}), then merge it`
+  const script = fs.existsSync(path.join(r.worktree, '.rig/bin/sdlc.ts')) ? '.rig/bin/sdlc.ts' : quote(process.argv[1] ?? 'sdlc.ts')
+  return `cd ${quote(r.worktree)} && SDLC_HUMAN=1 CLAUDE_PROJECT_DIR=${quote(r.worktree)} node --disable-warning=ExperimentalWarning ${script} approve ${r.slug}`
+}
 
 export function queueText(q: ReturnType<typeof buildQueue>): string {
   const wait = q.rows.filter(r => r.person), run = q.rows.filter(r => !r.person)

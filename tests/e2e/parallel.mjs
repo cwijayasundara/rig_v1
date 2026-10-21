@@ -52,11 +52,12 @@ if (process.argv[2] === '--worker') {
   const base = { root, env: JSON.parse(process.env.RIG_PARALLEL_ENV) }
   const sb = sandboxAt(base, dir, phaseName)
   const phase = PHASES[phaseName]
+  const started = Date.now()
   try {
     const { slug } = await runChange(sb, phase, scriptedDriver(sb, phase))
-    console.log(JSON.stringify({ ok: true, slug }))
+    console.log(JSON.stringify({ ok: true, slug, started, ended: Date.now() }))
   } catch (e) {
-    console.log(JSON.stringify({ ok: false, error: String(e.message).split('\n')[0] }))
+    console.log(JSON.stringify({ ok: false, error: String(e.message).split('\n')[0], started, ended: Date.now() }))
     process.exitCode = 1
   }
   process.exit()
@@ -82,10 +83,12 @@ const runWorker = name => new Promise(resolve => {
   let text = ''
   child.stdout.on('data', d => { text += d })
   child.stderr.on('data', d => { text += d })
-  child.on('close', code => resolve({ name, code, text: text.trim() }))
+  // A hung worker must not hold the job until its own timeout.
+  const timer = setTimeout(() => { child.kill('SIGKILL'); text += '\nworker timed out after 120 s' }, 120_000)
+  child.on('close', code => { clearTimeout(timer); resolve({ name, code, text: text.trim() }) })
 })
 const t0 = Date.now()
-const results = await Promise.all(Object.keys(PHASES).map(runWorker))
+const results = await Promise.all(Object.keys(PHASES).map(runWorker)).finally(() => {})
 const verdict = r => { try { return JSON.parse(r.text.split('\n').at(-1)) } catch { return { ok: false, error: r.text.slice(-300) } } }
 
 for (const r of results) {
@@ -93,6 +96,15 @@ for (const r of results) {
   await c.check(`${r.name}: its instance ran start to PR in its own worktree`, () => (r.code === 0 && v.ok) || `exit ${r.code}: ${v.error}`)
   const wt = sandboxAt(sb, worktrees[r.name], r.name)
   await c.check(`${r.name}: its verify.json passes`, () => { try { return JSON.parse(wt.read(`.rig/changes/${PHASES[r.name].slug}/verify.json`)).pass === true || 'verify failed' } catch { return 'no verify.json' } })
+}
+// The two instances really ran at the same time, and each approval and active pointer sits in its own worktree.
+const spans = results.map(verdict)
+await c.check('the two instances overlapped in time', () => (Math.max(...spans.map(v => v.started)) < Math.min(...spans.map(v => v.ended))) || `spans ${JSON.stringify(spans.map(v => [v.started, v.ended]))}`)
+for (const name of Object.keys(PHASES)) {
+  const slug = PHASES[name].slug
+  const other = Object.keys(PHASES).find(n => n !== name)
+  await c.check(`${name}: the approval was written in its own worktree, and in nobody else's`, () => fs.existsSync(path.join(worktrees[name], '.rig/changes', slug, 'approval.json')) && !fs.existsSync(path.join(worktrees[other], '.rig/changes', slug, 'approval.json')) && !fs.existsSync(path.join(sb.dir, '.rig/changes', slug, 'approval.json')) || 'approval.json is missing here or present somewhere else')
+  await c.check(`${name}: its active-change pointer names only its own change`, () => { const f = path.join(worktrees[name], '.rig/state/active'); const v = fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim() : ''; return v === '' || v === slug || `active is ${v}` })
 }
 for (const [a, b] of [['remove', 'slugify'], ['slugify', 'remove']]) {
   await c.check(`${a}'s worktree holds no trace of ${b}'s change`, () => !fs.existsSync(path.join(worktrees[a], '.rig/changes', PHASES[b].slug)) || `${b}'s change folder leaked into ${a}'s worktree`)
@@ -105,6 +117,7 @@ for (const name of Object.keys(PHASES)) {
 }
 await c.check('main passes npm test with both changes merged', () => { const r = sb.run('npm', ['test', '--silent']); return r.status === 0 || (r.stdout + r.stderr).trim().split('\n').slice(-3).join(' | ') })
 await c.check('main has both change records', () => ['remove', 'slugify'].every(n => sb.exists(`.rig/changes/${PHASES[n].slug}/pr.md`)) || 'a change record is missing')
+sb.git('worktree', 'prune')
 console.log(`two instances, ${((Date.now() - t0) / 1000).toFixed(1)} s, sandbox ${sb.root}`)
 c.print()
 if (c.failed.length) process.exitCode = 1

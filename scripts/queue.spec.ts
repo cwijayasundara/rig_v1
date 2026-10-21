@@ -21,6 +21,16 @@ test('overlaps: the same file, or a directory holding a file, in two different w
   assert.deepEqual(found.map(o => o.file), ['src/http/handler.js'], 'the directory holds the file; the same worktree is one instance')
   assert.deepEqual(found[0]?.changes, ['aa-cart (a)', 'bb-http (b)'])
   assert.deepEqual(overlaps(rows.filter(r => r.slug !== 'bb-http')), [])
+  const messy = [{ slug: 'x-one', worktree: '/w/a', files: ['./src/http', 'src\\cart\\cart.js'] }, { slug: 'x-one', worktree: '/w/b', files: ['src/http/handler.js', 'src/cart/cart.js '] }]
+  assert.deepEqual(overlaps(messy).map(o => o.file), ['src/cart/cart.js', 'src/http/handler.js'], 'a ./ prefix, no trailing slash, backslashes, trailing space, and the same slug in two worktrees')
+  assert.deepEqual(overlaps([{ slug: 'aa-a', worktree: '/w/a', files: ['src/http'] }, { slug: 'bb-b', worktree: '/w/b', files: ['src/http-extra/x.js'] }]), [], 'a shared name prefix is not a shared directory')
+})
+
+test('the approve command is safe to paste: paths are quoted, and it carries the worktree', () => {
+  const row = { worktree: "/tmp/with space/it's; $(id)", branch: 'wip', slug: 'aa-a', status: 'approve', next: '', person: true, files: [] }
+  const text = queueText({ rows: [row], overlaps: [] })
+  assert.match(text, /cd '\/tmp\/with space\/it'\\''s; \$\(id\)' && SDLC_HUMAN=1 CLAUDE_PROJECT_DIR='\/tmp\/with space\/it'\\''s; \$\(id\)' node /)
+  assert.doesNotMatch(text, /cd \/tmp\/with space/)
 })
 
 test('queue: a plan waiting for approval is listed for the person with the command, a change at spec is the model\'s, and a shared file is flagged', () => {
@@ -47,10 +57,10 @@ test('queue: a plan waiting for approval is listed for the person with the comma
   assert.deepEqual([by['early-one'].status, by['early-one'].person], ['spec', false])
   assert.deepEqual(q.overlaps.map((o: { file: string }) => o.file), ['src/http/handler.js'])
   const text = sdlc(repo, ['queue']).stdout
-  assert.match(text, /Waiting for you \(2\):[\s\S]*add-cart[\s\S]*SDLC_HUMAN=1 node .*approve add-cart/)
+  assert.match(text, /Waiting for you \(2\):[\s\S]*add-cart[\s\S]*SDLC_HUMAN=1 CLAUDE_PROJECT_DIR='[^']+' node .*approve add-cart/)
   assert.match(text, /With the model \(1\):[\s\S]*early-one/)
   assert.match(text, /Plans that touch the same file \(1\)[\s\S]*src\/http\/handler\.js: add-cart \(.*\) and add-links/)
-  assert.ok(text.includes(`cd ${fs.realpathSync(wtA)}`) || text.includes(`cd ${wtA}`), 'the approve command starts in that worktree')
+  assert.ok(text.includes(`cd '${fs.realpathSync(wtA)}'`) || text.includes(`cd '${wtA}'`), 'the approve command starts in that worktree')
 })
 
 test('queueText says so when nothing waits', () => {
