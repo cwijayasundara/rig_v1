@@ -37,8 +37,8 @@ const CAPPED = [
   path.join(ROOT, 'package.json'),
 ].filter(isFile)
 
-// Cap raised from 6000 to 7000 by the maintainer on 2026-10-21 for Phase 1 (arch made 6 230); raise it again only by asking.
-test('the harness is at most 7000 lines (tests and docs excluded)', () => {
+// Cap raised from 6000 to 7000 by the maintainer on 2026-10-21 for Phase 1 (arch made 6 230), then to 8000 the same day for 1.2, 1.3, 1.4 and 1.6; raise it again only by asking.
+test('the harness is at most 8000 lines (tests and docs excluded)', () => {
   const total = CAPPED.reduce((n, f) => n + count(f), 0)
-  assert.ok(total <= 7000, `harness is ${total} lines`)
+  assert.ok(total <= 8000, `harness is ${total} lines`)
 })

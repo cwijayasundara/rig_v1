@@ -2,10 +2,10 @@
 // and writes only under .rig/learn/. The model-facing step is the /rig:learn skill; a person applies every change to the lessons and the rules.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SDLC, WAIVERS, out, fail, read, listChanges, readJsonl, writeAtomic, type Args, type Waiver } from './core.ts'
+import { ROOT, SDLC, WAIVERS, out, fail, read, listChanges, readJsonl, writeAtomic, sha, type Args, type Waiver } from './core.ts'
 import { parseLessons, checkLessons, type Lesson } from './learnfile.ts'
 import { mineCandidates, shippedChanges, lessonStatus } from './learnmine.ts'
-import { replayRule } from './learnreplay.ts'
+import { replayRule, replayLayers } from './learnreplay.ts'
 import { parseRules, type Rule } from './model.ts'
 
 const LESSONS = path.join(SDLC, 'lessons.md')
@@ -27,15 +27,37 @@ function mine(): void {
   writeAtomic(path.join(LEARN, 'candidates.json'), JSON.stringify(a, null, 2) + '\n')
   out([
     a.candidates.length ? `${a.candidates.length} candidate(s):` : 'no candidates: nothing recurs in two changes yet',
-    ...a.candidates.map(c => `- ${c.kind} ${c.key}: ${c.changes.length} changes (${c.changes.join(', ')}), ${c.count} occurrence(s)\n    ${c.sample}`),
+    ...a.candidates.map(c => `- ${c.kind} ${c.key}: ${c.changes.length} changes (${c.changes.join(', ')}), ${c.count} occurrence(s)\n    ${c.sample}\n    strongest fix that fits: ${c.rung}: ${c.how}`),
     ...a.retire.map(r => `retire ${r.id}: ${r.why}`),
     'written: .rig/learn/candidates.json',
   ].join('\n'))
 }
 
+// A proposal line that promotes a lesson to a rule (PROMOTE) or a layer edge (LAYER) is presentable only with a passing replay of exactly the file
+// it proposes: the replay wrote .rig/learn/replay-<file>.json with the file's hash, and a changed file invalidates it.
+// Any spelling a model might use for the line: bullet or not, bold or not, any case, `:` or a dash after the id.
+const PROMOTION = /^(?:[-*]\s*)?[*`]*(PROMOTE|LAYER)[*`]*\s+`?([^\s:`*]+)`?\**\s*[:\u2013\u2014-]/i
+export function proposalProblems(proposal: string, readFile: (rel: string) => string | null): string[] {
+  return proposal.split('\n').flatMap(line => {
+    const m = PROMOTION.exec(line.trim())
+    if (!m) return []
+    const [verb, id] = [(m[1] as string).toUpperCase(), m[2] as string]
+    const file = verb === 'PROMOTE' ? `rule-${id}.json` : `layers-${id}.md`
+    const text = readFile(`.rig/learn/${file}`)
+    if (text === null) return [`${verb} ${id}: ${file} is not in .rig/learn/`]
+    let ev: { file?: string; sha?: string; pass?: boolean } | null = null
+    try { ev = JSON.parse(readFile(`.rig/learn/replay-${file.replace(/\.[a-z]+$/, '')}.json`) ?? 'null') } catch { /* none */ }
+    if (!ev) return [`${verb} ${id}: no replay on record: run \`learn replay ${verb === 'LAYER' ? '--layers ' : ''}.rig/learn/${file} --earned <a>,<b>\``]
+    if (ev.sha !== sha(text)) return [`${verb} ${id}: ${file} changed since its replay; replay it again`]
+    return ev.pass ? [] : [`${verb} ${id}: its replay failed, so it is not presentable`]
+  })
+}
+const proposalCheck = (): string[] => proposalProblems(read(path.join(LEARN, 'proposal.md')), rel => (fs.existsSync(path.join(ROOT, rel)) ? read(path.join(ROOT, rel)) : null))
+
 function check(): void {
   const slugs = listChanges()
   const problems = [
+    ...proposalCheck(),
     ...checkLessons(read(LESSONS), slugs),
     ...checkLessons(read(ARCHIVE), slugs),
     ...parseLessons(read(LESSONS)).lessons.filter(l => l.status !== 'active').map(l => `${l.id}: ${l.status} lessons belong in .rig/lessons-archive.md`),
@@ -55,11 +77,18 @@ function readRule(file: string | undefined): Rule {
 }
 
 function replay(args: Args): void {
-  const rule = readRule(args.pos[1])
   const earned = String(args.opt.earned ?? '').split(',').filter(Boolean)
-  if (earned.length < 2) fail('replay needs --earned <slug>,<slug>: the (at least 2) changes that earned the rule')
-  const r = replayRule(ROOT, rule, earned, listChanges())
+  if (earned.length < 2) fail('replay needs --earned <slug>,<slug>: the (at least 2) changes that earned the fix')
+  if (args.opt.layers === true) fail('--layers needs the file: learn replay --layers .rig/learn/layers-<id>.md --earned a,b')
+  const layersFile = typeof args.opt.layers === 'string' ? args.opt.layers : null
+  const given = layersFile ?? args.pos[1]
+  const r = layersFile ? replayLayers(ROOT, read(path.resolve(ROOT, layersFile)), earned, listChanges()) : replayRule(ROOT, readRule(args.pos[1]), earned, listChanges())
   const pass = r.pass
+  // The evidence a proposal line is checked against: what was replayed (by hash), on whom, and whether it held.
+  if (given && fs.existsSync(path.resolve(ROOT, given))) {
+    fs.mkdirSync(LEARN, { recursive: true })
+    writeAtomic(path.join(LEARN, `replay-${path.basename(given).replace(/\.[a-z]+$/, '')}.json`), JSON.stringify({ file: path.basename(given), sha: sha(read(path.resolve(ROOT, given))), earned, pass, at: new Date().toISOString() }, null, 2) + '\n')
+  }
   out([
     r.error ? `error: ${r.error}` : `fires on: ${r.firesOn.join(', ') || 'none'}`,
     r.missed.length ? `does not fire on an earning change: ${r.missed.join(', ')}` : '',
@@ -80,7 +109,8 @@ export function cmdLearn(args: Args): void {
   const sub = args.pos[0]
   if (sub === 'mine') return mine()
   if (sub === 'check') return check()
+  if (sub === 'proposal') { const p = proposalCheck(); out(p.length ? p.map(x => `[learn] ${x}`).join('\n') : 'learn proposal: every promotion carries a passing replay'); process.exitCode = p.length ? 1 : 0; return }
   if (sub === 'replay') return replay(args)
   if (sub === 'status') return status()
-  fail('usage: learn <mine|replay <rule.json> --earned a,b|check|status>')
+  fail('usage: learn <mine|replay <rule.json>|--layers <block.md> --earned a,b|proposal|check|status>')
 }

@@ -6,6 +6,8 @@ estimate_days: 1
 kind: internal
 owner:
 status: draft
+scope: []
+touches: []
 ---
 # <Intent title>
 

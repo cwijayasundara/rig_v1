@@ -121,6 +121,7 @@ export function renderImportLinter(d: Def, known: Record<string, string[]> = {})
 }
 
 export const approvedLayers = (text: string): Layer[] => { try { const r = JSON.parse(text) as Partial<Record_>; return Array.isArray(r.layers) ? r.layers : [] } catch { return [] } }
+export const approvedDef = (): Def | null => readRecord()?.def ?? null
 const readRecord = (): Record_ | null => { try { return JSON.parse(read(path.join(ROOT, APPROVED))) as Record_ } catch { return null } }
 
 export type LayerState = 'none' | 'proposed' | 'approved' | 'drifted'

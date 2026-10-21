@@ -214,7 +214,10 @@ export function ensureGitignore(): void {
 }
 
 export const WAIVERS = path.join(SDLC, 'waivers.jsonl')
-export type Waiver = { slug: string; sensor: string; file: string; reason: string; by: string; at: string }
+// expires: when the waiver stops applying (a row written before expiry existed has none and never lapses).
+// A waiver covers only until it expires; an unreadable expiry counts as expired, and a row with none (from before expiry existed) never lapses.
+export const waiverLive = (w: { expires?: string }): boolean => !w.expires || Date.parse(w.expires) > Date.now()
+export type Waiver = { slug: string; sensor: string; file: string; reason: string; by: string; at: string; expires?: string }
 
 // ---------- the turn gate (.rig/.gate) ----------
 

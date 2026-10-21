@@ -8,7 +8,7 @@
       "Skill(rig:test)", "Skill(rig:test *)", "Skill(rig:pr)", "Skill(rig:pr *)", "Skill(rig:rule)", "Skill(rig:rule *)", "Skill(rig:arch)", "Skill(rig:arch *)", "Skill(rig:app)", "Skill(rig:app *)",
       "Skill(rig:chart)", "Skill(rig:chart *)", "Skill(rig:testplan)", "Skill(rig:testplan *)", "Skill(rig:wiki)", "Skill(rig:wiki *)", "Skill(rig:learn)", "Skill(rig:learn *)",
       "Skill(rig-start)", "Skill(rig-start *)", "Skill(rig-plan)", "Skill(rig-plan *)", "Skill(rig-build)", "Skill(rig-build *)",
-      "Skill(rig-test)", "Skill(rig-test *)", "Skill(rig-pr)", "Skill(rig-pr *)", "Skill(rig-rule)", "Skill(rig-rule *)",
+      "Skill(rig-test)", "Skill(rig-test *)", "Skill(rig-pr)", "Skill(rig-pr *)", "Skill(rig-rule)", "Skill(rig-rule *)", "Skill(rig-arch)", "Skill(rig-arch *)", "Skill(rig-app)", "Skill(rig-app *)",
       "Skill(rig-chart)", "Skill(rig-chart *)", "Skill(rig-testplan)", "Skill(rig-testplan *)", "Skill(rig-wiki)", "Skill(rig-wiki *)", "Skill(rig-learn)", "Skill(rig-learn *)",
       "Bash(gh pr comment *)", "Bash(gh pr view *)"
     ],

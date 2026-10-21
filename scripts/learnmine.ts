@@ -5,7 +5,20 @@ import path from 'node:path'
 import { read, readJsonl, gitIn, SLUG_RE, type Waiver } from './core.ts'
 import type { Lesson } from './learnfile.ts'
 
-type Candidate = { key: string; kind: 'finding' | 'waiver'; changes: string[]; count: number; sample: string }
+type Candidate = { key: string; kind: 'finding' | 'waiver'; changes: string[]; count: number; sample: string; rung: Rung['rung']; how: string }
+
+// The promotion ladder (harness readiness 1.2): the strongest fix that fits a recurring mistake, strongest first. A person applies it; the
+// table is data, keyed on the review category (a waiver has no category, so it is a lesson until a person says otherwise).
+export type Rung = { rung: 'architecture' | 'ratchet' | 'test' | 'rule' | 'lesson'; how: string }
+const ARCH: Rung = { rung: 'architecture', how: 'make the bad dependency impossible: declare the layer edge under ## Layers in architecture.md (/rig:arch), then `learn replay --layers .rig/learn/layers-<id>.md --earned <a>,<b>`' }
+const RATCHET: Rung = { rung: 'ratchet', how: 'a count that may only fall: a command sensor with "ratchet": "down" in .rig/sensors.json (duplication share, lint warnings)' }
+const TEST: Rung = { rung: 'test', how: 'pin it with a test, or a frozen contract example, that fails without the fix' }
+const RULE: Rung = { rung: 'rule', how: 'a pattern over added lines in .rig/rules.json, proven with `learn replay .rig/learn/rule-<id>.json --earned <a>,<b>`' }
+const LESSON: Rung = { rung: 'lesson', how: 'one line of .rig/lessons.md; nothing mechanical catches it yet' }
+const LADDER: Record<string, Rung> = { coupling: ARCH, responsibility: ARCH, abstraction: ARCH, duplication: RATCHET, tests: TEST, contract: TEST, data: TEST, correctness: RULE, security: RULE }
+// A waiver recurring on the layering sensor is the same mistake as a coupling finding; the other sensors have no stronger fix than a lesson.
+const WAIVER_LADDER: Record<string, Rung> = { layering: ARCH }
+export const ladderFor = (kind: Candidate['kind'], key: string): Rung => (kind === 'finding' ? LADDER[key] ?? LESSON : WAIVER_LADDER[key] ?? LESSON)
 export type Shipped = { slug: string; date: string; keys: string[] }
 
 const MIN_CHANGES = 2
@@ -31,7 +44,7 @@ export function mineCandidates(root: string): Candidate[] {
   const acc = new Map<string, Candidate>()
   const add = (kind: Candidate['kind'], key: string, slug: string, sample: string): void => {
     const id = `${kind}:${key}`
-    const c = acc.get(id) ?? { key, kind, changes: [], count: 0, sample }
+    const c = acc.get(id) ?? { key, kind, changes: [], count: 0, sample, ...ladderFor(kind, key) }
     c.count++
     if (!c.changes.includes(slug)) c.changes.push(slug)
     acc.set(id, c)

@@ -49,8 +49,8 @@ test('the sensors view shows who waived and how long ago, and calls an old waive
     { slug: 'wv', sensor: 'secrets', file: 'a.js', reason: 'old one', by: 'Bo', at: days(45) },
   ].map(r => JSON.stringify(r)).join('\n') + '\n')
   const text = sdlc(repo, ['sensors']).stdout
-  assert.match(text, /size \* fresh one \(by Ann, 2d\)/)
-  assert.match(text, /secrets a\.js old one \(by Bo, 45d, stale: review it\)/)
+  assert.match(text, /size \* fresh one \(by Ann, 2d, no expiry\)/)
+  assert.match(text, /secrets a\.js old one \(by Bo, 45d, no expiry, stale: review it\)/)
 })
 
 test('rig report counts waivers with no owner and shows the oldest', () => {
@@ -84,7 +84,7 @@ test('an unreadable or missing waiver date counts as stale, and a stored "unknow
   sdlc(repo, ['activate', 'wv'])
   write(repo, '.rig/waivers.jsonl', [{ slug: 'wv', sensor: 'size', file: '*', reason: 'no date', by: 'unknown' }].map(r => JSON.stringify(r)).join('\n') + '\n')
   const text = sdlc(repo, ['sensors']).stdout
-  assert.match(text, /size \* no date \(by no owner, age unknown, stale: review it\)/)
+  assert.match(text, /size \* no date \(by no owner, age unknown, no expiry, stale: review it\)/)
   assert.match(reportText(buildReport(repo)), /1 with no owner; oldest age unknown/)
 })
 
