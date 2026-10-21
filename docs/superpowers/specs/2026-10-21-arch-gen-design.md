@@ -93,6 +93,17 @@ The last row is the point of the hash: editing `architecture.md` can only start 
 - Stack e2e (`tests/e2e/stacks.mjs`, node first): the generated config blocks a real violation with the real `depcruise`.
 - Eval (after merge, not a gate to build): an arm on a task that tempts a layer violation, with and without the approved block, scored by violations reaching the PR.
 
+## Calls made after the builder check
+
+All **[my call]**; change any of them and the design adjusts.
+
+- **What `layering` matches.** The token of the forbidden layer as a whole word on an import line, exactly as the sensor matches `mustNotImport` today (so `../infra/db`, `@/infra/x` and `src.infra.x` all hit). It can false-positive on an unrelated package named like a layer, so `arch gen` refuses tokens under 3 characters or equal to a `forbid` name. The edit-time sensor is the cheap guard; the analyser at commit is the authority. No path resolver is added.
+- **`arch lint` fails closed once a block is approved.** Not configured means no approval exists, and then it prints that and exits 0. With an approval, a missing analyser (`depcruise`, `lint-imports`) is a block that names the install command, never a silent skip.
+- **Protection against a model with a shell.** The approved record and `.rig/gen/**` join the protected list for the harness-tamper sensor (diff level, blocks in CI), and the settings templates get the same Edit/Write ask rules `.rig/lessons.md` has. Shell edits are caught at commit and CI, as for `sensors.json`; nothing parses shell commands.
+- **Baseline.** A known violation is identified the way depcruise's own known-violations file identifies it (rule, from, to), not by line. `arch lint` only reads it and never writes. Only a person re-running `arch approve` rewrites it, and it refuses a baseline that grew.
+- **Globs.** `layer` globs may contain `*` inside the path (`src/features/*/domain/**` has token `domain` and covers every feature). A glob that is only wildcards, or one layer nested inside another, is rejected by validation.
+- **Already-initialised repos.** `arch approve` prints the one-line change to the `layers` sensor command and does not edit `sensors.json` itself. Fresh `init` gets the new command from the packs, and the acceptance and the eval use fresh repos.
+
 ## Left to the builder
 
 Exact command output wording, the file layout inside `.rig/gen/`, how `propose` scans imports (reuse the wiki index if it is warm), the Python mapping details, and splitting the work into tasks. Keep `arch.ts` near the 150-line estimate; the scripts cap rises with a dated note, as every feature has done.
