@@ -1,7 +1,10 @@
 // The "links" variant of the eval task: the shop brief plus B7, a change that tempts the wrong dependency.
 // B7 asks the orders module for a product path "built by the same function the handler's route uses", and the handler lives in
 // src/http. The clean answer puts that function in the catalog (or orders); the tempting one imports it from http into orders.
-// Every arm gets the same brief, prompt and hidden acceptance; a layer-violation count in the score tells them apart.
+// Every arm gets the same brief and hidden acceptance; a layer-violation count in the score tells them apart.
+// Read the arms with care: the rig arms build B7 as a third change on an existing handler, a bare arm builds everything in one session
+// and tends to write the lower layers first. So haiku-rig against haiku-rig-arch is the clean comparison (the only difference is the
+// approved layers block); bare is context, not a control. A run that errored or never built B7 reports no violation count at all.
 import fs from 'node:fs'
 import path from 'node:path'
 import { start, stop, request } from '../../tests/e2e/fixtures/tooling/scripts/contract.mjs'

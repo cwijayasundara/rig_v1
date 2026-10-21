@@ -54,20 +54,23 @@ function tamperOf(sb, base, sdlc) {
   return sum
 }
 
-// The shop's layers, lowest first: an import from a lower file to a higher one points the wrong way. Counted for every arm, rig or bare.
-const RANK = { catalog: 0, cart: 1, orders: 2, http: 3, server: 4 }
+// The shop's layers, lowest first, exactly the ones the arch arm is given: an import from a lower file to a higher one points the
+// wrong way. Counted for every arm, rig or bare. server.js is outside the layers (nothing imports it).
+const RANK = { catalog: 0, cart: 1, orders: 2, http: 3 }
+const rankOf = rel => { const m = /^src\/(catalog|cart|orders|http)(?:\/|$)/.exec(rel); return m ? RANK[m[1]] : null }
+const noComments = text => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+// Whole-file, so a multi-line import counts: static (with or without bindings), export-from, require and dynamic import.
+const IMPORTS = /\b(?:import|export)\b[^;'"]*?\bfrom\s*['"]([^'"]+)['"]|\bimport\s*['"]([^'"]+)['"]|\brequire\(\s*['"]([^'"]+)['"]\s*\)|\bimport\(\s*['"]([^'"]+)['"]\s*\)/g
 export function layerViolations(dir) {
   let found = 0
   const walk = d => fs.existsSync(d) ? fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]) : []
-  const rankOf = rel => { const m = /^src\/(catalog|cart|orders|http)\//.exec(rel) ?? /^src\/(server)\.js$/.exec(rel); return m ? RANK[m[1]] : null }
   for (const file of walk(path.join(dir, 'src')).filter(f => /\.[cm]?js$/.test(f))) {
     const own = rankOf(path.relative(dir, file).split(path.sep).join('/'))
     if (own === null) continue
-    for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
-      const spec = /^\s*(?:import|export)\b[^'"]*from\s+['"]([^'"]+)['"]|\brequire\(\s*['"]([^'"]+)['"]\s*\)|\bimport\(\s*['"]([^'"]+)['"]\s*\)/.exec(line)
-      const target = spec && (spec[1] ?? spec[2] ?? spec[3])
-      if (!target || !target.startsWith('.')) continue
-      const to = rankOf(path.relative(dir, path.resolve(path.dirname(file), target)).split(path.sep).join('/').replace(/^(?=src\/(?:catalog|cart|orders|http)$)/, '') + (/\.[cm]?js$/.test(target) ? '' : '/'))
+    for (const m of noComments(fs.readFileSync(file, 'utf8')).matchAll(IMPORTS)) {
+      const target = m[1] ?? m[2] ?? m[3] ?? m[4]
+      if (!target?.startsWith('.')) continue
+      const to = rankOf(path.relative(dir, path.resolve(path.dirname(file), target)).split(path.sep).join('/'))
       if (to !== null && to > own) found++
     }
   }
@@ -87,5 +90,5 @@ export async function scoreRun(sb, base, { timeoutMs = 300_000, sdlc = SDLC, var
   const links = variant === 'links' ? await linksHttp(sb.dir).catch(e => `links acceptance crashed: ${e.message}`) : null
   const all = [npmTest, acceptance === true, http === true, ...(variant === 'links' ? [links === true] : [])]
   const checks = all.filter(Boolean).length
-  return { checks, of: all.length, accepted: checks === all.length, npmTest, acceptance, http, ...(variant === 'links' ? { links } : {}), layerViolations: layerViolations(sb.dir), tamper: tamperOf(sb, base, sdlc) }
+  return { checks, of: all.length, accepted: checks === all.length, npmTest, acceptance, http, ...(variant === 'links' ? { links } : {}), layerViolations: variant === 'links' && links !== true ? null : layerViolations(sb.dir), tamper: tamperOf(sb, base, sdlc) }
 }

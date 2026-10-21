@@ -62,7 +62,7 @@ export async function runOne(arm, n, { dry, out, capRunUsd, failAt, seed = null,
     // Whatever the run left, committed, so tamper judges it even when the session or a change failed midway.
     if (base) { try { sb.commitAll('chore: run result') } catch {} }
   }
-  const score = base ? await scoreRun(sb, base, { variant }).catch(e => ({ checks: 0, of: 3, accepted: false, error: e.message })) : { checks: 0, of: 3, accepted: false }
+  const score = base ? await scoreRun(sb, base, { variant }).catch(e => ({ checks: 0, of: 3, accepted: false, layerViolations: null, error: e.message })) : { checks: 0, of: 3, accepted: false, layerViolations: null }
   const t = sessions ? totals(sessions.sessions) : { costUsd: 0, inputTokens: 0, outputTokens: 0, denials: [], models: {} }
   const commits = base ? Number(sb.git('rev-list', '--count', `${base}..HEAD`)) : 0
   return {
