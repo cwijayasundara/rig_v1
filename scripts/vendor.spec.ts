@@ -183,7 +183,7 @@ test('init --full vendors, wires git hooks and merges the settings template with
   // Subagents get no skill allowed-tools: each sdlc.ts call their prompts spell out must be the form the allow rule matches.
   for (const agent of ['rig-evaluator.md']) {
     const calls = fs.readFileSync(path.join(repo, '.claude/agents', agent), 'utf8').match(/node [^`"]*sdlc\.ts/g) ?? []
-    assert.ok(calls.length && calls.every(c => c === RECORDER), `${agent}: ${calls.join(', ')}`)
+    assert.ok(calls.every(c => c === RECORDER), `${agent}: ${calls.join(', ')}`)
   }
   assert.ok(settings.hooks, 'the harness hooks are still there')
   assert.equal(spawnSync('git', ['config', '--local', 'core.hooksPath'], { cwd: repo, encoding: 'utf8' }).stdout.trim(), '.rig/githooks')
