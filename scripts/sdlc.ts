@@ -28,9 +28,11 @@ import { cmdWiki } from './wiki.ts'
 import { cmdLearn } from './learn.ts'
 import { cmdReport } from './report.ts'
 import { cmdArch, layerState, layerStateText } from './arch.ts'
-import { cmdQueue } from './queue.ts'
+import { cmdQueue, conflictsFor } from './queue.ts'
 import { intentScope } from './scope.ts'
 import { cmdSlice } from './slice.ts'
+import { cmdMaintain } from './maintain.ts'
+import { cmdReadiness } from './readiness.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'
 import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, prdPath, chartFiles } from './chart.ts'
 import { journey, journeyText } from './journey.ts'
@@ -129,6 +131,9 @@ function cmdApprove(args: Args): void {
   const a = writeApproval(slug, by)
   const n = Object.keys(a.contracts).length
   out(`approved ${slug} by ${by}: spec.md and plan.md${n ? `, ${n} contract file(s) frozen` : ''}. Next: /rig:build ${slug}`)
+  // Not a refusal: the person may know better. But two writers on one file is a merge conflict later, so say so now.
+  const clash = conflictsFor(slug)
+  if (clash.length) out(`warning: another in-flight plan names the same file(s): ${clash.map(o => `${o.file} (${o.changes.join(' and ')})`).join('; ')}. Land one first, or split the work.`)
 }
 
 function approveChart(n: number, args: Args): void {
@@ -296,6 +301,8 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   queue: cmdQueue,
   app: cmdApp,
   slice: cmdSlice,
+  maintain: cmdMaintain,
+  readiness: cmdReadiness,
 }
 
 const [command = '', ...rest] = process.argv.slice(2)

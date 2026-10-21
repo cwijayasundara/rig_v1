@@ -75,7 +75,19 @@ export function queueText(q: ReturnType<typeof buildQueue>): string {
   ].join('\n')
 }
 
+// The files another instance's plan already holds that this change's plan also names (file claims, harness readiness 3.4): one writer per file.
+export function conflictsFor(slug: string, q = buildQueue()): Overlap[] {
+  return q.overlaps.filter(o => o.changes.some(c => c.startsWith(`${slug} (`)))
+}
+
 export function cmdQueue(args: Args): void {
+  const check = typeof args.opt.check === 'string' ? args.opt.check : null
+  if (check) {
+    const found = conflictsFor(check)
+    out(found.length ? [`${check} names a file another in-flight plan already holds:`, ...found.map(o => `  ${o.file}: ${o.changes.join(' and ')}`), 'Land the other change first, or split the work so each file has one writer.'].join('\n') : `${check}: no other in-flight plan names the same files`)
+    process.exitCode = found.length ? 1 : 0
+    return
+  }
   const q = buildQueue()
   out(args.opt.json ? JSON.stringify(q) : queueText(q))
 }

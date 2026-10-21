@@ -5,50 +5,9 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { parse } from 'yaml'
+import { workflowFindings, hasSecret, type Workflow } from './testkit.ts'
 
 const ROOT = path.join(import.meta.dirname, '..')
-const UNTRUSTED_TRIGGERS = ['pull_request_target', 'issue_comment', 'issues', 'discussion', 'discussion_comment', 'pull_request_review', 'pull_request_review_comment', 'workflow_run', 'workflow_dispatch', 'repository_dispatch', 'check_run', 'check_suite', 'gollum', 'label', 'fork', 'watch']
-// Expressions that carry text an outsider writes: event payloads (any access form), branch names and tag names. Numbers and SHAs are safe.
-const SAFE_EVENT = /^github\.event\.(pull_request|issue)\.number$|^github\.event\.pull_request\.(head|base)\.sha$|^github\.sha$/
-const EXPR = /\$\{\{([^}]*)\}\}/g
-const UNTRUSTED_EXPR = /\bgithub\s*(\.|\[\s*['"])(event\b|head_ref|ref_name|ref\b)|toJSON\(\s*github\s*\)/
-const SECRET_EXPR = /\bsecrets\b/
-const untrusted = (text: string): boolean => [...text.matchAll(EXPR)].some(m => UNTRUSTED_EXPR.test(m[1] ?? "") && !SAFE_EVENT.test((m[1] ?? "").trim()))
-const secretIn = (text: string): boolean => [...text.matchAll(EXPR)].some(m => SECRET_EXPR.test(m[1] ?? ""))
-
-type Step = { name?: string; uses?: string; run?: string; env?: Record<string, unknown>; with?: Record<string, unknown> }
-type Job = { permissions?: unknown; env?: Record<string, unknown>; steps?: Step[]; uses?: string; secrets?: unknown }
-type Workflow = { on?: unknown; permissions?: unknown; env?: Record<string, unknown>; jobs?: Record<string, Job> }
-
-const hasWrite = (p: unknown): boolean => p === 'write-all' || (typeof p === 'object' && p !== null && Object.values(p).some(v => v === 'write'))
-const hasSecret = (env?: Record<string, unknown>): boolean => Object.values(env ?? {}).some(v => secretIn(String(v)))
-
-// `strict` is for templates a team copies: their checkouts must also drop the token, since the checker's own steps run PR code.
-export function workflowFindings(text: string, strict = false): string[] {
-  const w = parse(text) as Workflow | null
-  if (!w || typeof w !== 'object' || !w.jobs) return ['not a workflow: no jobs']
-  const found: string[] = []
-  const on = w.on ?? (w as Record<string, unknown>)['true'] // YAML 1.1 reads a bare `on` as true
-  const triggers = typeof on === 'string' ? [on] : Array.isArray(on) ? on.map(String) : Object.keys((on as object) ?? {})
-  for (const t of triggers.filter(t => UNTRUSTED_TRIGGERS.includes(t))) found.push(`trigger ${t} runs with outsider-written text and a privileged token`)
-  if (w.permissions === undefined && !Object.values(w.jobs).every(j => j.permissions !== undefined)) found.push('no top-level permissions: the token defaults to the repository setting')
-  if (hasWrite(w.permissions)) found.push('top-level permissions grant write')
-  if (hasSecret(w.env)) found.push('a secret is set in workflow env, reachable by every step')
-  for (const [id, job] of Object.entries(w.jobs ?? {})) {
-    if (hasWrite(job.permissions)) found.push(`job ${id} grants write`)
-    if (hasSecret(job.env)) found.push(`job ${id} sets a secret in job env, reachable by every step`)
-    if (job.secrets !== undefined) found.push(`job ${id} passes secrets to a called workflow`)
-    for (const s of job.steps ?? []) {
-      const at = `job ${id}, step ${s.name ?? s.uses ?? s.run?.slice(0, 30)}`
-      const inline = [s.run ?? '', ...Object.values(s.with ?? {}).map(String)].join('\n')
-      if (untrusted(inline)) found.push(`${at}: outsider-written text interpolated into a script or action input; pass it through env`)
-      if (secretIn(s.run ?? '') || (s.uses?.startsWith('actions/github-script') && secretIn(inline))) found.push(`${at}: a secret is interpolated into a script; pass it through the step env`)
-      if (strict && s.uses?.startsWith('actions/checkout') && s.with?.['persist-credentials'] !== false) found.push(`${at}: checkout keeps the token in .git/config`)
-    }
-  }
-  return found
-}
-
 const read = (rel: string): string => fs.readFileSync(path.join(ROOT, rel), 'utf8')
 
 test('the CI template and this repo\'s own workflows hold no write token and no reachable secret', () => {
@@ -78,7 +37,7 @@ test('workflowFindings rejects each way a workflow can hand outsiders a privileg
     ['bracket form', wf('', "      - run: echo ${{ github['event']['issue']['title'] }}"), /interpolated/],
     ['toJSON(github)', wf('', '      - run: echo ${{ toJSON(github) }}'), /interpolated/],
     ['secrets: inherit', 'name: x\non: pull_request\npermissions:\n  contents: read\njobs:\n  j:\n    uses: ./.github/workflows/d.yml\n    secrets: inherit\n', /passes secrets/],
-    ['workflow_dispatch', 'name: x\non: workflow_dispatch\npermissions:\n  contents: read\njobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ok\n', /workflow_dispatch/],
+    ['workflow_dispatch with inputs', 'name: x\non:\n  workflow_dispatch:\n    inputs:\n      msg:\n        type: string\npermissions:\n  contents: read\njobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ok\n', /workflow_dispatch declares inputs/],
     ['secret in run', wf('', '      - run: curl -H "${{ secrets.TOKEN }}" x'), /secret is interpolated/],
     ['workflow env secret', wf('env:\n  T: ${{ secrets.TOKEN }}'), /workflow env/],
     ['job env secret', wf('').replace('    runs-on', '    env:\n      T: ${{ secrets.TOKEN }}\n    runs-on'), /job env/],
@@ -86,6 +45,7 @@ test('workflowFindings rejects each way a workflow can hand outsiders a privileg
   for (const [name, text, re] of cases) assert.match(workflowFindings(text).join('\n'), re, name)
   assert.deepEqual(workflowFindings(wf('', '      - run: echo ${{ github.event.pull_request.number }} ${{ github.event.pull_request.head.sha }}')), [], 'numbers and SHAs are safe')
   assert.match(workflowFindings('').join(), /not a workflow/)
+  assert.deepEqual(workflowFindings('name: x\non: workflow_dispatch\npermissions:\n  contents: read\njobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ok\n'), [], 'a bare manual trigger carries no text')
   assert.match(workflowFindings(wf('', '      - uses: actions/checkout@v4'), true).join('\n'), /keeps the token/)
   assert.deepEqual(workflowFindings(wf('', '      - uses: actions/checkout@v4\n        with:\n          persist-credentials: false'), true), [])
 })

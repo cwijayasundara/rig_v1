@@ -66,3 +66,47 @@ test('queue: a plan waiting for approval is listed for the person with the comma
 test('queueText says so when nothing waits', () => {
   assert.match(queueText({ rows: [], overlaps: [] }), /Waiting for you: nothing\nWith the model: nothing/)
 })
+
+// ---------- file claims (3.4) ----------
+function twoPlans(a: string[], b: string[]): { repo: string; wtA: string; wtB: string } {
+  const repo = makeRepo()
+  sdlc(repo, ['init'])
+  gitIn(repo, 'add', '.')
+  gitIn(repo, 'commit', '-qm', 'rig')
+  const wtA = path.join(path.dirname(repo), `${path.basename(repo)}-claim-a`)
+  const wtB = path.join(path.dirname(repo), `${path.basename(repo)}-claim-b`)
+  gitIn(repo, 'worktree', 'add', '-q', '-b', 'claim-a', wtA)
+  gitIn(repo, 'worktree', 'add', '-q', '-b', 'claim-b', wtB)
+  for (const [wt, slug, files] of [[wtA, 'first-change', a], [wtB, 'second-change', b]] as const) {
+    sdlc(wt, ['new', slug, '--type', 'feature'])
+    write(wt, `.rig/changes/${slug}/spec.md`, '# Spec\n\n## Behaviours\n- B1: x\n\n## Open questions\nnone\n')
+    write(wt, `.rig/changes/${slug}/plan.md`, `# Plan\n\n## Files\n${files.map(f => `- ${f}`).join('\n')}\n\n## Open questions\nnone\n`)
+  }
+  return { repo, wtA, wtB }
+}
+
+test('queue --check: a plan naming a file another in-flight plan holds is a conflict (exit 1) that names both; disjoint plans are not', () => {
+  const clash = twoPlans(['src/cart/cart.js', 'src/http/handler.js'], ['src/http/handler.js', 'test/x.test.js'])
+  const r = sdlc(clash.wtB, ['queue', '--check', 'second-change'])
+  assert.equal(r.code, 1)
+  assert.match(r.stdout, /second-change names a file another in-flight plan already holds:\n  src\/http\/handler\.js: first-change \(.*\) and second-change \(.*\)/)
+  assert.match(r.stdout, /one writer per file|each file has one writer/)
+  assert.equal(sdlc(clash.wtA, ['queue', '--check', 'first-change']).code, 1, 'the claim is mutual')
+  const fine = twoPlans(['src/cart/cart.js'], ['src/orders/orders.js'])
+  const ok = sdlc(fine.wtB, ['queue', '--check', 'second-change'])
+  assert.equal(ok.code, 0)
+  assert.match(ok.stdout, /no other in-flight plan names the same files/)
+})
+
+test('approve warns about a held file but still approves: the person may know better', () => {
+  const { wtB } = twoPlans(['src/http/handler.js'], ['src/http/handler.js'])
+  const r = sdlc(wtB, ['approve', 'second-change'], { env: { SDLC_HUMAN: '1' } })
+  assert.equal(r.code, 0, r.stderr)
+  assert.match(r.stdout, /approved second-change/)
+  assert.match(r.stdout, /warning: another in-flight plan names the same file\(s\): src\/http\/handler\.js/)
+})
+
+test('the plan skill runs the claim check and stops on a conflict', () => {
+  const skill = fs.readFileSync(path.resolve(import.meta.dirname, '../skills/plan/SKILL.md'), 'utf8')
+  assert.match(skill, /S queue --check <slug>[\s\S]*another in-flight plan[\s\S]*stop and tell the person/)
+})

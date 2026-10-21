@@ -182,7 +182,7 @@ export const managedSettings = (dir = MANAGED_DIR): Record<string, unknown> =>
   managedFiles(dir).reduce<Record<string, unknown>>((acc, f) => { const v: unknown = JSON.parse(fs.readFileSync(f, 'utf8')); return isObj(v) ? deepMerge(acc, v) : acc }, {})
 
 const GITIGNORED = [
-  'state/', '.baseline', '.gate', 'unresolved.json', 'gates.jsonl', '.onboarding', 'changes/*/prototype/', 'learn/',
+  'state/', 'maintain/seen.json', '.baseline', '.gate', 'unresolved.json', 'gates.jsonl', '.onboarding', 'changes/*/prototype/', 'learn/',
 ]
 
 // Parallel hooks (subagents) read-modify-write the same small state file: serialise them with a mkdir lock (stale after 10 s;
