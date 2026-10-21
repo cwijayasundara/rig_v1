@@ -8,6 +8,7 @@ import { spawn } from 'node:child_process'
 import { Checks } from '../tests/e2e/lib/checks.mjs'
 import { PLUGIN } from '../tests/e2e/lib/sandbox.mjs'
 import { assertShopHttp } from '../tests/e2e/acceptance/shop-http.mjs'
+import { linksHttp } from './variants/links.mjs'
 
 const SDLC = path.join(PLUGIN, 'scripts/sdlc.ts')
 const ACCEPTANCE = path.resolve(import.meta.dirname, '../tests/e2e/acceptance/shop.mjs')
@@ -53,7 +54,27 @@ function tamperOf(sb, base, sdlc) {
   return sum
 }
 
-export async function scoreRun(sb, base, { timeoutMs = 300_000, sdlc = SDLC } = {}) {
+// The shop's layers, lowest first: an import from a lower file to a higher one points the wrong way. Counted for every arm, rig or bare.
+const RANK = { catalog: 0, cart: 1, orders: 2, http: 3, server: 4 }
+export function layerViolations(dir) {
+  let found = 0
+  const walk = d => fs.existsSync(d) ? fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]) : []
+  const rankOf = rel => { const m = /^src\/(catalog|cart|orders|http)\//.exec(rel) ?? /^src\/(server)\.js$/.exec(rel); return m ? RANK[m[1]] : null }
+  for (const file of walk(path.join(dir, 'src')).filter(f => /\.[cm]?js$/.test(f))) {
+    const own = rankOf(path.relative(dir, file).split(path.sep).join('/'))
+    if (own === null) continue
+    for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+      const spec = /^\s*(?:import|export)\b[^'"]*from\s+['"]([^'"]+)['"]|\brequire\(\s*['"]([^'"]+)['"]\s*\)|\bimport\(\s*['"]([^'"]+)['"]\s*\)/.exec(line)
+      const target = spec && (spec[1] ?? spec[2] ?? spec[3])
+      if (!target || !target.startsWith('.')) continue
+      const to = rankOf(path.relative(dir, path.resolve(path.dirname(file), target)).split(path.sep).join('/').replace(/^(?=src\/(?:catalog|cart|orders|http)$)/, '') + (/\.[cm]?js$/.test(target) ? '' : '/'))
+      if (to !== null && to > own) found++
+    }
+  }
+  return found
+}
+
+export async function scoreRun(sb, base, { timeoutMs = 300_000, sdlc = SDLC, variant = null } = {}) {
   // The sandbox's env: the runner's own (a test context, a CI event path) must not leak into the model's suite.
   const t = await runBounded('npm', ['test', '--silent'], { cwd: sb.dir, timeoutMs, env: sb.env })
   const npmTest = t.status === 0
@@ -63,6 +84,8 @@ export async function scoreRun(sb, base, { timeoutMs = 300_000, sdlc = SDLC } = 
   const c = new Checks('score')
   await assertShopHttp(c, sb.dir, 'remove')
   const http = c.results[0].status === 'PASS' ? true : c.results[0].why
-  const checks = [npmTest, acceptance === true, http === true].filter(Boolean).length
-  return { checks, of: 3, accepted: checks === 3, npmTest, acceptance, http, tamper: tamperOf(sb, base, sdlc) }
+  const links = variant === 'links' ? await linksHttp(sb.dir).catch(e => `links acceptance crashed: ${e.message}`) : null
+  const all = [npmTest, acceptance === true, http === true, ...(variant === 'links' ? [links === true] : [])]
+  const checks = all.filter(Boolean).length
+  return { checks, of: all.length, accepted: checks === all.length, npmTest, acceptance, http, ...(variant === 'links' ? { links } : {}), layerViolations: layerViolations(sb.dir), tamper: tamperOf(sb, base, sdlc) }
 }
