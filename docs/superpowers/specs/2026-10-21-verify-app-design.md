@@ -30,10 +30,11 @@ general way to launch an app, walk its main journeys, keep evidence, and refuse 
 
 1. **`templates/verify/lib.mjs`** (about 60 lines, copied into the repo at `.rig/verify/lib.mjs` and vendored with the harness): the helper every driver imports. `launch(cmd, { ready })` starts the app in its own process group, waits for a ready line or a port, and records its pid in `.rig/verify/.pids`; `stop()` kills **only** the recorded group, never by name; `step(name, fn)` records a step and its evidence; `finish()` writes `.rig/verify/evidence/<run>.json` and the exit code. Node because rig already requires it; the app can be in any language, since the driver talks to it over HTTP or a process.
 2. **`/rig:app`** (`skills/app/SKILL.md`, model-facing): reads the repo (README, package scripts, routes, the wiki if there is one), proposes 3 to 5 journeys with the person in one question batch, then writes `.rig/verify/<app>/journey.mjs` and `.rig/verify/<app>/features/<feature>.md`. It **runs the driver once**. Only then does it propose the `journeys` sensor entry for `.rig/sensors.json` (cadence `ci`, blocks, so verify and CI run it), which the person approves because that file is protected. An un-run driver stays a draft.
-3. **`sdlc.ts app status|check`** (`scripts/app.ts`, about 90 lines): deterministic.
-   - `status`: `none` (no `.rig/verify/`), `draft` (driver exists, no passing run recorded for its current hash), `current`, or `stale`.
-   - `check` is what the sensor runs: it runs the driver, and exits 1 on a failed journey, on a driver changed since its last passing run by anyone but a person (hash in the protected record), or on a feature file naming a route, command or path that no longer exists.
-   - A `draft` driver is listed as "not configured" by `status` and `check` (Phase 0.1's machinery), so it cannot read as green.
+3. **`sdlc.ts app init|status|approve|check`** (`scripts/app.ts`, about 110 lines): deterministic.
+   - `init` copies `lib.mjs` into `.rig/verify/`.
+   - `approve` (person only, `SDLC_HUMAN=1`, like `arch approve`): runs the driver, and on a pass records `.rig/verify/<app>.approved.json` = `{ by, at, driverHash, featuresHash }`.
+   - `status`: `none` (no `.rig/verify/`), `draft` (a driver exists with no approval for its current hash), `current`, or `stale` (see `check`).
+   - `check` is what the sensor runs. It exits 1 when the driver's hash differs from the approved one (a changed journey needs a person to re-approve it), when a journey fails, or when a feature file names a route, command or path that no longer exists (stale). A `draft` driver passes with the line `journeys: draft (not enforced)`; `status` and `check` list it as "not configured" (Phase 0.1's machinery), so it cannot read as green.
 4. **Protection** **[my call]**: `.rig/verify/**` joins the protected list, the CODEOWNERS template and the settings ask rules, so the builder cannot edit a journey; a journey changes in a reviewed change, like a frozen contract. `journeys` evidence files and `.pids` are runtime state and excluded.
 5. **Eval and acceptance**: a fixture app where a change keeps `npm test` green and breaks a journey (the shop with an `href` route that 404s while the unit tests only call the handler). The acceptance test is that verify blocks it with the journeys sensor on and passes it with the sensor off. A second check: the driver, run twice, leaves no process behind.
 
@@ -43,8 +44,20 @@ general way to launch an app, walk its main journeys, keep evidence, and refuse 
 |---|---|---|
 | no `.rig/verify/` | journeys: not configured | nothing |
 | driver written, never run | journeys: draft (not enforced) | nothing |
-| driver passed on its current hash | journeys: current | verify blocks on a failed journey |
-| code changed, map names a missing route/command | journeys: stale | warns, blocks at CI |
+| approved, hash unchanged | journeys: current | verify blocks on a failed journey |
+| driver or map edited after approval | journeys: changed since approved | blocks until a person re-approves |
+| map names a missing route/command | journeys: stale | blocks |
+
+## Calls made after the builder check
+
+All **[my call]**.
+
+- **Writing protected files.** `/rig:app` writes under `.rig/verify/`, where the settings ask rule makes the person approve each edit, as with `rules.json` today. The person's `app approve` is the sign-off that turns draft into current; it needs a passing run and records the hash. An edit to the driver or the map after approval changes the hash, so `check` fails until a person re-approves. That is what stops the builder from weakening a journey.
+- **Draft shows as not configured.** The sensor entry may exist while the state is draft. `inertSensors` takes an extra list from the caller (`app status`), so a draft journeys sensor is named in `status` and `check` exactly like an inert `layering`.
+- **Cadence.** `verify` already runs every commit and ci sensor, so cadence `ci` means verify and CI run it and `git commit` stays fast. A stale map blocks (one severity, no per-point nuance).
+- **Test cost.** The acceptance is a spec in `npm test` with a tiny Node HTTP app on a free port: real processes, like the e2e suite already does, no network.
+- **Ports.** `launch` sets `PORT=0` by default and reads the port from a ready line (`listening on <port>`, a regex group), and returns the base URL; two runs cannot collide.
+- **Vendoring.** The template ships with the other templates (`vendor` copies `templates/` whole); `app init` copies it to `.rig/verify/lib.mjs`. No drift check against the template: an upgraded plugin does not change an approved repo's lib until `app init` is run again.
 
 ## What is left to the builder
 
