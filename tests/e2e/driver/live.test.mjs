@@ -108,3 +108,15 @@ test('final review (6): tokens and cost per model come from modelUsage when the 
   assert.deepEqual(Object.keys(totals([s, s]).models).sort(), ['claude-haiku-5-5', 'claude-opus-5-5'])
   assert.equal(totals([s, s]).models['claude-opus-5-5'].costUsd, 1.6)
 })
+
+test('answer(): the person\'s reply tells the model to take its recommended default, record it under Decisions, and clear Open questions, and carries the open questions', async () => {
+  const prompts = []
+  const sessions = { sessions: [], run: (label, prompt, o) => { prompts.push({ label, prompt, o }); return {} } }
+  const d = liveDriver({ sdlc: () => ({ stdout: '{}' }) }, { id: 'S3' }, { sessions })
+  await d.answer('c', 'resolve the open question(s) first\n  - spec.md: which file?')
+  assert.equal(prompts.length, 1)
+  assert.equal(prompts[0].prompt.split(' ')[0], '/rig-plan', 'the skill invocation itself, so its allowed tools apply')
+  assert.match(prompts[0].prompt, /recommend[\s\S]*## Decisions[\s\S]*## Open questions[\s\S]*none/)
+  assert.match(prompts[0].prompt, /which file\?/)
+  assert.equal(prompts[0].o.cont, true)
+})

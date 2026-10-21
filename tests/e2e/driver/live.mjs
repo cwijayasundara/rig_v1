@@ -54,6 +54,10 @@ export function liveDriver(sb, phase, { sessions }) {
     async plan(slug) {
       sessions.run(`${phase.id}-plan`, `/rig-plan ${slug}. Write plan.md, then stop for the person's approval.`, { cont: true })
     },
+    // The person's reply to open questions, the same words for every arm: take your recommended default and carry on.
+    async answer(slug, why) {
+      sessions.run(`${phase.id}-answer`, `/rig-plan ${slug}. The person answers your open questions: for each one take the option you recommend, record it under ## Decisions in spec.md and plan.md, and set ## Open questions to none in both, then stop for approval. Open now:\n${why}`, { cont: true })
+    },
     async build(slug) {
       sessions.run(`${phase.id}-build`, `/rig-build ${slug}. The person approved the plan: build test-first, then /rig-test and /rig-pr in this turn.`, { cont: true })
       const st = () => (JSON.parse(sb.sdlc(['status', '--json']).stdout || '{}').changes ?? []).find(c => c.slug === slug)?.status
