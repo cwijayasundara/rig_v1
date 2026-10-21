@@ -45,3 +45,10 @@ test), then decide how many human stops each change really needs (the dimmer swi
 
 The two human stops (approve a plan, merge a PR) are a Non-Goal to change in the repo's own rules and are also what stops "run many instances" from
 scaling: the human becomes the queue. The talk's answer is sampling and path-based dark and lit areas. That is a policy change, not a feature.
+
+## Decided and measured (2026-10-21)
+
+- **The person's call: keep both human stops and make them cheap.** Many instances run in parallel worktrees; the person approves and merges from one queue, with journeys (2.1) and the clean review (2.2) doing the checking. Dark paths and plan auto-approval are not in scope; revisit once an eval shows a good accepted rate.
+- **Measured, $0, scripted:** two independent changes ran start to PR at the same time in two worktrees of one repo, each in its own process (`npm run test:e2e:parallel`, in `npm test` and CI). No interference: no state leaked between worktrees, both branches reached the shared origin, both merged into main, and main's suite passed. This is only the independent case; it says nothing about two changes that touch the same file, or about live model quality.
+- **Built:** `sdlc.ts queue` lists, across every worktree, what waits on a person (with the command to run in that worktree), what is still with the model, and which in-flight plans name the same file, found from the plans before the work is done.
+- **Still unbuilt, in order:** 2.1 journeys (designed), then claiming files per instance (3.4, gated on an accepted rate), then a coordinator. A live many-instance eval is not run and would cost real money.

@@ -28,6 +28,7 @@ import { cmdWiki } from './wiki.ts'
 import { cmdLearn } from './learn.ts'
 import { cmdReport } from './report.ts'
 import { cmdArch, layerState, layerStateText } from './arch.ts'
+import { cmdQueue } from './queue.ts'
 import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, prdPath, chartFiles } from './chart.ts'
 import { journey, journeyText } from './journey.ts'
 import { TYPES, toType, changeDir, newChange, setActive, activeSlug, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
@@ -283,6 +284,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   learn: args => cmdLearn(args),
   report: cmdReport,
   arch: cmdArch,
+  queue: cmdQueue,
 }
 
 const [command = '', ...rest] = process.argv.slice(2)

@@ -6,11 +6,12 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "test": "node --disable-warning=ExperimentalWarning --test scripts/*.spec.ts && npm run test:e2e:unit && npm run test:e2e:fast",
+    "test": "node --disable-warning=ExperimentalWarning --test scripts/*.spec.ts && npm run test:e2e:unit && npm run test:e2e:fast && npm run test:e2e:parallel",
     "typecheck": "tsc -p scripts/tsconfig.json",
     "validate": "claude plugin validate .claude-plugin/plugin.json",
     "test:e2e": "node tests/e2e/run.mjs --driver live",
     "test:e2e:fast": "node tests/e2e/run.mjs --driver scripted",
+    "test:e2e:parallel": "node tests/e2e/parallel.mjs",
     "test:e2e:stacks": "node tests/e2e/stacks.mjs",
     "eval": "node eval/run.mjs",
     "eval:dry": "node eval/run.mjs --dry --runs 1",
