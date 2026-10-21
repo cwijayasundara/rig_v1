@@ -244,7 +244,7 @@ export function runChecks(i: CheckInput): CheckResult {
   const at: Cadence = i.commands === 'fast' ? 'turn' : i.point === 'commit' ? 'commit' : 'ci'
   if (i.commands !== 'none') findings.push(...runSensors(config, at, i.point === 'ci' ? null : i.slugs[0] ?? null, i.budgetMs, Boolean(i.ratchet) && i.point !== 'ci', new Set([c.validate, c.run].filter(Boolean).map(normCmd)), i.point === 'ci' ? null : i.ratchetWrite ?? null))
   // Journeys run where the heavier sensors do (verify, ship, CI), never at a commit or a turn.
-  if (at === 'ci' && i.commands === 'full') findings.push(...journeyFindings(i.budgetMs))
+  if (at === 'ci' && i.commands === 'full') findings.push(...journeyFindings(i.budgetMs, undefined, i.point === 'ci'))
   const result = applyWaivers(builtinsApplied(findings, config), i.slugs, i.point === 'ci' ? { base: i.base } : undefined)
   return result
 }

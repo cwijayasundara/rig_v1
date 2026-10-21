@@ -15,22 +15,34 @@ type Approval = { by: string; at: string; hash: string }
 
 const readJson = <T>(rel: string): T | null => { try { return JSON.parse(read(path.join(ROOT, rel))) as T } catch { return null } }
 
+const UNSAFE = /(^|\/)\.\.(\/|$)|^\//
+const appDirs = (): string[] => (exists(path.join(ROOT, VERIFY)) ? fs.readdirSync(path.join(ROOT, VERIFY), { withFileTypes: true }).filter(d => d.isDirectory() && /^[a-z0-9][a-z0-9-]*$/.test(d.name)).map(d => d.name) : [])
+
 export function listApps(): App[] {
-  const dir = path.join(ROOT, VERIFY)
-  if (!exists(dir)) return []
-  return fs.readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory() && /^[a-z0-9][a-z0-9-]*$/.test(d.name)).flatMap(d => {
-    const def = readJson<{ run?: unknown; files?: unknown; timeoutMs?: unknown }>(`${VERIFY}/${d.name}/app.json`)
+  return appDirs().flatMap(name => {
+    const def = readJson<{ run?: unknown; files?: unknown; timeoutMs?: unknown }>(`${VERIFY}/${name}/app.json`)
     if (!def || typeof def.run !== 'string' || !def.run.trim() || !Array.isArray(def.files)) return []
-    return [{ name: d.name, run: def.run, files: def.files.filter((f): f is string => typeof f === 'string' && !f.includes('..')), timeoutMs: Number(def.timeoutMs) > 0 ? Number(def.timeoutMs) : 120_000 }]
+    return [{ name, run: def.run, files: def.files.filter((f): f is string => typeof f === 'string' && !UNSAFE.test(f)), timeoutMs: Number(def.timeoutMs) > 0 ? Number(def.timeoutMs) : 120_000 }]
   })
+}
+
+// What would otherwise switch a journey off in silence: an app.json that does not read, a driver file it names that is missing, an approval
+// whose app is gone.
+export function appProblems(): string[] {
+  const apps = listApps().map(a => a.name)
+  const out: string[] = []
+  for (const name of appDirs().filter(n => exists(path.join(ROOT, VERIFY, n, 'app.json')) && !apps.includes(n))) out.push(`${name}: app.json is not valid (it needs a non-empty "run" and a "files" list of paths inside the app folder)`)
+  for (const a of listApps()) for (const f of a.files) if (!exists(path.join(ROOT, VERIFY, a.name, f))) out.push(`${a.name}: the driver file ${f} does not exist`)
+  if (exists(path.join(ROOT, VERIFY))) for (const f of fs.readdirSync(path.join(ROOT, VERIFY)).filter(f => f.endsWith('.approved.json'))) if (!apps.includes(f.replace(/\.approved\.json$/, ''))) out.push(`${f}: approves an app that is not there (renamed or deleted), so its journeys are no longer run`)
+  return out
 }
 
 const featureFiles = (a: App): string[] => {
   const dir = path.join(ROOT, VERIFY, a.name, 'features')
   return exists(dir) ? fs.readdirSync(dir).filter(f => f.endsWith('.md')).sort().map(f => `${VERIFY}/${a.name}/features/${f}`) : []
 }
-// Everything that makes the journeys what they are: the definition, the driver files and the feature map.
-const hashOf = (a: App): string => sha([`${VERIFY}/${a.name}/app.json`, ...a.files.map(f => `${VERIFY}/${a.name}/${f}`), ...featureFiles(a)].map(f => `${f}\n${read(path.join(ROOT, f))}`).join('\n--\n'))
+// Everything that makes the journeys what they are: the definition, the driver files, the shared helper they import, and the feature map.
+const hashOf = (a: App): string => sha([`${VERIFY}/${a.name}/app.json`, ...a.files.map(f => `${VERIFY}/${a.name}/${f}`), `${VERIFY}/lib.mjs`, ...featureFiles(a)].map(f => `${f}\n${read(path.join(ROOT, f))}`).join('\n--\n'))
 const approvalOf = (a: App): Approval | null => readJson<Approval>(`${VERIFY}/${a.name}.approved.json`)
 
 // A feature file says where its feature lives with `entry: <path>` lines; a path that no longer exists means the map has gone stale.
@@ -48,22 +60,42 @@ export function appState(a: App): AppState {
 export const draftApps = (): Inert[] => listApps().filter(a => appState(a) === 'draft').map(a => ({ id: 'journeys', reason: `${a.name} is a draft: never approved, so not enforced` }))
 export const appStates = (): { name: string; state: AppState }[] => listApps().map(a => ({ name: a.name, state: appState(a) }))
 
+// The driver runs with a clean environment: no tokens or secrets the checker was given, and its own state directory.
+const SECRETISH = /TOKEN|SECRET|PASSWORD|CREDENTIAL|API_?KEY|^SDLC_|^GH_|^GITHUB_|^ACTIONS_/i
+
+// Kills the process groups a driver recorded in its pids file (the app it launched, in its own group) and nothing else: a driver that was
+// killed on a timeout cannot clean up after itself.
+function reap(stateDir: string): void {
+  const file = path.join(stateDir, 'pids')
+  for (const pid of read(file).split('\n').map(Number).filter(n => Number.isInteger(n) && n > 1)) { try { process.kill(process.platform === 'win32' ? pid : -pid, 'SIGKILL') } catch { /* gone */ } }
+  fs.rmSync(file, { force: true })
+}
+
 function runDriver(a: App, budgetMs: number): { exit: number; tail: string; timedOut: boolean } {
-  process.env.RIG_VERIFY_STATE = path.join(SDLC, 'state', 'verify', a.name)
-  fs.mkdirSync(process.env.RIG_VERIFY_STATE, { recursive: true })
-  const row = runCommand(a.run, { timeoutMs: Math.max(1000, Math.min(a.timeoutMs, budgetMs)) })
-  return { exit: row.exit, tail: row.tail, timedOut: Boolean(row.timedOut) }
+  const stateDir = path.join(SDLC, 'state', 'verify', a.name)
+  fs.mkdirSync(stateDir, { recursive: true })
+  reap(stateDir)
+  fs.rmSync(path.join(stateDir, 'evidence.json'), { force: true })
+  const row = runCommand(a.run, { timeoutMs: Math.max(1000, Math.min(a.timeoutMs, budgetMs)), env: { RIG_VERIFY_STATE: stateDir }, unsetEnv: SECRETISH })
+  reap(stateDir)
+  // Exit 0 is not enough: the driver must say what it checked. No evidence, or none that holds, is a failed run.
+  let evidence: { ok?: boolean; steps?: unknown[] } | null = null
+  try { evidence = JSON.parse(read(path.join(stateDir, 'evidence.json'))) } catch { /* none */ }
+  const hollow = row.exit === 0 && !(evidence?.ok === true && Array.isArray(evidence.steps) && evidence.steps.length > 0)
+  return { exit: hollow ? 1 : row.exit, tail: hollow ? `${row.tail}\nthe driver exited 0 but wrote no evidence of any journey step to $RIG_VERIFY_STATE/evidence.json` : row.tail, timedOut: Boolean(row.timedOut) }
 }
 
 // What verify, ship and CI run: every approved app's driver. A draft is skipped.
-export function journeyFindings(budgetMs: number, only?: string): Finding[] {
-  const findings: Finding[] = []
+export function journeyFindings(budgetMs: number, only?: string, ci = false): Finding[] {
+  const findings: Finding[] = appProblems().map(m => ({ sensor: 'journeys', severity: 'block' as const, message: `journeys: ${m}`, fix: 'fix or remove it in a reviewed change' }))
   let left = budgetMs
   for (const a of listApps().filter(x => !only || x.name === only)) {
     const state = appState(a)
     if (state === 'draft') continue
     if (state === 'stale') findings.push({ sensor: 'journeys', severity: 'block', message: `journeys ${a.name}: the feature map names a path that no longer exists (${missingEntries(a).join('; ')})`, fix: 'update the feature files for what the app is now, then `app approve` again' })
-    if (state === 'changed') findings.push({ sensor: 'journeys', severity: 'warn', message: `journeys ${a.name} changed since a person approved it`, fix: 'a code owner reviews the driver and feature files; `app approve` records the new version', labels: ['weakens-harness'] })
+    if (state === 'changed') findings.push({ sensor: 'journeys', severity: 'warn', message: `journeys ${a.name} changed since a person approved it${ci ? ' and was not run: CI runs only approved journeys, because the PR supplies the command' : ''}`, fix: 'a code owner reviews the driver and feature files; `app approve` records the new version', labels: ['weakens-harness'] })
+    // CI holds secrets and runs the checker from the base branch; the command here comes from the PR, so only bytes a person approved run there.
+    if (ci && state === 'changed') continue
     if (left <= 0) { findings.push({ sensor: 'journeys', severity: 'block', message: `journeys ${a.name} not run: the time budget ran out`, fix: 'raise the budget or make the driver faster', outOfTime: true }); continue }
     const t0 = Date.now()
     const r = runDriver(a, left)
@@ -114,6 +146,7 @@ export function cmdApp(args: Args): void {
     return out(`journeys ${a.name} approved by ${by}: the driver passed, and verify, ship and CI now run it.`)
   }
   if (sub === 'check') {
+    if (args.pos[1] && !apps.some(a => a.name === args.pos[1])) fail(`no such app: ${args.pos[1]}${apps.length ? ` (known: ${apps.map(a => a.name).join(', ')})` : ''}`)
     const found = journeyFindings(1_800_000, args.pos[1])
     out(formatFindings(found) || (apps.length ? 'journeys: pass' : 'journeys: not configured'))
     process.exitCode = found.some(f => f.severity === 'block') ? 1 : 0

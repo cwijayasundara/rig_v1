@@ -1,6 +1,7 @@
 // rig's journeys helper (optional): a driver in Node imports this to launch the app, walk its journeys and clean up.
 // The contract a driver of ANY language meets is the same: exit 0 when every journey held and 1 when one did not, write evidence under
-// $RIG_VERIFY_STATE, and stop only the processes it started (never by name).
+// $RIG_VERIFY_STATE/evidence.json as {"ok": true, "steps": [{"name": ..., "ok": true}, ...]} with at least one step (an exit 0 with no evidence
+// counts as a failed run), and stop only the processes it started (never by name).
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -18,7 +19,7 @@ export async function launch(cmd, { cwd = process.cwd(), env = {}, ready = /list
   let log = ''
   const port = await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`the app printed no ready line within ${timeoutMs} ms; output so far: ${log.slice(-300)}`)), timeoutMs)
-    const onData = d => { log += d; const m = ready.exec(log); if (m) { clearTimeout(timer); resolve(Number(m[1])) } }
+    const onData = d => { log += d; const m = ready.exec(log); if (m) { clearTimeout(timer); Number.isInteger(Number(m[1])) ? resolve(Number(m[1])) : reject(new Error('the ready pattern needs one capture group: the port')) } }
     child.stdout.on('data', onData)
     child.stderr.on('data', onData)
     child.on('exit', code => { clearTimeout(timer); reject(new Error(`the app exited with ${code} before it was ready: ${log.slice(-300)}`)) })
