@@ -30,6 +30,7 @@ import { cmdReport } from './report.ts'
 import { cmdArch, layerState, layerStateText } from './arch.ts'
 import { cmdQueue } from './queue.ts'
 import { intentScope } from './scope.ts'
+import { cmdSlice } from './slice.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'
 import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, prdPath, chartFiles } from './chart.ts'
 import { journey, journeyText } from './journey.ts'
@@ -294,6 +295,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   arch: cmdArch,
   queue: cmdQueue,
   app: cmdApp,
+  slice: cmdSlice,
 }
 
 const [command = '', ...rest] = process.argv.slice(2)
