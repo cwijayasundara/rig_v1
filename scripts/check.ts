@@ -13,7 +13,8 @@ import { runCommand, recordRun, normCmd } from './runs.ts'
 import { withBaseTree } from './basetree.ts'
 import { activeSlug, approvalState, changeType } from './lifecycle.ts'
 import { approvedLayers } from './arch.ts'
-import { isRegistryShape, parseRegistry, defaultRegistry, updateKnownRed, activeSensors, commandFor, builtinOptions, inertSensors, type Registry, type Cadence, type Inert } from './registry.ts'
+import { RATCHET_FILE, lastNumber, loadRatchets, judge, tighten, type RatchetWrite } from './counts.ts'
+import { isRegistryShape, parseRegistry, defaultRegistry, updateKnownRed, activeSensors, commandFor, builtinOptions, inertSensors, type Registry, type RegistrySensor, type Cadence, type Inert } from './registry.ts'
 import { frozenFindings, runContracts } from './contracts.ts'
 import { syncFindings } from './sync.ts'
 
@@ -30,6 +31,7 @@ type CheckInput = {
   toolEdited?: Set<string>
   base: string | null
   ratchet?: boolean
+  ratchetWrite?: RatchetWrite // tighten .rig/ratchets.json: never at CI or against another ref's config
   after?: (file: string) => string // the text being judged; defaults to the working tree (commit passes the index)
   gates?: { plan: boolean } // the plan gate; absent: on
   contracts?: boolean // run the contract commands (validate, then run); absent: at ship and ci only
@@ -59,6 +61,7 @@ export function loadConfig(ref: string | null = null): { registry: Registry; rul
   // The approved layer rules (read from the same ref as the rest of the config, so a PR cannot loosen them) fill an empty layering option.
   const lay = p.registry.sensors.find(x => x.builtin && x.id === 'layering'), approved = approvedLayers(text('.rig/layers.approved.json'))
   if (lay && approved.length && !lay.options?.layers) lay.options = { ...lay.options, layers: approved }
+  p.registry.ratchets = loadRatchets(text(RATCHET_FILE))
   return { registry: p.registry, rules: r.rules, errors: [...p.errors.map(e => `sensors: ${e}`), ...ruleErrors] }
 }
 
@@ -79,9 +82,24 @@ function builtinsApplied(findings: Finding[], r: Registry): Finding[] {
   return findings.filter(f => builtin(f.sensor)?.enabled !== false).map(f => (f.severity === 'block' && builtin(f.sensor)?.blocks === false ? { ...f, severity: 'warn' as const } : f))
 }
 
+// A ratchet sensor's number against its baseline: worse blocks (warns when the sensor is advisory); better or first tightens the baseline locally.
+function ratchetFinding(s: RegistrySensor, dir: 'down' | 'up', value: number | null, base: Record<string, number>, write: RatchetWrite): Finding[] {
+  if (value === null) return [{ sensor: s.id, severity: s.blocks ? 'block' : 'warn', message: `${s.id} is a ratchet but printed no number on its last line (a plain decimal is expected)`, fix: `make the command end with the count: ${s.cmd}` }]
+  const was = base[s.id]
+  if (was === undefined) {
+    if (write) tighten(s.id, dir, value, write)
+    // At CI there is nothing to compare with and nothing may be written: say so, so a missing baseline does not read as a pass.
+    else return [{ sensor: s.id, severity: 'warn', message: `${s.id} is a ratchet with no baseline on the base branch, so ${value} was not judged`, fix: `run the checks locally and commit ${RATCHET_FILE}, then land it on the trunk` }]
+    return []
+  }
+  const j = judge(dir, value, was)
+  if (j === 'better' && write) tighten(s.id, dir, value, write)
+  return j === 'worse' ? [{ sensor: s.id, severity: s.blocks ? 'block' : 'warn', message: `${s.id} regressed: ${value}, baseline ${was} (${dir === 'down' ? 'lower' : 'higher'} is better): ${s.guide}`, fix: `bring ${s.id} back to ${was} or better; only a person raises a baseline, in ${RATCHET_FILE}` }] : []
+}
+
 // The registry's command sensors due at this cadence (spec §3.1), in order, inside one time budget. A sensor with
 // "blocks": false warns; a knownRed one warns while it fails and leaves knownRed once it passes.
-export function runSensors(r: Registry, at: Cadence, slug: string | null, budgetMs: number, allowRatchet = false, skip?: Set<string>): Finding[] {
+export function runSensors(r: Registry, at: Cadence, slug: string | null, budgetMs: number, allowRatchet = false, skip?: Set<string>, ratchetWrite: RatchetWrite = null): Finding[] {
   const findings: Finding[] = []
   const cleared: string[] = []
   let left = budgetMs
@@ -96,7 +114,11 @@ export function runSensors(r: Registry, at: Cadence, slug: string | null, budget
     const row = runCommand(cmd, { timeoutMs: Math.min(left, s.timeoutMs ?? left) })
     left -= row.ms
     if (slug) recordRun(slug, { ...row, source: at === 'turn' ? 'gate' : 'ship' })
-    if (row.exit === 0) { if (known) cleared.push(s.id); continue }
+    if (row.exit === 0) {
+      if (known) cleared.push(s.id)
+      if (s.ratchet) findings.push(...ratchetFinding(s, s.ratchet, lastNumber(row.tail), r.ratchets ?? {}, ratchetWrite))
+      continue
+    }
     const tail = row.tail.split('\n').slice(-TAIL_IN_FINDING).map(t => '      ' + t).join('\n')
     findings.push({
       sensor: s.id,
@@ -219,7 +241,7 @@ export function runChecks(i: CheckInput): CheckResult {
   const c = config.contracts
   if ((i.contracts ?? (i.point === 'ship' || i.point === 'ci')) && (c.validate || c.run)) findings.push(...runContracts(c, i.point === 'stop' ? i.budgetMs : Math.max(i.budgetMs, 600_000)))
   const at: Cadence = i.commands === 'fast' ? 'turn' : i.point === 'commit' ? 'commit' : 'ci'
-  if (i.commands !== 'none') findings.push(...runSensors(config, at, i.point === 'ci' ? null : i.slugs[0] ?? null, i.budgetMs, Boolean(i.ratchet) && i.point !== 'ci', new Set([c.validate, c.run].filter(Boolean).map(normCmd))))
+  if (i.commands !== 'none') findings.push(...runSensors(config, at, i.point === 'ci' ? null : i.slugs[0] ?? null, i.budgetMs, Boolean(i.ratchet) && i.point !== 'ci', new Set([c.validate, c.run].filter(Boolean).map(normCmd)), i.point === 'ci' ? null : i.ratchetWrite ?? null))
   const result = applyWaivers(builtinsApplied(findings, config), i.slugs, i.point === 'ci' ? { base: i.base } : undefined)
   return result
 }
@@ -333,7 +355,7 @@ export function cmdCheck(args: Args): void {
   if (!Number.isFinite(budgetMs) || budgetMs <= 0) fail('--budget-ms must be a positive number')
   const humanRows = at === 'ci' && base ? humanRowsAdded(base) : []
   const why = humanRows.length ? independentApproval() : null // before runChecks: the PR's test commands could rewrite the event file or shadow gh
-  const result = runChecks({ point: at, diffs, config, rules, slugs, commands: replaying ? 'none' : at === 'stop' ? 'fast' : 'full', budgetMs, before, after, base, ratchet: !optString(args, 'config-from') && at !== 'commit', contracts: at === 'commit' ? !replaying : undefined, gates: config.gates })
+  const result = runChecks({ point: at, diffs, config, rules, slugs, commands: replaying ? 'none' : at === 'stop' ? 'fast' : 'full', budgetMs, before, after, base, ratchet: !optString(args, 'config-from') && at !== 'commit', ratchetWrite: optString(args, 'config-from') ? null : at === 'commit' ? 'stage' : 'write', contracts: at === 'commit' ? !replaying : undefined, gates: config.gates })
   // At commit, like at push, a sensor out of time warns: CI runs it again, and a hanging tool must not hold git commit hostage.
   if (at === 'commit') for (const f of result.findings) if (f.outOfTime) f.severity = 'warn'
   result.blocks = result.findings.filter(f => f.severity === 'block')
