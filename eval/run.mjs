@@ -47,7 +47,8 @@ export async function runOne(arm, n, { dry, out, capRunUsd, failAt, seed = null,
       for (const phase of variant === 'links' ? [S2, S3, S7] : [S2, S3]) {
         const driver = failing(dry ? scriptedDriver(sb, phase) : liveDriver(sb, phase, { sessions }), failAt)
         const { slug, answered } = await runChange(sb, phase, driver)
-        row.reapproved = driver.reapproved
+        row.reapproved = (row.reapproved ?? 0) + (driver.reapproved ?? 0)
+        if (driver.reapprovalNotes?.length) row.reapprovalNotes = [...(row.reapprovalNotes ?? []), ...driver.reapprovalNotes]
         row.answered = (row.answered ?? 0) + (answered ? 1 : 0) // changes whose open questions the driver answered: they cost an extra session
         mergeToMain(sb, slug)
       }

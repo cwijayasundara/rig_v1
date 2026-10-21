@@ -126,6 +126,7 @@ test('build(): when the build stops asking the person to re-approve a plan it ch
   const state = { status: 'approve' }
   const sb = {
     run: () => ({ status: 0, stdout: result(0.1), stderr: '' }),
+    read: () => '# Plan\n\n## Decisions\n- test/shop.test.js B3 gains href. Needs re-approval.\n\n## Open questions\nnone\n',
     sdlc: (args, o = {}) => {
       calls.push(['sdlc', args[0], Boolean(o.human)])
       if (args[0] === 'approve') { state.status = 'build'; return { status: 0, stdout: 'approved', stderr: '' } }
@@ -138,6 +139,15 @@ test('build(): when the build stops asking the person to re-approve a plan it ch
   assert.ok(calls.some(c => c[0] === 'sdlc' && c[1] === 'approve' && c[2] === true), 'a person approves')
   assert.deepEqual(calls.filter(c => c[0] === 'session').map(c => c[1]), ['S9-build', 'S9-build-2'])
   assert.equal(d.reapproved, 1)
+  assert.match(d.reapprovalNotes[0], /test\/shop\.test\.js B3 gains href/, 'what the stand-in approved is recorded')
+})
+
+test('build(): a re-approval the harness refuses stops the run with the reason instead of building on an unapproved plan', async () => {
+  const sb = { read: () => '', sdlc: args => (args[0] === 'approve' ? { status: 1, stdout: '', stderr: 'resolve the open question(s) first' } : { status: 0, stdout: JSON.stringify({ changes: [{ slug: 'c', status: 'approve' }] }), stderr: '' }) }
+  const calls = []
+  const d = liveDriver(sb, { id: 'S9' }, { sessions: { sessions: [], run: label => { calls.push(label); return {} } } })
+  await assert.rejects(d.build('c'), /re-approval refused: resolve the open question/)
+  assert.deepEqual(calls, ['S9-build'], 'no second build session')
 })
 
 test('build(): a change already in review is not re-approved', async () => {
