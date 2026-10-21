@@ -49,7 +49,8 @@ test('an approval refused for open questions gets one answer from the driver, th
   const replies = [refusal(OPEN), { status: 0, stdout: 'approved demo', stderr: '' }]
   const sb = { calls, sdlc: (args, o = {}) => { calls.push(['sdlc', args.join(' ')]); return replies.shift() }, commitAll: () => true }
   const driver = { ...fakeDriver(calls), answer: async (slug, why) => { calls.push(['answer', slug, why.includes('which file?')]) } }
-  await runChange(sb, { id: 'S9' }, driver)
+  const r = await runChange(sb, { id: 'S9' }, driver)
+  assert.equal(r.answered, true, 'the run reports that it answered, so the eval row can say so')
   assert.deepEqual(calls.map(c => c[0]), ['begin', 'plan', 'sdlc', 'answer', 'sdlc', 'build'])
   assert.deepEqual(calls[3], ['answer', 'demo', true], 'the driver is told which questions are open')
 })

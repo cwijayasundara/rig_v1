@@ -45,7 +45,8 @@ export async function runOne(arm, n, { dry, out, capRunUsd, failAt, seed = null,
       base = await setupRig(sb, arm, { dry })
       for (const phase of [S2, S3]) {
         const driver = failing(dry ? scriptedDriver(sb, phase) : liveDriver(sb, phase, { sessions }), failAt)
-        const { slug } = await runChange(sb, phase, driver)
+        const { slug, answered } = await runChange(sb, phase, driver)
+        row.answered = (row.answered ?? 0) + (answered ? 1 : 0) // changes whose open questions the driver answered: they cost an extra session
         mergeToMain(sb, slug)
       }
     } else {
