@@ -43,6 +43,8 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
       - run: npm run eval:app:dry
         if: matrix.os == 'ubuntu-latest'
+      - run: npm run eval:ablate:dry
+        if: matrix.os == 'ubuntu-latest'
   e2e-stacks:
     # Stack fixtures: each pack onboards a tiny repo and check --at commit blocks a broken edit on its core sensor.
     # Every toolchain is installed explicitly and --require all fails the job if one still cannot run: no silent skips here.

@@ -25,6 +25,8 @@
     "eval:review:dry": "node --disable-warning=ExperimentalWarning eval/review.mjs --dry --runs 1",
     "eval:app": "node --disable-warning=ExperimentalWarning eval/app.mjs",
     "eval:app:dry": "node --disable-warning=ExperimentalWarning eval/app.mjs --dry --runs 1",
+    "eval:ablate": "node --disable-warning=ExperimentalWarning eval/ablate.mjs",
+    "eval:ablate:dry": "node --disable-warning=ExperimentalWarning eval/ablate.mjs --component sensor:size --runs 1 --dry",
     "eval:wiki:dry": "node --disable-warning=ExperimentalWarning eval/wiki.mjs --dry --runs 1"
   },
   "devDependencies": {

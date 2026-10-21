@@ -25,6 +25,7 @@ jobs:
       - run: npm run eval:dry
       - run: npm run eval:review:dry
       - run: npm run eval:app:dry
+      - run: npm run eval:ablate:dry
   live:
     if: github.event_name != 'push'
     needs: dry
