@@ -6,6 +6,7 @@ export const ARMS = [
   { id: 'haiku-bare', model: MODELS.haiku, rig: false },
   { id: 'sonnet-bare', model: MODELS.sonnet, rig: false },
   { id: 'opus-bare', model: MODELS.opus, rig: false },
+  { id: 'haiku-rig-arch', model: MODELS.haiku, rig: true, policy: 'continuous', arch: true },
   { id: 'haiku-rig-final', model: MODELS.haiku, rig: true, policy: 'final' },
 ]
 

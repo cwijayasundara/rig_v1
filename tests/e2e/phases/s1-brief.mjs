@@ -4,10 +4,10 @@ import path from 'node:path'
 import { Checks } from '../lib/checks.mjs'
 import { PLUGIN } from '../lib/sandbox.mjs'
 
-export async function runBrief(sb) {
+export async function runBrief(sb, { brief: text } = {}) {
   const c = new Checks('S1 brief')
   const tpl = fs.readFileSync(path.join(PLUGIN, 'templates/brief.md'), 'utf8')
-  const brief = fs.readFileSync(path.join(import.meta.dirname, '../prd/shop-brief.md'), 'utf8')
+  const brief = text ?? fs.readFileSync(path.join(import.meta.dirname, '../prd/shop-brief.md'), 'utf8')
   const heads = t => [...t.matchAll(/^## (.+)$/gm)].map(m => m[1])
   await c.check('the brief has the template headings, in order', () => JSON.stringify(heads(brief)) === JSON.stringify(heads(tpl)) || heads(brief).join(', '))
   sb.write('.rig/product/brief.md', brief)

@@ -2,7 +2,7 @@ import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { parseLayers, validateLayers, deriveLayering, renderDepcruise, renderImportLinter, moduleOf, pythonViolations, approvedLayers, type Def } from './arch.ts'
+import { parseLayers, validateLayers, missingDirs, deriveLayering, renderDepcruise, renderImportLinter, moduleOf, pythonViolations, approvedLayers, type Def } from './arch.ts'
 import { makeRepo, sdlc, hook, write, gitIn } from './testkit.ts'
 
 const block = (body: string): string => `# Architecture\n\n## Layers\n\n\`\`\`rig-layers\n${body}\n\`\`\`\n`
@@ -34,7 +34,8 @@ test('validate: each way a block can be wrong is named', () => {
   bad('layer domain src/../domain/**', /no \.\./)
   bad('layer feat src/features/*/domain/**\nlayer pay src/features/payments/**', /overlaps/)
   assert.deepEqual(validateLayers(parse('layer domain src/domain/**\nlayer other src/domain-x/**')), [], 'a shared name prefix is not an overlap')
-  assert.match(validateLayers(parse(GOOD), () => false).join('\n'), /src\/shop\/domain does not exist/)
+  assert.match(missingDirs(parse(GOOD), () => false).join('\n'), /src\/shop\/domain does not exist yet/)
+  assert.deepEqual(missingDirs(parse(GOOD), () => true), [])
 })
 
 test('derive: every layer not allowed is banned, plus forbidden names; allowed layers are not', () => {
@@ -159,4 +160,11 @@ test('arch: a layer outside the pack root is refused an analyser config, loudly,
   assert.match(r.stdout, /scans src\/ only, and a layer lives elsewhere/)
   assert.equal(fs.existsSync(path.join(repo, '.rig/gen/dependency-cruiser.cjs')), false)
   assert.equal(JSON.parse(fs.readFileSync(path.join(repo, '.rig/layers.approved.json'), 'utf8')).analyser, null)
+})
+
+test('arch: a greenfield repo can approve layers whose directories do not exist yet, and is told so', () => {
+  write(repo, '.rig/product/architecture.md', block('layer domain src/newdomain/**\nlayer infra src/newinfra/**\nallow infra -> domain'))
+  const r = approve()
+  assert.equal(r.code, 0, r.stderr)
+  assert.match(r.stdout, /note: layer domain: src\/newdomain does not exist yet/)
 })

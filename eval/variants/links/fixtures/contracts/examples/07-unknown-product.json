@@ -1,0 +1,9 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/products/NOPE-999"
+  },
+  "response": {
+    "status": 404
+  }
+}

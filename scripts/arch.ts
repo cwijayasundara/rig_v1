@@ -47,7 +47,7 @@ export function parseLayers(md: string): { def: Def | null; block: string; error
   return { def, block, errors }
 }
 
-export function validateLayers(d: Def, dirExists: (p: string) => boolean = () => true): string[] {
+export function validateLayers(d: Def): string[] {
   const errors: string[] = []
   const names = d.layers.map(l => l.name)
   for (const l of d.layers) {
@@ -57,8 +57,6 @@ export function validateLayers(d: Def, dirExists: (p: string) => boolean = () =>
     if (!SAFE_GLOB.test(l.glob) || l.glob.split('/').includes('..')) errors.push(`layer ${l.name}: glob "${l.glob}" may use only letters, digits, . _ - / and *, and no ..`)
     if (names.filter(n => n === l.name).length > 1) errors.push(`layer ${l.name} is declared twice`)
     if (d.layers.some(o => o !== l && o.token === l.token)) errors.push(`layer ${l.name}: token "${l.token}" is shared with another layer`)
-    const prefix = l.glob.split('/').slice(0, Math.max(0, l.glob.split('/').findIndex(s => s.includes('*')))).join('/')
-    if (l.token && prefix && !dirExists(prefix)) errors.push(`layer ${l.name}: ${prefix} does not exist`)
     for (const o of d.layers.slice(d.layers.indexOf(l) + 1)) if (overlaps(l.glob, o.glob)) errors.push(`layer ${l.name} overlaps layer ${o.name}: nested layers and shared directories are not supported`)
   }
   for (const [kind, table] of [['allow', d.allow], ['forbid', d.forbid], ['example', d.example]] as const) {
@@ -71,6 +69,11 @@ export function validateLayers(d: Def, dirExists: (p: string) => boolean = () =>
   const reaches = (a: string, seen = new Set<string>()): Set<string> => { for (const b of d.allow[a] ?? []) if (!seen.has(b)) { seen.add(b); reaches(b, seen) } return seen }
   for (const n of names) if (reaches(n).has(n)) errors.push(`allow rules form a cycle through ${n}`)
   return errors
+}
+
+// Not an error: a greenfield repo declares its layers before it writes them. A typo shows up here instead.
+export function missingDirs(d: Def, dirExists: (p: string) => boolean): string[] {
+  return d.layers.flatMap(l => { const parts = l.glob.split('/'), at = parts.findIndex(x => x.includes('*')), prefix = parts.slice(0, at < 0 ? parts.length : at).join('/'); return prefix && !dirExists(prefix) ? [`layer ${l.name}: ${prefix} does not exist yet`] : [] })
 }
 
 // What the layering sensor enforces: every other layer not allowed, plus the forbidden external names.
@@ -182,19 +185,20 @@ function propose(): string {
 export function cmdArch(args: Args): void {
   const sub = args.pos[0]
   const raw = parseLayers(read(path.join(ROOT, ARCH_MD)))
-  const problems = raw.def ? [...raw.errors, ...validateLayers(raw.def, p => exists(path.join(ROOT, p)))] : []
+  const problems = raw.def ? [...raw.errors, ...validateLayers(raw.def)] : []
+  const notes = raw.def ? missingDirs(raw.def, p => exists(path.join(ROOT, p))) : []
   const stack = parseRegistry(read(path.join(SDLC, 'sensors.json'))).registry.stack ?? ''
   if (sub === 'propose') return out(propose())
   if (sub === 'gen') {
     if (!raw.def) return out(`layers: not configured. Run \`sdlc.ts arch propose\`, put the block under "## Layers" in ${ARCH_MD}, then a person approves it.`)
-    return out([`layers: ${layerStateText(layerState())}`, ...problems.map(p => `[layers] ${p}`), ...(problems.length ? [] : deriveLayering(raw.def).map(l => `  ${l.from} must not import ${l.mustNotImport.join(', ')}`))].join('\n'))
+    return out([`layers: ${layerStateText(layerState())}`, ...problems.map(p => `[layers] ${p}`), ...notes.map(n => `[layers] note: ${n}`), ...(problems.length ? [] : deriveLayering(raw.def).map(l => `  ${l.from} must not import ${l.mustNotImport.join(', ')}`))].join('\n'))
   }
   if (sub === 'approve') {
     if (process.env.SDLC_HUMAN !== '1') fail('layer approvals are human-only: the person runs `! SDLC_HUMAN=1 node .rig/bin/sdlc.ts arch approve`', 3)
     if (!raw.def) fail(`no \`\`\`rig-layers block under "## Layers" in ${ARCH_MD}: run \`sdlc.ts arch propose\``)
     if (problems.length) fail(problems.map(p => `[layers] ${p}`).join('\n'))
     let tool = toolOf(stack)
-    const notes: string[] = []
+    const notes: string[] = [...missingDirs(raw.def, p => exists(path.join(ROOT, p))).map(n => `note: ${n}`)]
     if (tool && raw.def.layers.some(l => !l.glob.startsWith(`${tool?.root}/`))) {
       notes.push(`the ${tool.analyser} commit check scans ${tool.root}/ only, and a layer lives elsewhere, so no analyser config was written and only the edit-time sensor enforces; keep layers under ${tool.root}/`)
       tool = null

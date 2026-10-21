@@ -21,10 +21,11 @@ function shopRepo(name) {
   return { sb, base }
 }
 
-test('the five arms of spec §9, in order, and --arms picks them', () => {
-  assert.deepEqual(ARMS.map(a => a.id), ['haiku-rig', 'haiku-bare', 'sonnet-bare', 'opus-bare', 'haiku-rig-final'])
-  assert.deepEqual(ARMS.filter(a => a.rig).map(a => a.policy), ['continuous', 'final'])
-  assert.deepEqual(armsFrom('all').length, 5)
+test('the arms of spec §9 and the arch arm, in order, and --arms picks them', () => {
+  assert.deepEqual(ARMS.map(a => a.id), ['haiku-rig', 'haiku-bare', 'sonnet-bare', 'opus-bare', 'haiku-rig-arch', 'haiku-rig-final'])
+  assert.deepEqual(ARMS.filter(a => a.rig).map(a => a.policy), ['continuous', 'continuous', 'final'])
+  assert.deepEqual(ARMS.filter(a => a.arch).map(a => a.id), ['haiku-rig-arch'], 'only one arm has approved layers')
+  assert.deepEqual(armsFrom('all').length, 6)
   assert.deepEqual(armsFrom('opus-bare,haiku-rig').map(a => a.id), ['opus-bare', 'haiku-rig'])
   assert.throws(() => armsFrom('gpt-bare'), /unknown arm: gpt-bare/)
 })
@@ -81,4 +82,32 @@ test('final review: a commit the tamper check could not judge is counted as unju
   const { sb, base } = shopRepo('unjudged')
   const s = await scoreRun(sb, base, { sdlc: '/nonexistent/sdlc.ts' })
   assert.ok(s.tamper.unjudged >= 1, JSON.stringify(s.tamper))
+})
+
+import { layerViolations } from './score.mjs'
+
+const shop = files => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-layers-'))
+  for (const [f, text] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true }); fs.writeFileSync(path.join(dir, f), text) }
+  return dir
+}
+
+test('layerViolations: only an import that points up the layers counts, however it is spelled', () => {
+  const ok = shop({
+    'src/catalog/products.js': 'export const p = 1\n',
+    'src/cart/cart.js': "import { p } from '../catalog/products.js'\n",
+    'src/orders/orders.js': "import { Cart } from '../cart/cart.js'\nimport { p } from '../catalog/products.js'\nimport fs from 'node:fs'\n",
+    'src/http/handler.js': "import { checkout } from '../orders/orders.js'\nimport { Cart } from '../cart/cart.js'\n",
+    'src/server.js': "import { createHandler } from './http/handler.js'\n",
+  })
+  assert.equal(layerViolations(ok), 0)
+  assert.equal(layerViolations(shop({ 'src/orders/orders.js': "import { productPath } from '../http/routes.js'\n" })), 1, 'orders importing http')
+  assert.equal(layerViolations(shop({ 'src/catalog/products.js': "import { Cart } from '../cart/cart.js'\n" })), 1, 'catalog importing cart')
+  assert.equal(layerViolations(shop({ 'src/http/handler.js': "import { start } from '../server.js'\n" })), 0, 'server.js is outside the layers the arch arm is given')
+  assert.equal(layerViolations(shop({ 'src/orders/orders.js': "import {\n  productPath,\n  other,\n} from '../http/routes.js'\n" })), 1, 'a multi-line import')
+  assert.equal(layerViolations(shop({ 'src/orders/orders.js': "import '../http/setup.js'\nexport { x } from '../http'\n" })), 2, 'a side-effect import and an export-from a directory')
+  assert.equal(layerViolations(shop({ 'src/orders/orders.js': "// const h = require('../http/handler.js')\n/* import { a } from '../http/x.js' */\n" })), 0, 'comments')
+  assert.equal(layerViolations(shop({ 'src/cart/cart.js': "const o = require('../orders/orders.js')\nconst h = await import('../http/handler.js')\n" })), 2, 'require and dynamic import')
+  assert.equal(layerViolations(shop({ 'src/cart/cart.js': "import x from 'left-pad'\n// import { y } from '../http/handler.js'\n" })), 0, 'a package, and a comment')
+  assert.equal(layerViolations(shop({})), 0, 'no src at all')
 })

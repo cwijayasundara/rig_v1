@@ -1,0 +1,14 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/products/TEA-001"
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "sku": "TEA-001",
+      "name": "Green tea",
+      "priceCents": 450
+    }
+  }
+}

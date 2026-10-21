@@ -1,0 +1,66 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "shop-app",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/products": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "the catalog"
+          }
+        }
+      }
+    },
+    "/cart": {
+      "post": {
+        "responses": {
+          "201": {
+            "description": "the cart lines"
+          },
+          "400": {
+            "description": "unknown SKU or bad quantity"
+          }
+        }
+      }
+    },
+    "/checkout": {
+      "post": {
+        "responses": {
+          "201": {
+            "description": "the order"
+          },
+          "400": {
+            "description": "empty cart or unknown code"
+          }
+        }
+      }
+    },
+    "/cart/{sku}": {
+      "delete": {
+        "responses": {
+          "200": {
+            "description": "the remaining cart lines"
+          },
+          "400": {
+            "description": "the SKU is not in the cart"
+          }
+        }
+      }
+    },
+    "/products/{sku}": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "the product"
+          },
+          "404": {
+            "description": "no such product"
+          }
+        }
+      }
+    }
+  }
+}

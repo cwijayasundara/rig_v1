@@ -82,3 +82,14 @@ test('final review: the call shapes the acceptance relies on, which fail by cras
 test('final review: the brief reads as a product brief, not as a trial', () => {
   assert.doesNotMatch(brief, /\barm\b|\beval\b|hidden|acceptance/i)
 })
+
+import { briefFor } from './variants/links.mjs'
+
+test('the links variant adds B7 to the interfaces, the behaviours and the tests, and leaves B1–B6 alone', () => {
+  const base = fs.readFileSync(path.resolve(import.meta.dirname, '../tests/e2e/prd/shop-brief.md'), 'utf8')
+  const v = briefFor(base)
+  assert.match(v, /GET \/products\/<sku>[\s\S]*built by the same function the handler's/)
+  assert.match(v, /- B6: [^\n]*\n- B7: GET \/products\/<sku>/)
+  assert.match(v, /B7: unit tests in test\/links\.test\.js/)
+  for (const b of ['B1', 'B2', 'B3', 'B4', 'B5', 'B6']) assert.ok(v.includes(`- ${b}:`), b)
+})
