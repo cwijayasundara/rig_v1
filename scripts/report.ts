@@ -8,10 +8,10 @@ import type { RunRow } from './runs.ts'
 
 export type Report = {
   merged: number; shipped: number; since: string | null // merged: every change whose pr.md a merge added; shipped: those whose records are still in the tree (a revert removes them)
-  prLines: { median: number; max: number } | null // lines changed outside .rig/ by the commit that merged each merged change
+  prLines: { median: number; max: number } | null // lines changed outside .rig/ by the commit on the first-parent line that added each change's pr.md (a rebase merge counts only that commit)
   firstPass: { measured: number; clean: number } // changes whose recorded runs (runs.jsonl) all passed, expected failures aside
   reverted: number // merged changes a later commit says it reverts
-  hoursToApproval: { median: number } | null // first commit on the change to its person approval
+  hoursToApproval: { median: number; of: number } | null // first commit on the change to its person approval; of: the changes with both dates (a squash can hide the first commit)
   waiversPerChange: number
   repeat: { classes: number; changes: number } // finding and waiver classes seen in 2+ changes, and the changes carrying one
   unavailable: string[]
@@ -24,19 +24,21 @@ const lines = (root: string, sha: string): number | null => {
 }
 
 export function buildReport(root: string, since: string | null = null): Report {
-  const merges = (gitIn(root, ['log', '--first-parent', '--diff-filter=A', '--name-only', '--format=@%H %cs', '--', ':(glob).rig/changes/*/pr.md']) ?? '').split('@').filter(Boolean)
-    .map(b => { const [head = '', file = ''] = b.trim().split('\n').filter(Boolean); return { sha: head.split(' ')[0] ?? '', date: head.split(' ')[1] ?? '', slug: file.split('/')[2] ?? '' } })
-    .filter(m => m.sha && m.slug && (!since || m.date >= since))
+  // One commit may add several pr.md files (a squash that ships two changes); a change re-added after a revert counts once.
+  const seen = new Set<string>()
+  const merges = (gitIn(root, ['log', '--first-parent', '--diff-filter=A', '--name-only', '--format=%x00%H %cs', '--', ':(glob).rig/changes/*/pr.md']) ?? '').split('\0').filter(Boolean)
+    .flatMap(b => { const [head = '', ...files] = b.split('\n').filter(Boolean); const [sha = '', date = ''] = head.split(' '); return files.map(f => ({ sha, date, slug: f.split('/')[2] ?? '' })) })
+    .filter(m => m.sha && m.slug && (!since || m.date >= since) && !seen.has(m.slug) && seen.add(m.slug))
   const log = gitIn(root, ['log', '--format=%B']) ?? ''
   const size = merges.map(m => lines(root, m.sha)).filter((n): n is number => n !== null)
   const reverted = merges.filter(m => log.includes(`This reverts commit ${m.sha}`)).length
-  const shipped = shippedChanges(root).filter(c => !since || c.date >= since)
+  const shipped = shippedChanges(root).filter(c => !since || seen.has(c.slug))
   const hours: number[] = []
   let measured = 0, clean = 0
   for (const { slug } of shipped) {
     const dir = path.join(root, '.rig', 'changes', slug)
     const runs = readJsonl<RunRow>(path.join(dir, 'evidence', 'runs.jsonl'))
-    if (runs.length) { measured++; if (runs.every(r => r.exit === 0 || r.expectFail)) clean++ }
+    if (runs.length) { measured++; if (runs.every(r => (r.exit === 0 || r.expectFail) && !r.timedOut)) clean++ }
     const first = gitIn(root, ['log', '--reverse', '--format=%cI', '--', `.rig/changes/${slug}`])?.split('\n')[0]
     let approved = ''
     try { approved = (JSON.parse(read(path.join(dir, 'approval.json'))) as { at?: string }).at ?? '' } catch { /* no approval record */ }
@@ -49,7 +51,7 @@ export function buildReport(root: string, since: string | null = null): Report {
     merged: merges.length, shipped: shipped.length, since,
     prLines: size.length ? { median: median(size), max: Math.max(...size) } : null,
     firstPass: { measured, clean }, reverted,
-    hoursToApproval: hours.length ? { median: Math.round(median(hours) * 10) / 10 } : null,
+    hoursToApproval: hours.length ? { median: Math.round(median(hours) * 10) / 10, of: hours.length } : null,
     waiversPerChange: shipped.length ? Math.round((waivers / shipped.length) * 100) / 100 : 0,
     repeat: { classes: classes.length, changes: new Set(classes.flatMap(c => c.changes)).size },
     unavailable: ['CI first-pass rate (the CI provider holds it)', 'review time and findings fixed without a person (not recorded anywhere in the repo)'],
@@ -60,10 +62,10 @@ export function reportText(r: Report): string {
   const pct = (a: number, b: number): string => (b ? `${Math.round((a / b) * 100)}%` : 'n/a')
   return [
     `rig report${r.since ? ` since ${r.since}` : ''}: ${r.merged} merged change(s), ${r.shipped} with records in the tree`,
-    `  lines changed per change   ${r.prLines ? `median ${r.prLines.median}, max ${r.prLines.max}` : 'n/a'}`,
+    `  lines changed per merge    ${r.prLines ? `median ${r.prLines.median}, max ${r.prLines.max}` : 'n/a'}`,
     `  first-pass runs            ${pct(r.firstPass.clean, r.firstPass.measured)} (${r.firstPass.clean} of ${r.firstPass.measured} changes with recorded runs)`,
     `  reverted                   ${r.reverted} of ${r.merged}`,
-    `  hours, first commit to approval  ${r.hoursToApproval ? `median ${r.hoursToApproval.median}` : 'n/a'}`,
+    `  hours, first commit to approval  ${r.hoursToApproval ? `median ${r.hoursToApproval.median} (${r.hoursToApproval.of} change(s))` : 'n/a'}`,
     `  waivers per change         ${r.waiversPerChange}`,
     `  repeat mistakes            ${r.repeat.classes} class(es) across ${r.repeat.changes} of ${r.shipped} change(s)`,
     `not available here: ${r.unavailable.join('; ')}`,

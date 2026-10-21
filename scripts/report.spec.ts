@@ -45,7 +45,7 @@ test('report: size, first-pass, reverts, time to approval, waivers and repeat mi
   assert.deepEqual(r.prLines, { median: 20, max: 30 })
   assert.deepEqual(r.firstPass, { measured: 2, clean: 1 }, 'beta failed before it passed; alpha only failed an expected red run')
   assert.equal(r.reverted, 1)
-  assert.deepEqual(r.hoursToApproval, { median: 3 })
+  assert.deepEqual(r.hoursToApproval, { median: 3, of: 2 })
   assert.equal(r.waiversPerChange, 0.5)
   assert.deepEqual(r.repeat, { classes: 1, changes: 2 })
 })
@@ -68,4 +68,14 @@ test('sdlc report prints the text, and --json the same numbers', () => {
 test('report: a repo with no shipped changes reports zeros, not errors', () => {
   const empty = makeRepo()
   assert.deepEqual([buildReport(empty).merged, buildReport(empty).prLines, buildReport(empty).hoursToApproval], [0, null, null])
+})
+
+test('report: one commit that ships two changes counts both, and a timed-out expected failure is not clean', () => {
+  at('2026-10-05T09:00:00Z')
+  for (const slug of ['delta', 'echo']) write(repo, `.rig/changes/${slug}/pr.md`, '# PR\n')
+  write(repo, '.rig/changes/echo/evidence/runs.jsonl', JSON.stringify({ cmd: 'red', exit: 124, expectFail: true, timedOut: true }) + '\n')
+  commit('squash two changes')
+  const r = buildReport(repo)
+  assert.equal(r.merged, 5)
+  assert.deepEqual(r.firstPass, { measured: 3, clean: 1 })
 })
