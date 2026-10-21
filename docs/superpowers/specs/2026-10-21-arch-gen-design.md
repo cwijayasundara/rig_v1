@@ -108,7 +108,7 @@ All **[my call]**; change any of them and the design adjusts.
 
 Exact command output wording, the file layout inside `.rig/gen/`, how `propose` scans imports (reuse the wiki index if it is warm), the Python mapping details, and splitting the work into tasks. Keep `arch.ts` near the 150-line estimate; the scripts cap rises with a dated note, as every feature has done.
 
-## Open for the person
+## Decided by the person (after the builder check)
 
-1. Java/ArchUnit stays out of this change and follows as its own item: yes or no.
-2. Python in this change, or node and angular first and Python next: I lean node and angular first.
+1. Java/ArchUnit is out of this change and follows as its own item.
+2. Python goes first, then node and angular, in that order (reversing the earlier lean).
