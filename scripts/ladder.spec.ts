@@ -16,6 +16,7 @@ test('the ladder picks the strongest rung that fits the category, and a waiver i
   assert.deepEqual(['correctness', 'security'].map(k => ladderFor('finding', k).rung), ['rule', 'rule'])
   assert.equal(ladderFor('finding', 'something-new').rung, 'lesson')
   assert.equal(ladderFor('waiver', 'size').rung, 'lesson')
+  assert.equal(ladderFor('waiver', 'layering').rung, 'architecture', 'a recurring layering waiver is a coupling mistake')
   assert.match(ladderFor('finding', 'coupling').how, /## Layers[\s\S]*learn replay --layers/)
 })
 
@@ -71,6 +72,7 @@ test('a proposal line is presentable only with a passing replay of exactly the f
   assert.deepEqual(proposalProblems(`- ${line}`, read), [])
   files.set('.rig/learn/rule-L7.json', '{"id":"r","pattern":"loosened"}')
   assert.match(proposalProblems(line, read)[0] ?? '', /changed since its replay; replay it again/)
+  for (const variant of ['**PROMOTE** L9:', 'promote L9 -', '- `PROMOTE` L9 —', '* Promote L9:']) assert.match(proposalProblems(variant, read)[0] ?? 'NOT CAUGHT', /PROMOTE L9: rule-L9\.json is not in/, variant)
   files.set('.rig/learn/layers-L8.md', LAYERS)
   assert.match(proposalProblems('LAYER L8: domain stays pure', read)[0] ?? '', /run `learn replay --layers \.rig\/learn\/layers-L8\.md/)
 })
@@ -106,6 +108,12 @@ function waivedRepo(): string {
 const rows = (repo: string): { expires?: string; at: string }[] => fs.readFileSync(path.join(repo, '.rig/waivers.jsonl'), 'utf8').trim().split('\n').map(l => JSON.parse(l))
 const stop = (repo: string): { blocks: unknown[]; waived: number } => JSON.parse(sdlc(repo, ['check', '--at', 'stop', '--json']).stdout)
 
+test('learn replay --layers with no file says so', () => {
+  const r = sdlc(makeRepo(), ['learn', 'replay', '--layers', '--earned', 'a,b'])
+  assert.equal(r.code, 1)
+  assert.match(r.stderr, /--layers needs the file/)
+})
+
 test('a waiver records its expiry (30 days by default, --days to change it, never over 180) and says so', () => {
   const repo = waivedRepo()
   const a = sdlc(repo, ['waive', 'test-tamper', '*', 'flaky', '--slug', 'wv'], { env: HUMAN })
@@ -134,4 +142,6 @@ test('an expired waiver stops covering the finding, so it comes back; one withou
   fs.writeFileSync(path.join(repo, '.rig/waivers.jsonl'), lapsed.map(({ expires: _e, ...r }) => JSON.stringify(r)).join('\n') + '\n')
   assert.equal(stop(repo).blocks.length, 0, 'a row from before expiry existed is unchanged')
   assert.match(sdlc(repo, ['sensors']).stdout, /no expiry/)
+  fs.writeFileSync(path.join(repo, '.rig/waivers.jsonl'), lapsed.map(r => JSON.stringify({ ...r, expires: 'never' })).join('\n') + '\n')
+  assert.equal(stop(repo).blocks.length, 1, 'an expiry that does not parse is expired, not forever')
 })

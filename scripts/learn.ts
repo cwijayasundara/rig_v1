@@ -35,12 +35,13 @@ function mine(): void {
 
 // A proposal line that promotes a lesson to a rule (PROMOTE) or a layer edge (LAYER) is presentable only with a passing replay of exactly the file
 // it proposes: the replay wrote .rig/learn/replay-<file>.json with the file's hash, and a changed file invalidates it.
-const PROMOTION = /^(?:[-*]\s*)?(PROMOTE|LAYER)\s+([^\s:]+):/
+// Any spelling a model might use for the line: bullet or not, bold or not, any case, `:` or a dash after the id.
+const PROMOTION = /^(?:[-*]\s*)?[*`]*(PROMOTE|LAYER)[*`]*\s+`?([^\s:`*]+)`?\**\s*[:\u2013\u2014-]/i
 export function proposalProblems(proposal: string, readFile: (rel: string) => string | null): string[] {
   return proposal.split('\n').flatMap(line => {
     const m = PROMOTION.exec(line.trim())
     if (!m) return []
-    const [verb, id] = [m[1] as string, m[2] as string]
+    const [verb, id] = [(m[1] as string).toUpperCase(), m[2] as string]
     const file = verb === 'PROMOTE' ? `rule-${id}.json` : `layers-${id}.md`
     const text = readFile(`.rig/learn/${file}`)
     if (text === null) return [`${verb} ${id}: ${file} is not in .rig/learn/`]
@@ -78,6 +79,7 @@ function readRule(file: string | undefined): Rule {
 function replay(args: Args): void {
   const earned = String(args.opt.earned ?? '').split(',').filter(Boolean)
   if (earned.length < 2) fail('replay needs --earned <slug>,<slug>: the (at least 2) changes that earned the fix')
+  if (args.opt.layers === true) fail('--layers needs the file: learn replay --layers .rig/learn/layers-<id>.md --earned a,b')
   const layersFile = typeof args.opt.layers === 'string' ? args.opt.layers : null
   const given = layersFile ?? args.pos[1]
   const r = layersFile ? replayLayers(ROOT, read(path.resolve(ROOT, layersFile)), earned, listChanges()) : replayRule(ROOT, readRule(args.pos[1]), earned, listChanges())

@@ -16,7 +16,9 @@ const TEST: Rung = { rung: 'test', how: 'pin it with a test, or a frozen contrac
 const RULE: Rung = { rung: 'rule', how: 'a pattern over added lines in .rig/rules.json, proven with `learn replay .rig/learn/rule-<id>.json --earned <a>,<b>`' }
 const LESSON: Rung = { rung: 'lesson', how: 'one line of .rig/lessons.md; nothing mechanical catches it yet' }
 const LADDER: Record<string, Rung> = { coupling: ARCH, responsibility: ARCH, abstraction: ARCH, duplication: RATCHET, tests: TEST, contract: TEST, data: TEST, correctness: RULE, security: RULE }
-export const ladderFor = (kind: Candidate['kind'], key: string): Rung => (kind === 'finding' ? LADDER[key] ?? LESSON : LESSON)
+// A waiver recurring on the layering sensor is the same mistake as a coupling finding; the other sensors have no stronger fix than a lesson.
+const WAIVER_LADDER: Record<string, Rung> = { layering: ARCH }
+export const ladderFor = (kind: Candidate['kind'], key: string): Rung => (kind === 'finding' ? LADDER[key] ?? LESSON : WAIVER_LADDER[key] ?? LESSON)
 export type Shipped = { slug: string; date: string; keys: string[] }
 
 const MIN_CHANGES = 2

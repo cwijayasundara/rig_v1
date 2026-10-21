@@ -6,7 +6,7 @@
 // scope drift, sensors and hook decisions. This file is the CLI.
 import fs from 'node:fs'
 import path from 'node:path'
-import { whoami, ownerOrFail,
+import { waiverLive, whoami, ownerOrFail,
   ROOT, SDLC, CHANGES, SLUG_RE, SOFT_HOOK_FAILURE, exists, read, now, defaultBase, toPosix, out, fail, git, parseArgs, optString, listChanges, scanSecrets, checkSlug,
   WAIVERS, readJsonl, type Waiver, ensureGitignore, PLUGIN_ROOT, skillRef, sanctionWrites, readGate, type Args,
 } from './core.ts'
@@ -40,7 +40,7 @@ import { TYPES, toType, changeDir, newChange, setActive, activeSlug, status, nex
 const ageDays = (at: string): number => { const n = Math.floor((Date.now() - Date.parse(at)) / 86_400_000); return Number.isFinite(n) ? Math.max(0, n) : Infinity }
 const STALE_WAIVER_DAYS = 30
 const MAX_WAIVER_DAYS = 180
-const expiryText = (w: Waiver): string => (!w.expires ? 'no expiry' : Date.parse(w.expires) <= Date.now() ? 'expired' : `expires in ${Math.max(1, Math.ceil((Date.parse(w.expires) - Date.now()) / 86_400_000))}d`)
+const expiryText = (w: Waiver): string => (!w.expires ? 'no expiry' : !waiverLive(w) ? 'expired' : `expires in ${Math.max(1, Math.ceil((Date.parse(w.expires) - Date.now()) / 86_400_000))}d`)
 
 function cmdInit(args: Args): void {
   // Ship and the PR gate read git, so a directory outside any repo gets one.
