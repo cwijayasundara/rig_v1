@@ -11,7 +11,7 @@ export const SENSOR_NAMES = [
 ]
 
 export type Finding = { sensor: string; severity: Severity; file?: string; line?: number; message: string; fix: string; labels?: string[]; outOfTime?: true }
-export type Layer = { from: string; mustNotImport: string[]; why: string }
+export type Layer = { from: string; mustNotImport: string[]; why: string; example?: string }
 export type Rule = { id: string; pattern: string; paths?: string[]; message: string; why: string; action: Severity }
 
 export const SECRET_PATTERNS: [string, RegExp][] = [

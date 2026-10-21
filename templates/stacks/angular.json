@@ -7,7 +7,7 @@
     { "id": "lint", "cmd": "npx --no-install ng lint", "cadence": "turn", "blocks": true, "guide": "Angular lint must pass; fix the code rather than the rule." },
     { "id": "types", "cmd": "npx --no-install tsc -p tsconfig.app.json --noEmit --pretty false", "cadence": "turn", "blocks": true, "guide": "The app must typecheck before the turn ends." },
     { "id": "unit", "cmd": "npx --no-install ng test --watch=false", "cadence": "turn", "blocks": true, "guide": "Run the component and service specs before claiming done; fix the code, never the specs." },
-    { "id": "layers", "cmd": "npx --no-install depcruise src --output-type err", "cadence": "commit", "blocks": true, "guide": "Respect the dependency rules between features, shared and core modules." },
+    { "id": "layers", "cmd": "if [ -f .rig/gen/dependency-cruiser.cjs ]; then npx --no-install depcruise src --config .rig/gen/dependency-cruiser.cjs --ignore-known .rig/gen/known-violations.json --output-type err; fi", "cadence": "commit", "blocks": true, "guide": "Respect the approved layers in architecture.md; do not import across a forbidden boundary." },
     { "id": "duplication", "cmd": "npx --yes jscpd@5 src --silent --threshold 5", "cadence": "commit", "blocks": false, "guide": "Reuse existing components and services instead of copying them." },
     { "id": "build", "cmd": "npx --no-install ng build", "cadence": "ci", "blocks": true, "guide": "The production build must succeed." },
     { "id": "audit", "cmd": "npm audit --audit-level=high", "cadence": "ci", "blocks": false, "guide": "Do not add dependencies with known high-severity vulnerabilities." },

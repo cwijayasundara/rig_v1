@@ -111,7 +111,7 @@ export function layering(diffs: FileDiff[], r: Registry): Finding[] {
     for (const d of diffs.filter(f => from.test(f.file) && !f.binary)) {
       for (const l of d.added.filter(a => IMPORT_LINE.test(a.text) && !/^\s*(?:\/\/|#(?!\s*include))/.test(a.text))) {
         const hit = banned.find(b => b.re.test(l.text))
-        if (hit) findings.push({ sensor: 'layering', severity: 'block', file: d.file, line: l.n, message: `${layer.from} must not import ${hit.t}: ${layer.why}`, fix: `depend on an interface owned by this layer and inject the ${hit.t} implementation at the boundary` })
+        if (hit) findings.push({ sensor: 'layering', severity: 'block', file: d.file, line: l.n, message: `${layer.from} must not import ${hit.t}: ${layer.why}`, fix: `depend on an interface owned by this layer and inject the ${hit.t} implementation at the boundary${layer.example ? ` (example: ${layer.example})` : ''}` })
       }
     }
   }
@@ -178,7 +178,7 @@ export function rulesSensor(diffs: FileDiff[], rules: { id: string; pattern: str
 }
 
 // rig-*.yml: every workflow rig writes (check, review, spec); a repo's own rig-*.yml counts too.
-const PROTECTED = ['.rig/sensors.json', '.rig/rules.json', '.rig/lessons.md', '.rig/lessons-archive.md', '.rig/guides/**', '.rig/evals/*.json', '.rig/bin/**', '.rig/mod/**', '.rig/githooks/**', '.claude-plugin/**', 'CLAUDE.md', '.claude/**', '.github/workflows/rig-*.yml', '.github/workflows/sdlc-check.yml', 'CODEOWNERS', '.github/CODEOWNERS']
+const PROTECTED = ['.rig/sensors.json', '.rig/rules.json', '.rig/layers.approved.json', '.rig/gen/**', '.rig/lessons.md', '.rig/lessons-archive.md', '.rig/guides/**', '.rig/evals/*.json', '.rig/bin/**', '.rig/mod/**', '.rig/githooks/**', '.claude-plugin/**', 'CLAUDE.md', '.claude/**', '.github/workflows/rig-*.yml', '.github/workflows/sdlc-check.yml', 'CODEOWNERS', '.github/CODEOWNERS']
 // ci: compare case-insensitively (macOS and Windows file systems treat CLAUDE.MD and CLAUDE.md as one file).
 export const isProtected = (file: string, ci = false): boolean => (ci ? matchesAny(file.toLowerCase(), PROTECTED.map(p => p.toLowerCase())) : matchesAny(file, PROTECTED))
 const SENSORS = '.rig/sensors.json'

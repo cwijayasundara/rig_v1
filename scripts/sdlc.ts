@@ -27,6 +27,7 @@ import { cmdSync } from './sync.ts'
 import { cmdWiki } from './wiki.ts'
 import { cmdLearn } from './learn.ts'
 import { cmdReport } from './report.ts'
+import { cmdArch, layerState, layerStateText } from './arch.ts'
 import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, prdPath, chartFiles } from './chart.ts'
 import { journey, journeyText } from './journey.ts'
 import { TYPES, toType, changeDir, newChange, setActive, activeSlug, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
@@ -213,14 +214,14 @@ const unresolvedFindings = (): Finding[] => {
   try { return (JSON.parse(read(path.join(SDLC, 'unresolved.json'))) as { findings: Finding[] }).findings } catch { return [] }
 }
 
-function sensorStatus(): { blocks: number; warns: number; bySensor: Record<string, number>; unresolved: number; knownRed: number; waivers: number; inert: Inert[] } | null {
+function sensorStatus(): { blocks: number; warns: number; bySensor: Record<string, number>; unresolved: number; knownRed: number; waivers: number; inert: Inert[]; layers: string } | null {
   if (!exists(SDLC)) return null
   const last = readGate().last
   const slug = activeSlug()
   const { registry, rules } = loadConfig()
   return {
     blocks: last?.blocks ?? 0, warns: last?.warns ?? 0, bySensor: last?.bySensor ?? {}, unresolved: unresolvedFindings().length,
-    knownRed: registry.knownRed.length, inert: inertSensors(registry, rules.length),
+    knownRed: registry.knownRed.length, inert: inertSensors(registry, rules.length), layers: layerStateText(layerState()),
     waivers: readJsonl<Waiver>(WAIVERS).filter(w => w.slug === slug).length,
   }
 }
@@ -236,6 +237,7 @@ function cmdSensors(): void {
     `last gate: ${s.blocks} block(s), ${s.warns} warning(s)${Object.keys(s.bySensor).length ? ' · ' + Object.entries(s.bySensor).map(([k, v]) => `${k} ${v}`).join(', ') : ''}`,
     unresolved.length ? `unresolved:\n${formatFindings(unresolved)}` : 'unresolved: none',
     ...(s.inert.length ? [`not configured (passing checks nothing): ${s.inert.map(i => `${i.id} (${i.reason})`).join('; ')}`] : []),
+    `layers: ${s.layers}`,
     `known red: ${registry.knownRed.join(', ') || 'none'}`,
     `waivers (${slug ?? 'no change'}): ${waivers.map(w => `${w.sensor} ${w.file} ${w.reason}`).join('; ') || 'none'}`,
   ].join('\n'))
@@ -280,6 +282,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   wiki: args => cmdWiki(args),
   learn: args => cmdLearn(args),
   report: cmdReport,
+  arch: cmdArch,
 }
 
 const [command = '', ...rest] = process.argv.slice(2)
