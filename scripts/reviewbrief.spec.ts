@@ -24,7 +24,7 @@ test('the brief demands evidence for every finding and caps how many it may rais
   assert.match(brief, /concrete input or state where it goes wrong/)
   assert.match(brief, /When you cannot, drop it/)
   assert.match(brief, /at most 8 findings/i)
-  assert.match(brief, /Do not report style/)
+  assert.match(brief, /Style, naming, and suggestions[\s\S]*go under Deferred/)
 })
 
 test('the findings shape is the one review.md and the learning loop already read', () => {
@@ -36,4 +36,16 @@ test('the findings shape is the one review.md and the learning loop already read
 test('a dismissed finding carries no category tag, so the learning loop counts kept findings only', () => {
   const review = '## Findings\n- [severity: high] [category: tests] a.js:1: p → f\n\n## Dismissed\n- b.js:2 q → dismissed: spec B3 says otherwise\n'
   assert.equal([...review.matchAll(/\[category: ([a-z-]+)\]/g)].length, 1, 'the pattern learn mine uses sees one finding')
+})
+
+test('the skill computes the verdict after triage and forbids relabelling a finding to dismiss it', () => {
+  const t = fs.readFileSync(path.resolve(import.meta.dirname, '../skills/pr/SKILL.md'), 'utf8')
+  assert.match(t, /`changes-needed` exactly when `## Findings` still has an item after your triage/)
+  assert.match(t, /never relabel a finding to dismiss it/)
+})
+
+test('the brief and the skill agree: code doing what the non-goals exclude is a contract finding, and new files are read in full', () => {
+  assert.match(brief, /Code that already does what the intent's non-goals exclude is a `contract` finding/)
+  assert.match(brief, /every file `git status --short` lists with `\?\?`[\s\S]*read each of them in full/)
+  assert.match(brief, /for coupling and responsibility, the specific next change it makes harder/)
 })

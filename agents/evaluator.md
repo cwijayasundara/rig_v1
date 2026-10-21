@@ -1,6 +1,6 @@
 ---
 name: evaluator
-description: Chart reviewer. One independent read-only pass over a sprint chart bundle against its PRD, brief, architecture, intents and test plan; advises, never edits. A change's diff is reviewed by /code-review and /security-review in /rig:pr, not here.
+description: Chart reviewer. One independent read-only pass over a sprint chart bundle against its PRD, brief, architecture, intents and test plan; advises, never edits. A change's diff is reviewed by a clean-context reviewer agent and /security-review in /rig:pr, not here.
 tools: Read, Grep, Glob, LSP, Bash
 model: opus
 effort: high

@@ -40,7 +40,7 @@ function innerSteps(s: Status, gates: boolean, slug: string, reviewed: boolean):
     { id: 'approve', label: gates ? 'Approve' : 'Approve (off)', command: `${k('approve')} ${slug}`, done: done(2) || !gates, gate: true },
     { id: 'build', label: 'Build', command: `${k('build')} ${slug}`, done: at > 3, auto: true }, { id: 'test', label: 'Test', command: `${k('test')} ${slug}`, done: at > 3, auto: true },
     { id: 'pr', label: 'PR', command: `${k('pr')} ${slug}`, done: done(5), auto: true },
-    { id: 'review', label: 'Review', command: 'review and its fixes (/code-review)', done: s === 'shipped' || (at > 5 && reviewed), auto: true }, { id: 'merge', label: 'Merge', command: 'review and merge the PR', done: s === 'shipped', gate: true },
+    { id: 'review', label: 'Review', command: 'review and its fixes (the /rig:pr reviewer)', done: s === 'shipped' || (at > 5 && reviewed), auto: true }, { id: 'merge', label: 'Merge', command: 'review and merge the PR', done: s === 'shipped', gate: true },
   ]
   return mark(rows)
 }

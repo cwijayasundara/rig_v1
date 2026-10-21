@@ -1,4 +1,4 @@
-// Mining committed evidence for the learning loop (design 2026-10-17): review findings (/code-review, /security-review) in review.md and waivers. Zero tokens.
+// Mining committed evidence for the learning loop (design 2026-10-17): review findings (the /rig:pr reviewer, /security-review) under ## Findings in review.md and waivers. Zero tokens.
 // Only a key seen in at least two distinct changes is a candidate; one occurrence is never a lesson.
 import fs from 'node:fs'
 import path from 'node:path'
@@ -19,9 +19,11 @@ const slugsOf = (root: string): string[] =>
 const reviewOf = (root: string, slug: string): string => read(path.join(changesDir(root), slug, 'review.md'))
 const waiversOf = (root: string): Waiver[] => readJsonl<Waiver>(path.join(root, '.rig', 'waivers.jsonl')).filter(w => typeof w.slug === 'string' && typeof w.sensor === 'string')
 
-// Each finding line of a review, keyed by its category.
+// Each finding line of a review, keyed by its category. Only the ## Findings section counts: a tagged line pasted under ## Dismissed or
+// ## Deferred is not a kept finding. A review with no such heading is read whole.
+const findingsSection = (review: string): string => /^## Findings[ \t]*\n([\s\S]*?)(?=^## |(?![\s\S]))/m.exec(review)?.[1] ?? review
 const findingsOf = (review: string): { key: string; line: string }[] =>
-  review.split('\n').flatMap(line => [...line.matchAll(CATEGORY)].map(m => ({ key: m[1] as string, line: line.replace(/^-\s*/, '').trim() })))
+  findingsSection(review).split('\n').flatMap(line => [...line.matchAll(CATEGORY)].map(m => ({ key: m[1] as string, line: line.replace(/^-\s*/, '').trim() })))
 
 // Only shipped changes count: an in-flight change's review.md is not evidence yet, and replay and lesson status see only shipped ones.
 export function mineCandidates(root: string): Candidate[] {
