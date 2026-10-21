@@ -1,16 +1,19 @@
 ---
 name: pr
-description: Open the PR for a verified change, run one review by the evaluator agent, fix its findings and push the follow-up.
+description: Review the change's delta with /code-review and /security-review, fix the findings, then open one PR.
 argument-hint: '[<slug>]'
-allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Bash(git diff*), Bash(git log*), Bash(gh pr view*), Bash(gh pr comment*), Read, Grep, Glob, Write, Edit, Agent
+allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Bash(git diff*), Bash(git log*), Bash(git status*), Bash(git remote*), Bash(gh pr view*), Bash(gh pr comment*), Read, Grep, Glob, Write, Edit, Agent
 ---
-# Open the PR
+# Review, then open the PR
 
-`S` means `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts`.
+`S` means `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts`. The review runs on the delta only, before any PR exists.
 
-1. Run `S pr <slug> --message "<type(scope): summary>"`. It refuses without an approved plan and a fresh, passing `verify.json`. On a refusal, run `/rig:test <slug>` again or ask the person to approve. It commits on `sdlc/<slug>`, pushes and opens the PR, or stays local-only without a remote.
-2. Review once: launch `rig:evaluator` with no model override (its frontmatter pins the evaluation model). Pass the change folder and the base it was verified against (`base` in `verify.json`). Write its findings to `.rig/changes/<slug>/review.md`. This is the only review: never a second review, also not after the fixes below.
-3. Run `S activate <slug>` so the hooks guard the fixes, then fix every item under `## Findings` in one wave, without asking. Fix the code, or strengthen a test the finding names; never weaken a test, a sensor or a contract file. Items under `## Deferred` stay as notes for the person. Stop and tell the person, leaving that item unfixed, when a fix needs a file plan.md does not list, a frozen contract file, or a test expectation relaxed.
-4. After fixing, run `S verify <slug>` (not `/rig:test`, which would hand back here). On failure fix the code and run it again; if the same check fails twice, stop and show it to the person, who may waive it with `/rig:waive`.
-5. Commit the follow-up with `S pr <slug> --message "fix(review): <what>"`, or, when nothing was fixed, `S pr <slug> --message "docs(review): <slug>"`. Either one carries review.md, pushes to `sdlc/<slug>` and ends the active change. After a stop in step 3, still ship review.md: revert the unfinished fix, then run `S verify <slug>` and the `docs(review)` follow-up. After a stop in step 4, leave review.md for the person. When a PR exists, post the review with `gh pr comment --body-file .rig/changes/<slug>/review.md`, adding a line under it naming what step 3 fixed.
-6. End with the PR URL (or `local-only`), what was fixed and what was left, and `Next: a person reviews and merges the PR`.
+1. Read `base` from `.rig/changes/<slug>/verify.json`. When verify is missing or failing, stop and run `/rig:test <slug>`.
+2. Review once, never a second time (also not after the fixes below). Both run in the foreground:
+   - `/code-review <effort> all changes since <base>, committed and uncommitted`. The effort is `medium`, or `high` for a tier L change; always pass it, because the command otherwise reuses the last level typed.
+   - `/security-review`. It needs an `origin` remote. With no `origin` remote it prints nothing or fails on setup: then launch one `general-purpose` agent with `model: sonnet` and a brief of at most 60 lines: the base, "review only the changes since <base>, committed and uncommitted, for security: injection, authn/authz, secrets, unsafe input, crypto, path traversal", read-only, findings as file, line, problem, fix. Never skip the security pass.
+3. Write the findings to `.rig/changes/<slug>/review.md`: `verdict: pass | changes-needed`, then `## Findings` with one line each `- [severity: critical|high|medium] [category: <slug>] path:line: problem → fix (confidence NN)`, `## Deferred`, `## One thing`. `/code-review` gives no severity or category: assign both. The category is exactly one of correctness, security, contract, data, coupling, responsibility, abstraction, duplication, tests; every `/security-review` finding is `security`. Keep a finding only at confidence 80 or more; style preferences and anything the brief's non-goals exclude go to Deferred.
+4. Run `S activate <slug>` so the hooks guard the fixes, then fix every item under `## Findings` in one wave, without asking. Fix the code, or strengthen a test the finding names; never weaken a test, a sensor or a contract file. Stop and tell the person, leaving that item unfixed, when a fix needs a file plan.md does not list, a frozen contract file, or a test expectation relaxed. Then run `S verify <slug>` (not `/rig:test`, which would hand back here). On failure fix the code and run it again; if the same check fails twice, stop and show it to the person, who may waive it with `/rig:waive`.
+5. Run `S pr <slug> --message "<type(scope): summary>"` once. It refuses without an approved plan and a fresh, passing `verify.json`; it commits the code and review.md together on `sdlc/<slug>`, pushes and opens the PR, or stays local-only without a remote. After a stop in step 4, revert the unfinished fix, run `S verify <slug>`, then `S pr` so review.md still ships.
+6. When a PR exists, post the review with `gh pr comment --body-file .rig/changes/<slug>/review.md`, adding a line under it naming what step 4 fixed.
+7. End with the PR URL (or `local-only`), what was fixed and what was left, and `Next: a person reviews and merges the PR`.
