@@ -77,3 +77,12 @@ test('seeded: a B-number with no test blocks at ship', () => {
   write(repo, 'test/sub.test.js', "import { test } from 'node:test'\nimport assert from 'node:assert'\nimport { sub } from '../src/sub.js'\ntest('B1 subtracts', () => assert.equal(sub(3, 1), 2))\n")
   assert.match(sdlc(repo, ['check', '--at', 'ship', '--base', 'main', '--slug', 'sub']).stdout, /\[traceability\][\s\S]*B2 .*has no test that names it/)
 })
+
+test('status --json and check name the sensors that are not configured', () => {
+  const status = JSON.parse(sdlc(repo, ['status', '--json']).stdout)
+  assert.ok(Array.isArray(status.sensors.inert), 'status --json carries inert')
+  assert.ok(!status.sensors.inert.some((i: { id: string }) => i.id === 'layering'), 'layers are declared in this repo')
+  assert.match(sdlc(repo, ['sensors']).stdout, /not configured .*rules/)
+  gitIn(repo, 'commit', '--allow-empty', '-qm', 'pr')
+  assert.match(sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main']).stdout, /not configured .*rules/)
+})

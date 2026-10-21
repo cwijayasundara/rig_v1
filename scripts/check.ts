@@ -12,7 +12,7 @@ import { readBaseline, snapshot, turnDiff, fileDiff, branchDiff, showAt, fileLin
 import { runCommand, recordRun, normCmd } from './runs.ts'
 import { withBaseTree } from './basetree.ts'
 import { activeSlug, approvalState, changeType } from './lifecycle.ts'
-import { isRegistryShape, parseRegistry, defaultRegistry, updateKnownRed, activeSensors, commandFor, builtinOptions, type Registry, type Cadence } from './registry.ts'
+import { isRegistryShape, parseRegistry, defaultRegistry, updateKnownRed, activeSensors, commandFor, builtinOptions, inertSensors, type Registry, type Cadence, type Inert } from './registry.ts'
 import { frozenFindings, runContracts } from './contracts.ts'
 import { syncFindings } from './sync.ts'
 
@@ -277,12 +277,14 @@ function independentApproval(): string | null {
   return ok ? null : `no approving review of ${pr.head.sha.slice(0, 7)} from someone other than ${pr.user?.login ?? 'the author'}`
 }
 
-function report(point: string, result: CheckResult, count: number, json: boolean, humanRows: string[] = []): void {
-  if (json) return out(JSON.stringify({ ...result, humanRows }))
+function report(point: string, result: CheckResult, count: number, json: boolean, humanRows: string[] = [], inert: Inert[] = []): void {
+  if (json) return out(JSON.stringify({ ...result, humanRows, inert }))
   // A commit hook and the CI log are read by a person, so they list each warning with its fix, not just a count.
   const text = [formatFindings(result.findings), ...(point === 'commit' || point === 'ci' ? warnLines(result.findings) : [])].filter(Boolean).join('\n')
+  const idle = inert.length && point !== 'stop' ? `not configured (passing checks nothing): ${inert.map(i => `${i.id} (${i.reason})`).join('; ')}` : ''
   const human = humanRows.length ? `needs human review: ${humanRows.length} waiver/approval row(s) added by this PR\n${humanRows.map(r => `  - ${r}`).join('\n')}` : ''
   out([text || `sdlc check ${point}: pass (${count} file(s) checked${result.waived ? `, ${result.waived} waived` : ''})`, human].filter(Boolean).join('\n'))
+  if (idle) out(idle)
   const summary = process.env.GITHUB_STEP_SUMMARY
   // Backticks in a file name or message must not close the summary's code fence.
   const fenced = (t: string): string => '```\n' + t.replace(/`/g, "'") + '\n```'
@@ -335,7 +337,7 @@ export function cmdCheck(args: Args): void {
   const humanFindings: Finding[] = why ? [{ sensor: 'human-approval', severity: 'block', message: `this PR adds ${humanRows.length} approval/waiver row(s): ${why}`, fix: 'a code owner other than the PR author reviews the rows below and approves the current head commit; pushing again needs a fresh approval' }] : []
   const syncBlocks = (at === 'commit' || at === 'ci') && declaresRegistry() ? syncFindings(config, [], 'block') : [] // config errors already block above
   const all = { ...result, findings: [...humanFindings, ...configFindings, ...syncBlocks, ...result.findings], blocks: [...humanFindings, ...configFindings, ...syncBlocks.filter(f => f.severity === 'block'), ...result.blocks] }
-  report(at, all, diffs.length, Boolean(args.opt.json), humanRows)
+  report(at, all, diffs.length, Boolean(args.opt.json), humanRows, inertSensors(config, rules.length))
   process.exitCode = all.blocks.length ? 1 : 0
 }
 

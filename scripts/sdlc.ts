@@ -14,6 +14,7 @@ import { formatFindings, SENSOR_NAMES, type Finding } from './model.ts'
 import { readBaseline, branchDiff, turnDiff, type Snapshot } from './diffs.ts'
 import { cmdHook } from './hooks.ts'
 import { cmdCheck, cmdCheckFile, loadConfig } from './check.ts'
+import { inertSensors, type Inert } from './registry.ts'
 import { runCommand, recordRun } from './runs.ts'
 import { cmdVendor, installStandalone } from './vendor.ts'
 import { cmdBaseline } from './initbaseline.ts'
@@ -211,13 +212,14 @@ const unresolvedFindings = (): Finding[] => {
   try { return (JSON.parse(read(path.join(SDLC, 'unresolved.json'))) as { findings: Finding[] }).findings } catch { return [] }
 }
 
-function sensorStatus(): { blocks: number; warns: number; bySensor: Record<string, number>; unresolved: number; knownRed: number; waivers: number } | null {
+function sensorStatus(): { blocks: number; warns: number; bySensor: Record<string, number>; unresolved: number; knownRed: number; waivers: number; inert: Inert[] } | null {
   if (!exists(SDLC)) return null
   const last = readGate().last
   const slug = activeSlug()
+  const { registry, rules } = loadConfig()
   return {
     blocks: last?.blocks ?? 0, warns: last?.warns ?? 0, bySensor: last?.bySensor ?? {}, unresolved: unresolvedFindings().length,
-    knownRed: loadConfig().registry.knownRed.length,
+    knownRed: registry.knownRed.length, inert: inertSensors(registry, rules.length),
     waivers: readJsonl<Waiver>(WAIVERS).filter(w => w.slug === slug).length,
   }
 }
@@ -225,13 +227,15 @@ function sensorStatus(): { blocks: number; warns: number; bySensor: Record<strin
 function cmdSensors(): void {
   const s = sensorStatus()
   if (!s) return out('sdlc not initialised here')
+  const { registry } = loadConfig()
   const slug = activeSlug()
   const unresolved = unresolvedFindings()
   const waivers = readJsonl<Waiver>(WAIVERS).filter(w => w.slug === slug)
   out([
     `last gate: ${s.blocks} block(s), ${s.warns} warning(s)${Object.keys(s.bySensor).length ? ' · ' + Object.entries(s.bySensor).map(([k, v]) => `${k} ${v}`).join(', ') : ''}`,
     unresolved.length ? `unresolved:\n${formatFindings(unresolved)}` : 'unresolved: none',
-    `known red: ${loadConfig().registry.knownRed.join(', ') || 'none'}`,
+    ...(s.inert.length ? [`not configured (passing checks nothing): ${s.inert.map(i => `${i.id} (${i.reason})`).join('; ')}`] : []),
+    `known red: ${registry.knownRed.join(', ') || 'none'}`,
     `waivers (${slug ?? 'no change'}): ${waivers.map(w => `${w.sensor} ${w.file} ${w.reason}`).join('; ') || 'none'}`,
   ].join('\n'))
 }
