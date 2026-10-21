@@ -15,7 +15,7 @@ allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_R
    - Run it with `S run --expect-fail -- "<test command>"` and see it fail.
    - Write the code.
    - Run `S run -- "<test command>"` and see it pass.
-   Touch only the files plan.md lists. If another file must change, add it under `## Decisions` in plan.md and tell the person, who re-approves.
+   Touch only the files plan.md lists. If another file must change, add it under `## Decisions` in plan.md and tell the person, who re-approves. A listed test that pins behaviour this change alters is updated to the new expectation (never an assertion removed or loosened); run the whole suite, not only the new tests, before `/rig:test`.
 4. The hooks run the sensors after each edit and at the end of each turn. Fix what they report. Never weaken a test, a sensor or a contract file.
 5. For a large plan, run at most one `general-purpose` agent with model `sonnet` per independent group of files, in the foreground, each with a brief of at most 60 lines: the behaviours, the files and the test command.
 6. When every behaviour has a passing test, continue with `/rig:test <slug>` in this turn.
