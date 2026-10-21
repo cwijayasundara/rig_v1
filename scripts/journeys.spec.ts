@@ -11,7 +11,9 @@ const HUMAN = { SDLC_HUMAN: '1' }
 const BUG = 'body: raw ? JSON.parse(raw) : {}'
 let repo: string
 
-const npmTest = (): number | null => spawnSync('npm', ['test', '--silent'], { cwd: repo, encoding: 'utf8', env: { ...process.env, NODE_TEST_CONTEXT: '' } }).status
+// NODE_TEST_CONTEXT is deleted, not emptied: an empty one still puts the nested runner in child mode, where a failing run can exit 0.
+const cleanEnv = (): NodeJS.ProcessEnv => { const e = { ...process.env }; delete e.NODE_TEST_CONTEXT; return e }
+const npmTest = (): number | null => spawnSync('npm', ['test', '--silent'], { cwd: repo, encoding: 'utf8', env: cleanEnv() }).status
 const state = (): string => sdlc(repo, ['app', 'status']).stdout.trim()
 const ship = (extra: string[] = []) => sdlc(repo, ['check', '--at', 'ship', '--base', 'main', ...extra])
 
