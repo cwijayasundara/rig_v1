@@ -11,7 +11,9 @@ test('pr skill reviews with /code-review and /security-review before sdlc.ts pr'
   const t = pr()
   assert.match(t, /\/code-review/)
   assert.match(t, /\/security-review/)
-  assert.ok(t.indexOf('/code-review') < t.indexOf('pr <slug> --message'), 'the review comes before the PR is opened')
+  const body = t.slice(t.indexOf('\n---\n', 4))
+  assert.ok(body.indexOf('/code-review') < body.indexOf('pr <slug> --message'), 'the review comes before the PR is opened')
+  assert.match(body, /\/security-review all changes since <base>, committed and uncommitted/, 'its built-in diff misses uncommitted work')
 })
 
 test('pr skill reviews the delta since the verified base, and passes an explicit effort', () => {
@@ -27,6 +29,7 @@ test('pr skill no longer launches the evaluator', () => {
 
 test('pr skill keeps the review.md categories, the security fallback and a single commit', () => {
   const t = pr()
+  assert.match(t, /do not run `S pr`: leave review\.md for the person/, 'a check that failed twice does not ship')
   assert.match(t, /\[category:/)
   assert.match(t, /review\.md/)
   assert.match(t, /no `origin` remote[^\n]*general-purpose/, 'security review has a fallback for a repo without a remote')
@@ -37,7 +40,8 @@ test('evaluator is chart-only', () => {
   const ev = repoText('agents/evaluator.md')
   assert.match(ev, /## Chart mode|^You review a sprint chart/m)
   assert.doesNotMatch(ev, /git diff <base>/)
-  assert.doesNotMatch(ev, /\*\*Security:\*\*/)
+  assert.doesNotMatch(ev, /\*\*Security:\*\*|\*\*Correctness:\*\*|\*\*Design:\*\*|\*\*Contracts:\*\*/)
+  assert.doesNotMatch(ev, /`?spec\.md`?|plan\.md/, 'it reads a chart, not a change')
 })
 
 test('init writes a Review block into CLAUDE.md, and REVIEW.md defers to it', () => {
@@ -47,5 +51,5 @@ test('init writes a Review block into CLAUDE.md, and REVIEW.md defers to it', ()
   assert.match(init, /non-goals/)
   const rv = repoText('templates/REVIEW.md')
   assert.match(rv, /CLAUDE\.md/)
-  assert.doesNotMatch(rv, /## Review passes/)
+  assert.match(rv, /## Review passes/, 'the managed service keeps its passes')
 })

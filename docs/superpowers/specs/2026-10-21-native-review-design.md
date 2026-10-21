@@ -37,7 +37,7 @@ Replace rig's custom diff review (the `rig:evaluator` agent, diff mode) with Cla
 ## Changes by file
 - `skills/pr/SKILL.md`: rewrite per the flow.
 - `agents/evaluator.md`: delete diff-mode steps and the category list for diffs; keep chart mode. Update description. Keep the name (hooks, vendoring and model specs reference it).
-- `templates/REVIEW.md`: remove the custom review passes; keep a short file for the managed GitHub service, pointing to `CLAUDE.md`.
+- `templates/REVIEW.md`: keeps its review passes (the managed GitHub service reads them); adds a line saying the local review follows `CLAUDE.md` under `## Review`.
 - `skills/init/SKILL.md` and the CLAUDE.md template it writes: add a `## Review` block of two lines (flag API or schema changes that plan.md `## Contracts` does not announce; flag anything the brief's non-goals exclude). Existing CLAUDE.md gets it in `CLAUDE.md.proposed`, never overwritten.
 - `scripts/pr.ts` (+ spec): single-commit flow.
 - `scripts/modelstate.ts`, `registry.ts` `model-role`: the evaluator model check applies to chart mode only; the diff review runs on the session's model.
@@ -54,3 +54,5 @@ Replace rig's custom diff review (the `rig:evaluator` agent, diff mode) with Cla
 - Resolved: `/code-review` returns findings as `{file, line, summary, failure_scenario}` with no severity or category, so `/rig:pr` assigns both when it writes `review.md`.
 - Resolved: `/security-review` needs an `origin` remote. In a repo without one it prints nothing headless (or fails on setup when asked in plain words). Rig supports local-only repos, so when it reports it cannot run, `/rig:pr` runs the security pass through a `general-purpose` agent (`model: sonnet`) briefed with the same delta and a security-only scope (injection, authn/authz, secrets, unsafe input, crypto, path traversal). It never skips the pass silently.
 - Resolved: both commands can be requested in plain words from a session; no Skill-tool call is needed.
+
+- Resolved (final review): `/security-review`'s built-in diff is empty for uncommitted work even with an `origin` remote, so `/rig:pr` spells out the scope in words and falls back when the report names none of the changed files.
