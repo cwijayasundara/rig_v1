@@ -34,6 +34,8 @@ jobs:
       - run: npm ci || npm install
       - run: npm run test:e2e:unit
       - run: npm run test:e2e:fast
+      # two instances in two worktrees at once, scripted model, $0: do they interfere
+      - run: npm run test:e2e:parallel
       # the eval pipeline replayed from fixtures at $0; live evals are run by a person (spec §9)
       - run: npm run eval:dry
         if: matrix.os == 'ubuntu-latest'
