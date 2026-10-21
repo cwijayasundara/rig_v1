@@ -34,6 +34,7 @@ The fast lane for a person at the keyboard, so the "skip in unattended or cloud 
    - Commands
    - Conventions
    - Gotchas
+   - `## Review`: the rules `/code-review` follows in this repo, verbatim: "Flag any API, schema or event change that the change's plan.md `## Contracts` does not announce." and "Flag anything the brief's non-goals exclude." (`/code-review` reads CLAUDE.md, not REVIEW.md.)
    - `# Compact instructions`: keep the active sdlc change, failing tests and file paths; drop exploration output.
 
    If a `CLAUDE.md` already exists, propose edits as a diff and do not overwrite it.
