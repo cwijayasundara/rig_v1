@@ -82,6 +82,8 @@ test('suppression comments block unless they carry a reason', () => {
   assert.equal(suppressions([fd('src/a.ts', ['// eslint-disable-next-line no-console -- the CLI prints by design'])], reg()).length, 0)
   assert.equal(suppressions([fd('src/a.py', ['x = y  # type: ignore because the stub is wrong upstream'])], reg()).length, 0)
   assert.equal(suppressions([fd('README.md', ['use // eslint-disable sparingly'])], reg()).length, 0)
+  // Vendored harness files (rig's own templates and scripts) under .rig/ (rig's own templates and scripts) are not the project's suppressions.
+  assert.equal(suppressions([fd('.rig/templates/slices/python/files/tests/test_x.py', ['from x import y  # noqa: E402'])], reg()).length, 0)
 })
 
 test('assert.* calls count as assertions', () => {

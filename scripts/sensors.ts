@@ -91,7 +91,7 @@ export function testTamper(diffs: FileDiff[], r: Registry): Finding[] {
 
 export function suppressions(diffs: FileDiff[], r: Registry): Finding[] {
   const findings: Finding[] = []
-  for (const d of diffs.filter(f => !f.binary && (isSource(f.file, r.paths) || isTest(f.file, r.paths)))) {
+  for (const d of diffs.filter(f => !f.binary && !f.file.startsWith('.rig/') && (isSource(f.file, r.paths) || isTest(f.file, r.paths)))) {
     for (const l of d.added) {
       if (SUPPRESSIONS.some(re => re.test(l.text)) && !REASONED.test(l.text)) {
         findings.push({ sensor: 'suppression', severity: 'block', file: d.file, line: l.n, message: `suppression added: ${l.text.trim()}`, fix: 'fix the warning instead, or give the reason on the same line after "--" or "because"' })
