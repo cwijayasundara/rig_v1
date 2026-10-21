@@ -29,6 +29,7 @@ import { cmdLearn } from './learn.ts'
 import { cmdReport } from './report.ts'
 import { cmdArch, layerState, layerStateText } from './arch.ts'
 import { cmdQueue } from './queue.ts'
+import { cmdApp, draftApps, appStates } from './app.ts'
 import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, prdPath, chartFiles } from './chart.ts'
 import { journey, journeyText } from './journey.ts'
 import { TYPES, toType, changeDir, newChange, setActive, activeSlug, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
@@ -221,7 +222,7 @@ function sensorStatus(): { blocks: number; warns: number; bySensor: Record<strin
   const { registry, rules } = loadConfig()
   return {
     blocks: last?.blocks ?? 0, warns: last?.warns ?? 0, bySensor: last?.bySensor ?? {}, unresolved: unresolvedFindings().length,
-    knownRed: registry.knownRed.length, inert: inertSensors(registry, rules.length), layers: layerStateText(layerState()),
+    knownRed: registry.knownRed.length, inert: inertSensors(registry, rules.length, draftApps()), layers: layerStateText(layerState()),
     waivers: readJsonl<Waiver>(WAIVERS).filter(w => w.slug === slug).length,
   }
 }
@@ -238,6 +239,7 @@ function cmdSensors(): void {
     unresolved.length ? `unresolved:\n${formatFindings(unresolved)}` : 'unresolved: none',
     ...(s.inert.length ? [`not configured (passing checks nothing): ${s.inert.map(i => `${i.id} (${i.reason})`).join('; ')}`] : []),
     `layers: ${s.layers}`,
+    `journeys: ${appStates().map(a => `${a.name} ${a.state}`).join(', ') || 'none'}`,
     `ratchets: ${Object.entries(registry.ratchets ?? {}).map(([k, v]) => `${k} ${v}${registry.sensors.some(x => x.id === k && x.ratchet) ? '' : ' (no sensor ratchets it now)'}`).join(', ') || 'none'}`,
     `known red: ${registry.knownRed.join(', ') || 'none'}`,
     `waivers (${slug ?? 'no change'}): ${waivers.map(w => `${w.sensor} ${w.file} ${w.reason} (by ${!w.by || w.by === 'unknown' ? 'no owner' : w.by}, ${Number.isFinite(ageDays(w.at)) ? `${ageDays(w.at)}d` : 'age unknown'}${ageDays(w.at) > STALE_WAIVER_DAYS ? ', stale: review it' : ''})`).join('; ') || 'none'}`,
@@ -285,6 +287,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   report: cmdReport,
   arch: cmdArch,
   queue: cmdQueue,
+  app: cmdApp,
 }
 
 const [command = '', ...rest] = process.argv.slice(2)

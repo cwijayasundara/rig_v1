@@ -179,7 +179,7 @@ export function rulesSensor(diffs: FileDiff[], rules: { id: string; pattern: str
 }
 
 // rig-*.yml: every workflow rig writes (check, review, spec); a repo's own rig-*.yml counts too.
-export const PROTECTED = ['.rig/sensors.json', '.rig/rules.json', '.rig/layers.approved.json', '.rig/gen/**', '.rig/ratchets.json', '.rig/lessons.md', '.rig/lessons-archive.md', '.rig/guides/**', '.rig/evals/*.json', '.rig/bin/**', '.rig/mod/**', '.rig/githooks/**', '.claude-plugin/**', 'CLAUDE.md', '.claude/**', '.github/workflows/rig-*.yml', '.github/workflows/sdlc-check.yml', 'CODEOWNERS', '.github/CODEOWNERS']
+export const PROTECTED = ['.rig/sensors.json', '.rig/rules.json', '.rig/layers.approved.json', '.rig/gen/**', '.rig/ratchets.json', '.rig/verify/**', '.rig/lessons.md', '.rig/lessons-archive.md', '.rig/guides/**', '.rig/evals/*.json', '.rig/bin/**', '.rig/mod/**', '.rig/githooks/**', '.claude-plugin/**', 'CLAUDE.md', '.claude/**', '.github/workflows/rig-*.yml', '.github/workflows/sdlc-check.yml', 'CODEOWNERS', '.github/CODEOWNERS']
 // ci: compare case-insensitively (macOS and Windows file systems treat CLAUDE.MD and CLAUDE.md as one file).
 export const isProtected = (file: string, ci = false): boolean => (ci ? matchesAny(file.toLowerCase(), PROTECTED.map(p => p.toLowerCase())) : matchesAny(file, PROTECTED))
 const SENSORS = '.rig/sensors.json'

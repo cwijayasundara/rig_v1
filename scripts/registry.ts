@@ -288,7 +288,7 @@ export const builtinOptions = (r: Registry, id: BuiltinId): Record<string, unkno
 
 // A sensor that passes only because nothing configures it must not read as a green check: status and check list these.
 export type Inert = { id: string; reason: string }
-export function inertSensors(r: Registry, ruleCount: number): Inert[] {
+export function inertSensors(r: Registry, ruleCount: number, extra: Inert[] = []): Inert[] {
   const on = (id: BuiltinId) => r.sensors.some(s => s.builtin && s.id === id && s.enabled)
   const layers = builtinOptions(r, 'layering').layers
   const unit = String(builtinOptions(r, 'red-proof').sensor ?? 'unit')
@@ -296,5 +296,6 @@ export function inertSensors(r: Registry, ruleCount: number): Inert[] {
     ...(on('layering') && !(Array.isArray(layers) && layers.length) ? [{ id: 'layering', reason: 'no layers declared in .rig/sensors.json (options.layers)' }] : []),
     ...(on('rules') && !ruleCount ? [{ id: 'rules', reason: 'no rules in .rig/rules.json' }] : []),
     ...(on('red-proof') && !r.sensors.some(s => s.id === unit && s.cmd && s.enabled) ? [{ id: 'red-proof', reason: `no "${unit}" command sensor to run new tests on the base` }] : []),
+    ...extra,
   ]
 }
