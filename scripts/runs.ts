@@ -24,11 +24,12 @@ child.on('exit', code => { clearTimeout(timer); process.exit(code ?? 1) })
 child.on('error', () => process.exit(127))
 `
 
-export function runCommand(cmd: string, opts: { cwd?: string; timeoutMs?: number } = {}): RunRow {
+export function runCommand(cmd: string, opts: { cwd?: string; timeoutMs?: number; env?: Record<string, string>; unsetEnv?: RegExp } = {}): RunRow {
   const started = Date.now()
   const timeoutMs = opts.timeoutMs ?? 600_000
   // A declared `node --test` must really run even when sdlc itself runs inside a node test process.
-  const env = { ...process.env }
+  const env = { ...process.env, ...(opts.env ?? {}) }
+  if (opts.unsetEnv) for (const k of Object.keys(env)) if (opts.unsetEnv.test(k)) delete env[k]
   delete env.NODE_TEST_CONTEXT
   // The PR's own test commands run here at CI; the review-lookup token is for sdlc itself, not for them.
   delete env.GH_TOKEN

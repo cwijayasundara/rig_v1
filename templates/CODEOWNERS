@@ -7,6 +7,7 @@
 /.rig/ratchets.json               @your-org/platform
 /.rig/layers.approved.json        @your-org/platform
 /.rig/gen/                        @your-org/platform
+/.rig/verify/                     @your-org/platform
 /.rig/lessons.md                  @your-org/platform
 /.rig/lessons-archive.md          @your-org/platform
 /.rig/guides/                     @your-org/platform
