@@ -31,3 +31,14 @@ test('final review: the same row read twice is counted once, and unjudged tamper
   assert.equal(s.find(a => a.arm === 'haiku-bare').runs, 1)
   assert.match(renderMarkdown(s, { date: 'd', files: ['a'] }), /\| 0 \(\+2 unjudged\) \|/)
 })
+
+test('the table reports dollars per accepted task and flags a thin sample', () => {
+  const rows = [
+    { arm: 'haiku-bare', run: 1, at: 'a', accepted: true, checks: 3, usd: 0.1 }, { arm: 'haiku-bare', run: 2, at: 'b', accepted: false, checks: 2, usd: 0.3 },
+    { arm: 'haiku-rig', run: 1, at: 'c', accepted: false, checks: 1, usd: 0.5 },
+  ]
+  const md = renderMarkdown(summarize(rows), { date: '2026-10-21', files: ['x.jsonl'] })
+  assert.match(md, /\| haiku-bare \| 1\/2 \|[^\n]*\| \$0\.40 \|/, 'total spend 0.40 over 1 accepted')
+  assert.match(md, /\| haiku-rig \| 0\/1 \|[^\n]*none accepted/)
+  assert.match(md, /n < 3 for haiku-rig, haiku-bare: direction only/)
+})
