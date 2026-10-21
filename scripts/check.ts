@@ -84,9 +84,14 @@ function builtinsApplied(findings: Finding[], r: Registry): Finding[] {
 
 // A ratchet sensor's number against its baseline: worse blocks (warns when the sensor is advisory); better or first tightens the baseline locally.
 function ratchetFinding(s: RegistrySensor, dir: 'down' | 'up', value: number | null, base: Record<string, number>, write: RatchetWrite): Finding[] {
-  if (value === null) return [{ sensor: s.id, severity: s.blocks ? 'block' : 'warn', message: `${s.id} is a ratchet but printed no number on its last line`, fix: `make the command end with the count: ${s.cmd}` }]
+  if (value === null) return [{ sensor: s.id, severity: s.blocks ? 'block' : 'warn', message: `${s.id} is a ratchet but printed no number on its last line (a plain decimal is expected)`, fix: `make the command end with the count: ${s.cmd}` }]
   const was = base[s.id]
-  if (was === undefined) { if (write) tighten(s.id, dir, value, write); return [] }
+  if (was === undefined) {
+    if (write) tighten(s.id, dir, value, write)
+    // At CI there is nothing to compare with and nothing may be written: say so, so a missing baseline does not read as a pass.
+    else return [{ sensor: s.id, severity: 'warn', message: `${s.id} is a ratchet with no baseline on the base branch, so ${value} was not judged`, fix: `run the checks locally and commit ${RATCHET_FILE}, then land it on the trunk` }]
+    return []
+  }
   const j = judge(dir, value, was)
   if (j === 'better' && write) tighten(s.id, dir, value, write)
   return j === 'worse' ? [{ sensor: s.id, severity: s.blocks ? 'block' : 'warn', message: `${s.id} regressed: ${value}, baseline ${was} (${dir === 'down' ? 'lower' : 'higher'} is better): ${s.guide}`, fix: `bring ${s.id} back to ${was} or better; only a person raises a baseline, in ${RATCHET_FILE}` }] : []

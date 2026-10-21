@@ -2,15 +2,16 @@
 // percent, lint warnings, coverage), and that number may only move the good way. Baselines live in .rig/ratchets.json. A better or first
 // value tightens the baseline on a person's machine; CI reads the baselines from the base branch, so a PR cannot raise its own.
 import path from 'node:path'
-import { ROOT, read, gitIn, sanctionWrites, writeAtomic } from './core.ts'
+import { ROOT, read, gitIn, sanctionWrites, writeAtomic, withLock } from './core.ts'
 
 export const RATCHET_FILE = '.rig/ratchets.json'
 export type Direction = 'down' | 'up'
 export type RatchetWrite = 'write' | 'stage' | null
 
+// A plain decimal only: 0x10, 1e3 and +5 are not counts.
 export function lastNumber(text: string): number | null {
-  const n = Number(text.trim().split('\n').pop()?.trim())
-  return text.trim() && Number.isFinite(n) ? n : null
+  const last = text.trim().split('\n').pop()?.trim() ?? ''
+  return /^-?\d+(\.\d+)?$/.test(last) ? Number(last) : null
 }
 
 export function loadRatchets(text: string): Record<string, number> {
@@ -29,10 +30,24 @@ export function judge(dir: Direction, value: number, base: number): 'worse' | 'b
 // Records a tightened baseline. It only ever writes a value that is better than the one on disk (or the first one), so it cannot loosen.
 export function tighten(id: string, dir: Direction, value: number, mode: Exclude<RatchetWrite, null>): void {
   const file = path.join(ROOT, RATCHET_FILE)
-  const all = loadRatchets(read(file))
-  if (id in all && judge(dir, value, all[id] as number) !== 'better') return
-  all[id] = value
-  writeAtomic(file, JSON.stringify(Object.fromEntries(Object.entries(all).sort(([a], [b]) => a.localeCompare(b))), null, 2) + '\n')
+  const wrote = withLock(file, () => {
+    const all = loadRatchets(read(file))
+    if (id in all && judge(dir, value, all[id] as number) !== 'better') return false
+    all[id] = value
+    writeAtomic(file, JSON.stringify(Object.fromEntries(Object.entries(all).sort(([a], [b]) => a.localeCompare(b))), null, 2) + '\n')
+    return true
+  })
+  if (!wrote) return
   sanctionWrites([RATCHET_FILE])
   if (mode === 'stage') gitIn(ROOT, ['add', RATCHET_FILE])
+}
+
+// What an edit to ratchets.json loosens: a baseline moved the wrong way for its sensor, or dropped. `dirs` are the sensors' directions.
+export function weakensRatchets(before: string, after: string, dirs: Record<string, Direction>): string[] {
+  const b = loadRatchets(before), a = loadRatchets(after)
+  return Object.entries(b).flatMap(([id, was]) => {
+    if (!(id in a)) return [`ratchet ${id} baseline removed`]
+    const dir = dirs[id]
+    return dir && judge(dir, a[id] as number, was) === 'worse' ? [`ratchet ${id} baseline loosened ${was} → ${a[id]}`] : []
+  })
 }

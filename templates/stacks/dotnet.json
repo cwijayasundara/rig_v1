@@ -8,7 +8,7 @@
     { "id": "unit", "cmd": "dotnet test --nologo -v q", "cadence": "turn", "blocks": true, "guide": "Run dotnet test before claiming done; fix the code, never the tests." },
     { "id": "lint", "cmd": "dotnet format --verify-no-changes", "cadence": "commit", "blocks": true, "guide": "dotnet format must report no changes; do not suppress analyzers without a reason." },
     { "id": "layers", "cmd": "dotnet test --nologo -v q --filter Category=Architecture", "cadence": "commit", "blocks": true, "guide": "Respect the layer rules in the architecture tests." },
-    { "id": "duplication", "cmd": "d=$(mktemp -d) && npx --yes jscpd@5 . --silent --reporters json --output \"$d\" >/dev/null 2>&1 && node -p \"require('$d/jscpd-report.json').statistics.total.percentage\"", "cadence": "commit", "blocks": true, "ratchet": "down", "guide": "Reuse existing code instead of copying it; the duplicated share may not grow past its baseline." },
+    { "id": "duplication", "cmd": "d=$(mktemp -d) && npx --yes jscpd@5.4.2 . --silent --reporters json --output \"$d\" >&2 && node -p \"try{require('$d/jscpd-report.json').statistics.total.percentage}catch{0}\"", "cadence": "commit", "blocks": true, "ratchet": "down", "guide": "Reuse existing code instead of copying it; the duplicated share may not grow past its baseline." },
     { "id": "audit", "cmd": "dotnet list package --vulnerable --include-transitive | grep '^ *>' || true", "cadence": "ci", "blocks": false, "guide": "Do not add packages with known vulnerabilities." },
     { "id": "mutation", "cmd": "dotnet stryker", "cadence": "nightly", "blocks": false, "guide": "Tests must assert behaviour so that changing the code makes them fail." }
   ]

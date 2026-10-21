@@ -2,7 +2,7 @@ import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { lastNumber, loadRatchets, judge } from './counts.ts'
+import { lastNumber, loadRatchets, judge, weakensRatchets } from './counts.ts'
 import { weakensRegistry } from './registry.ts'
 import { makeRepo, sdlc, write, gitIn, registry } from './testkit.ts'
 
@@ -11,6 +11,8 @@ test('lastNumber reads the last line, and nothing else counts', () => {
   assert.equal(lastNumber('12'), 12)
   assert.equal(lastNumber('done: 3 issues'), null)
   assert.equal(lastNumber(''), null)
+  for (const odd of ['0x10', '1e3', '+5', 'NaN', 'Infinity', '5%']) assert.equal(lastNumber(odd), null, odd)
+  assert.equal(lastNumber('-2.5'), -2.5)
 })
 
 test('judge: worse only beyond noise, in the sensor\'s direction', () => {
@@ -21,6 +23,14 @@ test('judge: worse only beyond noise, in the sensor\'s direction', () => {
 test('loadRatchets keeps numbers and ignores a broken file', () => {
   assert.deepEqual(loadRatchets('{ "dup": 4, "x": "no" }'), { dup: 4 })
   assert.deepEqual(loadRatchets('{ nope'), {})
+})
+
+test('weakensRatchets: a baseline moved the wrong way for its sensor, or dropped, is a weakening', () => {
+  const dirs = { dup: 'down', cov: 'up' } as const
+  assert.match(weakensRatchets('{ "dup": 4 }', '{ "dup": 40 }', dirs).join(), /dup baseline loosened 4 → 40/)
+  assert.match(weakensRatchets('{ "cov": 80 }', '{ "cov": 60 }', dirs).join(), /cov baseline loosened 80 → 60/)
+  assert.match(weakensRatchets('{ "dup": 4 }', '{}', dirs).join(), /dup baseline removed/)
+  assert.deepEqual(weakensRatchets('{ "dup": 4, "cov": 80 }', '{ "dup": 3, "cov": 85, "new": 1 }', dirs), [])
 })
 
 test('weakensRegistry: dropping or flipping a ratchet is a weakening', () => {
@@ -120,4 +130,33 @@ test('ratchet: "up" blocks a fall, and an advisory ratchet only warns', () => {
 test('ratchet: the sensors view lists the baselines', () => {
   ship()
   assert.match(sdlc(repo, ['sensors']).stdout, /ratchets: dup 10/)
+})
+
+test('ratchet: loosening a baseline by hand blocks at ship; tightening one is fine', () => {
+  gitIn(repo, 'checkout', '-q', 'main')
+  write(repo, '.rig/ratchets.json', '{ "dup": 10 }\n')
+  gitIn(repo, 'add', '.')
+  gitIn(repo, 'commit', '-qm', 'baseline on the trunk')
+  gitIn(repo, 'checkout', '-q', 'pr')
+  gitIn(repo, 'rebase', '-q', 'main')
+  fs.writeFileSync(path.join(repo, '.rig/ratchets.json'), '{ "dup": 40 }\n')
+  const r = ship()
+  assert.equal(r.code, 1)
+  assert.match(r.stdout, /harness-tamper[\s\S]*dup baseline loosened 10 → 40/)
+  fs.writeFileSync(path.join(repo, '.rig/ratchets.json'), '{ "dup": 6 }\n')
+  metric(6)
+  assert.equal(ship().code, 0)
+})
+
+test('ratchet: at CI a sensor with no baseline on the base branch warns, so a missing baseline is not a silent pass', () => {
+  gitIn(repo, 'commit', '--allow-empty', '-qm', 'pr')
+  const ci = sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main', '--json'])
+  const f = JSON.parse(ci.stdout).findings.find((x: { sensor: string }) => x.sensor === 'dup')
+  assert.equal(f.severity, 'warn')
+  assert.match(f.message, /no baseline on the base branch, so 10 was not judged/)
+})
+
+test('ratchet: the sensors view marks a baseline whose sensor no longer ratchets', () => {
+  write(repo, '.rig/ratchets.json', '{ "dup": 10, "gone": 3 }\n')
+  assert.match(sdlc(repo, ['sensors']).stdout, /ratchets: dup 10, gone 3 \(no sensor ratchets it now\)/)
 })
