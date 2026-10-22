@@ -1,6 +1,7 @@
 ---
 sprint: <N>
 updated: <YYYY-MM-DD>
+design: <path or none>
 ---
 # Architecture
 

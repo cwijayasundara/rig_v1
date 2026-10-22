@@ -71,3 +71,19 @@ test('chart skill: names the QA agent model by alias and never launches the arch
   assert.match(skill, /model `?sonnet`?/)
   assert.doesNotMatch(skill, /claude-(?:opus|sonnet|haiku)-\d/)
 })
+
+test('chart step 2 invokes superpowers:brainstorming by name before the architect and fixes the design doc path and ## Intents shape', () => {
+  const body = skill.slice(skill.indexOf('\n---\n', 4))
+  assert.match(body, /superpowers:brainstorming/)
+  assert.ok(body.indexOf('superpowers:brainstorming') < body.indexOf('rig:architect'))
+  assert.match(body, /docs\/superpowers\/specs\/<date>-sprint-<N>-design\.md/)
+  assert.match(body, /- <slug>: <one-line scope> \(<PRD ids>\)/)
+  assert.doesNotMatch(body, /What's the moment you find yourself wishing/, 'the skill names the brainstorm, it does not restate it')
+})
+
+test('the architect brief names the design doc and the design: frontmatter line', () => {
+  const architect = fs.readFileSync(path.resolve(import.meta.dirname, '../agents/architect.md'), 'utf8')
+  assert.match(architect, /design: <repo-relative path>/)
+  assert.match(architect, /one intent per line of the design doc's `## Intents`/)
+  assert.match(fs.readFileSync(path.resolve(import.meta.dirname, '../templates/architecture-format.md'), 'utf8'), /design: <path or none>/)
+})
