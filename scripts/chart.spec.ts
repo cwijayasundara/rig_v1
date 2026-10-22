@@ -275,3 +275,57 @@ test('chartReport ignores a requirement id inside an HTML comment, as the trace 
   assert.match(r, /requirements 1:/)
   assert.doesNotMatch(r, /FR-9/)
 })
+
+// The sprint design doc: named by `design:` in architecture.md, hashed with the chart, and traced against the intents.
+const DOC = 'docs/superpowers/specs/s1-design.md'
+const archWith = (design: string | null): string => `---\nsprint: 1\nupdated: 2026-10-22\n${design === null ? '' : `design: ${design}\n`}---\n# Architecture\n\n## Concerns\nnone\n\n## Open questions\nnone\n`
+const docOf = (slugs: string[]): string => `# Design\n\n## Intents\n${slugs.map(s => `- ${s}: scope (FR-1)`).join('\n')}\n`
+const findings = (n: number): { rule: string; message: string }[] => call(`return C.chartFindings(${n}, false)`) as { rule: string; message: string }[]
+
+test('design: in architecture.md frontmatter puts the design doc under the chart approval; editing it makes chart-1 stale', () => {
+  chart1()
+  write(repo, `${P}/architecture.md`, archWith(DOC))
+  write(repo, DOC, docOf(['alpha']))
+  assert.equal(call('return C.designDocOf(1)'), DOC)
+  call(`C.writeChartApproval(1, 'Pat')`)
+  const row = JSON.parse(fs.readFileSync(path.join(repo, `${P}/approvals/chart-1.json`), 'utf8')) as { files: { path: string }[] }
+  assert.ok(row.files.some(f => f.path === DOC))
+  assert.equal(state(1).state, 'approved')
+  write(repo, DOC, docOf(['alpha']) + '\nedit\n')
+  assert.deepEqual(state(1), { state: 'stale', changed: [DOC] })
+})
+
+test('design-intent blocks in both directions and names the slugs', () => {
+  chart1()
+  write(repo, `${P}/architecture.md`, archWith(DOC))
+  write(repo, `${P}/intents/beta.md`, intent(1))
+  write(repo, DOC, docOf(['alpha']))
+  const a = findings(1).filter(f => f.rule === 'design-intent')
+  assert.equal(a.length, 1)
+  assert.match(a[0]!.message, /beta/)
+  write(repo, DOC, docOf(['alpha', 'beta', 'gamma']))
+  const b = findings(1).filter(f => f.rule === 'design-intent')
+  assert.equal(b.length, 1)
+  assert.match(b[0]!.message, /gamma/)
+  write(repo, DOC, docOf(['alpha', 'beta']))
+  assert.deepEqual(findings(1).filter(f => f.rule.startsWith('design')), [])
+})
+
+test('design-missing blocks when design: names a file that is not there, and a path outside the repo', () => {
+  chart1()
+  write(repo, `${P}/architecture.md`, archWith('docs/nope.md'))
+  assert.deepEqual(findings(1).filter(f => f.rule === 'design-missing').length, 1)
+  write(repo, 'x.md', docOf(['alpha']))
+  write(repo, `${P}/architecture.md`, archWith('../x.md'))
+  assert.equal(call('return C.designDocOf(1)'), '../x.md')
+  assert.equal(findings(1).filter(f => f.rule === 'design-missing').length, 1)
+  assert.deepEqual(files(1), [`${P}/architecture.md`, `${P}/intents/alpha.md`, `${P}/prd/sprint-1.md`])
+})
+
+test('a sprint whose architecture.md has no design: line has no design findings and no extra chart file', () => {
+  chart1()
+  write(repo, `${P}/architecture.md`, archWith(null))
+  assert.equal(call('return C.designDocOf(1)'), null)
+  assert.deepEqual(findings(1).filter(f => f.rule.startsWith('design')), [])
+  assert.deepEqual(files(1), [`${P}/architecture.md`, `${P}/intents/alpha.md`, `${P}/prd/sprint-1.md`])
+})

@@ -3,10 +3,10 @@
 // files those name; the architecture, ADRs and test plan are shared and every sprint edits them.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SDLC, exists, read, sha, now, toPosix } from './core.ts'
+import { ROOT, SDLC, exists, read, sha, now, toPosix, frontmatter } from './core.ts'
 import { openQuestions, section } from './model.ts'
 import { changeDir, isShipped } from './lifecycle.ts'
-import { parseIntent, parseCases, parkedDecisions, prdIds, traceReport, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
+import { designIntents, parseIntent, parseCases, parkedDecisions, prdIds, traceReport, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
 
 const PRODUCT = path.join(SDLC, 'product')
 const INTENTS = path.join(PRODUCT, 'intents')
@@ -35,9 +35,18 @@ const intentsOf = (n: number): Intent[] => allIntents().filter(i => i.sprint ===
 export const intentOf = (slug: string): Intent | null => allIntents().find(i => i.slug === slug) ?? null
 const intentFile = (slug: string): string => path.join(INTENTS, `${slug}.md`)
 
+// The sprint's design doc, from `design:` in architecture.md frontmatter: a repo-relative posix path, or null when the sprint has none.
+// The raw string comes back for a path outside the repo, so the design-missing rule can name it.
+export function designDocOf(_n: number): string | null {
+  const arch = path.join(PRODUCT, 'architecture.md')
+  const d = exists(arch) ? frontmatter(read(arch).replace(/\r\n/g, '\n')).data.design?.trim() : undefined
+  return d ? (escapes(d) ? d : toPosix(path.relative(ROOT, path.join(ROOT, d)))) : null
+}
+const designFile = (n: number): string[] => { const d = designDocOf(n); return d && !escapes(d) ? [path.join(ROOT, d)] : [] }
+
 function ownFiles(n: number): string[] {
   const own = intentsOf(n)
-  return rel([prdPath(n), ...own.map(i => intentFile(i.slug)), ...own.flatMap(i => [...i.contractFiles, ...i.exampleFiles]).filter(f => !escapes(f)).map(f => path.join(ROOT, f))])
+  return rel([prdPath(n), ...designFile(n), ...own.map(i => intentFile(i.slug)), ...own.flatMap(i => [...i.contractFiles, ...i.exampleFiles]).filter(f => !escapes(f)).map(f => path.join(ROOT, f))])
 }
 const sharedFiles = (): string[] => rel([path.join(PRODUCT, 'architecture.md'), ...walk(path.join(PRODUCT, 'adr')).filter(f => f.endsWith('.md')), ...walk(path.join(PRODUCT, 'testplan'))])
 export const chartFiles = (n: number): string[] => [...new Set([...ownFiles(n), ...sharedFiles()])].sort()
@@ -86,6 +95,14 @@ export function chartFindings(n: number, withCases: boolean): ChartFinding[] {
     prd: read(prdPath(n)), intents: intentsOf(n), others: allIntents().filter(i => i.sprint !== n), repoExists: p => exists(path.join(ROOT, p)), cases: withCases ? parseCases(read(path.join(testplan, 'cases.md'))) : null,
     exists: p => exists(path.join(testplan, p)),
   })
+  const design = designDocOf(n)
+  if (design && (escapes(design) || !exists(path.join(ROOT, design)))) found.push({ rule: 'design-missing', severity: 'block', where: 'architecture', message: `architecture.md names a design doc that does not exist: ${design}` })
+  else if (design) {
+    const listed = designIntents(read(path.join(ROOT, design)))
+    const mine = intentsOf(n).map(i => i.slug)
+    for (const s of listed.filter(x => !mine.includes(x))) found.push({ rule: 'design-intent', severity: 'block', where: 'architecture', message: `${s} is in the design doc's ## Intents but has no .rig/product/intents/${s}.md` })
+    for (const s of mine.filter(x => !listed.includes(x))) found.push({ rule: 'design-intent', severity: 'block', where: s, message: `${s} is an intent of sprint ${n} but the design doc's ## Intents does not list it` })
+  }
   const arch = uncomment(read(path.join(PRODUCT, 'architecture.md')).replace(/\r\n/g, '\n'))
   for (const q of openQuestions(arch)) found.push({ rule: 'open-question', severity: 'block', where: 'architecture', message: `architecture.md has an open question: ${q}` })
   for (const l of section(arch, 'Concerns').split('\n').map(x => x.replace(/^\s*[-*]\s*/, '').trim()).filter(x => x && !/^none\.?$/i.test(x) && !/^\[x\]/i.test(x) && !/\(resolved\)/i.test(x))) found.push({ rule: 'concern', severity: 'block', where: 'architecture', message: `unresolved concern: ${l}` })
