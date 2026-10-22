@@ -67,3 +67,9 @@ test('init writes a Review block into CLAUDE.md, and REVIEW.md defers to it', ()
   assert.match(rv, /CLAUDE\.md/)
   assert.match(rv, /## Review passes/, 'the managed service keeps its passes')
 })
+
+test('after the fix wave the verdict says what ships: fixed findings are marked and a review with nothing left open is a pass', () => {
+  const t = pr()
+  assert.match(t, /append ` → fixed` to each line/, 'a fixed finding stays under ## Findings (the learning loop mines it) but says so')
+  assert.match(t, /set `verdict: pass` when every item under `## Findings` is now marked fixed/, 'the verdict is rewritten after the fixes, not left at the pre-fix value')
+})

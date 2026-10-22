@@ -2,6 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { makeRepo, sdlc, write, hook } from './testkit.ts'
 
@@ -24,7 +25,9 @@ test('4a: the rig-brain plugin is gone', () => {
 // The 2026-10-16 mod (band, mission control, driver, gates, spend) stays gone. GOAL Scope 7 (2026-10-18) allows one read-only
 // journey dashboard in its place: hooks/dashboard.tsx, with its state contract in types/.
 test('4a: the old mod UI is gone; only the journey dashboard module is registered', () => {
-  gone('hooks/band.tsx', 'hooks/mission.tsx', 'hooks/driver.ts', 'hooks/gates.ts', 'hooks/register.ts', 'hooks/shared.ts', 'tests/register.test.ts', 'tsconfig.json')
+  gone('hooks/band.tsx', 'hooks/mission.tsx', 'hooks/driver.ts', 'hooks/gates.ts', 'hooks/register.ts', 'hooks/shared.ts', 'tests/register.test.ts')
+  // Claude Code regenerates a root tsconfig.json next to .claude-plugin/types/ for mod type-checking, so it may exist on disk; it must never be tracked.
+  assert.equal(execFileSync('git', ['ls-files', '--', 'tsconfig.json'], { cwd: ROOT, encoding: 'utf8' }).trim(), '', 'tsconfig.json should not be tracked')
   const hooks = JSON.parse(read('hooks/hooks.json')) as { modules?: unknown; hooks: Record<string, unknown> }
   assert.deepEqual(hooks.modules, ['./dashboard.tsx'])
   assert.deepEqual(Object.keys(hooks.hooks).sort(), ['PostModelSwitch', 'PostToolUse', 'PreToolUse', 'SessionStart', 'Stop', 'UserPromptSubmit'])
