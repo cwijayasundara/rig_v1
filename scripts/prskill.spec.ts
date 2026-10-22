@@ -27,7 +27,7 @@ test('the reviewer is a fresh agent that is given the brief and nothing else', (
 test('the builder triages: a dismissal needs a reason, security and contract findings are never dismissed by the builder, and dismissals carry no category tag', () => {
   const t = pr()
   assert.match(t, /A dismissal needs a reason that cites a spec line, a non-goal, or code you read/)
-  assert.match(t, /Never dismiss a `security` or `contract` finding yourself/)
+  assert.match(t, /Never dismiss a `security`, `contract` or `design` finding yourself/)
   assert.match(t, /## Dismissed[^\n]*no category tag/)
 })
 
@@ -77,4 +77,9 @@ test('after the fix wave the verdict says what ships: fixed findings are marked 
 test('after a ship the pr skill names the next queued intent at rung 1 or above', () => {
   assert.match(pr(), /`S queue next`[^\n]*rung/)
   assert.match(pr(), /Queue: <next slug> is ready/)
+})
+
+test('a design finding is never dismissed by the builder: fixed, or deferred with the sentence the doc should change', () => {
+  assert.match(pr(), /Never dismiss a `security`, `contract` or `design` finding yourself/)
+  assert.match(pr(), /`design`[^\n]*## Deferred[^\n]*sentence/)
 })
