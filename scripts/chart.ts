@@ -35,12 +35,12 @@ const intentsOf = (n: number): Intent[] => allIntents().filter(i => i.sprint ===
 export const intentOf = (slug: string): Intent | null => allIntents().find(i => i.slug === slug) ?? null
 const intentFile = (slug: string): string => path.join(INTENTS, `${slug}.md`)
 
-// The sprint's design doc, from `design:` in architecture.md frontmatter: a repo-relative posix path, or null when the sprint has none.
+// The sprint's design doc, from `design:` in architecture.md frontmatter: a repo-relative posix path, or null when the sprint has none (`none`, or the template's `<path or none>` prompt left in).
 // The raw string comes back for a path outside the repo, so the design-missing rule can name it.
 export function designDocOf(_n: number): string | null {
   const arch = path.join(PRODUCT, 'architecture.md')
   const d = exists(arch) ? frontmatter(read(arch).replace(/\r\n/g, '\n')).data.design?.trim() : undefined
-  return d ? (escapes(d) ? d : toPosix(path.relative(ROOT, path.join(ROOT, d)))) : null
+  return d && d !== 'none' && !d.startsWith('<') ? (escapes(d) ? d : toPosix(path.relative(ROOT, path.join(ROOT, d)))) : null
 }
 const designFile = (n: number): string[] => { const d = designDocOf(n); return d && !escapes(d) ? [path.join(ROOT, d)] : [] }
 
