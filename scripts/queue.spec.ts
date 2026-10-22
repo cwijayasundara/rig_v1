@@ -5,6 +5,27 @@ import path from 'node:path'
 import { planFiles, overlaps, queueText } from './queue.ts'
 import { makeRepo, sdlc, write, gitIn } from './testkit.ts'
 
+const PRD = '---\nsprint: 0\nengineers: 1\n---\n# Sprint 0\n\n### FR-0: thing\n\n## Open questions\nnone\n'
+const INTENT = '---\nsprint: 0\nprd: [FR-0]\ndepends: []\nestimate_days: 1\nkind: internal\n---\n# i\n\n## Interfaces\nnone\n\n## Behaviours\n- B1 (FR-0): works\n\n## Open questions\nnone\n'
+const CASES = '| ID | Req | Intent | B | Level | Data | Expected |\n' + ['a-one', 'b-two', 'c-three'].map((s, i) => `| TC-${i + 1} | FR-0 | ${s} | B1 | unit | - | ok |\n`).join('')
+const HUMAN = { SDLC_HUMAN: '1' }
+
+// A sprint-0 chart approved with three intents; the design doc lists c-three before a-one and lists b-two last.
+function chartedRepo(): string {
+  const repo = makeRepo()
+  write(repo, '.rig/sensors.json', JSON.stringify({ stack: 'x', paths: { tests: ['**/*.test.ts'] }, sensors: [{ id: 'unit', cmd: 'true', cadence: 'commit', blocks: true, guide: 'run the tests' }] }))
+  write(repo, '.rig/product/prd/sprint-0.md', PRD)
+  for (const s of ['a-one', 'b-two', 'c-three']) write(repo, `.rig/product/intents/${s}.md`, INTENT)
+  write(repo, '.rig/product/testplan/cases.md', CASES)
+  write(repo, '.rig/product/design/sprint-0.md', '# Design\n\n## Intents\n- c-three: third (FR-0)\n- a-one: first (FR-0)\n- b-two: second (FR-0)\n')
+  write(repo, '.rig/product/architecture.md', '---\ndesign: .rig/product/design/sprint-0.md\n---\n# Architecture\n\n## Concerns\nnone\n\n## Open questions\nnone\n')
+  const r = sdlc(repo, ['approve', 'chart-0'], { env: HUMAN })
+  assert.equal(r.code, 0, r.stderr + r.stdout)
+  return repo
+}
+const next = (repo: string): { slug?: string; sprint?: number; path?: string; none?: string } => JSON.parse(sdlc(repo, ['queue', 'next', '--json']).stdout)
+
+
 test('planFiles reads the ## Files section, backticks and directories included', () => {
   assert.deepEqual(planFiles('# Plan\n\n## Files\n- src/cart/cart.js\n- `src/http/`\n* test/a.test.js\n\n## Tests\n- B1: test/a.test.js\n'), ['src/cart/cart.js', 'src/http/', 'test/a.test.js'])
   assert.deepEqual(planFiles('# no files section'), [])
@@ -125,4 +146,46 @@ test('queue --check with no slug is a usage error, and a worktree rig cannot rea
   fs.writeFileSync(path.join(wtB, '.rig/changes'), 'not a directory')
   const blind = sdlc(repo, ['queue', '--check', 'first-change'])
   assert.match(blind.stdout, /warning: could not read \d+ worktree\(s\), so this check does not cover them/)
+})
+
+test('queue next: rung 0 names the person; rung 1 picks the first ready intent in design-doc order; a deferred slug goes last', () => {
+  const repo = chartedRepo()
+  assert.deepEqual(next(repo), { none: 'rung 0: a person starts each intent' })
+  assert.equal(sdlc(repo, ['autonomy', 'set', '1', '--why', 'try the queue', '--by', 'me'], { env: HUMAN }).code, 0)
+  assert.deepEqual(next(repo), { slug: 'c-three', sprint: 0, path: '.rig/product/intents/c-three.md' })
+  assert.match(sdlc(repo, ['queue', 'next']).stdout, /^start c-three: \/rig:start \.rig\/product\/intents\/c-three\.md \(rung 1\)/)
+  assert.equal(sdlc(repo, ['queue', 'defer', 'c-three'], { env: HUMAN }).code, 0)
+  assert.equal(next(repo).slug, 'a-one', 'a deferred slug goes last')
+  sdlc(repo, ['queue', 'defer', 'a-one'], { env: HUMAN })
+  assert.equal(next(repo).slug, 'b-two', 'the one not deferred is left')
+})
+
+test('queue next: a change waiting at approve counts as active; a deleted active folder does not', () => {
+  const repo = chartedRepo()
+  sdlc(repo, ['autonomy', 'set', '1', '--why', 'try the queue', '--by', 'me'], { env: HUMAN })
+  sdlc(repo, ['new', 'c-three', '--type', 'feature'])
+  write(repo, '.rig/changes/c-three/spec.md', '# Spec\n\n## Behaviours\n- B1: x\n\n## Open questions\nnone\n')
+  write(repo, '.rig/changes/c-three/plan.md', '# Plan\n\n## Files\n- src/\n\n## Open questions\nnone\n')
+  assert.deepEqual(next(repo), { none: 'a change is active: c-three (approve)' })
+  fs.rmSync(path.join(repo, '.rig/changes/c-three'), { recursive: true })
+  assert.equal(next(repo).slug, 'c-three')
+})
+
+test('queue next: no ready intents says so', () => {
+  const repo = makeRepo()
+  write(repo, '.rig/autonomy.json', JSON.stringify({ rung: 1, since: '', deferred: [], history: [] }))
+  assert.deepEqual(next(repo), { none: 'no intents are ready' })
+})
+
+test('queue defer/undefer are person-only and round-trip through autonomy.json', () => {
+  const repo = chartedRepo()
+  const denied = sdlc(repo, ['queue', 'defer', 'a-one'])
+  assert.notEqual(denied.code, 0)
+  assert.match(denied.stderr, /human-only/)
+  assert.equal(sdlc(repo, ['queue', 'defer', 'a-one'], { env: HUMAN }).code, 0)
+  const file = path.join(repo, '.rig/autonomy.json')
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).deferred, ['a-one'])
+  assert.notEqual(sdlc(repo, ['queue', 'undefer', 'a-one']).code, 0)
+  assert.equal(sdlc(repo, ['queue', 'undefer', 'a-one'], { env: HUMAN }).code, 0)
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).deferred, [])
 })

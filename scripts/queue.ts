@@ -4,8 +4,14 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { read, out, fail, git, type Args } from './core.ts'
+import { ROOT, SLUG_RE, exists, read, out, fail, git, type Args } from './core.ts'
 import { planFiles } from './model.ts'
+import { activeSlug, status } from './lifecycle.ts'
+import { loadConfig } from './check.ts'
+import { treeStamp } from './stamp.ts'
+import { readyIntents, designDocOf } from './chart.ts'
+import { designIntents } from './chartcheck.ts'
+import { readAutonomy, writeAutonomy } from './autonomy.ts'
 
 export type QueueRow = { worktree: string; branch: string; slug: string; status: string; next: string; person: boolean; files: string[] }
 export type Overlap = { file: string; changes: string[] }
@@ -81,7 +87,37 @@ export function conflictsFor(slug: string, q: Queue = buildQueue()): Overlap[] {
   return q.overlaps.filter(o => o.changes.some(c => c.startsWith(`${slug} (`)))
 }
 
+// The autonomy queue: the one intent the model may start next. Rung 0 leaves that to a person; a change in flight (whatever its status) holds the queue.
+export function queueNext(): { slug: string; sprint: number; path: string } | { none: string } {
+  const a = readAutonomy()
+  if (a.rung < 1) return { none: 'rung 0: a person starts each intent' }
+  const active = activeSlug()
+  if (active) return { none: `a change is active: ${active} (${status(active, loadConfig().registry.gates, treeStamp())})` }
+  const listed = new Map<number, string[]>()
+  const order = (sprint: number): string[] => {
+    if (!listed.has(sprint)) { const d = designDocOf(sprint); listed.set(sprint, d && exists(path.join(ROOT, d)) ? designIntents(read(path.join(ROOT, d))) : []) }
+    return listed.get(sprint) ?? []
+  }
+  const rank = (r: { slug: string; sprint: number }): number => { const i = order(r.sprint).indexOf(r.slug); return i < 0 ? Number.MAX_SAFE_INTEGER : i }
+  const [first] = readyIntents().sort((x, y) => Number(a.deferred.includes(x.slug)) - Number(a.deferred.includes(y.slug)) || x.sprint - y.sprint || rank(x) - rank(y) || x.slug.localeCompare(y.slug))
+  return first ? { slug: first.slug, sprint: first.sprint, path: `.rig/product/intents/${first.slug}.md` } : { none: 'no intents are ready' }
+}
+
+function cmdDefer(args: Args, on: boolean): void {
+  if (process.env.SDLC_HUMAN !== '1') fail('deferring queue intents is human-only: the person runs queue defer <slug> or queue undefer <slug>', 3)
+  const slug = args.pos[1]
+  if (!slug || !SLUG_RE.test(slug)) fail(`usage: queue ${on ? 'defer' : 'undefer'} <slug>`)
+  const a = readAutonomy()
+  writeAutonomy({ ...a, deferred: on ? [...new Set([...a.deferred, slug])] : a.deferred.filter(d => d !== slug) })
+  out(`${slug} is ${on ? 'deferred: it goes last in' : 'no longer deferred in'} the queue`)
+}
+
 export function cmdQueue(args: Args): void {
+  if (args.pos[0] === 'defer' || args.pos[0] === 'undefer') return cmdDefer(args, args.pos[0] === 'defer')
+  if (args.pos[0] === 'next') {
+    const q = queueNext()
+    return out(args.opt.json ? JSON.stringify(q) : 'slug' in q ? `start ${q.slug}: /rig:start ${q.path} (rung ${readAutonomy().rung})` : `queue: ${q.none}`)
+  }
   if (args.opt.check === true) fail('usage: queue --check <slug>')
   const check = typeof args.opt.check === 'string' ? args.opt.check : null
   if (check) {
