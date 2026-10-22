@@ -34,7 +34,7 @@ export const waiversOf = (root: string): Waiver[] => readJsonl<Waiver>(path.join
 
 // Each finding line of a review, keyed by its category. Only the ## Findings section counts: a tagged line pasted under ## Dismissed or
 // ## Deferred is not a kept finding. A review with no such heading is read whole.
-const findingsSection = (review: string): string => /^## Findings[ \t]*\n([\s\S]*?)(?=^## |(?![\s\S]))/m.exec(review)?.[1] ?? review
+export const findingsSection = (review: string): string => /^## Findings[ \t]*\n([\s\S]*?)(?=^## |(?![\s\S]))/m.exec(review)?.[1] ?? review
 const findingsOf = (review: string): { key: string; line: string }[] =>
   findingsSection(review).split('\n').flatMap(line => [...line.matchAll(CATEGORY)].map(m => ({ key: m[1] as string, line: line.replace(/^-\s*/, '').trim() })))
 

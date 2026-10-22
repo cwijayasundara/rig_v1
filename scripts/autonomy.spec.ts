@@ -93,3 +93,11 @@ test('proposeRung: down on a finding repeated across two ships', () => {
   assert.equal(p?.to, 1)
   assert.match(p?.why ?? '', /repeated finding: tests/)
 })
+
+test('proposeRung: a tagged finding in a review with no Findings heading still blocks a move up', () => {
+  const repo = makeRepo()
+  atRung(repo, 1)
+  ship(repo, 'a-one'); ship(repo, 'b-two')
+  ship(repo, 'c-three', { review: '- [severity: high] [category: security] a.ts:1: x (confidence 90)\n' })
+  assert.equal(proposeRung(repo), null)
+})

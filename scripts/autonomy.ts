@@ -3,7 +3,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { ROOT, SDLC, SLUG_RE, exists, read, now, out, fail, ownerOrFail, type Args } from './core.ts'
-import { shippedChanges, mineCandidates, waiversOf } from './learnmine.ts'
+import { shippedChanges, mineCandidates, waiversOf, findingsSection } from './learnmine.ts'
 
 export type Autonomy = { rung: 0 | 1 | 2; since: string; deferred: string[]; history: { at: string; by: string; from: number; to: number; why: string }[] }
 
@@ -69,7 +69,7 @@ export function proposeRung(root = ROOT): { to: number; why: string } | null {
     const dir = path.join(root, '.rig', 'changes', slug)
     try { if ((JSON.parse(read(path.join(dir, 'verify.json'))) as { pass?: unknown }).pass !== true) return false } catch { return false }
     const review = read(path.join(dir, 'review.md'))
-    const section = /^## Findings[ \t]*\n([\s\S]*?)(?=^## |(?![\s\S]))/m.exec(review)?.[1] ?? ''
+    const section = findingsSection(review)
     return !section.split('\n').some(l => BLOCKING.test(l)) && !waivers.some(w => w.slug === slug)
   }
   if (last.length === CLEAN_SHIPS && last.every(s => SLUG_RE.test(s.slug) && clean(s.slug))) return { to: rung + 1, why: `${CLEAN_SHIPS} clean ships: ${last.map(s => s.slug).join(', ')}` }
