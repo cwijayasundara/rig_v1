@@ -5,6 +5,8 @@ import path from 'node:path'
 import { SDLC, CHANGES, exists } from './core.ts'
 import { activeSlug, changeType, isShipped, nextStep, status, type Status } from './lifecycle.ts'
 import { latestAgents } from './modelstate.ts'
+import { readAutonomy } from './autonomy.ts'
+import { queueNext } from './queue.ts'
 import { chartState, prdPath, readyIntents, sprintIntents, sprintsKnown } from './chart.ts'
 
 // Skills are /rig:<name> in every install mode (their frontmatter names), so the journey never prints the vendored directory spelling /rig-<name>.
@@ -18,7 +20,7 @@ export type Journey = {
   agents: { agent: string; model: string; at: string }[]
   initialised: boolean; kind: 'greenfield' | 'brownfield'; show: ('outer' | 'inner')[]; sprint: number | null
   outer: JourneyStep[]; inner: { slug: string; type: string; steps: JourneyStep[] } | null
-  next: { command: string; by: 'model' | 'person'; why: string }; ready: string[]
+  next: { command: string; by: 'model' | 'person'; why: string }; ready: string[]; rung: number; queue: string | null
 }
 
 // Brownfield is the repo init indexed (`wiki init` writes wiki.json); everything else entered empty.
@@ -63,6 +65,7 @@ export function journey(i: { gates: { plan: boolean }; tree: string | null }): J
     { id: 'approve', label: 'Approve', command: `${k('approve')} chart-${n}`, done: approved, gate: true },
     { id: 'build', label: 'Build', command: `${k('start')} <intent>`, done: slugs.length > 0 && shipped === slugs.length, detail: slugs.length ? `${shipped}/${slugs.length} shipped` : undefined },
   ])
+  const pick = queueNext(), queue = 'slug' in pick ? pick.slug : null
   const active = activeSlug()
   const act = active && !isShipped(active) ? active : null
   const st = act ? status(act, i.gates, i.tree) : null
@@ -76,7 +79,7 @@ export function journey(i: { gates: { plan: boolean }; tree: string | null }): J
     return shipped === slugs.length ? { command: `add the PRD at .rig/product/prd/sprint-${n + 1}.md, then ${k('chart')} ${n + 1}`, by: 'person', why: `sprint ${n} is shipped` } : { command: 'a change in flight must ship first', by: 'person', why: 'the remaining intents wait on their dependencies' }
   })()
   const next: Journey['next'] = act && st ? { command: plain(nextStep(act, st)), by: st === 'approve' || st === 'review' ? 'person' : 'model', why: `change ${act}` } : outerNext
-  return { agents: latestAgents(path.join(SDLC, 'state', 'model.json')), initialised, kind, show, sprint: initialised ? n : null, outer, inner: act && st ? { slug: act, type: changeType(act), steps: innerSteps(st, i.gates.plan, act, exists(path.join(CHANGES, act, 'review.md'))) } : null, next, ready }
+  return { agents: latestAgents(path.join(SDLC, 'state', 'model.json')), initialised, kind, show, sprint: initialised ? n : null, outer, inner: act && st ? { slug: act, type: changeType(act), steps: innerSteps(st, i.gates.plan, act, exists(path.join(CHANGES, act, 'review.md'))) } : null, next, ready, rung: readAutonomy().rung, queue }
 }
 
 export function journeyText(j: Journey): string {
@@ -84,6 +87,7 @@ export function journeyText(j: Journey): string {
   return [
     ...(j.show.includes('outer') ? [`sprint ${j.sprint ?? '-'}  ${row(j.outer)}`] : []),
     ...(j.show.includes('inner') && j.inner ? [`change ${j.inner.slug}  ${row(j.inner.steps)}`] : []),
+    `rung ${j.rung} · queue: ${j.queue ?? 'none'}`,
     `next: ${j.next.command}${j.next.by === 'person' ? '  (a person)' : ''}`,
   ].join('\n')
 }

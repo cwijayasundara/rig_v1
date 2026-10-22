@@ -73,3 +73,8 @@ test('after the fix wave the verdict says what ships: fixed findings are marked 
   assert.match(t, /append ` → fixed` to each line/, 'a fixed finding stays under ## Findings (the learning loop mines it) but says so')
   assert.match(t, /set `verdict: pass` when every item under `## Findings` is now marked fixed/, 'the verdict is rewritten after the fixes, not left at the pre-fix value')
 })
+
+test('after a ship the pr skill names the next queued intent at rung 1 or above', () => {
+  assert.match(pr(), /`S queue next`[^\n]*rung/)
+  assert.match(pr(), /Queue: <next slug> is ready/)
+})

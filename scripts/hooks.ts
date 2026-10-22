@@ -19,6 +19,8 @@ import { runCommand } from './runs.ts'
 import { policyMode, activeSensors, commandFor, contractGlobs, ALWAYS_ON, type Registry, type Mode } from './registry.ts'
 import { contractsTouched } from './contracts.ts'
 import { syncFindings } from './sync.ts'
+import { queueNext } from './queue.ts'
+import { readAutonomy } from './autonomy.ts'
 import { recordSessionModel, recordLaunch, recordResolved, sessionModel, readModelState, modelRoleFindings } from './modelstate.ts'
 
 const MODEL_STATE = path.join(SDLC, 'state', 'model.json')
@@ -106,12 +108,13 @@ function hookSessionStart(input: HookInput): void {
   const guides = listGuides(registry).map(g => g.name)
   const active = activeSlug()
   const st = active ? status(active, registry.gates, treeStamp()) : null
+  const q = active ? null : queueNext()
   const context = [
     'sdlc harness is active in this repo (artifacts in .rig/).',
     ROUTING_LINE,
     `rig policy: ${mode} checks for ${model ?? 'an unknown model'} (build on ${registry.models.build}, evaluate on ${registry.models.evaluate}).`,
     declaresRegistry() ? syncFindings(registry, [], 'warn').slice(0, 5).map(f => `rig sync: ${f.message}`).join('\n') : '',
-    active && st ? `Active change: ${active} (${changeType(active)}, ${st}). Next: ${nextStep(active, st)}` : `No active change. Start one with ${skillRef('start')} "<request>".`,
+    active && st ? `Active change: ${active} (${changeType(active)}, ${st}). Next: ${nextStep(active, st)}` : q && 'slug' in q ? `Queue: start ${q.slug} now with ${skillRef('start')} ${q.path} (rung ${readAutonomy().rung})` : `No active change. Start one with ${skillRef('start')} "<request>".`,
     'Rules: plans hold interfaces and acceptance tests, never code; only the person writes .rig/changes/<slug>/approval.json; run subagents in the foreground and never end a turn while one is running; never sleep-poll; read files with Read, Grep and Glob and change them with Edit or Write; run each command as its own Bash call (no `cd`, pipes, redirects, `&&`, `;` or heredocs): unattended runs deny compound commands; at ~150k context run /compact.',
     sessionNote(),
     guides.length ? `Guides (injected when you first touch matching files): ${guides.join(', ')}` : '',
