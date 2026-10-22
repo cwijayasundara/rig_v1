@@ -87,12 +87,12 @@ export function conflictsFor(slug: string, q: Queue = buildQueue()): Overlap[] {
   return q.overlaps.filter(o => o.changes.some(c => c.startsWith(`${slug} (`)))
 }
 
-// The autonomy queue: the one intent the model may start next. Rung 0 leaves that to a person; a change in flight (whatever its status) holds the queue.
+// The autonomy queue: the one intent the model may start next. Rung 0 leaves that to a person; a change in flight holds the queue until it waits only on a merge (status review).
 export function queueNext(): { slug: string; sprint: number; path: string } | { none: string } {
   const a = readAutonomy()
   if (a.rung < 1) return { none: 'rung 0: a person starts each intent' }
-  const active = activeSlug()
-  if (active) return { none: `a change is active: ${active} (${status(active, loadConfig().registry.gates, treeStamp())})` }
+  const active = activeSlug(), st = active ? status(active, loadConfig().registry.gates, treeStamp()) : null
+  if (active && st !== 'review') return { none: `a change is active: ${active} (${st})` }
   const listed = new Map<number, string[]>()
   const order = (sprint: number): string[] => {
     if (!listed.has(sprint)) { const d = designDocOf(sprint); listed.set(sprint, d && exists(path.join(ROOT, d)) ? designIntents(read(path.join(ROOT, d))) : []) }

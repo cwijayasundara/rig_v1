@@ -189,3 +189,14 @@ test('queue defer/undefer are person-only and round-trip through autonomy.json',
   assert.equal(sdlc(repo, ['queue', 'undefer', 'a-one'], { env: HUMAN }).code, 0)
   assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).deferred, [])
 })
+
+test('queue next: a change at review waits on a merge, so the queue moves on to the next ready intent', () => {
+  const repo = chartedRepo()
+  sdlc(repo, ['autonomy', 'set', '1', '--why', 'try the queue', '--by', 'me'], { env: HUMAN })
+  sdlc(repo, ['new', 'c-three', '--type', 'feature'])
+  write(repo, '.rig/changes/c-three/spec.md', '# Spec\n\n## Behaviours\n- B1: x\n\n## Open questions\nnone\n')
+  write(repo, '.rig/changes/c-three/plan.md', '# Plan\n\n## Files\n- src/\n\n## Open questions\nnone\n')
+  assert.deepEqual(next(repo), { none: 'a change is active: c-three (approve)' })
+  write(repo, '.rig/changes/c-three/pr.md', 'https://example.com/pr/1\n')
+  assert.deepEqual(next(repo), { slug: 'a-one', sprint: 0, path: '.rig/product/intents/a-one.md' })
+})
