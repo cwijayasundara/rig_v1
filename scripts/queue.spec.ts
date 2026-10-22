@@ -200,3 +200,13 @@ test('queue next: a change at review waits on a merge, so the queue moves on to 
   write(repo, '.rig/changes/c-three/pr.md', 'https://example.com/pr/1\n')
   assert.deepEqual(next(repo), { slug: 'a-one', sprint: 0, path: '.rig/product/intents/a-one.md' })
 })
+
+test('queue next: an active change already shipped on main does not hold the queue', () => {
+  const repo = chartedRepo()
+  sdlc(repo, ['autonomy', 'set', '1', '--why', 'try the queue', '--by', 'me'], { env: HUMAN })
+  sdlc(repo, ['new', 'c-three', '--type', 'feature'])
+  write(repo, '.rig/changes/c-three/pr.md', 'https://example.com/pr/1\n')
+  gitIn(repo, 'add', '.rig/changes/c-three')
+  gitIn(repo, 'commit', '-qm', 'ship c-three')
+  assert.equal(next(repo).slug, 'a-one')
+})
