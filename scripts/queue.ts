@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { read, out, fail, git, type Args } from './core.ts'
+import { planFiles } from './model.ts'
 
 export type QueueRow = { worktree: string; branch: string; slug: string; status: string; next: string; person: boolean; files: string[] }
 export type Overlap = { file: string; changes: string[] }
@@ -22,11 +23,7 @@ export function worktrees(): { dir: string; branch: string }[] {
   }).filter(w => w.dir && fs.existsSync(path.join(w.dir, '.rig')))
 }
 
-// The files a plan says it will touch (its ## Files section), as pr.ts reads them.
-export function planFiles(plan: string): string[] {
-  const section = plan.split(/^## Files[ \t]*$/m)[1]?.split(/^## /m)[0] ?? ''
-  return section.split('\n').map(l => /^\s*[-*]\s+`?([^`\s]+)`?/.exec(l)?.[1]).filter((e): e is string => Boolean(e))
-}
+export { planFiles }
 
 // Two plans overlap on a file when one names it, or names a directory holding it (with or without a trailing slash).
 const norm = (p: string): string => p.trim().replace(/\\/g, '/').replace(/^(\.\/)+/, '')
