@@ -360,6 +360,15 @@ test('CI lists a sprint chart approval the PR adds, for human review', () => {
   assert.deepEqual(json.humanRows, ['approval chart-3 by Mallory'])
 })
 
+test('CI treats an autonomy.json a PR edits as a human row', () => {
+  gitIn(repo, 'checkout', '-qb', 'pr')
+  write(repo, '.rig/autonomy.json', JSON.stringify({ rung: 2, since: 'x', deferred: [], history: [{ at: 'x', by: 'Mallory', from: 1, to: 2, why: 'w' }] }))
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', 'pr')
+  const json = JSON.parse(sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main', '--json']).stdout)
+  assert.deepEqual(json.humanRows, ['autonomy by Mallory'])
+})
+
 test('I4: CI lists every waiver and approval row the PR adds, for human review', () => {
   gitIn(repo, 'checkout', '-qb', 'pr')
   sdlc(repo, ['new', 'tiny', '--type', 'chore'])

@@ -290,6 +290,17 @@ function humanRowsAdded(base: string): string[] {
     try { by = String((JSON.parse(read(path.join(ROOT, f))) as { by?: unknown }).by ?? '?') } catch { /* deleted or unreadable: still a row */ }
     rows.push(`approval ${name} by ${clean(by)}`)
   }
+  // autonomy.json: the rung is a person's decision; a PR that edits it shows the last history row's author.
+  // The file `sdlc init` writes (rung 1, no history) is the default, not a decision, so it is no row.
+  if ((git(['diff', '--name-only', base, 'HEAD', '--', '.rig/autonomy.json']) ?? '').trim()) {
+    let by = '?', isDefault = false
+    try {
+      const a = JSON.parse(read(path.join(ROOT, '.rig/autonomy.json'))) as { rung?: unknown; history?: { by?: unknown }[]; deferred?: unknown[] }
+      by = String(a.history?.at(-1)?.by ?? '?')
+      isDefault = a.rung === 1 && !a.history?.length && !a.deferred?.length
+    } catch { /* deleted or unreadable: still a row */ }
+    if (!isDefault) rows.push(`autonomy by ${clean(by)}`)
+  }
   return rows
 }
 

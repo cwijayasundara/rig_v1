@@ -5,7 +5,7 @@ import path from 'node:path'
 import { ROOT, SDLC, PLUGIN_ROOT, IS_VENDORED, read, out, fail, sanctionWrites, type Args } from './core.ts'
 import { writeHookScripts, installHooks } from './githooks.ts'
 
-export const VENDORED = ['core', 'model', 'sensors', 'diffs', 'runs', 'check', 'stamp', 'basetree', 'verify', 'hooks', 'pr', 'sdlc', 'githooks', 'vendor', 'initbaseline', 'registry', 'stackpacks', 'modelstate', 'stackinit', 'contracts', 'sync', 'lifecycle', 'chart', 'chartcheck', 'journey', 'wiki', 'wikicite', 'wikigen', 'wikistate', 'wikivalidate', 'learn', 'learnfile', 'learnmine', 'learnreplay', 'report', 'arch', 'counts', 'queue', 'app', 'scope', 'slice', 'maintain', 'readiness']
+export const VENDORED = ['core', 'model', 'sensors', 'diffs', 'runs', 'check', 'stamp', 'basetree', 'verify', 'hooks', 'pr', 'sdlc', 'githooks', 'vendor', 'initbaseline', 'registry', 'stackpacks', 'modelstate', 'stackinit', 'contracts', 'sync', 'lifecycle', 'chart', 'chartcheck', 'journey', 'wiki', 'wikicite', 'wikigen', 'wikistate', 'wikivalidate', 'learn', 'learnfile', 'learnmine', 'learnreplay', 'report', 'arch', 'counts', 'queue', 'app', 'scope', 'slice', 'maintain', 'readiness', 'autonomy']
 const SDLC_HOOK = '.rig/bin/sdlc.ts'
 type HookGroup = { matcher?: string; hooks: { type: string; command: string; timeout?: number; async?: boolean }[] }
 
@@ -66,12 +66,12 @@ function mergeHooks(written: string[]): void {
 // CI refuses approval rows a PR adds unless an independent reviewer approves.
 // '$ARGUMENTS' is quoted so the shell never globs or splits it. `|| true`: a refusal (open concern, wrong stage) is an answer to show,
 // not a failed command; without it the host prints "Shell command failed" and the person thinks the command is broken.
-function humanSkill(cmd: 'approve' | 'waive', hint: string, what: string): string {
+function humanSkill(cmd: 'approve' | 'waive' | 'autonomy', hint: string, what: string): string {
   const run = `SDLC_HUMAN=1 node --disable-warning=ExperimentalWarning ${SDLC_HOOK} ${cmd}`
   return [
     '---', `name: rig:${cmd}`, `description: Human only. ${what} The model cannot run this.`, `argument-hint: ${hint}`,
     'disable-model-invocation: true', `allowed-tools: Bash(${run} *)`, '---',
-    `!\`${run} '$ARGUMENTS' 2>&1 || true\``, '', 'Tell the person the result above in one line. Do nothing else.', '',
+    `!\`${run} ${cmd === 'autonomy' ? '$ARGUMENTS' : "'$ARGUMENTS'"} 2>&1 || true\``, '', 'Tell the person the result above in one line. Do nothing else.', '',
   ].join('\n')
 }
 
@@ -91,11 +91,12 @@ function vendorDashboard(written: string[]): void {
 }
 
 function vendorStandalone(written: string[]): void {
-  for (const name of fs.readdirSync(path.join(PLUGIN_ROOT, 'skills')).filter(n => n !== 'approve' && n !== 'waive')) {
+  for (const name of fs.readdirSync(path.join(PLUGIN_ROOT, 'skills')).filter(n => n !== 'approve' && n !== 'waive' && n !== 'autonomy')) {
     const src = path.join(PLUGIN_ROOT, 'skills', name, 'SKILL.md')
     if (fs.existsSync(src)) writeFile(`.claude/skills/rig-${name}/SKILL.md`, forProject(read(src)), written)
   }
   writeFile('.claude/skills/rig-approve/SKILL.md', humanSkill('approve', '<slug>', 'Approve a change: its spec.md, plan.md and contract files.'), written)
+  writeFile('.claude/skills/rig-autonomy/SKILL.md', humanSkill('autonomy', '[set <0|1|2> --why "<text>"]', 'Show the autonomy rung and its proposal, or set it.'), written)
   writeFile('.claude/skills/rig-waive/SKILL.md', humanSkill('waive', '<sensor> <file|*> <reason>', 'Waive a sensor finding for the active change.'), written)
   for (const file of fs.readdirSync(path.join(PLUGIN_ROOT, 'agents')).filter(f => f.endsWith('.md'))) {
     writeFile(`.claude/agents/rig-${file}`, forProject(read(path.join(PLUGIN_ROOT, 'agents', file)), 'agent'), written)

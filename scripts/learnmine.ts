@@ -30,7 +30,7 @@ const changesDir = (root: string): string => path.join(root, '.rig', 'changes')
 const slugsOf = (root: string): string[] =>
   fs.existsSync(changesDir(root)) ? fs.readdirSync(changesDir(root), { withFileTypes: true }).filter(d => d.isDirectory() && SLUG_RE.test(d.name)).map(d => d.name).sort() : []
 const reviewOf = (root: string, slug: string): string => read(path.join(changesDir(root), slug, 'review.md'))
-const waiversOf = (root: string): Waiver[] => readJsonl<Waiver>(path.join(root, '.rig', 'waivers.jsonl')).filter(w => typeof w.slug === 'string' && typeof w.sensor === 'string')
+export const waiversOf = (root: string): Waiver[] => readJsonl<Waiver>(path.join(root, '.rig', 'waivers.jsonl')).filter(w => typeof w.slug === 'string' && typeof w.sensor === 'string')
 
 // Each finding line of a review, keyed by its category. Only the ## Findings section counts: a tagged line pasted under ## Dismissed or
 // ## Deferred is not a kept finding. A review with no such heading is read whole.
