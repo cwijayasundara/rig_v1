@@ -83,3 +83,7 @@ test('a design finding is never dismissed by the builder: fixed, or left under F
   assert.match(pr(), /Never dismiss a `security`, `contract` or `design` finding yourself/)
   assert.match(pr(), /`design` finding is fixed in the wave[^\n]*stays under `## Findings` \(never `## Deferred`\)[^\n]*naming the sentence of the doc/)
 })
+
+test('a design finding whose fix names a doc sentence is left open, never fixed from a change', () => {
+  assert.match(pr(), /Leave a `design` finding open[^\n]*design-doc sentence[^\n]*a change never edits the design doc/)
+})
