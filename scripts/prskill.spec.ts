@@ -79,7 +79,7 @@ test('after a ship the pr skill names the next queued intent at rung 1 or above'
   assert.match(pr(), /Queue: <next slug> is ready/)
 })
 
-test('a design finding is never dismissed by the builder: fixed, or deferred with the sentence the doc should change', () => {
+test('a design finding is never dismissed by the builder: fixed, or left under Findings with the sentence the doc should change', () => {
   assert.match(pr(), /Never dismiss a `security`, `contract` or `design` finding yourself/)
-  assert.match(pr(), /`design`[^\n]*## Deferred[^\n]*sentence/)
+  assert.match(pr(), /`design` finding is fixed in the wave[^\n]*stays under `## Findings` \(never `## Deferred`\)[^\n]*naming the sentence of the doc/)
 })

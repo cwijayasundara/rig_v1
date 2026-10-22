@@ -2,7 +2,7 @@
 name: chart
 description: Chart a sprint - gap pass, intents (a brief each), architecture, ADRs, test plan and an independent review, every one traced to a PRD requirement. For the architect.
 argument-hint: '<sprint number | .rig/product/prd/sprint-N.md | any PRD path>'
-allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Bash(git checkout*), Bash(git add*), Bash(git commit*), Bash(git status*), Bash(git diff*), Bash(git rev-parse*), Read, Grep, Glob, Write, Edit, Agent, AskUserQuestion
+allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Bash(git checkout*), Bash(git add*), Bash(git commit*), Bash(git status*), Bash(git diff*), Bash(git rev-parse*), Read, Grep, Glob, Write, Edit, Agent, AskUserQuestion, Skill
 ---
 # Chart a sprint
 

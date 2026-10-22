@@ -40,6 +40,7 @@ test('start invokes superpowers:brainstorming on the intent and ends with spec.m
   assert.match(s, /superpowers:brainstorming/); assert.match(s, /## Blast radius/); assert.match(s, /the design doc is frozen/)
   assert.doesNotMatch(s, /Delegate code searches to one `Explore` agent/, 'the brainstorm does its own recon')
   assert.match(p, /superpowers:writing-plans/); assert.match(p, /plans hold interfaces and acceptance tests, never code/)
+  assert.match(p, /not `docs\/superpowers\/plans\/`[^\n]*skip the skill's execution-method question/)
   assert.match(p, /## Files[^\n]*inside[^\n]*## Blast radius/)
 })
 
