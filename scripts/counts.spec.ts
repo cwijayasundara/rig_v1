@@ -160,3 +160,17 @@ test('ratchet: the sensors view marks a baseline whose sensor no longer ratchets
   write(repo, '.rig/ratchets.json', '{ "dup": 10, "gone": 3 }\n')
   assert.match(sdlc(repo, ['sensors']).stdout, /ratchets: dup 10, gone 3 \(no sensor ratchets it now\)/)
 })
+
+// A live `git commit` in shop_app: jscpd's chatter goes to stderr (`>&2`) and the runner appended stderr after stdout, so the
+// ratchet's last line was never the number.
+test('runCommand: the last line of the tail is stdout, even when the command also writes to stderr', async () => {
+  const { runCommand } = await import('./runs.ts')
+  assert.equal(lastNumber(runCommand('echo 3.5; echo noise >&2').tail), 3.5)
+})
+
+test('python and jscpd commands skip the vendored .rig and .claude trees (their {{snake}} templates are not Python)', () => {
+  const pack = fs.readFileSync(path.join(import.meta.dirname, '..', 'templates', 'stacks', 'python.json'), 'utf8')
+  assert.match(pack, /ruff check --force-exclude --extend-exclude \.rig,\.claude/)
+  assert.match(pack, /mypy --exclude/)
+  assert.match(pack, /jscpd@[\d.]+ \. --ignore \\"\*\*\/\.rig/)
+})

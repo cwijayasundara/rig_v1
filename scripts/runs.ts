@@ -35,7 +35,8 @@ export function runCommand(cmd: string, opts: { cwd?: string; timeoutMs?: number
   delete env.GH_TOKEN
   delete env.GITHUB_TOKEN
   const r = spawnSync(process.execPath, ['-e', WRAPPER, cmd, String(timeoutMs)], { cwd: opts.cwd ?? ROOT, env, encoding: 'utf8', timeout: timeoutMs + 5_000, maxBuffer: 64 * 1024 * 1024 })
-  const text = `${r.stdout ?? ''}${r.stderr ?? ''}`.replace(/\r\n/g, '\n').trimEnd()
+  // stderr first: a ratchet reads the last line, so the number on stdout must come last.
+  const text = `${r.stderr ?? ''}${r.stdout ?? ''}`.replace(/\r\n/g, '\n').trimEnd()
   const ms = Date.now() - started
   const timedOut = (r.status === TIMED_OUT && ms >= timeoutMs) || (r.error as NodeJS.ErrnoException | undefined)?.code === 'ETIMEDOUT'
   const row: RunRow = { at: now(), cmd, exit: r.status ?? TIMED_OUT, ms, tail: maskSecrets(text.split('\n').slice(-TAIL_LINES).join('\n')) }
