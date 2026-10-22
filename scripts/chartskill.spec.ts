@@ -42,7 +42,7 @@ test('chart skill: asks the person for the technology and the NFRs the PRD lacks
 test('chart skill: runs gap pass, architect, QA and review before one commit', () => {
   for (const w of ['answered at chart', 'chart-review.md', 'rig:evaluator', 'general-purpose', 'sonnet']) assert.ok(skill.includes(w), w)
   assert.ok(skill.indexOf('chart-review.md') < skill.lastIndexOf('git commit'), 'the commit comes after the review')
-  assert.equal(skill.match(/git commit/g)?.length, 2, 'one commit instruction plus the allowed-tools grant')
+  assert.equal(skill.match(/git commit/g)?.length, 3, 'the allowed-tools grant, the base commit of init output and the one chart commit')
 })
 
 test('chart skill: the gap pass is one batched question set that skips when there are no gaps', () => {
@@ -57,11 +57,13 @@ test('chart skill: ends at the approve gate and does not hand the person a secon
 
 // A live run of `/rig:chart 1` in shop_app committed the chart on `rig/chart-1` in a repo with no commits: init's output was
 // never committed, so there was no `main` for approve, the PR or CI to diff against.
-test('chart skill: stops before any work when the repo has no base commit or init output is uncommitted', () => {
+test('chart skill: commits init output as the base after asking, instead of stopping, before any work', () => {
   assert.match(skill, /allowed-tools:[^\n]*Bash\(git rev-parse\*\)/)
   const step1 = skill.slice(skill.indexOf('1. **Which sprint'), skill.indexOf('2. **Architect'))
-  assert.match(step1, /git rev-parse --verify HEAD[^\n]*stop/i)
-  assert.match(step1, /git status --porcelain[^\n]*\.rig\/sensors\.json[^\n]*stop/i)
+  assert.match(step1, /git rev-parse --verify HEAD[^\n]*fails/i)
+  assert.match(step1, /git status --porcelain[^\n]*\.rig\/sensors\.json/)
+  assert.match(step1, /AskUserQuestion[^\n]*Commit init/)
+  assert.match(step1, /git commit -m "chore: rig init scaffold"/)
   assert.ok(skill.indexOf('git rev-parse --verify HEAD') < skill.indexOf('**Take it as given.**'), 'checked before the PRD is copied')
 })
 
