@@ -34,3 +34,15 @@ test('pr fixes every review finding without asking, re-verifies with the script 
   assert.match(pr, /same (check|finding) fails twice[^.]*stop/i)
   assert.match(pr, /stop and tell the person[^.]*plan\.md does not list/i)
 })
+
+test('start invokes superpowers:brainstorming on the intent and ends with spec.md holding ## Blast radius; plan invokes superpowers:writing-plans into plan.md', () => {
+  const s = skill('start'), p = skill('plan')
+  assert.match(s, /superpowers:brainstorming/); assert.match(s, /## Blast radius/); assert.match(s, /the design doc is frozen/)
+  assert.doesNotMatch(s, /Delegate code searches to one `Explore` agent/, 'the brainstorm does its own recon')
+  assert.match(p, /superpowers:writing-plans/); assert.match(p, /plans hold interfaces and acceptance tests, never code/)
+  assert.match(p, /## Files[^\n]*inside[^\n]*## Blast radius/)
+})
+
+test('nothing after approve asks the person a question except the existing stop cases', () => {
+  for (const name of ['build', 'test', 'pr']) assert.doesNotMatch(skill(name), /AskUserQuestion/)
+})
