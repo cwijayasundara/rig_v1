@@ -87,3 +87,19 @@ test('the architect brief names the design doc and the design: frontmatter line'
   assert.match(architect, /one intent per line of the design doc's `## Intents`/)
   assert.match(fs.readFileSync(path.resolve(import.meta.dirname, '../templates/architecture-format.md'), 'utf8'), /design: <path or none>/)
 })
+
+// The chart reviewer got the design doc as a source but the QA agent did not, so a case could be judged against reasoning its writer never saw.
+test('the QA brief names the design doc, in the chart skill and in the testplan skill', () => {
+  const between = (text: string, from: string, to: string): string => {
+    const a = text.indexOf(from), b = text.indexOf(to)
+    assert.ok(a >= 0 && b > a, `${from} comes before ${to}`)
+    return text.slice(a, b)
+  }
+  const chartQa = between(skill, '4. **QA.**', '5. **Review.**')
+  assert.match(chartQa, /the design doc at the path the architect brief names/)
+  const testplan = fs.readFileSync(path.resolve(import.meta.dirname, '../skills/testplan/SKILL.md'), 'utf8')
+  const tpQa = between(testplan, '2. **QA.**', '3. **Check.**')
+  assert.match(tpQa, /`<date>-sprint-<N>-design\.md` in the directory of the `design:` path/)
+  assert.match(tpQa, /names only the newest sprint's doc/)
+  assert.match(tpQa, /`none`, an unset line or a `<\.\.\.>` placeholder means there is none/)
+})
