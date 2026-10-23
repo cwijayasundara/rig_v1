@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { makeRepo, write, sdlc } from './testkit.ts'
 
-type J = { agents: { agent: string; model: string; at: string }[]; initialised: boolean; kind: string; show: string[]; sprint: number | null; outer: { id: string; state: string; command: string; by: string; detail?: string }[]; inner: { slug: string; steps: { id: string; state: string; command: string; by: string; auto?: true }[] } | null; next: { command: string; by: string }; ready: string[]; sensors?: unknown }
+type J = { agents: { agent: string; model: string; at: string }[]; initialised: boolean; kind: string; show: string[]; sprint: number | null; outer: { id: string; state: string; command: string; by: string; detail?: string }[]; inner: { slug: string; steps: { id: string; state: string; command: string; by: string; auto?: true }[] } | null; next: { command: string; by: string }; ready: string[]; rung: number; queue: string | null; sensors?: unknown }
 let repo: string
 const view = (): J => JSON.parse(sdlc(repo, ['status', '--journey', '--json']).stdout) as J
 const states = (j: J): string => j.outer.map(s => `${s.id}:${s.state}`).join(' ')
@@ -115,4 +115,19 @@ test('journey: agents come from model.json, empty without it', () => {
   assert.deepEqual(view().agents, [])
   write(repo, '.rig/state/model.json', JSON.stringify({ sessions: {}, launches: [{ session: 's', id: '1', agent: 'rig-architect', requested: null, resolved: 'claude-sonnet-5-5', at: 'now' }] }))
   assert.deepEqual(view().agents, [{ agent: 'rig-architect', model: 'claude-sonnet-5-5', at: 'now' }])
+})
+
+test('journey carries the rung and the queue pick', () => {
+  write(repo, '.rig/product/prd/sprint-0.md', PRD)
+  write(repo, '.rig/product/intents/walking-skeleton.md', INTENT())
+  write(repo, '.rig/product/testplan/cases.md', CASES)
+  write(repo, '.rig/product/architecture.md', ARCH)
+  assert.equal(sdlc(repo, ['approve', 'chart-0'], { env: { SDLC_HUMAN: '1' } }).code, 0)
+  let j = view()
+  assert.deepEqual([j.rung, j.queue], [0, null])
+  assert.match(sdlc(repo, ['status', '--journey']).stdout, /rung 0 · queue: none/)
+  write(repo, '.rig/autonomy.json', JSON.stringify({ rung: 1, since: '', deferred: [], history: [] }))
+  j = view()
+  assert.deepEqual([j.rung, j.queue], [1, 'walking-skeleton'])
+  assert.match(sdlc(repo, ['status', '--journey']).stdout, /rung 1 · queue: walking-skeleton/)
 })

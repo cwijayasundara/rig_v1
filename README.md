@@ -44,6 +44,7 @@ Work moves through an optional outer loop (a sprint) and an inner loop (one chan
 ```
 
 - **Chart** turns a sprint's PRD into the work that feeds Build. The architect runs `/rig:chart <N>` and gets intents (each at most two engineer-days, with a brief), an updated `architecture.md` and ADRs. The QA lead runs `/rig:testplan <N>` and gets the test plan, the cases and the data. Every intent, behaviour and case traces to a PRD requirement, which `sdlc.ts chart check <N>` checks with no model call. A person approves the whole set once with `/rig:approve chart-<N>`. `sdlc.ts ready` then lists the intents whose dependencies have shipped.
+- **The design conversation.** `/rig:chart` and `/rig:start` run the superpowers brainstorm (`superpowers:brainstorming`) with a person; the sprint design doc is a chart file named by `architecture.md`'s `design:` line and is frozen by the chart approval. There are two human gates: the chart approval and the per-change approval, which refuses a plan outside `spec.md`'s blast radius. `sdlc queue next` names the next ready intent, and the autonomy rung (`/rig:autonomy`) sets how far the session goes alone: rung 0, a person starts each intent; rung 1, the session opens the next intent's brainstorm; rung 2, unattended after approve, with the merge still manual.
 - **Build** takes one change at a time from `/rig:start` to a merged PR. A person approves the spec and plan once. `/rig:pr` refuses without that approval and a fresh, passing `verify.json`.
 - **Run** deploys behind a production gate, which the platform team installs as a managed hook.
 
@@ -77,6 +78,8 @@ The step-by-step guides are under [User guide](#user-guide).
 | Reviewer / code owner | Reviews PRs | Approves any PR that adds or edits an `approval.json`, or adds waiver rows |
 | Platform team | Managed settings, CI required checks, CODEOWNERS, the production gate | Owns the harness itself (`/rig:rule`, `/rig:learn` proposals) |
 
+`/rig:autonomy set <0|1|2>` and `queue defer` are person-only gates too.
+
 A model never approves. Every gate is a command the person types (`SDLC_HUMAN` is set only from the person's own prompt). CI treats an `approval.json` that a PR adds or edits as a human row, which needs GitHub approval from someone other than the PR's author.
 
 ## Where everything lives
@@ -87,6 +90,8 @@ A model never approves. Every gate is a command the person types (`SDLC_HUMAN` i
 | `.rig/product/` | `brief.md`, `prd/sprint-<N>.md`, `intents/<slug>.md`, `architecture.md`, `adr/`, the test plan, cases and data | people (brief, PRD), `/rig:chart`, `/rig:testplan` |
 | `approval.json` (per change and per chart), `.rig/waivers.jsonl` | Every human decision, with the hashes of the files it covered | `/rig:approve`, `/rig:waive` (people only) |
 | `.rig/sensors.json`, `.rig/rules.json`, `.rig/guides/` | The sensor registry (commands and built-ins, cadences, guides, contracts, gates, policy, `knownRed`) and regex rules | `/rig:init`, then reviewed edits |
+| `.rig/autonomy.json` | The autonomy rung (0, 1 or 2), deferred intents and the history of changes | a person, via `/rig:autonomy` |
+| `.rig/product/design/` (named by `design:` in `architecture.md`) | The sprint design doc, frozen by the chart approval | `/rig:chart`, from the brainstorm |
 | `.rig/wiki.json`, `.rig/wiki/` | The code wiki: page list, generated pages, hash state | `/rig:wiki` |
 | `.rig/lessons.md`, `.rig/learn/` | Active one-line lessons (at most 30); mined candidates and proposals | a person, from `/rig:learn` proposals |
 | `.rig/bin/`, `.claude/` | The vendored harness, so the repo needs no plugin | `/rig:init` (`init --full`, i.e. `vendor --standalone`) |

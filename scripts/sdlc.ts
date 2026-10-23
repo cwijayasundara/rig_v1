@@ -33,6 +33,7 @@ import { intentScope } from './scope.ts'
 import { cmdSlice } from './slice.ts'
 import { cmdMaintain } from './maintain.ts'
 import { cmdReadiness } from './readiness.ts'
+import { cmdAutonomy, initAutonomy } from './autonomy.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'
 import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, prdPath, chartFiles } from './chart.ts'
 import { journey, journeyText } from './journey.ts'
@@ -51,6 +52,7 @@ function cmdInit(args: Args): void {
   const newRepo = git(['rev-parse', '--is-inside-work-tree']) !== 'true' && git(['init', '-q', '-b', 'main']) !== null
   fs.mkdirSync(CHANGES, { recursive: true })
   ensureGitignore()
+  initAutonomy()
   const guides = path.join(SDLC, 'guides')
   if (!exists(guides) && exists(path.join(PLUGIN_ROOT, 'guides'))) {
     fs.cpSync(path.join(PLUGIN_ROOT, 'guides'), guides, { recursive: true })
@@ -303,6 +305,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   slice: cmdSlice,
   maintain: cmdMaintain,
   readiness: cmdReadiness,
+  autonomy: cmdAutonomy,
 }
 
 const [command = '', ...rest] = process.argv.slice(2)

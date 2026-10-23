@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import fs from 'node:fs'
 import path from 'node:path'
 import assert from 'node:assert/strict'
-import { prdIds, parseIntent, parseCases, traceReport, intentSpecProblems, parkedDecisions, type Intent, type TestCase } from './chartcheck.ts'
+import { designIntents, prdIds, parseIntent, parseCases, traceReport, intentSpecProblems, parkedDecisions, type Intent, type TestCase } from './chartcheck.ts'
 
 const PRD = '---\nsprint: 1\nengineers: 1\n---\n# Sprint 1\n\n### FR-1: add\n### FR-2: remove\n| NFR-1 | fast |\n\nMentioned only in prose: FR-9.\n\n## Open questions\nnone\n'
 const intent = (slug: string, o: { prd?: string; depends?: string; days?: string; kind?: string; behaviours?: string; iface?: string; open?: string } = {}): string =>
@@ -20,6 +20,16 @@ const goodCases = cases(caseRow('TC-1', 'FR-1', 'a', 'B1'), caseRow('TC-2', 'NFR
 
 test('prdIds takes headings and table rows, not prose mentions', () => {
   assert.deepEqual(prdIds(PRD), ['FR-1', 'FR-2', 'NFR-1'])
+})
+
+test('designIntents also reads * bullets and bold or backticked slugs, and skips fenced blocks', () => {
+  assert.deepEqual(designIntents('## Intents\n* a-one: x\n- **b-two**: y\n- `c-three`: z\n```\n- fenced: no\n```\n'), ['a-one', 'b-two', 'c-three'])
+})
+
+test('designIntents reads "- slug: scope (ids)" lines under ## Intents and nothing else', () => {
+  const doc = '# D\n\n## Intents\n- walking-skeleton: thinnest slice (FR-1)\n- add-item: merge by sku (FR-2)\nnot-a-bullet: x\n\n## Design\n- not-an-intent: y\n'
+  assert.deepEqual(designIntents(doc), ['walking-skeleton', 'add-item'])
+  assert.deepEqual(designIntents('# D\n## Design\nnone\n'), [])
 })
 
 test('a good chart has no findings', () => {

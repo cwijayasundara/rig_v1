@@ -13,7 +13,7 @@ beforeEach(() => {
   sdlc(repo, ['init'])
   write(repo, 'src/app.js', 'export const a = 1\n')
   write(repo, 'notes.txt', 'untracked before the turn\n')
-  gitIn(repo, 'add', 'src/app.js')
+  gitIn(repo, 'add', 'src/app.js', '.rig/autonomy.json')
   gitIn(repo, 'commit', '-qm', 'app')
 })
 
@@ -358,6 +358,38 @@ test('CI lists a sprint chart approval the PR adds, for human review', () => {
   gitIn(repo, 'commit', '-qm', 'pr')
   const json = JSON.parse(sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main', '--json']).stdout)
   assert.deepEqual(json.humanRows, ['approval chart-3 by Mallory'])
+})
+
+test('CI treats an autonomy.json a PR edits as a human row', () => {
+  gitIn(repo, 'checkout', '-qb', 'pr')
+  write(repo, '.rig/autonomy.json', JSON.stringify({ rung: 2, since: 'x', deferred: [], history: [{ at: 'x', by: 'Mallory', from: 1, to: 2, why: 'w' }] }))
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', 'pr')
+  const json = JSON.parse(sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main', '--json']).stdout)
+  assert.deepEqual(json.humanRows, ['autonomy by Mallory'])
+})
+
+test('CI lists the default autonomy.json when a PR adds it where base has none', () => {
+  gitIn(repo, 'rm', '-q', '.rig/autonomy.json')
+  gitIn(repo, 'commit', '-qm', 'main without it')
+  gitIn(repo, 'checkout', '-qb', 'pr')
+  write(repo, '.rig/autonomy.json', JSON.stringify({ rung: 1, since: 'x', deferred: [], history: [] }))
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', 'pr')
+  const json = JSON.parse(sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main', '--json']).stdout)
+  assert.deepEqual(json.humanRows, ['autonomy by rig init'])
+})
+
+test('CI lists an autonomy.json a PR overwrites with the default, wiping the history', () => {
+  write(repo, '.rig/autonomy.json', JSON.stringify({ rung: 0, since: 'x', deferred: [], history: [{ at: 'x', by: 'Alice', from: 1, to: 0, why: 'w' }] }))
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', 'alice lowers it')
+  gitIn(repo, 'checkout', '-qb', 'pr')
+  write(repo, '.rig/autonomy.json', JSON.stringify({ rung: 1, since: 'x', deferred: [], history: [] }))
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', 'pr')
+  const json = JSON.parse(sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main', '--json']).stdout)
+  assert.deepEqual(json.humanRows, ['autonomy by rig init'])
 })
 
 test('I4: CI lists every waiver and approval row the PR adds, for human review', () => {

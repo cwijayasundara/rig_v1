@@ -47,6 +47,18 @@ export function maskSecrets(text: string): string {
 export const section = (text: string, heading: string): string =>
   new RegExp(`^##\\s+${heading}\\s*\\n([\\s\\S]*?)(?=^##\\s|(?![\\s\\S]))`, 'm').exec(text)?.[1] ?? ''
 
+// The bullet paths of a markdown list, backticks stripped.
+const bulletPaths = (body: string): string[] => body.split('\n').map(l => /^\s*[-*]\s+`?([^`\s]+)`?/.exec(l)?.[1]).filter((e): e is string => Boolean(e))
+
+// The files a plan says it will touch (its ## Files section), as pr.ts reads them.
+export function planFiles(plan: string): string[] {
+  const body = plan.split(/^## Files[ \t]*$/m)[1]?.split(/^## /m)[0] ?? ''
+  return bulletPaths(body)
+}
+
+// The paths a spec allows a change to touch (its ## Blast radius section); null when the spec has no such heading.
+export const blastRadius = (spec: string): string[] | null => (/^##\s+Blast radius\s*$/m.test(spec) ? bulletPaths(section(spec, 'Blast radius')) : null)
+
 // Questions an artifact still leaves open: entries under `## Open questions` other than "none", and any
 // "Q<n> ... still open / is open / unresolved" line elsewhere. Approval needs none, so a build never stalls on one.
 export function openQuestions(text: string): string[] {

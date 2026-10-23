@@ -200,6 +200,12 @@
     "ablatable": true
   },
   {
+    "id": "skill:autonomy",
+    "kind": "skill",
+    "weakness": "the model raises its own autonomy rung (human-only)",
+    "ablatable": true
+  },
+  {
     "id": "skill:waive",
     "kind": "skill",
     "weakness": "a human exception has no record (human-only)",

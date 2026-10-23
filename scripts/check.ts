@@ -290,6 +290,12 @@ function humanRowsAdded(base: string): string[] {
     try { by = String((JSON.parse(read(path.join(ROOT, f))) as { by?: unknown }).by ?? '?') } catch { /* deleted or unreadable: still a row */ }
     rows.push(`approval ${name} by ${clean(by)}`)
   }
+  // autonomy.json: the rung is a person's decision; every PR that adds or edits it is a row, naming the newest history row's author.
+  if ((git(['diff', '--name-only', base, 'HEAD', '--', '.rig/autonomy.json']) ?? '').trim()) {
+    let by = '?'
+    try { by = String((JSON.parse(read(path.join(ROOT, '.rig/autonomy.json'))) as { history?: { by?: unknown }[] }).history?.at(-1)?.by ?? 'rig init') } catch { /* deleted or unreadable: still a row */ }
+    rows.push(`autonomy by ${clean(by)}`)
+  }
   return rows
 }
 

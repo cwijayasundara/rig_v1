@@ -2,7 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { makeRepo, write, gitIn } from './testkit.ts'
-import { mineCandidates, lessonStatus, shippedChanges } from './learnmine.ts'
+import { mineCandidates, lessonStatus, shippedChanges, ladderFor } from './learnmine.ts'
 import type { Lesson } from './learnfile.ts'
 
 const shipAll = (repo: string, ...slugs: string[]): void => {
@@ -128,3 +128,5 @@ test('a tagged line under ## Dismissed or ## Deferred is not a kept finding', as
   git('add', '.'); git('commit', '-qm', 'two shipped changes')
   assert.deepEqual(mineCandidates(root), [], 'the same category under Dismissed and Deferred in two changes is not a recurring finding')
 })
+
+test('a design finding climbs to the architecture rung', () => { assert.equal(ladderFor('finding', 'design').rung, 'architecture') })

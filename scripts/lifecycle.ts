@@ -3,7 +3,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { ROOT, SDLC, CHANGES, read, exists, sha, now, git, defaultBase, frontmatter, skillRef as k } from './core.ts'
-import { openQuestions, globToRegex } from './model.ts'
+import { openQuestions, globToRegex, planFiles, blastRadius } from './model.ts'
 import { parseRegistry, contractGlobs } from './registry.ts'
 
 export const TYPES = ['feature', 'bugfix', 'refactor', 'chore'] as const
@@ -62,7 +62,17 @@ export function approvalRefusal(slug: string): string | null {
   const missing = APPROVED.filter(n => !exists(file(slug, n)))
   if (missing.length) return `nothing to approve yet: ${slug} has no ${missing.join(' or ')}`
   const open = APPROVED.flatMap(n => openQuestions(read(file(slug, n))).map(q => `${n}: ${q}`))
-  return open.length ? `resolve the open question(s) first: answer each, or record the default under ## Decisions, and leave "## Open questions" as none:\n${open.map(q => `  - ${q}`).join('\n')}` : null
+  if (open.length) return `resolve the open question(s) first: answer each, or record the default under ## Decisions, and leave "## Open questions" as none:\n${open.map(q => `  - ${q}`).join('\n')}`
+  const radius = blastRadius(read(file(slug, 'spec.md')))
+  const outside = radius ? outsideRadius(planFiles(read(file(slug, 'plan.md'))), radius) : []
+  return outside.length ? `plan touches a file outside the blast radius: ${outside.join(', ')} (add it to spec.md ## Blast radius or drop it from plan.md ## Files)` : null
+}
+// Plan paths that neither equal a radius entry nor sit under a radius directory (an entry ending in /, or a bare directory path) or glob.
+const normPath = (p: string): string => p.trim().replace(/\\/g, '/').replace(/^(\.\/)+/, '').replace(/:$/, '')
+export function outsideRadius(planPaths: string[], radius: string[]): string[] {
+  const entries = radius.map(normPath)
+  const inside = (p: string): boolean => entries.some(r => r === p || p.startsWith(r.endsWith('/') ? r : `${r}/`) || (r.includes('*') && globToRegex(r).test(p)))
+  return planPaths.map(normPath).filter(p => !inside(p))
 }
 export function writeApproval(slug: string, by: string): Approval {
   const a: Approval = { by, at: now(), hashes: hashes(slug), contracts: freezeRecord() }

@@ -197,3 +197,31 @@ test('cli: the removed lifecycle commands are gone', () => {
   for (const c of ['next', 'scope-drift', 'pr-checks', 'skill', 'verify-report', 'log-usage', 'evals', 'inbox', 'spend', 'quality', 'shards', 'preflight', 'ratchet', 'impact-status']) assert.ok(!usage.includes(c), c)
   for (const c of ['new', 'activate', 'status', 'approve', 'verify', 'pr', 'run', 'waive', 'check', 'sync']) assert.ok(usage.includes(c), c)
 })
+
+test('outsideRadius: equal path and child-of-directory are inside; a sibling and a plan directory wider than the radius are outside', () => {
+  assert.deepEqual(call(`return L.outsideRadius(['src/cart/models.py', 'tests/test_add.py'], ['src/cart/models.py', 'tests/'])`), [])
+  assert.deepEqual(call(`return L.outsideRadius(['src/cart/cli.py'], ['src/cart/models.py'])`), ['src/cart/cli.py'])
+  assert.deepEqual(call(`return L.outsideRadius(['src/cart/'], ['src/cart/models.py'])`), ['src/cart/'])
+  assert.deepEqual(call(`return L.outsideRadius(['src/cart/'], ['src/'])`), [])
+})
+
+test('outsideRadius: a bare directory, a glob, ./ and a trailing colon match; src/a does not cover src/ab', () => {
+  assert.deepEqual(call(`return L.outsideRadius(['src/a/x.ts', './src/b/y.ts', 'src/c/z.ts'], ['src/a', 'src/b/:', 'src/c/*.ts'])`), [])
+  assert.deepEqual(call(`return L.outsideRadius(['src/ab/x.ts'], ['src/a'])`), ['src/ab/x.ts'])
+})
+
+test('approve refuses a plan that touches a file outside spec.md ## Blast radius, and names it', () => {
+  planned()
+  write(repo, '.rig/changes/demo/spec.md', `${SPEC}\n## Blast radius\n- src/a.ts\n`)
+  write(repo, '.rig/changes/demo/plan.md', '# Plan\n\n## Files\n- src/b.ts\n\n## Open questions\nnone\n')
+  const r = sdlc(repo, ['approve', 'demo'], HUMAN)
+  assert.equal(r.code, 1)
+  assert.match(r.stderr, /plan touches a file outside the blast radius: src\/b\.ts/)
+  assert.ok(!fs.existsSync(path.join(repo, '.rig/changes/demo/approval.json')))
+})
+
+test('a spec.md with no ## Blast radius heading is not checked', () => {
+  planned()
+  const r = sdlc(repo, ['approve', 'demo'], HUMAN)
+  assert.equal(r.code, 0, r.stderr)
+})

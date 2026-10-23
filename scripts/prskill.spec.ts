@@ -27,7 +27,7 @@ test('the reviewer is a fresh agent that is given the brief and nothing else', (
 test('the builder triages: a dismissal needs a reason, security and contract findings are never dismissed by the builder, and dismissals carry no category tag', () => {
   const t = pr()
   assert.match(t, /A dismissal needs a reason that cites a spec line, a non-goal, or code you read/)
-  assert.match(t, /Never dismiss a `security` or `contract` finding yourself/)
+  assert.match(t, /Never dismiss a `security`, `contract` or `design` finding yourself/)
   assert.match(t, /## Dismissed[^\n]*no category tag/)
 })
 
@@ -72,4 +72,18 @@ test('after the fix wave the verdict says what ships: fixed findings are marked 
   const t = pr()
   assert.match(t, /append ` → fixed` to each line/, 'a fixed finding stays under ## Findings (the learning loop mines it) but says so')
   assert.match(t, /set `verdict: pass` when every item under `## Findings` is now marked fixed/, 'the verdict is rewritten after the fixes, not left at the pre-fix value')
+})
+
+test('after a ship the pr skill names the next queued intent at rung 1 or above', () => {
+  assert.match(pr(), /`S queue next`[^\n]*rung/)
+  assert.match(pr(), /Queue: <next slug> is ready/)
+})
+
+test('a design finding is never dismissed by the builder: fixed, or left under Findings with the sentence the doc should change', () => {
+  assert.match(pr(), /Never dismiss a `security`, `contract` or `design` finding yourself/)
+  assert.match(pr(), /`design` finding is fixed in the wave[^\n]*stays under `## Findings` \(never `## Deferred`\)[^\n]*naming the sentence of the doc/)
+})
+
+test('a design finding whose fix names a doc sentence is left open, never fixed from a change', () => {
+  assert.match(pr(), /Leave a `design` finding open[^\n]*design-doc sentence[^\n]*a change never edits the design doc/)
 })

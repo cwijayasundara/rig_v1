@@ -54,7 +54,7 @@ test('the managed template carries every rig rule in ./ form, since allowManaged
 test('the managed template is the p.42 worked example with rig force-enabled and the production gate wired', () => {
   const m = tpl('managed-settings.json')
   assert.equal(m.permissions.disableBypassPermissionsMode, 'disable')
-  for (const r of ['Read(.env*)', 'Read(./secrets/**)', 'WebFetch', 'Bash(curl *)', 'Bash(wget *)', 'Edit(./.rig/gates.jsonl)']) assert.ok(m.permissions.deny.includes(r), r)
+  for (const r of ['Read(.env*)', 'Read(./secrets/**)', 'WebFetch', 'Bash(curl *)', 'Bash(wget *)', 'Edit(./.rig/gates.jsonl)', 'Edit(./.rig/autonomy.json)']) assert.ok(m.permissions.deny.includes(r), r)
   for (const k of ['allowManagedPermissionRulesOnly', 'allowManagedHooksOnly', 'disableSideloadFlags', 'allowManagedMcpServersOnly']) assert.equal(m[k], true, k)
   assert.deepEqual([m.sandbox.enabled, m.sandbox.failIfUnavailable, m.sandbox.allowUnsandboxedCommands], [true, true, false])
   assert.ok(m.sandbox.network.allowedDomains.includes('api.github.com'), 'gh, used by /rig:pr, needs GitHub')

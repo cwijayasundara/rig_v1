@@ -2,15 +2,15 @@
 name: plan
 description: Plan an active change - write plan.md (files, interfaces, tests per behaviour, contracts, verification) and hand it to a person for approval.
 argument-hint: '[<slug>]'
-allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Read, Grep, Glob, Write, Edit, Agent
+allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Read, Grep, Glob, Write, Edit, Agent, Skill
 ---
 # Plan a change
 
 `S` means `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts`.
 
 1. Run `S status --json` and take `$0` or the active change. It must have `spec.md`; otherwise run `/rig:start` first.
-2. Write `.rig/changes/<slug>/plan.md` in at most 60 lines:
-   - `## Files`: the files you expect to touch. Search the existing tests (Grep their directories for each name or shape this change alters) and list every existing test whose expectation this change makes wrong, with its new expectation under `## Tests`. Updating a test that pins the behaviour this spec changes is part of the change; deleting or weakening an assertion is not.
+2. Invoke `superpowers:writing-plans` on `.rig/changes/<slug>/spec.md`, writing the result to `.rig/changes/<slug>/plan.md` in rig's shape below, in at most 60 lines: plans hold interfaces and acceptance tests, never code bodies, so keep the skill's task granularity but not its code blocks; write only `.rig/changes/<slug>/plan.md` (not `docs/superpowers/plans/`), and skip the skill's execution-method question: rig's next step is always `/rig:approve <slug>` by a person.
+   - `## Files`: the files you expect to touch, all inside the spec's `## Blast radius`. Search the existing tests (Grep their directories for each name or shape this change alters) and list every existing test whose expectation this change makes wrong, with its new expectation under `## Tests`. Updating a test that pins the behaviour this spec changes is part of the change; deleting or weakening an assertion is not.
    - `## Interfaces`: signatures and data shapes, never code bodies. For a change started from a charted intent, cite the intent's `## Design` rows instead of restating them, and give a test for each `### Failure behaviour` line.
    - `## Tests`: one line per behaviour, giving the B-number, the test file and the level (unit, contract or end-to-end).
    - `## Contracts`: contract files this change adds or edits, or `none`.

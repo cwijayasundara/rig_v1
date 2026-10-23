@@ -219,3 +219,17 @@ test('waive refuses commands: it is no longer a sensor', () => {
   run(['new', 'xx', '--type', 'chore'])
   assert.notEqual(run(['waive', 'commands', '*', 'all of them'], { env: { SDLC_HUMAN: '1' } }).code, 0)
 })
+
+test('SessionStart names the queue pick at rung 1 with no active change, and says No active change at rung 0', () => {
+  write('.rig/sensors.json', JSON.stringify({ stack: 'x', paths: { tests: ['**/*.test.ts'] }, sensors: [{ id: 'unit', cmd: 'true', cadence: 'commit', blocks: true, guide: 'run the tests' }] }))
+  write('.rig/product/prd/sprint-0.md', '---\nsprint: 0\nengineers: 1\n---\n# Sprint 0\n\n### FR-0: thing\n\n## Open questions\nnone\n')
+  write('.rig/product/intents/add-item.md', '---\nsprint: 0\nprd: [FR-0]\ndepends: []\nestimate_days: 1\nkind: internal\n---\n# i\n\n## Interfaces\nnone\n\n## Behaviours\n- B1 (FR-0): works\n\n## Open questions\nnone\n')
+  write('.rig/product/testplan/cases.md', '| ID | Req | Intent | B | Level | Data | Expected |\n| TC-1 | FR-0 | add-item | B1 | unit | - | ok |\n')
+  write('.rig/product/architecture.md', '# Architecture\n\n## Concerns\nnone\n\n## Open questions\nnone\n')
+  assert.equal(run(['approve', 'chart-0'], { env: { SDLC_HUMAN: '1' } }).code, 0)
+  const ctx = (): string => JSON.parse(hook('session-start', { session_id: 's1', source: 'startup' }).stdout).hookSpecificOutput.additionalContext
+  assert.match(ctx(), /No active change/)
+  write('.rig/autonomy.json', JSON.stringify({ rung: 1, since: '', deferred: [], history: [] }))
+  assert.match(ctx(), /Queue: start add-item now with \/rig:start \.rig\/product\/intents\/add-item\.md \(rung 1\)/)
+  assert.doesNotMatch(ctx(), /No active change/)
+})

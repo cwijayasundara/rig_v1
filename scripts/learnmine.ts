@@ -15,7 +15,7 @@ const RATCHET: Rung = { rung: 'ratchet', how: 'a count that may only fall: a com
 const TEST: Rung = { rung: 'test', how: 'pin it with a test, or a frozen contract example, that fails without the fix' }
 const RULE: Rung = { rung: 'rule', how: 'a pattern over added lines in .rig/rules.json, proven with `learn replay .rig/learn/rule-<id>.json --earned <a>,<b>`' }
 const LESSON: Rung = { rung: 'lesson', how: 'one line of .rig/lessons.md; nothing mechanical catches it yet' }
-const LADDER: Record<string, Rung> = { coupling: ARCH, responsibility: ARCH, abstraction: ARCH, duplication: RATCHET, tests: TEST, contract: TEST, data: TEST, correctness: RULE, security: RULE }
+const LADDER: Record<string, Rung> = { coupling: ARCH, responsibility: ARCH, abstraction: ARCH, duplication: RATCHET, tests: TEST, contract: TEST, design: ARCH, data: TEST, correctness: RULE, security: RULE }
 // A waiver recurring on the layering sensor is the same mistake as a coupling finding; the other sensors have no stronger fix than a lesson.
 const WAIVER_LADDER: Record<string, Rung> = { layering: ARCH }
 export const ladderFor = (kind: Candidate['kind'], key: string): Rung => (kind === 'finding' ? LADDER[key] ?? LESSON : WAIVER_LADDER[key] ?? LESSON)
@@ -30,11 +30,11 @@ const changesDir = (root: string): string => path.join(root, '.rig', 'changes')
 const slugsOf = (root: string): string[] =>
   fs.existsSync(changesDir(root)) ? fs.readdirSync(changesDir(root), { withFileTypes: true }).filter(d => d.isDirectory() && SLUG_RE.test(d.name)).map(d => d.name).sort() : []
 const reviewOf = (root: string, slug: string): string => read(path.join(changesDir(root), slug, 'review.md'))
-const waiversOf = (root: string): Waiver[] => readJsonl<Waiver>(path.join(root, '.rig', 'waivers.jsonl')).filter(w => typeof w.slug === 'string' && typeof w.sensor === 'string')
+export const waiversOf = (root: string): Waiver[] => readJsonl<Waiver>(path.join(root, '.rig', 'waivers.jsonl')).filter(w => typeof w.slug === 'string' && typeof w.sensor === 'string')
 
 // Each finding line of a review, keyed by its category. Only the ## Findings section counts: a tagged line pasted under ## Dismissed or
 // ## Deferred is not a kept finding. A review with no such heading is read whole.
-const findingsSection = (review: string): string => /^## Findings[ \t]*\n([\s\S]*?)(?=^## |(?![\s\S]))/m.exec(review)?.[1] ?? review
+export const findingsSection = (review: string): string => /^## Findings[ \t]*\n([\s\S]*?)(?=^## |(?![\s\S]))/m.exec(review)?.[1] ?? review
 const findingsOf = (review: string): { key: string; line: string }[] =>
   findingsSection(review).split('\n').flatMap(line => [...line.matchAll(CATEGORY)].map(m => ({ key: m[1] as string, line: line.replace(/^-\s*/, '').trim() })))
 
