@@ -27,7 +27,7 @@ test('the reviewer is a fresh agent that is given the brief and nothing else', (
 test('the builder triages: a dismissal needs a reason, security and contract findings are never dismissed by the builder, and dismissals carry no category tag', () => {
   const t = pr()
   assert.match(t, /A dismissal needs a reason that cites a spec line, a non-goal, or code you read/)
-  assert.match(t, /Never dismiss a `security`, `contract` or `design` finding yourself/)
+  assert.match(t, /Never dismiss a `security`, `contract`, `design` or `unmapped` finding yourself/)
   assert.match(t, /## Dismissed[^\n]*no category tag/)
 })
 
@@ -80,10 +80,16 @@ test('after a ship the pr skill names the next queued intent at rung 1 or above'
 })
 
 test('a design finding is never dismissed by the builder: fixed, or left under Findings with the sentence the doc should change', () => {
-  assert.match(pr(), /Never dismiss a `security`, `contract` or `design` finding yourself/)
+  assert.match(pr(), /Never dismiss a `security`, `contract`, `design` or `unmapped` finding yourself/)
   assert.match(pr(), /`design` finding is fixed in the wave[^\n]*stays under `## Findings` \(never `## Deferred`\)[^\n]*naming the sentence of the doc/)
 })
 
 test('a design finding whose fix names a doc sentence is left open, never fixed from a change', () => {
-  assert.match(pr(), /Leave a `design` finding open[^\n]*design-doc sentence[^\n]*a change never edits the design doc/)
+  assert.match(pr(), /Leave a `design` or `unmapped` finding open[^\n]*design-doc sentence[^\n]*a change never edits the design doc/)
+})
+
+test('an unmapped finding is never dismissed by the builder: removed, or left open naming the doc line to add', () => {
+  assert.match(pr(), /correctness, security, contract, design, unmapped, data/)
+  assert.match(pr(), /`unmapped` finding is fixed by removing the behaviour[^\n]*stays open under `## Findings`/)
+  assert.match(pr(), /`## Unverifiable`[^\n]*never change the verdict/)
 })

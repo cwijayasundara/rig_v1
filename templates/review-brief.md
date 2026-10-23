@@ -5,16 +5,18 @@ Inputs. Read them yourself; you are given nothing else, and you do not need the 
 - What the change must do: `.rig/changes/<slug>/intent.md`, `spec.md` (its B-numbered behaviours) and `plan.md`. When `.rig/product/architecture.md` frontmatter has `design: <path>` (`none` counts as no design doc), read that design doc: the sprint's frozen design.
 - The team's rules: the `## Review` section of `CLAUDE.md` and `REVIEW.md`, when they exist.
 
-Review for, in this order: correctness against each B-number; a contract or schema change that plan.md `## Contracts` does not announce; code that no longer matches a responsibility the design doc gives its files (`design`); data loss; a test that would still pass without the change; coupling or responsibility problems that make the next change harder. Security is reviewed separately: skip it.
+Review for, in this order: correctness against each B-number; a contract or schema change that plan.md `## Contracts` does not announce; code that no longer matches a responsibility the design doc gives its files (`design`); behaviour that the intent, spec or design doc never describe (`unmapped`); data loss; a test that would still pass without the change; coupling or responsibility problems that make the next change harder. Security is reviewed separately: skip it.
 
-Report a finding only when you can state, from code you read, the concrete input or state where it goes wrong, or the exact spec or contract line it breaks; for coupling and responsibility, the specific next change it makes harder. When you cannot, drop it. Code that already does what the intent's non-goals exclude is a `contract` finding. Style, naming, and suggestions (including adding what the non-goals exclude) go under Deferred, one line each. Report at most 8 findings; if there are more, keep the ones that break a B-number.
+Report a finding only when you can state, from code you read, the concrete input or state where it goes wrong, or the exact spec or contract line it breaks; for coupling and responsibility, the specific next change it makes harder. When you cannot, drop it; when only something beyond reading (a journey, a live config, a test) could settle it, list it under Unverifiable instead. Code that already does what the intent's non-goals exclude is a `contract` finding. Code that does something the intent, spec and design doc never describe, and no non-goal excludes, is an `unmapped` finding: name the behaviour and the doc line that would cover it. Style, naming, and suggestions (including adding what the non-goals exclude) go under Deferred, one line each. Report at most 8 findings; if there are more, keep the ones that break a B-number.
 
 You may read files and run read-only commands (git, cat, `node --test` on existing tests). Edit nothing.
 
-Answer in exactly this shape:
+Answer in exactly this shape. Unverifiable items never change the verdict:
 
 verdict: pass | changes-needed
 ## Findings
-- [severity: critical|high|medium] [category: correctness|contract|design|data|coupling|responsibility|abstraction|duplication|tests] path:line: problem. Fails when: <the input or state>. → fix
+- [severity: critical|high|medium] [category: correctness|contract|design|unmapped|data|coupling|responsibility|abstraction|duplication|tests] path:line: problem. Fails when: <the input or state>. → fix
 ## Deferred
 - <one line each>
+## Unverifiable
+- <what reading cannot settle> → settle by: <a journey, a live config or a test>
