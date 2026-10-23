@@ -70,3 +70,14 @@ test('summarize reports recall and false findings per arm, and the table names b
   assert.match(md, /\| same context \(with builder notes\) \| 2 \| 0% /)
   assert.deepEqual(ARMS, ['clean', 'same'])
 })
+
+test('the unrequested-behaviour case adds clear() beside has(), and an unmapped finding naming it catches it', () => {
+  const c = CASES.find(x => x.id === 'unrequested-clear')
+  assert.ok(c && !c.control)
+  const ctx = ctxFor(c)
+  assert.match(ctx.diff, /^\+\s*clear\(\)/m)
+  fs.rmSync(ctx.dir, { recursive: true, force: true })
+  const hit = 'verdict: changes-needed\n## Findings\n- [severity: medium] [category: unmapped] src/catalog/products.js:9: clear() empties the catalog; no intent, spec or design line describes it. Fails when: any caller clears. → remove it\n'
+  assert.deepEqual(scoreReview(hit, c.defects).caught, ['unmapped-clear'])
+  assert.deepEqual(scoreReview('verdict: pass\n## Findings\n## Unverifiable\n- src/catalog/products.js clear() → settle by: a test\n', c.defects).caught, [])
+})
