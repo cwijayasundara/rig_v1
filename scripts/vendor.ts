@@ -107,6 +107,16 @@ function vendorStandalone(written: string[]): void {
   }
   vendorDashboard(written)
   mergeHooks(written)
+  routeClaudeMd(written)
+}
+
+// CLAUDE.md's routing line is written while the plugin's /rig:x names are live; a standalone copy answers to /rig-x (the folder name),
+// so the line a model reads agrees with the session-start hook and `status`. Only that one command is touched.
+function routeClaudeMd(written: string[]): void {
+  const file = 'CLAUDE.md'
+  const text = read(path.join(ROOT, file))
+  const routed = text.replace('start with /rig:start;', 'start with /rig-start;')
+  if (routed !== text) writeFile(file, routed, written)
 }
 
 const older = (a: string, b: string): boolean => {

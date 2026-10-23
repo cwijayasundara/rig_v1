@@ -47,6 +47,15 @@ test('vendor --cloud writes project skills, agents and hooks with no plugin refe
   assert.equal(again.hooks.Stop.length, settings.hooks.Stop.length, 're-running replaces sdlc hooks instead of duplicating them')
 })
 
+test('vendor --cloud rewrites the CLAUDE.md routing line to the vendored command and leaves the rest alone', () => {
+  const repo = makeRepo()
+  sdlc(repo, ['init'])
+  const claude = '# App\n\nsdlc routes all work in this repo: start with /rig:start; use superpowers skills only when an sdlc skill names one.\n\nSee /rig:plan notes.\n'
+  write(repo, 'CLAUDE.md', claude)
+  assert.equal(sdlc(repo, ['vendor', '--cloud']).code, 0)
+  assert.equal(fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8'), claude.replace('start with /rig:start;', 'start with /rig-start;'))
+})
+
 test('the vendored copy points its skills at .rig/bin and the session start names the active change', () => {
   const repo = makeRepo()
   sdlc(repo, ['init'])

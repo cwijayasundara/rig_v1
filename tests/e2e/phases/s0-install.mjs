@@ -39,8 +39,9 @@ export async function install(sb, { registry = REGISTRY, plugins = [] } = {}) {
   sb.commitAll('chore: scaffold')
   must(sb.sdlc(['init']), 'init')
   sb.write('.rig/sensors.json', JSON.stringify(registry, null, 2) + '\n')
-  must(sb.sdlc(['init', '--full']), 'init --full')
+  // The model writes CLAUDE.md before init --full, which adapts the routing line to the standalone install.
   sb.write('CLAUDE.md', `# shop-app\n\n${ROUTING}\n\n## Map\n- src/\n`)
+  must(sb.sdlc(['init', '--full']), 'init --full')
   must(sb.sdlc(['sync']), 'sync')
   sb.commitAll('chore: onboard rig')
   const c = new Checks('S0 install')
