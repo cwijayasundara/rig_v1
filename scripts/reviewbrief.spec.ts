@@ -29,7 +29,7 @@ test('the brief demands evidence for every finding and caps how many it may rais
 
 test('the findings shape is the one review.md and the learning loop already read', () => {
   const line = brief.split('\n').find(l => l.startsWith('- [severity:')) ?? ''
-  assert.match(line, /\[category: correctness\|contract\|design\|data\|coupling\|responsibility\|abstraction\|duplication\|tests\]/)
+  assert.match(line, /\[category: correctness\|contract\|design\|unmapped\|data\|coupling\|responsibility\|abstraction\|duplication\|tests\]/)
   assert.doesNotMatch(brief, /\[category: security/, 'security is a separate pass')
 })
 
@@ -53,5 +53,15 @@ test('the brief and the skill agree: code doing what the non-goals exclude is a 
 test('the brief hands the reviewer the sprint design doc when architecture.md names one and defines the design category', () => {
   assert.match(brief, /architecture\.md[^\n]*design:/); assert.match(brief, /category: [^\]]*design/)
   assert.match(brief, /no longer matches a responsibility the design doc gives/)
+  assert.ok(brief.trimEnd().split('\n').length <= 60)
+})
+
+test('the brief names unmapped behaviour and an Unverifiable section that never decides the verdict', () => {
+  assert.match(brief, /`unmapped`/)
+  assert.match(brief, /intent, spec (?:or|and) design doc never describe/)
+  assert.match(brief.split('\n').find(l => l.startsWith('- [severity:')) ?? '', /\|unmapped\|/)
+  assert.match(brief, /^## Unverifiable$/m)
+  assert.match(brief, /settle by:/)
+  assert.match(brief, /never change the verdict/i)
   assert.ok(brief.trimEnd().split('\n').length <= 60)
 })

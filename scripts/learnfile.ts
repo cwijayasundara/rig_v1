@@ -34,6 +34,7 @@ export function parseLessons(text: string): { lessons: Lesson[]; errors: string[
 }
 
 // Every problem in the text, as messages that name the lesson; empty means it passes. `slugs` are the changes that exist.
+const SESSION = /^session:[0-9a-f]{8}$/
 export function checkLessons(text: string, slugs: string[]): string[] {
   const { lessons, errors } = parseLessons(text)
   const out = [...errors]
@@ -47,7 +48,8 @@ export function checkLessons(text: string, slugs: string[]): string[] {
     const words = l.text.trim().split(/\s+/).filter(Boolean).length
     if (words > MAX_WORDS) out.push(`${l.id}: ${words} words, at most ${MAX_WORDS}`)
     if (new Set(l.seen).size < 2) out.push(`${l.id}: cites ${new Set(l.seen).size} change(s), at least 2 distinct changes are required`)
-    for (const s of l.seen) if (!slugs.includes(s)) out.push(`${l.id}: cites ${s}, which is not a change`)
+    // A lesson learned from the person's corrections cites `session:<8 hex>`: transcripts stay local, so the session cannot be checked here.
+    for (const s of l.seen) if (!slugs.includes(s) && !SESSION.test(s)) out.push(`${l.id}: cites ${s}, which is not a change`)
   }
   const active = lessons.filter(l => l.status === 'active').length
   if (active > MAX_ACTIVE) out.push(`${active} active lessons, at most ${MAX_ACTIVE}`)

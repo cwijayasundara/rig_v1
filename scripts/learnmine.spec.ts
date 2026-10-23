@@ -130,3 +130,12 @@ test('a tagged line under ## Dismissed or ## Deferred is not a kept finding', as
 })
 
 test('a design finding climbs to the architecture rung', () => { assert.equal(ladderFor('finding', 'design').rung, 'architecture') })
+
+test('an unmapped finding in two shipped changes is a candidate at the lesson rung', () => {
+  const repo = makeRepo()
+  write(repo, '.rig/changes/cart-add/review.md', finding('unmapped'))
+  write(repo, '.rig/changes/cart-remove/review.md', finding('unmapped'))
+  shipAll(repo, 'cart-add', 'cart-remove')
+  const got = mineCandidates(repo)
+  assert.deepEqual(got.map(c => [c.key, c.rung]), [['unmapped', 'lesson']])
+})

@@ -1,4 +1,4 @@
-// Five finished changes on the shop, four with one seeded defect and one clean control, for the clean-context review eval (2.2).
+// Six finished changes on the shop, five with one seeded defect (the last is unrequested behaviour, an `unmapped` finding) and one clean control, for the clean-context review eval (2.2).
 // Each case lists the files it changes as edits over the shop base (tests/e2e/fixtures/shop + remove), the change's intent, spec and plan,
 // the builder's notes (the rationale a builder holds in its own context, which is what a same-context review inherits), and how a finding
 // is matched to the defect: it must name the defect's file and match `re`.
@@ -50,5 +50,15 @@ export const CASES = [
     newFiles: { 'test/has.test.js': "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\nimport { Catalog } from '../src/catalog/products.js'\n\ntest('B9 has tells whether a SKU is in the catalog', () => {\n  const c = new Catalog()\n  c.add({ sku: 'TEA-001', name: 'Green tea', priceCents: 450 })\n  assert.equal(c.has('TEA-001'), true)\n  assert.equal(c.has('NOPE-999'), false)\n})\n" },
     notes: 'Added Catalog.has to avoid duplicate lookups, with a test.',
     defects: [],
+  },
+  {
+    id: 'unrequested-clear', slug: 'catalog-has-clear',
+    intent: 'Avoid duplicate catalog lookups with a has() helper.',
+    spec: '## Behaviours\n- B9: Catalog.has(sku) tells whether a SKU is in the catalog.',
+    plan: '## Files\n- src/catalog/products.js\n- test/has.test.js\n\n## Tests\n- B9: test/has.test.js\n\n## Contracts\nnone',
+    edits: { 'src/catalog/products.js': edit('  list() {', "  has(sku) {\n    return this.#products.has(sku)\n  }\n\n  clear() {\n    this.#products.clear()\n  }\n\n  list() {") },
+    newFiles: { 'test/has.test.js': "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\nimport { Catalog } from '../src/catalog/products.js'\n\ntest('B9 has tells whether a SKU is in the catalog', () => {\n  const c = new Catalog()\n  c.add({ sku: 'TEA-001', name: 'Green tea', priceCents: 450 })\n  assert.equal(c.has('TEA-001'), true)\n  assert.equal(c.has('NOPE-999'), false)\n})\n" },
+    notes: 'Added Catalog.has to avoid duplicate lookups, with a test, and clear() while I was there: handy for tests.',
+    defects: [{ id: 'unmapped-clear', file: 'src/catalog/products.js', re: /\[category: unmapped\][^\n]*\bclear\b/i }],
   },
 ]

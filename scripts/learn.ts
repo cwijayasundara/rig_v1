@@ -2,10 +2,11 @@
 // and writes only under .rig/learn/. The model-facing step is the /rig:learn skill; a person applies every change to the lessons and the rules.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SDLC, WAIVERS, out, fail, read, listChanges, readJsonl, writeAtomic, sha, type Args, type Waiver } from './core.ts'
+import { ROOT, SDLC, WAIVERS, ensureGitignore, out, fail, read, listChanges, readJsonl, writeAtomic, sha, type Args, type Waiver } from './core.ts'
 import { parseLessons, checkLessons, type Lesson } from './learnfile.ts'
 import { mineCandidates, shippedChanges, lessonStatus } from './learnmine.ts'
 import { replayRule, replayLayers } from './learnreplay.ts'
+import { mineTranscripts, projectDirs, repeated } from './learntranscripts.ts'
 import { parseRules, type Rule } from './model.ts'
 
 const LESSONS = path.join(SDLC, 'lessons.md')
@@ -31,6 +32,20 @@ function mine(): void {
     ...a.retire.map(r => `retire ${r.id}: ${r.why}`),
     'written: .rig/learn/candidates.json',
   ].join('\n'))
+}
+
+// `learn mine --transcripts`: the person's typed turns from this repo's transcripts, for the skill to group. RIG_TRANSCRIPTS_DIR overrides the
+// folder (tests, evals). The file stays under the gitignored .rig/learn/.
+function mineCorrections(): void {
+  const tried = process.env.RIG_TRANSCRIPTS_DIR ? [process.env.RIG_TRANSCRIPTS_DIR] : projectDirs(ROOT)
+  const dir = tried.find(d => fs.existsSync(d)) ?? tried[0]!
+  ensureGitignore()
+  const corrections = mineTranscripts(dir)
+  const again = repeated(corrections)
+  fs.mkdirSync(LEARN, { recursive: true })
+  writeAtomic(path.join(LEARN, 'corrections.json'), JSON.stringify({ corrections, repeated: again }, null, 2) + '\n')
+  const sessions = new Set(corrections.map(c => c.session)).size
+  out([corrections.length ? `${corrections.length} typed turn(s) from ${sessions} session(s); ${again.length} repeated in 2+ sessions` : 'no transcripts for this repo', `read: ${tried.find(d => fs.existsSync(d)) ?? `nothing at ${tried.join(' or ')}`}`, 'written: .rig/learn/corrections.json'].join('\n'))
 }
 
 // A proposal line that promotes a lesson to a rule (PROMOTE) or a layer edge (LAYER) is presentable only with a passing replay of exactly the file
@@ -107,10 +122,10 @@ function status(): void {
 
 export function cmdLearn(args: Args): void {
   const sub = args.pos[0]
-  if (sub === 'mine') return mine()
+  if (sub === 'mine') return args.opt.transcripts ? mineCorrections() : mine()
   if (sub === 'check') return check()
   if (sub === 'proposal') { const p = proposalCheck(); out(p.length ? p.map(x => `[learn] ${x}`).join('\n') : 'learn proposal: every promotion carries a passing replay'); process.exitCode = p.length ? 1 : 0; return }
   if (sub === 'replay') return replay(args)
   if (sub === 'status') return status()
-  fail('usage: learn <mine|replay <rule.json>|--layers <block.md> --earned a,b|proposal|check|status>')
+  fail('usage: learn <mine [--transcripts]|replay <rule.json>|--layers <block.md> --earned a,b|proposal|check|status>')
 }
