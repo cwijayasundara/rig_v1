@@ -93,3 +93,8 @@ test('an unmapped finding is never dismissed by the builder: removed, or left op
   assert.match(pr(), /`unmapped` finding is fixed by removing the behaviour[^\n]*stays open under `## Findings`/)
   assert.match(pr(), /`## Unverifiable`[^\n]*never change the verdict/)
 })
+
+test('with no design doc, an unmapped finding left open names the intent line a chart edit should add', () => {
+  assert.match(pr(), /`unmapped`[^\n]*no design doc[^\n]*intent/)
+  assert.match(repoText('templates/review-brief.md'), /the doc line that would cover it \(the design doc's, else the intent's\)/)
+})

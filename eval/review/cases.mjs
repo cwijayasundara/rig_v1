@@ -59,6 +59,6 @@ export const CASES = [
     edits: { 'src/catalog/products.js': edit('  list() {', "  has(sku) {\n    return this.#products.has(sku)\n  }\n\n  clear() {\n    this.#products.clear()\n  }\n\n  list() {") },
     newFiles: { 'test/has.test.js': "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\nimport { Catalog } from '../src/catalog/products.js'\n\ntest('B9 has tells whether a SKU is in the catalog', () => {\n  const c = new Catalog()\n  c.add({ sku: 'TEA-001', name: 'Green tea', priceCents: 450 })\n  assert.equal(c.has('TEA-001'), true)\n  assert.equal(c.has('NOPE-999'), false)\n})\n" },
     notes: 'Added Catalog.has to avoid duplicate lookups, with a test, and clear() while I was there: handy for tests.',
-    defects: [{ id: 'unmapped-clear', file: 'src/catalog/products.js', re: /unmapped|clear|not (?:in|described)|unrequested|scope/i }],
+    defects: [{ id: 'unmapped-clear', file: 'src/catalog/products.js', re: /\[category: unmapped\][^\n]*\bclear\b/i }],
   },
 ]

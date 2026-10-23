@@ -10,7 +10,7 @@ export type Autonomy = { rung: 0 | 1 | 2; since: string; deferred: string[]; his
 export const AUTONOMY = path.join(SDLC, 'autonomy.json')
 const EMPTY = (): Autonomy => ({ rung: 0, since: '', deferred: [], history: [] })
 const CLEAN_SHIPS = 3
-const BLOCKING = /\[category: (?:security|contract|design)\]/
+const BLOCKING = /\[category: (?:security|contract|design|unmapped)\]/
 
 const fileOf = (root: string): string => path.join(root, '.rig', 'autonomy.json')
 

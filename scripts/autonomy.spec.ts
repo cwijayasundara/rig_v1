@@ -72,6 +72,14 @@ test('proposeRung: a failing verify or a security/contract/design finding blocks
   assert.equal(proposeRung(repo), null)
 })
 
+test('proposeRung: an open unmapped finding blocks the move up, like a design finding', () => {
+  const repo = makeRepo()
+  atRung(repo, 1)
+  ship(repo, 'a-one'); ship(repo, 'b-two')
+  ship(repo, 'c-three', { review: '## Findings\n- [severity: medium] [category: unmapped] a.ts:1: clear() no doc describes → fix: design doc §Design, add "clear" (a chart edit)\n' })
+  assert.equal(proposeRung(repo), null)
+})
+
 test('proposeRung: down on a waiver for the newest ship, and down wins over up', () => {
   const repo = makeRepo()
   atRung(repo, 1)
