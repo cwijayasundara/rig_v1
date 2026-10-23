@@ -227,8 +227,8 @@ const accessCase = (id: string, access: string): string => `| ${id} | FR-1 | a |
 
 test('parseAccess reads rows, lowercases roles and interfaces, and nobody is no roles', () => {
   assert.deepEqual(parseAccess(ACCESS), [
-    { action: 'delete order', allowed: ['owner', 'admin'], interfaces: ['web', 'api'], intent: 'order-delete' },
-    { action: 'purge', allowed: [], interfaces: ['api'], intent: 'order-delete' },
+    { action: 'delete order', allowed: ['owner', 'admin'], nobody: false, interfaces: ['web', 'api'], intent: 'order-delete' },
+    { action: 'purge', allowed: [], nobody: true, interfaces: ['api'], intent: 'order-delete' },
   ])
   assert.deepEqual(parseAccess('## Access\n\n<!-- Optional -->\n\n| Action | Allowed | Interfaces | Intent |\n|---|---|---|---|\n'), [])
 })
@@ -265,3 +265,16 @@ test('access-untested asks only for rows whose intent is in this sprint: another
   assert.deepEqual(accessProblems([row!], ['order-delete', 'a'], cases(), ['a']), [])
   assert.equal(accessProblems([row!], ['order-delete'], cases(), ['order-delete']).length, 4)
 })
+
+test('access-row: a blank Allowed cell is not nobody, and an action listed twice is one finding', () => {
+  const rows = parseAccess('## Access\n| Action | Allowed | Interfaces | Intent |\n|---|---|---|---|\n| delete | | api | a |\n| cancel | owner | api | a |\n| Cancel | admin | web | a |\n')
+  assert.deepEqual(accessProblems(rows, ['a'], null).map(f => [f.rule, f.where]), [['access-row', 'delete'], ['access-row', 'Cancel']])
+})
+
+test('backticks are stripped and an interface with a space is matched whole, extra spaces collapsed', () => {
+  const rows = parseAccess('## Access\n| Action | Allowed | Interfaces | Intent |\n|---|---|---|---|\n| delete  order | owner | `mobile app` | `a` |\n')
+  assert.deepEqual(rows[0], { action: 'delete order', allowed: ['owner'], nobody: false, interfaces: ['mobile app'], intent: 'a' })
+  const cs = cases(accessCase('TC-1', 'delete order: allowed mobile  app'), accessCase('TC-2', 'delete order: refused `mobile app`'))
+  assert.deepEqual(accessProblems(rows, ['a'], cs), [])
+})
+

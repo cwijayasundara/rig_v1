@@ -107,8 +107,8 @@ test('the QA brief names the design doc, in the chart skill and in the testplan 
 test('the architect writes ## Access when the PRD has roles, and QA writes an allowed and a refused case per interface', () => {
   const text = (f: string): string => fs.readFileSync(path.resolve(import.meta.dirname, '..', f), 'utf8')
   assert.match(skill, /fill `## Access` in `architecture.md`/)
-  assert.match(skill, /one allowed and one refused case per interface/)
-  assert.match(text('skills/testplan/SKILL.md'), /one allowed and one refused case per interface/)
+  assert.match(skill, /one allowed and one refused case per interface[^\n]*`<action>: allowed <interface>`/)
+  assert.match(text('skills/testplan/SKILL.md'), /one allowed and one refused case per interface[^\n]*`<action>: allowed <interface>`/)
   assert.match(text('templates/architecture-format.md'), /^## Access$/m)
   assert.match(text('templates/architecture-format.md'), /\| Action \| Allowed \| Interfaces \| Intent \|/)
   assert.match(text('templates/testplan-format.md'), /\| Expected \| Access \|/)

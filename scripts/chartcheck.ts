@@ -11,8 +11,8 @@ export type Intent = {
   failures: string[]; design: number // B-numbers under `### Failure behaviour`; `## Design` table rows
 }
 export type TestCase = { id: string; reqs: string[]; intent: string; behaviour: string; level: string; data: string; access: string }
-// A row of architecture.md `## Access`: who may take an action, on which interfaces. `allowed` empty means nobody may.
-export type AccessRule = { action: string; allowed: string[]; interfaces: string[]; intent: string }
+// A row of architecture.md `## Access`: who may take an action, on which interfaces. `nobody`: the cell says no role may.
+export type AccessRule = { action: string; allowed: string[]; nobody: boolean; interfaces: string[]; intent: string }
 export type ChartFinding = { rule: string; severity: 'block' | 'report'; where: string; message: string }
 
 const REQ = /\bN?FR-\d+\b/g
@@ -167,12 +167,14 @@ export function architectureProblems(arch: string, prd: string, sprint: number):
 
 const tableRows = (text: string, name: string): string[][] =>
   section(text, name).split('\n').filter(l => /^\s*\|/.test(l) && !/^\s*\|[\s|:-]*$/.test(l)).map(l => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim()))
-const names = (cell: string): string[] => cell.split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+// Backticks dropped and inner spaces collapsed, so `mobile  app` in a row and mobile app in a case are one name.
+const norm = (s: string): string => s.replace(/`/g, '').replace(/\s+/g, ' ').trim()
+const names = (cell: string): string[] => cell.split(',').map(s => norm(s).toLowerCase()).filter(Boolean)
 
 // `| Action | Allowed | Interfaces | Intent |` rows under architecture.md `## Access`; `nobody` allows no role.
 export function parseAccess(arch: string): AccessRule[] {
   return tableRows(uncomment(arch.replace(/\r\n/g, '\n')), 'Access').slice(1).map(c => ({
-    action: c[0] ?? '', allowed: names(c[1] ?? '').filter(r => r !== 'nobody'), interfaces: names(c[2] ?? ''), intent: c[3] ?? '',
+    action: norm(c[0] ?? ''), allowed: names(c[1] ?? '').filter(r => r !== 'nobody'), nobody: names(c[1] ?? '').includes('nobody'), interfaces: names(c[2] ?? ''), intent: norm(c[3] ?? ''),
   }))
 }
 
@@ -181,10 +183,13 @@ export function parseAccess(arch: string): AccessRule[] {
 export function accessProblems(rules: AccessRule[], slugs: string[], cases: TestCase[] | null, mine: string[] = slugs): ChartFinding[] {
   const out: ChartFinding[] = []
   const add = (rule: string, where: string, message: string): number => out.push({ rule, severity: 'block', where, message })
-  const tested = new Set((cases ?? []).flatMap(c => { const m = /^(.+?):\s*(allowed|refused)\s+(\S+)$/i.exec(c.access); return m ? [`${m[1]!.trim().toLowerCase()}|${m[2]!.toLowerCase()}|${m[3]!.toLowerCase()}`] : [] }))
+  const tested = new Set((cases ?? []).flatMap(c => { const m = /^(.+?):\s*(allowed|refused)\s+(.+)$/i.exec(norm(c.access)); return m ? [`${m[1]!.trim().toLowerCase()}|${m[2]!.toLowerCase()}|${m[3]!.toLowerCase()}`] : [] }))
+  const seen = new Set<string>()
   for (const r of rules) {
-    const nobody = !r.allowed.length
-    if (!r.action || !r.interfaces.length || !r.intent) { add('access-row', r.action || 'architecture', `## Access row "${r.action}" needs an action, allowed roles (or nobody), interfaces and an intent`); continue }
+    const nobody = r.nobody && !r.allowed.length
+    if (seen.has(r.action.toLowerCase())) { add('access-row', r.action, `## Access lists "${r.action}" twice: one row per action`); continue }
+    seen.add(r.action.toLowerCase())
+    if (!r.action || !r.interfaces.length || !r.intent || (!r.allowed.length && !r.nobody)) { add('access-row', r.action || 'architecture', `## Access row "${r.action}" needs an action, allowed roles (or nobody), interfaces and an intent`); continue }
     if (!slugs.includes(r.intent)) add('access-intent', r.action, `## Access row "${r.action}" names ${r.intent}, which is not a charted intent`)
     if (cases && mine.includes(r.intent)) for (const i of r.interfaces) for (const way of nobody ? ['refused'] : ['allowed', 'refused'])
       if (!tested.has(`${r.action.toLowerCase()}|${way}|${i}`)) add('access-untested', r.action, `no case tests "${r.action}" ${way} on ${i}: add a case with Access "${r.action}: ${way} ${i}"`)
