@@ -12,7 +12,7 @@ allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_R
 
 1. **Which sprint.** `N` is `$ARGUMENTS`. Run `S chart check <N>`. It needs the PRD and the intents from `/rig:chart <N>`; without them, stop and say so.
 2. **QA.** Launch one `general-purpose` agent in the foreground with model `sonnet` and a brief of at most 40 lines:
-   - read the PRD, every `.rig/product/sprints/sprint-<N>/intents/*.md`, `.rig/product/architecture.md` and `${CLAUDE_PLUGIN_ROOT}/templates/testplan-format.md`;
+   - read the PRD, every `.rig/product/sprints/sprint-<N>/intents/*.md`, `.rig/product/architecture.md`, the sprint's design doc, the `<date>-sprint-<N>-design.md` in the directory of the `design:` path in `.rig/product/architecture.md` (`design:` names only the newest sprint's doc; `none`, an unset line or a `<...>` placeholder means there is none) and `${CLAUDE_PLUGIN_ROOT}/templates/testplan-format.md`;
    - write `.rig/product/sprints/sprint-<N>/testplan/plan.md`, `cases.md` and `data/`;
    - every requirement gets at least one case; every case cites its requirement ids, an intent slug and one of its B-numbers; a contract-level case for a `kind: boundary` intent uses that intent's example files;
    - test data is synthetic, never real personal data; a case's Data is a path under `.rig/product/sprints/sprint-<N>/testplan/` such as `data/cart.json`, or `-`.
