@@ -47,8 +47,12 @@ export function maskSecrets(text: string): string {
 export const section = (text: string, heading: string): string =>
   new RegExp(`^##\\s+${heading}\\s*\\n([\\s\\S]*?)(?=^##\\s|(?![\\s\\S]))`, 'm').exec(text)?.[1] ?? ''
 
-// The bullet paths of a markdown list, backticks stripped.
-const bulletPaths = (body: string): string[] => body.split('\n').map(l => /^\s*[-*]\s+`?([^`\s]+)`?/.exec(l)?.[1]).filter((e): e is string => Boolean(e))
+// The path that leads each line of a section, bulleted or bare, after an optional "Create:"-style label; backticks stripped.
+// A bare word counts only when it looks like a path (a / or an extension), so a prose line ("No existing test ...") is skipped.
+const bulletPaths = (body: string): string[] => body.split('\n').flatMap(l => {
+  const m = /^\s*(?:[-*]\s+)?(?:[A-Za-z]+:\s+)?(?:`([^`\s]+)`|([^`\s]+))/.exec(l)
+  return m?.[1] ? [m[1]] : m?.[2] && /\/|\.\w+$/.test(m[2]) ? [m[2]] : []
+})
 
 // The files a plan says it will touch (its ## Files section), as pr.ts reads them.
 export function planFiles(plan: string): string[] {
