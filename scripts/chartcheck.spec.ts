@@ -22,8 +22,12 @@ test('prdIds takes headings and table rows, not prose mentions', () => {
   assert.deepEqual(prdIds(PRD), ['FR-1', 'FR-2', 'NFR-1'])
 })
 
+test('designIntents also reads * bullets and bold or backticked slugs, and skips fenced blocks', () => {
+  assert.deepEqual(designIntents('## Intents\n* a-one: x\n- **b-two**: y\n- `c-three`: z\n```\n- fenced: no\n```\n'), ['a-one', 'b-two', 'c-three'])
+})
+
 test('designIntents reads "- slug: scope (ids)" lines under ## Intents and nothing else', () => {
-  const doc = '# D\n\n## Intents\n- walking-skeleton: thinnest slice (FR-1)\n- add-item: merge by sku (FR-2)\n* not-a-dash: x\n\n## Design\n- not-an-intent: y\n'
+  const doc = '# D\n\n## Intents\n- walking-skeleton: thinnest slice (FR-1)\n- add-item: merge by sku (FR-2)\nnot-a-bullet: x\n\n## Design\n- not-an-intent: y\n'
   assert.deepEqual(designIntents(doc), ['walking-skeleton', 'add-item'])
   assert.deepEqual(designIntents('# D\n## Design\nnone\n'), [])
 })

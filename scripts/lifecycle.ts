@@ -67,10 +67,12 @@ export function approvalRefusal(slug: string): string | null {
   const outside = radius ? outsideRadius(planFiles(read(file(slug, 'plan.md'))), radius) : []
   return outside.length ? `plan touches a file outside the blast radius: ${outside.join(', ')} (add it to spec.md ## Blast radius or drop it from plan.md ## Files)` : null
 }
-// Plan paths that neither equal a radius entry nor sit under a radius directory (an entry ending in /).
+// Plan paths that neither equal a radius entry nor sit under a radius directory (an entry ending in /, or a bare directory path) or glob.
+const normPath = (p: string): string => p.trim().replace(/\\/g, '/').replace(/^(\.\/)+/, '').replace(/:$/, '')
 export function outsideRadius(planPaths: string[], radius: string[]): string[] {
-  const inside = (p: string): boolean => radius.some(r => r === p || (r.endsWith('/') && p.startsWith(r)))
-  return planPaths.filter(p => !inside(p))
+  const entries = radius.map(normPath)
+  const inside = (p: string): boolean => entries.some(r => r === p || p.startsWith(r.endsWith('/') ? r : `${r}/`) || (r.includes('*') && globToRegex(r).test(p)))
+  return planPaths.map(normPath).filter(p => !inside(p))
 }
 export function writeApproval(slug: string, by: string): Approval {
   const a: Approval = { by, at: now(), hashes: hashes(slug), contracts: freezeRecord() }

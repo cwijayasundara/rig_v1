@@ -45,5 +45,5 @@ test('start invokes superpowers:brainstorming on the intent and ends with spec.m
 })
 
 test('nothing after approve asks the person a question except the existing stop cases', () => {
-  for (const name of ['build', 'test', 'pr']) assert.doesNotMatch(skill(name), /AskUserQuestion/)
+  for (const name of ['build', 'test', 'pr', 'start', 'plan']) assert.doesNotMatch(skill(name), /AskUserQuestion/, `${name} must not ask`)
 })

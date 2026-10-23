@@ -100,7 +100,7 @@ export function chartFindings(n: number, withCases: boolean): ChartFinding[] {
   else if (design) {
     const listed = designIntents(read(path.join(ROOT, design)))
     const mine = intentsOf(n).map(i => i.slug)
-    for (const s of listed.filter(x => !mine.includes(x))) found.push({ rule: 'design-intent', severity: 'block', where: 'architecture', message: `${s} is in the design doc's ## Intents but has no .rig/product/intents/${s}.md` })
+    for (const s of listed.filter(x => !mine.includes(x))) found.push({ rule: 'design-intent', severity: 'block', where: 'architecture', message: `${s} is in the design doc's ## Intents but has no .rig/product/intents/${s}.md (the list is read from \`- <slug>: scope\` lines; slugs are lowercase kebab-case)` })
     for (const s of mine.filter(x => !listed.includes(x))) found.push({ rule: 'design-intent', severity: 'block', where: s, message: `${s} is an intent of sprint ${n} but the design doc's ## Intents does not list it` })
   }
   const arch = uncomment(read(path.join(PRODUCT, 'architecture.md')).replace(/\r\n/g, '\n'))

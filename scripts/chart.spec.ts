@@ -295,6 +295,12 @@ test('design: in architecture.md frontmatter puts the design doc under the chart
   assert.deepEqual(state(1), { state: 'stale', changed: [DOC] })
 })
 
+test('a quoted design: value is read without its quotes', () => {
+  chart1()
+  write(repo, `${P}/architecture.md`, archWith(`"${DOC}"`))
+  assert.equal(call('return C.designDocOf(1)'), DOC)
+})
+
 test('design-intent blocks in both directions and names the slugs', () => {
   chart1()
   write(repo, `${P}/architecture.md`, archWith(DOC))

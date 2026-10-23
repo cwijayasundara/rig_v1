@@ -57,9 +57,9 @@ export function parseIntent(slug: string, raw: string): Intent {
   }
 }
 
-// `- slug: scope (ids)` lines under `## Intents` in the sprint design doc: the intents the design says the sprint is made of.
+// `- slug: scope (ids)` lines (a `*` bullet, bold or backticked slug also read; fenced blocks skipped) under `## Intents` in the sprint design doc: the intents the design says the sprint is made of.
 export const designIntents = (designDoc: string): string[] =>
-  section(uncomment(designDoc.replace(/\r\n/g, '\n')), 'Intents').split('\n').flatMap(l => { const m = /^-\s+([a-z0-9]+(?:-[a-z0-9]+)*)\s*:/.exec(l); return m?.[1] ? [m[1]] : [] })
+  section(uncomment(designDoc.replace(/\r\n/g, '\n')).replace(/^(```|~~~)[\s\S]*?^\1/gm, ''), 'Intents').split('\n').flatMap(l => { const m = /^[-*]\s+(?:\*\*|`)?([a-z0-9]+(?:-[a-z0-9]+)*)(?:\*\*|`)?\s*:/.exec(l); return m?.[1] ? [m[1]] : [] })
 
 // cases.md rows: | ID | Requirement | Intent | Behaviour | Level | Data | Expected |
 export function parseCases(text: string): TestCase[] {

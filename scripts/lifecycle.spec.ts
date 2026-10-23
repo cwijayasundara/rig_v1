@@ -205,6 +205,11 @@ test('outsideRadius: equal path and child-of-directory are inside; a sibling and
   assert.deepEqual(call(`return L.outsideRadius(['src/cart/'], ['src/'])`), [])
 })
 
+test('outsideRadius: a bare directory, a glob, ./ and a trailing colon match; src/a does not cover src/ab', () => {
+  assert.deepEqual(call(`return L.outsideRadius(['src/a/x.ts', './src/b/y.ts', 'src/c/z.ts'], ['src/a', 'src/b/:', 'src/c/*.ts'])`), [])
+  assert.deepEqual(call(`return L.outsideRadius(['src/ab/x.ts'], ['src/a'])`), ['src/ab/x.ts'])
+})
+
 test('approve refuses a plan that touches a file outside spec.md ## Blast radius, and names it', () => {
   planned()
   write(repo, '.rig/changes/demo/spec.md', `${SPEC}\n## Blast radius\n- src/a.ts\n`)
