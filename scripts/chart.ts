@@ -7,7 +7,7 @@ import { ROOT, exists, read, sha, now, toPosix, frontmatter } from './core.ts'
 import { openQuestions, section } from './model.ts'
 import { changeDir, isShipped } from './lifecycle.ts'
 import { PRODUCT, prdPath, intentsDir, testplanDir, approvalPath, sprintDir, sprintsOnDisk, intentRel } from './product.ts'
-import { designIntents, architectureProblems, parseIntent, parseCases, parkedDecisions, prdIds, traceReport, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
+import { designIntents, architectureProblems, accessProblems, parseAccess, parseIntent, parseCases, parkedDecisions, prdIds, traceReport, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
 
 const ARCH = toPosix(path.relative(ROOT, path.join(PRODUCT, 'architecture.md')))
 const SHARED_DIRS = ['adr'].map(d => `${toPosix(path.relative(ROOT, path.join(PRODUCT, d)))}/`)
@@ -99,8 +99,9 @@ export function chartState(n: number): { state: ChartState; changed: string[] } 
 // The trace rules over the files, plus what only the files can say: unresolved concerns and the architecture's open questions.
 export function chartFindings(n: number, withCases: boolean): ChartFinding[] {
   const testplan = testplanDir(n)
+  const cases = withCases ? parseCases(read(path.join(testplan, 'cases.md'))) : null
   const found = traceReport({
-    prd: read(prdPath(n)), intents: intentsOf(n), others: allIntents().filter(i => i.sprint !== n), repoExists: p => exists(path.join(ROOT, p)), cases: withCases ? parseCases(read(path.join(testplan, 'cases.md'))) : null,
+    prd: read(prdPath(n)), intents: intentsOf(n), others: allIntents().filter(i => i.sprint !== n), repoExists: p => exists(path.join(ROOT, p)), cases,
     exists: p => exists(path.join(testplan, p)),
   })
   for (const i of intentsOf(n)) if (i.declared !== n) found.push({ rule: 'sprint-mismatch', severity: 'block', where: i.slug, message: `${i.slug} sits in sprint-${n}/intents/ but its frontmatter says sprint: ${i.declared ?? 'nothing'}` })
@@ -118,6 +119,7 @@ export function chartFindings(n: number, withCases: boolean): ChartFinding[] {
   }
   const arch = uncomment(read(path.join(PRODUCT, 'architecture.md')).replace(/\r\n/g, '\n'))
   found.push(...architectureProblems(arch, read(prdPath(n)), n))
+  found.push(...accessProblems(parseAccess(arch), allIntents().map(i => i.slug), cases, intentsOf(n).map(i => i.slug)))
   for (const q of openQuestions(arch)) found.push({ rule: 'open-question', severity: 'block', where: 'architecture', message: `architecture.md has an open question: ${q}` })
   for (const l of section(arch, 'Concerns').split('\n').map(x => x.replace(/^\s*[-*]\s*/, '').trim()).filter(x => x && !/^none\.?$/i.test(x) && !/^\[x\]/i.test(x) && !/\(resolved\)/i.test(x))) found.push({ rule: 'concern', severity: 'block', where: 'architecture', message: `unresolved concern: ${l}` })
   for (const [where, file] of [['architecture.md', path.join(PRODUCT, 'architecture.md')], ...intentsOf(n).map(i => [`${i.slug}.md`, i.file] as const)]) found.push(...parkedDecisions(where, read(file)))

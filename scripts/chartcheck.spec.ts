@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import fs from 'node:fs'
 import path from 'node:path'
 import assert from 'node:assert/strict'
-import { designIntents, prdIds, parseIntent, parseCases, traceReport, intentSpecProblems, parkedDecisions, type Intent, type TestCase } from './chartcheck.ts'
+import { designIntents, prdIds, parseIntent, parseCases, traceReport, intentSpecProblems, parkedDecisions, parseAccess, accessProblems, type Intent, type TestCase } from './chartcheck.ts'
 
 const PRD = '---\nsprint: 1\nengineers: 1\n---\n# Sprint 1\n\n### FR-1: add\n### FR-2: remove\n| NFR-1 | fast |\n\nMentioned only in prose: FR-9.\n\n## Open questions\nnone\n'
 const intent = (slug: string, o: { prd?: string; depends?: string; days?: string; kind?: string; behaviours?: string; iface?: string; open?: string } = {}): string =>
@@ -220,4 +220,48 @@ test('architect fills brief.md and reports open questions instead of settling th
   assert.match(ar, /fill[^\n]*brief\.md/i)
   assert.match(ar, /see the intents/i)
   assert.match(ar, /Open questions[^.]*(?:reply|return|report)|(?:reply|return|report)[^.]*open questions/i)
+})
+
+const ACCESS = '## Access\n\n| Action | Allowed | Interfaces | Intent |\n|---|---|---|---|\n| delete order | Owner, admin | web, API | order-delete |\n| purge | nobody | api | order-delete |\n\n## Deployment\n'
+const accessCase = (id: string, access: string): string => `| ${id} | FR-1 | a | B1 | unit | - | ok | ${access} |`
+
+test('parseAccess reads rows, lowercases roles and interfaces, and nobody is no roles', () => {
+  assert.deepEqual(parseAccess(ACCESS), [
+    { action: 'delete order', allowed: ['owner', 'admin'], interfaces: ['web', 'api'], intent: 'order-delete' },
+    { action: 'purge', allowed: [], interfaces: ['api'], intent: 'order-delete' },
+  ])
+  assert.deepEqual(parseAccess('## Access\n\n<!-- Optional -->\n\n| Action | Allowed | Interfaces | Intent |\n|---|---|---|---|\n'), [])
+})
+
+test('access-row and access-intent: a blank cell, and an intent that is not charted', () => {
+  const rows = parseAccess('## Access\n| Action | Allowed | Interfaces | Intent |\n|---|---|---|---|\n| cancel | owner |  | order-cancel |\n| refund | admin | api | nowhere |\n')
+  assert.deepEqual(accessProblems(rows, ['order-cancel'], null).map(f => [f.rule, f.where]), [['access-row', 'cancel'], ['access-intent', 'refund']])
+})
+
+test('access-untested: one row with two interfaces needs four cases; three is one finding naming the missing one', () => {
+  const [row] = parseAccess(ACCESS)
+  const four = ['delete order: allowed web', 'Delete order: refused web', 'delete order: allowed api', 'delete order: refused api'].map((a, i) => accessCase(`TC-${i + 1}`, a))
+  assert.deepEqual(accessProblems([row!], ['order-delete'], cases(...four)), [])
+  const three = accessProblems([row!], ['order-delete'], cases(...four.slice(0, 3)))
+  assert.deepEqual(three.map(f => f.rule), ['access-untested'])
+  assert.match(three[0]!.message, /refused[^\n]*api/)
+})
+
+test('a nobody row needs only refused cases', () => {
+  const rows = parseAccess(ACCESS).filter(r => r.action === 'purge')
+  assert.deepEqual(accessProblems(rows, ['order-delete'], cases(accessCase('TC-1', 'purge: refused api'))), [])
+  assert.deepEqual(accessProblems(rows, ['order-delete'], cases()).map(f => f.rule), ['access-untested'])
+})
+
+test('an old seven-column cases.md parses with access "-", and no Access table means no access findings', () => {
+  assert.equal(cases(caseRow('TC-1', 'FR-1', 'a', 'B1'))[0]?.access, '-')
+  assert.equal(cases(accessCase('TC-1', 'purge: refused api'))[0]?.access, 'purge: refused api')
+  assert.deepEqual(accessProblems([], ['a'], cases(caseRow('TC-1', 'FR-1', 'a', 'B1'))), [])
+})
+
+
+test('access-untested asks only for rows whose intent is in this sprint: another sprint tested its own', () => {
+  const [row] = parseAccess(ACCESS)
+  assert.deepEqual(accessProblems([row!], ['order-delete', 'a'], cases(), ['a']), [])
+  assert.equal(accessProblems([row!], ['order-delete'], cases(), ['order-delete']).length, 4)
 })

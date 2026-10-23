@@ -10,7 +10,9 @@ export type Intent = {
   behaviours: Behaviour[]; contractFiles: string[]; exampleFiles: string[]; openQuestions: string[]
   failures: string[]; design: number // B-numbers under `### Failure behaviour`; `## Design` table rows
 }
-export type TestCase = { id: string; reqs: string[]; intent: string; behaviour: string; level: string; data: string }
+export type TestCase = { id: string; reqs: string[]; intent: string; behaviour: string; level: string; data: string; access: string }
+// A row of architecture.md `## Access`: who may take an action, on which interfaces. `allowed` empty means nobody may.
+export type AccessRule = { action: string; allowed: string[]; interfaces: string[]; intent: string }
 export type ChartFinding = { rule: string; severity: 'block' | 'report'; where: string; message: string }
 
 const REQ = /\bN?FR-\d+\b/g
@@ -61,10 +63,10 @@ export function parseIntent(slug: string, raw: string): Intent {
 export const designIntents = (designDoc: string): string[] =>
   section(uncomment(designDoc.replace(/\r\n/g, '\n')).replace(/^(```|~~~)[\s\S]*?^\1/gm, ''), 'Intents').split('\n').flatMap(l => { const m = /^[-*]\s+(?:\*\*|`)?([a-z0-9]+(?:-[a-z0-9]+)*)(?:\*\*|`)?\s*:/.exec(l); return m?.[1] ? [m[1]] : [] })
 
-// cases.md rows: | ID | Requirement | Intent | Behaviour | Level | Data | Expected |
+// cases.md rows: | ID | Requirement | Intent | Behaviour | Level | Data | Expected | Access | (Access optional: a seven-column table still reads)
 export function parseCases(text: string): TestCase[] {
   return text.replace(/\r\n/g, '\n').split('\n').map(l => l.split('|').map(c => c.trim())).filter(c => /^TC-\d+$/.test(c[1] ?? '')).map(c => ({
-    id: c[1] ?? '', reqs: (c[2] ?? '').match(REQ) ?? [], intent: (c[3] ?? '').replace(/\.md$/, ''), behaviour: c[4] ?? '', level: c[5] ?? '', data: c[6] || '-',
+    id: c[1] ?? '', reqs: (c[2] ?? '').match(REQ) ?? [], intent: (c[3] ?? '').replace(/\.md$/, ''), behaviour: c[4] ?? '', level: c[5] ?? '', data: c[6] || '-', access: c[8] || '-',
   }))
 }
 
@@ -162,3 +164,31 @@ export function architectureProblems(arch: string, prd: string, sprint: number):
   if (!rows('Sprint history').some(r => Number(/^(?:sprint[\s-]*)?(\d+)\.?$/i.exec(r[0] ?? '')?.[1]) === sprint)) add('arch-history', `## Sprint history has no row for sprint ${sprint}`)
   return out
 }
+
+const tableRows = (text: string, name: string): string[][] =>
+  section(text, name).split('\n').filter(l => /^\s*\|/.test(l) && !/^\s*\|[\s|:-]*$/.test(l)).map(l => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim()))
+const names = (cell: string): string[] => cell.split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+
+// `| Action | Allowed | Interfaces | Intent |` rows under architecture.md `## Access`; `nobody` allows no role.
+export function parseAccess(arch: string): AccessRule[] {
+  return tableRows(uncomment(arch.replace(/\r\n/g, '\n')), 'Access').slice(1).map(c => ({
+    action: c[0] ?? '', allowed: names(c[1] ?? '').filter(r => r !== 'nobody'), interfaces: names(c[2] ?? ''), intent: c[3] ?? '',
+  }))
+}
+
+// Permissions checked both ways (proposal 2026-10-23 §2): each row well formed and built by a charted intent; with cases, every interface of a
+// row whose intent is this sprint's (`mine`, default every slug) has a refused case and, unless nobody may take the action, an allowed one. Shared backend code proves nothing about another interface.
+export function accessProblems(rules: AccessRule[], slugs: string[], cases: TestCase[] | null, mine: string[] = slugs): ChartFinding[] {
+  const out: ChartFinding[] = []
+  const add = (rule: string, where: string, message: string): number => out.push({ rule, severity: 'block', where, message })
+  const tested = new Set((cases ?? []).flatMap(c => { const m = /^(.+?):\s*(allowed|refused)\s+(\S+)$/i.exec(c.access); return m ? [`${m[1]!.trim().toLowerCase()}|${m[2]!.toLowerCase()}|${m[3]!.toLowerCase()}`] : [] }))
+  for (const r of rules) {
+    const nobody = !r.allowed.length
+    if (!r.action || !r.interfaces.length || !r.intent) { add('access-row', r.action || 'architecture', `## Access row "${r.action}" needs an action, allowed roles (or nobody), interfaces and an intent`); continue }
+    if (!slugs.includes(r.intent)) add('access-intent', r.action, `## Access row "${r.action}" names ${r.intent}, which is not a charted intent`)
+    if (cases && mine.includes(r.intent)) for (const i of r.interfaces) for (const way of nobody ? ['refused'] : ['allowed', 'refused'])
+      if (!tested.has(`${r.action.toLowerCase()}|${way}|${i}`)) add('access-untested', r.action, `no case tests "${r.action}" ${way} on ${i}: add a case with Access "${r.action}: ${way} ${i}"`)
+  }
+  return out
+}
+

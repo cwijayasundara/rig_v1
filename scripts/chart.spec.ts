@@ -449,3 +449,15 @@ test('a sprint with no design doc of its own is not handed the newest sprint des
   write(repo, `${P}/architecture.md`, '---\ndesign: docs/specs/2026-10-20-sprint-2-design.md\n---\n# A\n\n## Concerns\nnone\n\n## Open questions\nnone\n')
   assert.equal(call('return C.designDocOf(1)'), null)
 })
+
+test('chartFindings checks the Access table in architecture.md against the charted intents and the cases', () => {
+  chart1()
+  const table = '## Access\n\n| Action | Allowed | Interfaces | Intent |\n|---|---|---|---|\n| delete | owner | api | alpha |\n\n## Concerns'
+  write(repo, `${P}/architecture.md`, ARCH_DOC().replace('## Concerns', table))
+  assert.deepEqual(call('return C.chartFindings(1, false)'), [])
+  write(repo, `${P}/sprints/sprint-1/testplan/cases.md`, '| ID | Req | Intent | B | Level | Data | Expected | Access |\n| TC-1 | FR-1 | alpha | B1 | unit | - | ok | delete: allowed api |\n')
+  assert.deepEqual((call('return C.chartFindings(1, true)') as { rule: string }[]).map(f => f.rule), ['access-untested'])
+  write(repo, `${P}/architecture.md`, ARCH_DOC().replace('## Concerns', table.replace('| alpha |', '| ghost |')))
+  assert.deepEqual((call('return C.chartFindings(1, false)') as { rule: string }[]).map(f => f.rule), ['access-intent'])
+})
+
