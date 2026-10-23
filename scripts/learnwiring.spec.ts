@@ -62,5 +62,7 @@ test('the learn skill mines the person\'s corrections and turns one seen in two 
   assert.match(skill, /at least 2 sessions/)
   assert.match(skill, /seen: session:<id>, session:<id>/)
   assert.match(skill, /keyed on the review category/)
+  assert.match(skill, /approvals and commands are not corrections/i)
+  assert.match(skill, /2\. \*\*Read\.\*\*[^\n]*corrections\.json/)
   assert.match(skill.split('\n').find(l => l.startsWith('description:')) ?? '', /corrections/)
 })

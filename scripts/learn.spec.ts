@@ -139,3 +139,13 @@ test('learn mine --transcripts writes the typed corrections and the repeats, and
   assert.equal(none.code, 0)
   assert.match(none.stdout, /no transcripts for this repo/)
 })
+
+test('learn mine --transcripts makes sure .rig/learn/ is gitignored before it writes, and names the folder it read', () => {
+  const repo = repoWithTwo()
+  fs.writeFileSync(path.join(repo, '.rig/.gitignore'), 'state/\n')
+  const r = sdlc(repo, ['learn', 'mine', '--transcripts'], { env: { RIG_TRANSCRIPTS_DIR: path.join(repo, 'nope') } })
+  assert.equal(r.code, 0, r.stderr)
+  assert.match(fs.readFileSync(path.join(repo, '.rig/.gitignore'), 'utf8'), /^learn\/$/m)
+  assert.match(r.stdout, /read: .*nope/)
+})
+

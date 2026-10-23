@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { typedTurns, redact, repeated, projectDir, mineTranscripts } from './learntranscripts.ts'
+import { typedTurns, redact, repeated, projectDir, projectDirs, mineTranscripts } from './learntranscripts.ts'
 
 const SID = '8294c2f0-aaaa-bbbb-cccc-000000000000'
 const turn = (content: unknown, o: Record<string, unknown> = {}): string =>
@@ -69,3 +69,32 @@ test('mineTranscripts reads the jsonl files of the folder, skips subdirectories,
   assert.deepEqual(mineTranscripts(dir).map(c => c.text), ['no, do not mock the DB'])
   fs.rmSync(dir, { recursive: true, force: true })
 })
+
+test('redaction covers env-style names, quoted JSON, bearer and basic auth, credentials in URLs and sk_live keys', () => {
+  for (const s of ['export AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMIK7MDENGbPxRfiCY', 'OPENAI_API_KEY=abc123xyz', '{"password": "hunter22"}', 'Authorization: Bearer abc123def456ghi789',
+    'Basic dXNlcjpwYXNzd29yZA==', 'sk_live_abcdefghijklmnop1234']) assert.doesNotMatch(redact(s), /wJalr|abc123|hunter22|def456|dXNlcjpw|abcdefghijklmnop/, s)
+  assert.equal(redact('clone https://bob:hunter2@github.com/x/y'), 'clone https://[redacted]@github.com/x/y')
+  assert.equal(redact('postgres://u:pw@h/db'), 'postgres://[redacted]@h/db')
+})
+
+test('redaction leaves prose alone: a short word after token: is not a secret', () => {
+  assert.equal(redact('the token: use the cache'), 'the token: use the cache')
+  assert.equal(redact('password: hunter2'), 'password: [redacted]')
+})
+
+test('approvals and git commands are never repeated corrections, but a short real correction is', () => {
+  const cs = ['yes', 'Yes.', 'continue', 'yes, proceed', 'merge all to main and push to github', 'use pnpm']
+    .flatMap(text => [{ text, session: 'aaaaaaaa', date: 'd' }, { text, session: 'bbbbbbbb', date: 'd' }])
+  assert.deepEqual(repeated(cs).map(g => g.text), ['use pnpm'])
+})
+
+test('projectDirs tries the path as given and its real path, so a symlinked repo still finds its transcripts', () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-link-'))
+  fs.mkdirSync(path.join(base, 'real'))
+  fs.symlinkSync(path.join(base, 'real'), path.join(base, 'link'))
+  const dirs = projectDirs(path.join(base, 'link'), '/h')
+  assert.ok(dirs.includes(projectDir(path.join(base, 'link'), '/h')))
+  assert.ok(dirs.includes(projectDir(fs.realpathSync(path.join(base, 'real')), '/h')))
+  fs.rmSync(base, { recursive: true, force: true })
+})
+

@@ -9,14 +9,27 @@ export type Correction = { text: string; session: string; date: string }
 
 const MAX_CHARS = 400
 const MIN_SESSIONS = 2
-const SECRETS = [/sk-[A-Za-z0-9_-]{16,}/g, /AKIA[0-9A-Z]{16}/g, /gh[pousr]_[A-Za-z0-9]{20,}/g, /xox[abprs]-[A-Za-z0-9-]{10,}/g, /eyJ[\w-]+\.[\w-]+\.[\w-]+/g]
-const NAMED_SECRET = /\b(api[_-]?key|token|secret|password)(\s*[:=]\s*)\S+/gi
+const SECRETS: [RegExp, string][] = [
+  [/sk[-_](?:live_|test_)?[A-Za-z0-9_-]{16,}/g, '[redacted]'], [/AKIA[0-9A-Z]{16}/g, '[redacted]'], [/gh[pousr]_[A-Za-z0-9]{20,}/g, '[redacted]'],
+  [/xox[abprs]-[A-Za-z0-9-]{10,}/g, '[redacted]'], [/eyJ[\w-]+\.[\w-]+\.[\w-]+/g, '[redacted]'], [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/g, '$1 [redacted]'],
+  [/(:\/\/)[^/\s:@]+:[^@\s]+@/g, '$1[redacted]@'],
+]
+// A value after a secret-looking name (AWS_SECRET_ACCESS_KEY=, "password": ...): redacted when it looks like a secret, a digit in at least 6
+// characters or any 12, so prose such as "the token: use the cache" is left alone.
+const NAMED_SECRET = /([\w-]*(?:api[_-]?key|token|secret|passw(?:or)?d)[\w-]*["']?\s*[:=]\s*["']?)((?=[^\s"',}]*\d)[^\s"',}]{6,}|[^\s"',}]{12,})/gi
+// Approvals and git commands repeat across sessions but teach nothing: they are never a repeated correction.
+const NOT_A_CORRECTION = /^(?:(?:y|yes|ok|okay|sure|continue|proceed|go|ahead|please|lgtm|thanks?|thank you|done|next|do it)[\s,.!]*)+$|^(?:merge|push|commit|rebase|pull|checkout)\b/i
 const BLOCKS = /<(pasted_content|system-reminder)\b[^>]*>[\s\S]*?<\/\1>/g
 
 // Claude Code names a project's transcript folder after its path, every character outside [A-Za-z0-9] turned into `-`.
 export const projectDir = (root: string, home = os.homedir()): string => path.join(home, '.claude', 'projects', root.replace(/[^A-Za-z0-9]/g, '-'))
+// The path as given and its real path (macOS /var is /private/var; a repo may sit under a symlink): Claude Code may have named the folder from either.
+export function projectDirs(root: string, home = os.homedir()): string[] {
+  const real = ((): string => { try { return fs.realpathSync(root) } catch { return root } })()
+  return [...new Set([root, real].map(r => projectDir(r, home)))]
+}
 
-export const redact = (text: string): string => SECRETS.reduce((t, re) => t.replace(re, '[redacted]'), text).replace(NAMED_SECRET, '$1$2[redacted]')
+export const redact = (text: string): string => SECRETS.reduce((t, [re, to]) => t.replace(re, to), text).replace(NAMED_SECRET, '$1[redacted]')
 
 type Line = { type?: string; isMeta?: boolean; isSidechain?: boolean; toolUseResult?: unknown; origin?: { kind?: string }; sessionId?: string; timestamp?: string; message?: { content?: unknown } }
 
@@ -44,6 +57,7 @@ export function typedTurns(jsonl: string): Correction[] {
 export function repeated(cs: Correction[]): { text: string; sessions: string[] }[] {
   const by = new Map<string, { text: string; sessions: string[] }>()
   for (const c of cs) {
+    if (NOT_A_CORRECTION.test(c.text.trim())) continue
     const key = c.text.toLowerCase().replace(/\s+/g, ' ').replace(/[.!?\s]+$/, '')
     const g = by.get(key) ?? { text: c.text, sessions: [] }
     if (!g.sessions.includes(c.session)) g.sessions.push(c.session)

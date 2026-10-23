@@ -2,11 +2,11 @@
 // and writes only under .rig/learn/. The model-facing step is the /rig:learn skill; a person applies every change to the lessons and the rules.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SDLC, WAIVERS, out, fail, read, listChanges, readJsonl, writeAtomic, sha, type Args, type Waiver } from './core.ts'
+import { ROOT, SDLC, WAIVERS, ensureGitignore, out, fail, read, listChanges, readJsonl, writeAtomic, sha, type Args, type Waiver } from './core.ts'
 import { parseLessons, checkLessons, type Lesson } from './learnfile.ts'
 import { mineCandidates, shippedChanges, lessonStatus } from './learnmine.ts'
 import { replayRule, replayLayers } from './learnreplay.ts'
-import { mineTranscripts, projectDir, repeated } from './learntranscripts.ts'
+import { mineTranscripts, projectDirs, repeated } from './learntranscripts.ts'
 import { parseRules, type Rule } from './model.ts'
 
 const LESSONS = path.join(SDLC, 'lessons.md')
@@ -37,13 +37,15 @@ function mine(): void {
 // `learn mine --transcripts`: the person's typed turns from this repo's transcripts, for the skill to group. RIG_TRANSCRIPTS_DIR overrides the
 // folder (tests, evals). The file stays under the gitignored .rig/learn/.
 function mineCorrections(): void {
-  const dir = process.env.RIG_TRANSCRIPTS_DIR || projectDir(ROOT)
+  const tried = process.env.RIG_TRANSCRIPTS_DIR ? [process.env.RIG_TRANSCRIPTS_DIR] : projectDirs(ROOT)
+  const dir = tried.find(d => fs.existsSync(d)) ?? tried[0]!
+  ensureGitignore()
   const corrections = mineTranscripts(dir)
   const again = repeated(corrections)
   fs.mkdirSync(LEARN, { recursive: true })
   writeAtomic(path.join(LEARN, 'corrections.json'), JSON.stringify({ corrections, repeated: again }, null, 2) + '\n')
   const sessions = new Set(corrections.map(c => c.session)).size
-  out([corrections.length ? `${corrections.length} typed turn(s) from ${sessions} session(s); ${again.length} repeated in 2+ sessions` : 'no transcripts for this repo', 'written: .rig/learn/corrections.json'].join('\n'))
+  out([corrections.length ? `${corrections.length} typed turn(s) from ${sessions} session(s); ${again.length} repeated in 2+ sessions` : 'no transcripts for this repo', `read: ${tried.find(d => fs.existsSync(d)) ?? `nothing at ${tried.join(' or ')}`}`, 'written: .rig/learn/corrections.json'].join('\n'))
 }
 
 // A proposal line that promotes a lesson to a rule (PROMOTE) or a layer edge (LAYER) is presentable only with a passing replay of exactly the file
