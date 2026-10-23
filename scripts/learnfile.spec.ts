@@ -62,3 +62,9 @@ test('check rejects any pipe in the text, and an empty text or key', () => {
   assert.match(checkLessons(line({ text: '' }), SLUGS).join('\n'), /L7/)
   assert.match(checkLessons(line({ key: '' }), SLUGS).join('\n'), /L7/)
 })
+
+test('a lesson learned from corrections cites two sessions as session:<id>; one session is still too few', () => {
+  assert.deepEqual(checkLessons(formatLesson({ ...L7, seen: ['session:1a2b3c4d', 'session:5e6f7a8b'] }), SLUGS), [])
+  assert.match(checkLessons(formatLesson({ ...L7, seen: ['session:1a2b3c4d'] }), SLUGS).join('\n'), /at least 2 distinct/)
+  assert.match(checkLessons(formatLesson({ ...L7, seen: ['session:nothex!', 'cart-add'] }), SLUGS).join('\n'), /cites session:nothex!, which is not a change/)
+})
