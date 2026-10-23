@@ -142,3 +142,22 @@ export function intentSpecProblems(intent: Intent, spec: string): string[] {
     ...inSpec.filter(b => !known.has(b.id) && !b.reqs.some(r => intent.prd.includes(r))).map(b => `${b.id} is not in the intent ${intent.slug} and cites no requirement of ${intent.slug} (${intent.prd.join(', ') || 'none'})`),
   ]
 }
+
+// What architecture.md must hold to be an architecture document and not a summary: the stack by name, a diagram, the code structure,
+// a key flow, a tactic for every NFR the PRD defines, and this sprint's row in the history. Pure over text.
+export function architectureProblems(arch: string, prd: string, sprint: number): ChartFinding[] {
+  const text = uncomment(arch.replace(/\r\n/g, '\n'))
+  const out: ChartFinding[] = []
+  const add = (rule: string, message: string): number => out.push({ rule, severity: 'block', where: 'architecture', message: `architecture.md ${message}` })
+  const rows = (name: string): string[][] => section(text, name).split('\n').filter(l => /^\s*\|/.test(l) && !/^\s*\|[\s|:-]*$/.test(l)).map(l => l.split('|').slice(1, -1).map(c => c.trim()))
+  const stack = rows('Technology stack')
+  for (const need of ['Language', 'Framework']) if (!stack.some(r => r[0]?.toLowerCase() === need.toLowerCase() && r[1])) add('arch-stack', `## Technology stack has no ${need} row with a Choice: name the real ${need.toLowerCase()} from the PRD ("none (standard library)" when there is no framework)`)
+  if (!/^```mermaid/m.test(section(text, 'Architecture diagram'))) add('arch-diagram', 'has no mermaid diagram under ## Architecture diagram: draw the modules, the external systems and the dependency direction')
+  const tree = (/^```[^\n]*\n([\s\S]*?)^```/m.exec(section(text, 'Code structure'))?.[1] ?? '').split('\n').filter(l => l.trim())
+  if (tree.length < 3) add('arch-structure', 'has no source tree under ## Code structure: show the directories and files this architecture implies, one comment each')
+  if (!/^```mermaid/m.test(section(text, 'Key flows'))) add('arch-flow', 'has no mermaid sequence diagram under ## Key flows: draw the main use case through the modules')
+  const tactics = section(text, 'Quality tactics')
+  for (const id of prdIds(prd).filter(x => x.startsWith('NFR-'))) if (!new RegExp(`\\b${id}\\b`).test(tactics)) add('arch-nfr', `## Quality tactics has no row for ${id}, which the PRD defines`)
+  if (!rows('Sprint history').some(r => r[0] === String(sprint))) add('arch-history', `## Sprint history has no row for sprint ${sprint}`)
+  return out
+}

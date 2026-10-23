@@ -66,10 +66,10 @@ test('pr commits only this change\'s folder: another change in progress stays ou
 })
 
 test('pr carries a sprint chart approval that is not yet committed, so CI sees the person\'s approval', () => {
-  write(repo, '.rig/product/approvals/chart-0.json', '{"by":"a person"}\n')
+  write(repo, '.rig/product/sprints/sprint-0/approval.json', '{"by":"a person"}\n')
   shipReady()
   assert.equal(pr().code, 0)
-  assert.match(gitIn(repo, 'show', '--name-only', '--format=', 'HEAD'), /\.rig\/product\/approvals\/chart-0\.json/)
+  assert.match(gitIn(repo, 'show', '--name-only', '--format=', 'HEAD'), /\.rig\/product\/sprints\/sprint-0\/approval\.json/)
 })
 
 test('a follow-up pr after the review commits review.md, with no other change', () => {

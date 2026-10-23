@@ -65,7 +65,7 @@ const INTENT = (scope: string, touches = '[]') => `---\nsprint: 1\nprd: [FR-1]\n
 function scoped(scope: string, touches?: string): string {
   const repo = makeRepo()
   sdlc(repo, ['init'])
-  write(repo, '.rig/product/intents/cart-add.md', INTENT(scope, touches))
+  write(repo, '.rig/product/sprints/sprint-0/intents/cart-add.md', INTENT(scope, touches))
   gitIn(repo, 'add', '-A')
   gitIn(repo, 'commit', '-qm', 'chart')
   sdlc(repo, ['new', 'cart-add', '--type', 'feature'])
@@ -112,11 +112,11 @@ test('scope: a touches line, or a waiver from a person, clears the finding; a re
 test('scope: at ship the scope is read from the base branch, so a PR cannot widen or delete its own', () => {
   const repo = scoped('[src/cart/**]')
   write(repo, 'src/orders/orders.js', 'export const b = 2\n')
-  write(repo, '.rig/product/intents/cart-add.md', INTENT('[src/cart/**, src/orders/**]'))
+  write(repo, '.rig/product/sprints/sprint-0/intents/cart-add.md', INTENT('[src/cart/**, src/orders/**]'))
   gitIn(repo, 'add', '-A')
   gitIn(repo, 'commit', '-qm', 'work, and widen the scope in the same PR')
   assert.deepEqual(findings(ship(repo)).map(f => f.file), ['src/orders/orders.js'], 'the widened scope in the PR is ignored')
-  fs.rmSync(path.join(repo, '.rig/product/intents/cart-add.md'))
+  fs.rmSync(path.join(repo, '.rig/product/sprints/sprint-0/intents/cart-add.md'))
   gitIn(repo, 'add', '-A')
   gitIn(repo, 'commit', '-qm', 'delete the intent')
   assert.deepEqual(findings(ship(repo)).map(f => f.file), ['src/orders/orders.js'], 'deleting the intent does not switch the check off')

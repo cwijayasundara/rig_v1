@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { planFiles, overlaps, queueText } from './queue.ts'
-import { makeRepo, sdlc, write, gitIn } from './testkit.ts'
+import { makeRepo, sdlc, write, gitIn, ARCH_OK } from './testkit.ts'
 
 const PRD = '---\nsprint: 0\nengineers: 1\n---\n# Sprint 0\n\n### FR-0: thing\n\n## Open questions\nnone\n'
 const INTENT = '---\nsprint: 0\nprd: [FR-0]\ndepends: []\nestimate_days: 1\nkind: internal\n---\n# i\n\n## Interfaces\nnone\n\n## Behaviours\n- B1 (FR-0): works\n\n## Open questions\nnone\n'
@@ -14,11 +14,11 @@ const HUMAN = { SDLC_HUMAN: '1' }
 function chartedRepo(): string {
   const repo = makeRepo()
   write(repo, '.rig/sensors.json', JSON.stringify({ stack: 'x', paths: { tests: ['**/*.test.ts'] }, sensors: [{ id: 'unit', cmd: 'true', cadence: 'commit', blocks: true, guide: 'run the tests' }] }))
-  write(repo, '.rig/product/prd/sprint-0.md', PRD)
-  for (const s of ['a-one', 'b-two', 'c-three']) write(repo, `.rig/product/intents/${s}.md`, INTENT)
-  write(repo, '.rig/product/testplan/cases.md', CASES)
+  write(repo, '.rig/product/sprints/sprint-0/prd.md', PRD)
+  for (const s of ['a-one', 'b-two', 'c-three']) write(repo, `.rig/product/sprints/sprint-0/intents/${s}.md`, INTENT)
+  write(repo, '.rig/product/sprints/sprint-0/testplan/cases.md', CASES)
   write(repo, '.rig/product/design/sprint-0.md', '# Design\n\n## Intents\n- c-three: third (FR-0)\n- a-one: first (FR-0)\n- b-two: second (FR-0)\n')
-  write(repo, '.rig/product/architecture.md', '---\ndesign: .rig/product/design/sprint-0.md\n---\n# Architecture\n\n## Concerns\nnone\n\n## Open questions\nnone\n')
+  write(repo, '.rig/product/architecture.md', ARCH_OK(0, 'design: .rig/product/design/sprint-0.md'))
   const r = sdlc(repo, ['approve', 'chart-0'], { env: HUMAN })
   assert.equal(r.code, 0, r.stderr + r.stdout)
   return repo
@@ -152,8 +152,8 @@ test('queue next: rung 0 names the person; rung 1 picks the first ready intent i
   const repo = chartedRepo()
   assert.deepEqual(next(repo), { none: 'rung 0: a person starts each intent' })
   assert.equal(sdlc(repo, ['autonomy', 'set', '1', '--why', 'try the queue', '--by', 'me'], { env: HUMAN }).code, 0)
-  assert.deepEqual(next(repo), { slug: 'c-three', sprint: 0, path: '.rig/product/intents/c-three.md' })
-  assert.match(sdlc(repo, ['queue', 'next']).stdout, /^start c-three: \/rig:start \.rig\/product\/intents\/c-three\.md \(rung 1\)/)
+  assert.deepEqual(next(repo), { slug: 'c-three', sprint: 0, path: '.rig/product/sprints/sprint-0/intents/c-three.md' })
+  assert.match(sdlc(repo, ['queue', 'next']).stdout, /^start c-three: \/rig:start \.rig\/product\/sprints\/sprint-0\/intents\/c-three\.md \(rung 1\)/)
   assert.equal(sdlc(repo, ['queue', 'defer', 'c-three'], { env: HUMAN }).code, 0)
   assert.equal(next(repo).slug, 'a-one', 'a deferred slug goes last')
   sdlc(repo, ['queue', 'defer', 'a-one'], { env: HUMAN })
@@ -198,7 +198,7 @@ test('queue next: a change at review waits on a merge, so the queue moves on to 
   write(repo, '.rig/changes/c-three/plan.md', '# Plan\n\n## Files\n- src/\n\n## Open questions\nnone\n')
   assert.deepEqual(next(repo), { none: 'a change is active: c-three (approve)' })
   write(repo, '.rig/changes/c-three/pr.md', 'https://example.com/pr/1\n')
-  assert.deepEqual(next(repo), { slug: 'a-one', sprint: 0, path: '.rig/product/intents/a-one.md' })
+  assert.deepEqual(next(repo), { slug: 'a-one', sprint: 0, path: '.rig/product/sprints/sprint-0/intents/a-one.md' })
 })
 
 test('queue next: an active change already shipped on main does not hold the queue', () => {
