@@ -436,3 +436,16 @@ test('each sprint keeps its own design doc: charting sprint 2 does not move the 
   assert.equal(call('return C.designDocOf(2)'), 'docs/specs/2026-10-20-sprint-2-design.md')
   assert.ok(!allRules(1, false).includes('design-intent'))
 })
+
+test('architecture rules tolerate a # line inside a fence, a row with no closing pipe and a "Sprint 1" history cell', () => {
+  chart1()
+  write(repo, `${P}/architecture.md`, ARCH_DOC().replace('  cli.py     # entry (sprint 1)', '## generated/\n  cli.py     # entry (sprint 1)').replace('| Language | Python | 3.12 | PRD |', '| Language | Python').replace('| 1 | everything', '| Sprint 1 | everything'))
+  assert.deepEqual(allRules(1, false).filter(r => r.startsWith('arch-')), [])
+})
+
+test('a sprint with no design doc of its own is not handed the newest sprint design', () => {
+  chart1()
+  write(repo, 'docs/specs/2026-10-20-sprint-2-design.md', '# D2\n\n## Intents\n- zeta: thing (FR-2)\n')
+  write(repo, `${P}/architecture.md`, '---\ndesign: docs/specs/2026-10-20-sprint-2-design.md\n---\n# A\n\n## Concerns\nnone\n\n## Open questions\nnone\n')
+  assert.equal(call('return C.designDocOf(1)'), null)
+})

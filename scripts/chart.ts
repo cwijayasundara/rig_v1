@@ -46,6 +46,8 @@ export function designDocOf(n: number): string | null {
   if (escapes(d)) return d
   const named = path.join(ROOT, path.dirname(d))
   const mine = exists(named) ? fs.readdirSync(named).filter(f => f.endsWith(`-sprint-${n}-design.md`)).sort().at(-1) : undefined
+  const of = /-sprint-(\d+)-design\.md$/.exec(d)?.[1]
+  if (!mine && of !== undefined && Number(of) !== n) return null // the newest design belongs to another sprint
   return toPosix(path.relative(ROOT, mine ? path.join(named, mine) : path.join(ROOT, d)))
 }
 const designFile = (n: number): string[] => { const d = designDocOf(n); return d && !escapes(d) ? [path.join(ROOT, d)] : [] }
