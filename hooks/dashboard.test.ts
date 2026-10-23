@@ -1,5 +1,5 @@
 import { test, expect, mock } from 'claude-code/testing'
-import { kilo, meter, modelLabel, parseJourney, sdlcArgv } from './dashboard.tsx'
+import { kilo, meter, modelLabel, pack, parseJourney, sdlcArgv } from './dashboard.tsx'
 
 const journey = {
   agents: [{ agent: 'rig-architect', model: 'claude-sonnet-5-5', at: 'a' }, { agent: 'rig:evaluator', model: 'claude-opus-5-5', at: 'b' }],
@@ -50,6 +50,29 @@ test('the band shows every step as its full command and the next command, on eac
 // The engine raises session.start once the session is ready; nothing beneath the plugins handles it, so each test answers it before its first call.
 const answerStart = (on: any): void => { on('session.start', async (_$: any, e: any) => ({ cwd: e.cwd })); on('session.end', async (_$: any, e: any) => ({})) }
 const start = ($: any): Promise<unknown> => $.session.start({ cwd: '/r', surface: 'terminal', isInteractive: true })
+
+// shop_app 2026-10-23: beside a docked diff pane the flex rows shrank each step to a column or two, one rail spilling over many rows.
+test('pack keeps every piece whole, fits each line to the columns and indents the lines after the first', () => {
+  const pieces = ['CART-CORE ', '✓ /rig:start cart-core ─', '◆ /rig:approve cart-core ─', '⟳ auto⟦', '○ /rig:build', '○ /rig:test', '⟧ ─', '○ review and merge the PR'].map(text => ({ text }))
+  const lines = pack(pieces, 40, 11)
+  expect(lines.flat().map(p => p.text)).toEqual(pieces.map(p => p.text))
+  lines.forEach((l, n) => expect((n ? 11 : 0) + l.reduce((w, p, i) => w + [...p.text].length + (i ? 1 : 0), 0)).toBeLessThanOrEqual(40))
+  expect(pack([{ text: 'x'.repeat(60) }, { text: 'y' }], 40).length).toBe(2)
+  expect(pack(pieces, 200).length).toBe(1)
+})
+
+test('a narrow band still draws each step as one Text', async ($, on) => {
+  on('process.run', async () => ({ value: { stdout: JSON.stringify(journey), stderr: '', exitCode: 0 } }))
+  on('session.usage', async () => ({ value: { startedAt: 0, context: { tokens: 1000, window: 200000 }, rateLimits: [], cost: { usd: 1 } } }))
+  on('prompt.submit', async (_$, e) => ({ text: e.text }))
+  on('ui.status', async () => ({ value: undefined }))
+  await $.prompt.submit({ text: 'hi' })
+  const ui = await $.ui.mount({ plugin: 'rig', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false, bodyColumns: 40 } })
+  expect(await ui.find({ type: 'Text', text: /^○ \/rig:test add-cart ─$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^⟳ auto⟦$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^0$/ })).toBeUndefined()
+  await ui.unmount()
+})
 
 test('modelLabel drops the claude- prefix', () => {
   expect(modelLabel('claude-opus-5-5')).toBe('opus-5-5')

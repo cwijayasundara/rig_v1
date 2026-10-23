@@ -220,6 +220,16 @@ test('approve refuses a plan that touches a file outside spec.md ## Blast radius
   assert.ok(!fs.existsSync(path.join(repo, '.rig/changes/demo/approval.json')))
 })
 
+// shop_app cart-core: start/SKILL.md asks for the radius "one per line", so it came as bare lines and read as empty,
+// which put every plan file outside it; a prose bullet ("No existing test ...") and a "Modify:" label read as paths too.
+test('approve reads a bare-line ## Blast radius and skips labels and prose bullets in ## Files', () => {
+  planned()
+  write(repo, '.rig/changes/demo/spec.md', `${SPEC}\n## Blast radius\nsrc/cart/errors.py\nsrc/cart/models.py\ntests/\n\n## Out of scope\n- \`src/cart/cli.py\`\n`)
+  write(repo, '.rig/changes/demo/plan.md', '# Plan\n\n## Files\n- `src/cart/errors.py` (modify: three subclasses)\n- Create: `src/cart/models.py`\n- tests/test_models.py (create)\n- No existing test is made wrong; the smoke test is untouched.\n\n## Open questions\nnone\n')
+  const r = sdlc(repo, ['approve', 'demo'], HUMAN)
+  assert.equal(r.code, 0, r.stderr)
+})
+
 test('a spec.md with no ## Blast radius heading is not checked', () => {
   planned()
   const r = sdlc(repo, ['approve', 'demo'], HUMAN)
