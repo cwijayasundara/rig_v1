@@ -75,8 +75,8 @@ test('init skill: --quick is the no-question fast lane that turns on workflows',
 test('init skill: greenfield and PRD repos are sent to /rig:chart 0 first, a one-off change to /rig:start', () => {
   const tpl = fs.readFileSync(path.resolve(import.meta.dirname, '../templates/readme-rig.md'), 'utf8')
   assert.match(skill, /Greenfield, or any repo with a PRD[^\n]*`Next: \/rig:chart 0`/)
-  assert.match(skill, /prd\/sprint-0\.md/)
+  assert.match(skill, /sprints\/sprint-0\/prd\.md/)
   assert.match(skill, /One-off change with no PRD[^\n]*\/rig:start/)
   assert.match(tpl, /\/rig:chart 0/)
-  assert.match(tpl, /prd\/sprint-0\.md/)
+  assert.match(tpl, /sprints\/sprint-0\/prd\.md/)
 })

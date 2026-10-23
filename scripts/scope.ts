@@ -6,8 +6,8 @@ import path from 'node:path'
 import { ROOT, read } from './core.ts'
 import { matchesAny, isTest, type FileDiff, type Finding } from './model.ts'
 import type { Paths } from './registry.ts'
+import { intentRelOf } from './product.ts'
 
-const INTENTS = '.rig/product/intents'
 const tidy = (s: string): string => s.trim().replace(/^["']|["']$/g, '').replace(/^(\.\/)+/, '').replace(/\/+$/, '')
 const inline = (v: string): string[] => v.trim().replace(/\s+#.*$/, '').replace(/^\[|\]$/g, '').split(',').map(tidy).filter(Boolean)
 
@@ -21,9 +21,11 @@ export function fmList(text: string, key: string): string[] {
   return rows.slice(at + 1).filter((r, i, all) => /^\s+-\s*\S/.test(r) && all.slice(0, i).every(x => /^\s+-/.test(x))).map(r => tidy(r.replace(/^\s+-\s*/, '').replace(/\s+#.*$/, '')))
 }
 
-// readIntent: how to get the intent's text (the working tree, or the base ref).
-export function intentScope(slug: string, readIntent: (rel: string) => string = rel => read(path.join(ROOT, rel))): { scope: string[]; touches: string[] } | null {
-  const text = readIntent(`${INTENTS}/${slug}.md`)
+// readIntent: how to get the intent's text (the working tree, or the base ref); files: the repo's files at that ref, to find the intent's sprint folder (default: the working tree).
+export function intentScope(slug: string, readIntent: (rel: string) => string = rel => read(path.join(ROOT, rel)), files?: string[]): { scope: string[]; touches: string[] } | null {
+  const rel = intentRelOf(slug, files)
+  if (!rel) return null
+  const text = readIntent(rel)
   const scope = fmList(text, 'scope')
   return scope.length ? { scope, touches: fmList(text, 'touches') } : null
 }

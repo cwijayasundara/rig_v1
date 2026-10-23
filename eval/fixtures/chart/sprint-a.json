@@ -1,4 +1,4 @@
 {
-  "prd": "tests/e2e/prd/chart-fixture/product/prd/sprint-1.md",
+  "prd": "tests/e2e/prd/chart-fixture/product/sprints/sprint-1/prd.md",
   "requirements": ["FR-1", "FR-2", "FR-3", "NFR-1"]
 }

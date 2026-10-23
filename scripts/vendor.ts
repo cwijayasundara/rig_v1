@@ -5,7 +5,7 @@ import path from 'node:path'
 import { ROOT, SDLC, PLUGIN_ROOT, IS_VENDORED, read, out, fail, sanctionWrites, type Args } from './core.ts'
 import { writeHookScripts, installHooks } from './githooks.ts'
 
-export const VENDORED = ['core', 'model', 'sensors', 'diffs', 'runs', 'check', 'stamp', 'basetree', 'verify', 'hooks', 'pr', 'sdlc', 'githooks', 'vendor', 'initbaseline', 'registry', 'stackpacks', 'modelstate', 'stackinit', 'contracts', 'sync', 'lifecycle', 'chart', 'chartcheck', 'journey', 'wiki', 'wikicite', 'wikigen', 'wikistate', 'wikivalidate', 'learn', 'learnfile', 'learnmine', 'learnreplay', 'report', 'arch', 'counts', 'queue', 'app', 'scope', 'slice', 'maintain', 'readiness', 'autonomy']
+export const VENDORED = ['core', 'model', 'sensors', 'diffs', 'runs', 'check', 'stamp', 'basetree', 'verify', 'hooks', 'pr', 'sdlc', 'githooks', 'vendor', 'initbaseline', 'registry', 'stackpacks', 'modelstate', 'stackinit', 'contracts', 'sync', 'lifecycle', 'chart', 'chartcheck', 'product', 'journey', 'wiki', 'wikicite', 'wikigen', 'wikistate', 'wikivalidate', 'learn', 'learnfile', 'learnmine', 'learnreplay', 'report', 'arch', 'counts', 'queue', 'app', 'scope', 'slice', 'maintain', 'readiness', 'autonomy']
 const SDLC_HOOK = '.rig/bin/sdlc.ts'
 type HookGroup = { matcher?: string; hooks: { type: string; command: string; timeout?: number; async?: boolean }[] }
 
@@ -107,6 +107,16 @@ function vendorStandalone(written: string[]): void {
   }
   vendorDashboard(written)
   mergeHooks(written)
+  routeClaudeMd(written)
+}
+
+// CLAUDE.md's routing line is written while the plugin's /rig:x names are live; a standalone copy answers to /rig-x (the folder name),
+// so the line a model reads agrees with the session-start hook and `status`. Only that one command is touched.
+function routeClaudeMd(written: string[]): void {
+  const file = 'CLAUDE.md'
+  const text = read(path.join(ROOT, file))
+  const routed = text.replace('start with /rig:start;', 'start with /rig-start;')
+  if (routed !== text) writeFile(file, routed, written)
 }
 
 const older = (a: string, b: string): boolean => {
@@ -156,6 +166,9 @@ export function installStandalone(workflows: boolean): string {
   const file = path.join(ROOT, '.claude', 'settings.json')
   const { $comment: _comment, ...template } = JSON.parse(read(path.join(PLUGIN_ROOT, 'templates', 'settings.json'))) as Record<string, unknown>
   const merged = mergeMissing(JSON.parse(read(file) || '{}') as Record<string, unknown>, template)
+  // An earlier template wrote this false, and mergeMissing keeps the project's value; rig's skills invoke superpowers, so it must be on.
+  const plugins = (merged.enabledPlugins ?? {}) as Record<string, boolean>
+  merged.enabledPlugins = { ...plugins, 'superpowers@claude-plugins-official': true }
   const written: string[] = []
   writeFile('.claude/settings.json', JSON.stringify(merged, null, 2) + '\n', written)
   lines.push('merged templates/settings.json into .claude/settings.json (existing values kept)')

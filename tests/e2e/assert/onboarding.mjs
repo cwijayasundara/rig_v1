@@ -12,9 +12,9 @@ const names = (dir, ext = '') => fs.readdirSync(path.join(PLUGIN, dir)).filter(f
 export async function assertOnboarding(c, sb, { lane, modules = [] }) {
   const claudeMd = sb.read('CLAUDE.md')
   await c.check('CLAUDE.md exists, at most 120 lines', () => (claudeMd !== '' && claudeMd.split('\n').length <= 120) || `${claudeMd.split('\n').length} lines`)
-  // Skills are /rig:x in every install mode (vendored skills are named rig:x too), so CLAUDE.md names /rig:start.
-  await c.check('CLAUDE.md routes work to /rig:start', () =>
-    /sdlc routes all work in this repo: start with \/rig:start;/.test(claudeMd) || 'routing line missing or names another start command')
+  // init --full rewrites the line to the vendored command, /rig-start, the one the session-start hook and status name.
+  await c.check('CLAUDE.md routes work to /rig-start', () =>
+    /sdlc routes all work in this repo: start with \/rig-start;/.test(claudeMd) || 'routing line missing or names another start command')
 
   const reg = (() => { try { return JSON.parse(sb.read('.rig/sensors.json')) } catch { return {} } })()
   await c.check('sensors.json is a registry with a unit sensor', () => (Array.isArray(reg.sensors) && reg.sensors.some(s => s.id === 'unit' && /test/.test(s.cmd ?? ''))) || JSON.stringify(reg))

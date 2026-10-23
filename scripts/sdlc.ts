@@ -30,6 +30,7 @@ import { cmdReport } from './report.ts'
 import { cmdArch, layerState, layerStateText } from './arch.ts'
 import { cmdQueue, conflictsFor } from './queue.ts'
 import { intentScope } from './scope.ts'
+import { intentRelOf, prdRel, sprintRel } from './product.ts'
 import { cmdSlice } from './slice.ts'
 import { cmdMaintain } from './maintain.ts'
 import { cmdReadiness } from './readiness.ts'
@@ -67,7 +68,7 @@ function cmdInit(args: Args): void {
 
 function cmdNew(args: Args): void {
   const slug = args.pos[0] ?? ''
-  if (!SLUG_RE.test(slug)) fail(`usage: new <kebab-slug> [--type ${TYPES.join('|')}] [--title "..."] [--source .rig/product/intents/<slug>.md]`)
+  if (!SLUG_RE.test(slug)) fail(`usage: new <kebab-slug> [--type ${TYPES.join('|')}] [--title "..."] [--source .rig/product/sprints/sprint-<N>/intents/<slug>.md]`)
   const raw = optString(args, 'type') ?? 'feature'
   // The four types, plus the older names toType folds in (greenfield, incident, migration, spike).
   if (![...TYPES, 'greenfield', 'incident', 'migration', 'spike'].includes(raw)) fail(`usage: new <slug> [--type ${TYPES.join('|')}] [--title "..."]`)
@@ -75,7 +76,8 @@ function cmdNew(args: Args): void {
   const source = optString(args, 'source')
   if (source) {
     const rel = toPosix(path.relative(ROOT, path.resolve(ROOT, source)))
-    if (rel !== `.rig/product/intents/${slug}.md`) fail(`the slug must equal the intent's: new ${slug} --source ${rel} (expected .rig/product/intents/${slug}.md)`)
+    const expected = intentRelOf(slug)
+    if (rel !== expected) fail(`the slug must equal the intent's: new ${slug} --source ${rel} (expected ${expected ?? `.rig/product/sprints/sprint-<N>/intents/${slug}.md`})`)
     const ready = intentReady(slug)
     if (!ready.ready) fail(`${slug} cannot start:\n${ready.why.map(w => `  - ${w}`).join('\n')}`)
   }
@@ -139,20 +141,20 @@ function cmdApprove(args: Args): void {
 }
 
 function approveChart(n: number, args: Args): void {
-  if (!exists(prdPath(n))) fail(`no PRD for sprint ${n}: write .rig/product/prd/sprint-${n}.md first`)
+  if (!exists(prdPath(n))) fail(`no PRD for sprint ${n}: write ${prdRel(n)} first`)
   const block = chartFindings(n, true).filter(f => f.severity === 'block')
   if (block.length) fail(`chart-${n} has ${block.length} blocking finding(s); fix them, then approve:\n${block.map(f => `  [${f.rule}] ${f.message}`).join('\n')}`)
   if (chartState(n).state === 'approved') return out(`chart-${n} is already approved`)
   const by = ownerOrFail(args, 'approvals')
   writeChartApproval(n, by)
-  out(`approved chart-${n} by ${by}: ${chartFiles(n).length} file(s). Next: engineers run \`ready\` to see which intents can start, then ${skillRef('start')} .rig/product/intents/<slug>.md`)
+  out(`approved chart-${n} by ${by}: ${chartFiles(n).length} file(s). Next: engineers run \`ready\` to see which intents can start, then ${skillRef('start')} ${sprintRel(n)}/intents/<slug>.md`)
 }
 
 function cmdChart(args: Args): void {
   const [sub, num] = args.pos
   if ((sub !== 'check' && sub !== 'report') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: chart (check [--cases] [--json] | report) <sprint number>')
   const n = Number(num)
-  if (!exists(prdPath(n))) fail(`no PRD for sprint ${n}: write .rig/product/prd/sprint-${n}.md first`)
+  if (!exists(prdPath(n))) fail(`no PRD for sprint ${n}: write ${prdRel(n)} first`)
   if (sub === 'report') return out(chartReport(n))
   const found = chartFindings(n, Boolean(args.opt.cases))
   if (args.opt.json) return out(JSON.stringify(found))

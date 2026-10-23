@@ -47,6 +47,15 @@ test('vendor --cloud writes project skills, agents and hooks with no plugin refe
   assert.equal(again.hooks.Stop.length, settings.hooks.Stop.length, 're-running replaces sdlc hooks instead of duplicating them')
 })
 
+test('vendor --cloud rewrites the CLAUDE.md routing line to the vendored command and leaves the rest alone', () => {
+  const repo = makeRepo()
+  sdlc(repo, ['init'])
+  const claude = '# App\n\nsdlc routes all work in this repo: start with /rig:start; use superpowers skills only when an sdlc skill names one.\n\nSee /rig:plan notes.\n'
+  write(repo, 'CLAUDE.md', claude)
+  assert.equal(sdlc(repo, ['vendor', '--cloud']).code, 0)
+  assert.equal(fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8'), claude.replace('start with /rig:start;', 'start with /rig-start;'))
+})
+
 test('the vendored copy points its skills at .rig/bin and the session start names the active change', () => {
   const repo = makeRepo()
   sdlc(repo, ['init'])
@@ -188,6 +197,15 @@ test('init --full vendors, wires git hooks and merges the settings template with
   assert.ok(settings.hooks, 'the harness hooks are still there')
   assert.equal(spawnSync('git', ['config', '--local', 'core.hooksPath'], { cwd: repo, encoding: 'utf8' }).stdout.trim(), '.rig/githooks')
   assert.equal(fs.existsSync(path.join(repo, '.github/workflows')), false, 'workflows only with --workflows')
+})
+
+test('init --full turns superpowers on, even where an older template left it off: rig skills invoke it', () => {
+  const repo = makeRepo()
+  write(repo, '.claude/settings.json', JSON.stringify({ enabledPlugins: { 'superpowers@claude-plugins-official': false, 'x@mine': false } }))
+  assert.equal(sdlc(repo, ['init', '--full']).code, 0)
+  const settings = JSON.parse(fs.readFileSync(path.join(repo, '.claude/settings.json'), 'utf8'))
+  assert.equal(settings.enabledPlugins['superpowers@claude-plugins-official'], true)
+  assert.equal(settings.enabledPlugins['x@mine'], false, 'other plugin choices are kept')
 })
 
 test('init --full --workflows writes the CI files and never overwrites an existing one', () => {

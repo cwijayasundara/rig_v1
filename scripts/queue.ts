@@ -10,6 +10,7 @@ import { activeSlug, status } from './lifecycle.ts'
 import { loadConfig } from './check.ts'
 import { treeStamp } from './stamp.ts'
 import { readyIntents, designDocOf } from './chart.ts'
+import { intentRel } from './product.ts'
 import { designIntents } from './chartcheck.ts'
 import { readAutonomy, writeAutonomy } from './autonomy.ts'
 
@@ -100,7 +101,7 @@ export function queueNext(): { slug: string; sprint: number; path: string } | { 
   }
   const rank = (r: { slug: string; sprint: number }): number => { const i = order(r.sprint).indexOf(r.slug); return i < 0 ? Number.MAX_SAFE_INTEGER : i }
   const [first] = readyIntents().sort((x, y) => Number(a.deferred.includes(x.slug)) - Number(a.deferred.includes(y.slug)) || x.sprint - y.sprint || rank(x) - rank(y) || x.slug.localeCompare(y.slug))
-  return first ? { slug: first.slug, sprint: first.sprint, path: `.rig/product/intents/${first.slug}.md` } : { none: 'no intents are ready' }
+  return first ? { slug: first.slug, sprint: first.sprint, path: intentRel(first.sprint, first.slug) } : { none: 'no intents are ready' }
 }
 
 function cmdDefer(args: Args, on: boolean): void {

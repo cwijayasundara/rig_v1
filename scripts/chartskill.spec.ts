@@ -1,5 +1,5 @@
 // A live run of `/rig-chart sprint 0: docs/prd/shopping-cart-app-prd.md` stopped because the PRD was a free-form draft,
-// not .rig/product/prd/sprint-0.md. init already tells the person to copy such a PRD; chart must do it, not stop.
+// not .rig/product/sprints/sprint-0/prd.md. init already tells the person to copy such a PRD; chart must do it, not stop.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
@@ -8,7 +8,7 @@ import path from 'node:path'
 const skill = fs.readFileSync(path.resolve(import.meta.dirname, '../skills/chart/SKILL.md'), 'utf8')
 
 test('chart skill: a draft PRD path is converted to the sprint PRD, not a reason to stop', () => {
-  assert.match(skill, /\*\*Take it as given\.\*\*[^\n]*\.rig\/product\/prd\/sprint-<N>\.md/)
+  assert.match(skill, /\*\*Take it as given\.\*\*[^\n]*\.rig\/product\/sprints\/sprint-<N>\/prd\.md/)
   assert.match(skill, /FR-n/)
   assert.match(skill, /never invent/i)
 })

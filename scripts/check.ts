@@ -220,7 +220,7 @@ const onDisk = (f: string): string => read(path.join(ROOT, f))
 // The built-in diff sensors every point runs, edit time included; harness-tamper is added by the callers that judge a turn or more.
 function builtinFindings(diffs: FileDiff[], config: Registry, rules: Rule[], lineCounts: Record<string, number>, point: Parameters<typeof size>[3], slugs: string[], touched: string[], after: (f: string) => string, base: string | null): Finding[] {
   // At ship and CI the scope comes from the base branch (the PR cannot edit it); a slug with no intent there falls back to the working tree.
-  const scopeOf = (slug: string): ReturnType<typeof intentScope> => ((point === 'ship' || point === 'ci') && base ? intentScope(slug, rel => showAt(base, rel) ?? '') : null) ?? intentScope(slug)
+  const scopeOf = (slug: string): ReturnType<typeof intentScope> => ((point === 'ship' || point === 'ci') && base ? intentScope(slug, rel => showAt(base, rel) ?? '', (git(['ls-tree', '-r', '--name-only', base, '--', '.rig/product/sprints']) ?? '').split('\n')) : null) ?? intentScope(slug)
   const pattern = withoutFixtures(diffs, config)
   return [
     ...testTamper(pattern, config), ...suppressions(pattern, config), ...layering(pattern, config), ...size(diffs, config, lineCounts, point),
@@ -282,9 +282,9 @@ function humanRowsAdded(base: string): string[] {
     }
   }
   // approval.json: every one the PR adds or edits is a person's decision CI cannot verify from the file alone.
-  // A sprint chart approval (.rig/product/approvals/chart-N.json) is the same kind of row.
-  for (const f of (git(['diff', '--name-only', base, 'HEAD', '--', '.rig/changes', '.rig/product/approvals']) ?? '').split('\n')) {
-    const name = /^\.rig\/changes\/([^/]+)\/approval\.json$/.exec(f)?.[1] ?? /^\.rig\/product\/approvals\/(chart-\d+)\.json$/.exec(f)?.[1]
+  // A sprint chart approval (.rig/product/sprints/sprint-N/approval.json) is the same kind of row.
+  for (const f of (git(['diff', '--name-only', base, 'HEAD', '--', '.rig/changes', '.rig/product/sprints']) ?? '').split('\n')) {
+    const name = /^\.rig\/changes\/([^/]+)\/approval\.json$/.exec(f)?.[1] ?? (/^\.rig\/product\/sprints\/sprint-(\d+)\/approval\.json$/.exec(f)?.[1] ? `chart-${/^\.rig\/product\/sprints\/sprint-(\d+)\//.exec(f)?.[1]}` : undefined)
     if (!name) continue
     let by = '?'
     try { by = String((JSON.parse(read(path.join(ROOT, f))) as { by?: unknown }).by ?? '?') } catch { /* deleted or unreadable: still a row */ }

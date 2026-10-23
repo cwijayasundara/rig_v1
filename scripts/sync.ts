@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { ROOT, SDLC, CHANGES, read, exists, sha, git, out, fail, sanctionWrites, frontmatter, listChanges, type Args } from './core.ts'
 import { parseIntent, intentSpecProblems } from './chartcheck.ts'
+import { intentRelOf } from './product.ts'
 import { parseRegistry, isRegistryShape, type Registry } from './registry.ts'
 import { behaviourIds, missingBehaviours } from './sensors.ts'
 import { matchesAny, type Finding, type Severity } from './model.ts'
@@ -58,8 +59,8 @@ export function syncFindings(registry: Registry, errors: string[], severity: Sev
   const brief = read(path.join(ROOT, BRIEF))
   const intentSpec = (): Finding[] => listChanges().flatMap(slug => {
     // A change is held to the intent it was started from, or to the intent of its own name: deleting the source line does not lift the rule.
-    const source = frontmatter(read(path.join(CHANGES, slug, 'intent.md'))).data.source || `.rig/product/intents/${slug}.md`
-    const text = read(path.join(ROOT, source))
+    const source = frontmatter(read(path.join(CHANGES, slug, 'intent.md'))).data.source || intentRelOf(slug) || ''
+    const text = source ? read(path.join(ROOT, source)) : ''
     return !text ? [] : intentSpecProblems(parseIntent(slug, text), read(path.join(CHANGES, slug, 'spec.md'))).map((message): Finding => ({ sensor: 'sync', severity, file: `.rig/changes/${slug}/spec.md`, message, fix: 'restore the behaviour in spec.md, or ask the architect to change the intent (the chart then needs a new approval)' }))
   })
   return [...intentSpec(), ...syncProblems({ registry, errors, claude: read(path.join(ROOT, CLAUDE_MD)), brief, tests: brief ? testsText(registry) : '' }).map(message => {

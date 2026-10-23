@@ -114,3 +114,9 @@ export function workflowFindings(text: string, strict = false): string[] {
   return found
 }
 
+
+// An architecture.md that passes the chart's architecture rules for a PRD with no NFR, for fixtures that need a chart to approve.
+export const ARCH_OK = (sprint = 0, front = ''): string =>
+  `${front ? `---\n${front}\n---\n` : ''}# Architecture\n\n## Technology stack\n\n| Concern | Choice | Version | Source |\n|---|---|---|---|\n| Language | Python | 3.12 | PRD |\n| Framework | none (standard library) | | PRD |\n\n` +
+  '## Architecture diagram\n\n```mermaid\nflowchart LR\n  cli --> core\n```\n\n## Code structure\n\n```\nsrc/app/\n  cli.py   # entry\n  core.py  # rules\ntests/\n```\n\n' +
+  `## Key flows\n\n\`\`\`mermaid\nsequenceDiagram\n  cli->>core: run\n\`\`\`\n\n## Sprint history\n\n| Sprint | Adds | Intents | ADRs |\n|---|---|---|---|\n| ${sprint} | all | all | none |\n\n## Concerns\nnone\n\n## Open questions\nnone\n`

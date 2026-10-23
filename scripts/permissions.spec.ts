@@ -45,6 +45,6 @@ test('the pr skill posts its review from a file: a multi-line --body may not mat
 
 test('a sprint chart approval is as protected from the model as a change approval', () => {
   const deny = JSON.parse(fs.readFileSync(path.join(ROOT, 'templates/settings.json'), 'utf8')).permissions.deny as string[]
-  assert.ok(deny.includes('Edit(/.rig/product/approvals/**)'), 'settings.json denies edits to chart approvals')
-  assert.match(fs.readFileSync(path.join(ROOT, 'templates/managed-settings.json'), 'utf8'), /"Edit\(\.\/\.rig\/product\/approvals\/\*\*\)"/)
+  assert.ok(deny.includes('Edit(/.rig/product/sprints/**/approval.json)'), 'settings.json denies edits to chart approvals')
+  assert.match(fs.readFileSync(path.join(ROOT, 'templates/managed-settings.json'), 'utf8'), /"Edit\(\.\/\.rig\/product\/sprints\/\*\*\/approval\.json\)"/)
 })

@@ -56,12 +56,12 @@ export async function runChartOne(arm, n, { dry, out, capRunUsd }) {
   let findings = []
   try {
     await setupRig(sb, arm, { dry })
-    sb.write('.rig/product/prd/sprint-1.md', fs.readFileSync(path.join(ROOT, KEY.prd), 'utf8'))
+    sb.write('.rig/product/sprints/sprint-1/prd.md', fs.readFileSync(path.join(ROOT, KEY.prd), 'utf8'))
     sb.commitAll('docs: sprint 1 requirements')
     if (dry) writeFixture(sb)
     else sessions.run('chart', '/rig-chart 1', { withPlugin: false })
     findings = JSON.parse(sb.sdlc(['chart', 'check', '1', '--cases', '--json']).stdout || '[]')
-    const dir = path.join(sb.dir, '.rig/product/intents')
+    const dir = path.join(sb.dir, '.rig/product/sprints/sprint-1/intents')
     intents = fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => f.endsWith('.md')).map(f => parseIntent(f.slice(0, -3), fs.readFileSync(path.join(dir, f), 'utf8'))) : []
   } catch (err) {
     row.error = String(err?.message ?? err).split('\n')[0]
