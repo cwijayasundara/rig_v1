@@ -199,6 +199,15 @@ test('init --full vendors, wires git hooks and merges the settings template with
   assert.equal(fs.existsSync(path.join(repo, '.github/workflows')), false, 'workflows only with --workflows')
 })
 
+test('init --full turns superpowers on, even where an older template left it off: rig skills invoke it', () => {
+  const repo = makeRepo()
+  write(repo, '.claude/settings.json', JSON.stringify({ enabledPlugins: { 'superpowers@claude-plugins-official': false, 'x@mine': false } }))
+  assert.equal(sdlc(repo, ['init', '--full']).code, 0)
+  const settings = JSON.parse(fs.readFileSync(path.join(repo, '.claude/settings.json'), 'utf8'))
+  assert.equal(settings.enabledPlugins['superpowers@claude-plugins-official'], true)
+  assert.equal(settings.enabledPlugins['x@mine'], false, 'other plugin choices are kept')
+})
+
 test('init --full --workflows writes the CI files and never overwrites an existing one', () => {
   const repo = makeRepo()
   write(repo, 'REVIEW.md', 'mine\n')

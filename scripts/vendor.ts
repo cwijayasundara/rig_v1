@@ -166,6 +166,9 @@ export function installStandalone(workflows: boolean): string {
   const file = path.join(ROOT, '.claude', 'settings.json')
   const { $comment: _comment, ...template } = JSON.parse(read(path.join(PLUGIN_ROOT, 'templates', 'settings.json'))) as Record<string, unknown>
   const merged = mergeMissing(JSON.parse(read(file) || '{}') as Record<string, unknown>, template)
+  // An earlier template wrote this false, and mergeMissing keeps the project's value; rig's skills invoke superpowers, so it must be on.
+  const plugins = (merged.enabledPlugins ?? {}) as Record<string, boolean>
+  merged.enabledPlugins = { ...plugins, 'superpowers@claude-plugins-official': true }
   const written: string[] = []
   writeFile('.claude/settings.json', JSON.stringify(merged, null, 2) + '\n', written)
   lines.push('merged templates/settings.json into .claude/settings.json (existing values kept)')
