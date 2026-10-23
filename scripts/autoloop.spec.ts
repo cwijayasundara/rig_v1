@@ -44,6 +44,10 @@ test('start invokes superpowers:brainstorming on the intent and ends with spec.m
   assert.match(p, /## Files[^\n]*inside[^\n]*## Blast radius/)
 })
 
+test('the chart and start brainstorms are handed the code wiki as cited, warn-only recon', () => {
+  for (const name of ['chart', 'start']) { const t = skill(name); assert.match(t, /\.rig\/wiki\/index\.md/, name); assert.match(t, /stale page[^.]*hint[^.]*never as fact/, name) }
+})
+
 test('nothing after approve asks the person a question except the existing stop cases', () => {
   for (const name of ['build', 'test', 'pr', 'start', 'plan']) assert.doesNotMatch(skill(name), /AskUserQuestion/, `${name} must not ask`)
 })
