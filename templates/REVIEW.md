@@ -4,7 +4,7 @@ Read by the managed GitHub Code Review service. The local review in `/rig:pr` (a
 
 ## Review passes
 1. **Correctness:** behaviour matches the spec's B-numbers; edge cases the intent names are handled.
-2. **Security:** input validation, authn/authz on every new endpoint, no secrets or PII in logs or errors.
+2. **Security:** input validation, authn/authz on every new endpoint (every action in `.rig/product/architecture.md` `## Access` checked against its row: allowed roles enforced, every other role refused, on each interface), no secrets or PII in logs or errors.
 3. **Contracts:** every API, schema or event change is listed in plan.md `## Contracts` and is additive or follows expand–migrate–contract.
 4. **Design:** one responsibility per unit; dependencies point inward; no abstraction with a single implementation.
 5. **Tests:** every new behaviour is pinned by a test that would fail without the change.

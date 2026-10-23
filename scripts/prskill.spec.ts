@@ -98,3 +98,9 @@ test('with no design doc, an unmapped finding left open names the intent line a 
   assert.match(pr(), /`unmapped`[^\n]*no design doc[^\n]*intent/)
   assert.match(repoText('templates/review-brief.md'), /the doc line that would cover it \(the design doc's, else the intent's\)/)
 })
+
+test('the security pass checks every touched action against its ## Access row on each interface', () => {
+  assert.match(pr(), /`\/security-review all changes since <base>, committed and uncommitted, and every action in `\.rig\/product\/architecture\.md` `## Access`/)
+  assert.match(pr(), /for security: [^\n]*every action in `\.rig\/product\/architecture\.md` `## Access`[^\n]*on each interface/)
+  assert.match(repoText('templates/REVIEW.md'), /## Access/)
+})

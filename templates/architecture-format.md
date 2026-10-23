@@ -43,6 +43,13 @@ design: <path or none>
 
 <!-- Each interface and the contract file that fixes it. -->
 
+## Access
+
+<!-- Optional: delete this section when the product has no users or roles. One row per action. Allowed: roles, comma-separated, or nobody (refused to everyone). Interfaces: where the action can be called (web, api, cli); each is tested on its own, because shared backend code proves nothing about another interface. Intent: the intent that builds the action. -->
+
+| Action | Allowed | Interfaces | Intent |
+|---|---|---|---|
+
 ## Quality tactics
 
 <!-- One row for every NFR in the PRD: its target, the tactic that meets it, the module or file that carries the tactic, and the test or sensor that proves it. -->
