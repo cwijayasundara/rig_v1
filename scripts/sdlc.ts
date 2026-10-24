@@ -36,7 +36,7 @@ import { cmdMaintain } from './maintain.ts'
 import { cmdReadiness } from './readiness.ts'
 import { cmdAutonomy, initAutonomy } from './autonomy.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'
-import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, prdPath, chartFiles, sprintsKnown, sprintIntents } from './chart.ts'
+import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, planRows, writePlan, sprintPlan, prdPath, chartFiles, sprintsKnown, sprintIntents } from './chart.ts'
 import { journey, journeyText } from './journey.ts'
 import { TYPES, toType, changeDir, newChange, setActive, activeSlug, isShipped, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
 
@@ -79,7 +79,7 @@ function cmdNew(args: Args): void {
     const expected = intentRelOf(slug)
     if (rel !== expected) fail(`the slug must equal the intent's: new ${slug} --source ${rel} (expected ${expected ?? `.rig/product/sprints/sprint-<N>/intents/${slug}.md`})`)
     const ready = intentReady(slug)
-    if (!ready.ready) fail(`${slug} cannot start:\n${ready.why.map(w => `  - ${w}`).join('\n')}`)
+    if (!ready.ready) fail(`${slug} cannot start:\n${ready.why.map(w => `  - ${w}`).join('\n')}${blockedHint(slug)}`)
   }
   if (!exists(SDLC)) cmdInit({ pos: [], opt: {} })
   ensureGitignore()
@@ -88,6 +88,14 @@ function cmdNew(args: Args): void {
   newChange(slug, toType(raw), title, source && toPosix(path.relative(ROOT, path.resolve(ROOT, source))))
   if (intent) fs.writeFileSync(path.join(changeDir(slug), 'spec.md'), `# Spec: ${title}\n\n## Behaviours\n${intent.behaviours.map(b => `- ${b.id}${b.reqs.length ? ` (${b.reqs.join(', ')})` : ''}: ${b.text}`).join('\n')}\n\n## Out of scope\n\n## Open questions\nnone\n`)
   out(`created .rig/changes/${slug}/intent.md (type ${toType(raw)}); ${slug} is the active change${intent ? `; spec.md starts with the ${intent.behaviours.length} behaviour(s) of the intent` : ''}`)
+}
+
+// After a refusal because of dependencies: where the whole order is, and what can start instead.
+function blockedHint(slug: string): string {
+  const i = intentOf(slug)
+  if (!i || i.sprint === null || !i.depends.length) return ''
+  const next = chartState(i.sprint).state === 'approved' ? planRows(i.sprint).filter(r => r.status === 'ready') : []
+  return `\nThe build order is in ${writePlan(i.sprint)}.${next.length ? ` Ready now: ${next.map(r => r.slug).join(', ')}.` : ''}`
 }
 
 function cmdActivate(args: Args): void {
@@ -156,14 +164,16 @@ function approveChart(n: number, args: Args): void {
   if (chartState(n).state === 'approved') return out(`chart-${n} is already approved`)
   const by = ownerOrFail(args, 'approvals')
   writeChartApproval(n, by)
+  writePlan(n)
   out(`approved chart-${n} by ${by}: ${chartFiles(n).length} file(s). Next: engineers run \`ready\` to see which intents can start, then ${skillRef('start')} ${sprintRel(n)}/intents/<slug>.md`)
 }
 
 function cmdChart(args: Args): void {
   const [sub, num] = args.pos
-  if ((sub !== 'check' && sub !== 'report') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: chart (check [--cases] [--json] | report) <sprint number>')
+  if ((sub !== 'check' && sub !== 'report' && sub !== 'plan') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: chart (check [--cases] [--json] | report | plan [--print]) <sprint number>')
   const n = Number(num)
   if (!exists(prdPath(n))) fail(`no PRD for sprint ${n}: write ${prdRel(n)} first`)
+  if (sub === 'plan') return out(args.opt.print ? sprintPlan(n) : `wrote ${writePlan(n)}`)
   if (sub === 'report') return out(chartReport(n))
   const found = chartFindings(n, Boolean(args.opt.cases))
   if (args.opt.json) return out(JSON.stringify(found))
@@ -184,6 +194,8 @@ function cmdStartBrief(): void {
   const lines: string[] = []
   if (branch && branch !== base) lines.push(`WARNING: you are on branch ${branch}, not ${base}. The previous change may not be merged yet; a new change starts from this branch.`)
   const ready = readyIntents()
+  const plans = sprintsKnown().filter(n => exists(prdPath(n)) && planRows(n).some(r => r.status !== 'done')).map(writePlan)
+  if (plans.length) lines.push(`build order (waves and dependency graph): ${plans.join(', ')}`)
   lines.push(ready.length ? `ready intents:\n${ready.map(i => `  ${i.slug.padEnd(28)} sprint ${i.sprint}  ${i.estimateDays ?? '?'} day(s)`).join('\n')}` : 'no intents are ready')
   out(lines.join('\n'))
 }
