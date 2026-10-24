@@ -1,5 +1,5 @@
 import { test, expect, mock } from 'claude-code/testing'
-import { kilo, meter, modelLabel, pack, parseJourney, sdlcArgv } from './dashboard.tsx'
+import { fitNext, kilo, meter, modelLabel, pack, parseJourney, sdlcArgv } from './dashboard.tsx'
 
 const journey = {
   agents: [{ agent: 'rig-architect', model: 'claude-sonnet-5-5', at: 'a' }, { agent: 'rig:evaluator', model: 'claude-opus-5-5', at: 'b' }],
@@ -155,4 +155,11 @@ test('a failing usage call never blocks the prompt', async ($, on) => {
   on('prompt.submit', async (_$, e) => ({ text: e.text }))
   on('ui.status', async () => ({ value: undefined }))
   expect((await $.prompt.submit({ text: 'hi' })).text).toBe('hi')
+})
+
+test('fitNext: a hint that does not fit keeps the command and drops its arguments', () => {
+  const hint = 'add the PRD at docs/prd/sprint-0.md, then /rig:chart 0 @docs/prd/sprint-0.md'
+  expect(fitNext(hint, 120)).toBe(hint)
+  expect(fitNext(hint, 40)).toBe('add the PRD at docs/prd/sprint-0.md, then /rig:chart')
+  expect(fitNext('/rig:start <intent>', 5)).toBe('/rig:start')
 })

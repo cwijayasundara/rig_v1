@@ -2,13 +2,13 @@
 // files only. The outer loop is a sprint (init, PRD, chart, test plan, approval, build); the inner loop is one change.
 // `show` says which loops a person should see: a greenfield repo has both, a brownfield repo is entered through the outer loop.
 import path from 'node:path'
-import { SDLC, CHANGES, exists } from './core.ts'
+import { ROOT, SDLC, CHANGES, exists } from './core.ts'
 import { activeSlug, changeType, isShipped, nextStep, status, type Status } from './lifecycle.ts'
 import { latestAgents } from './modelstate.ts'
 import { readAutonomy } from './autonomy.ts'
 import { queueNext } from './queue.ts'
 import { chartState, prdPath, readyIntents, sprintIntents, sprintsKnown } from './chart.ts'
-import { testplanDir, prdRel, intentRel } from './product.ts'
+import { testplanDir, prdHint, intentRel } from './product.ts'
 
 // Skills are /rig:<name> in every install mode (their frontmatter names), so the journey never prints the vendored directory spelling /rig-<name>.
 const k = (name: string): string => `/rig:${name}`
@@ -60,7 +60,7 @@ export function journey(i: { gates: { plan: boolean }; tree: string | null }): J
   const ready = readyIntents().map(r => r.slug)
   const outer = mark([
     { id: 'init', label: 'Init', command: k('init'), done: initialised },
-    { id: 'prd', label: 'PRD', command: `add PRD → ${prdRel(n)}`, person: true, done: exists(prdPath(n)), detail: `sprint ${n}` },
+    { id: 'prd', label: 'PRD', command: `add PRD → ${prdHint(n)}`, person: true, done: exists(prdPath(n)) || exists(path.join(ROOT, prdHint(n))), detail: `sprint ${n}` },
     { id: 'chart', label: 'Chart', command: `${k('chart')} ${n}`, done: slugs.length > 0, detail: slugs.length ? `${slugs.length} intents` : undefined },
     { id: 'testplan', label: 'Test plan', command: `${k('testplan')} ${n}`, done: cases },
     { id: 'approve', label: 'Approve', command: `${k('approve')} chart-${n}`, done: approved, gate: true },
@@ -72,12 +72,12 @@ export function journey(i: { gates: { plan: boolean }; tree: string | null }): J
   const st = act ? status(act, i.gates, i.tree) : null
   const outerNext = ((): Journey['next'] => {
     if (!initialised) return { command: k('init'), by: 'model', why: 'set this repo up for rig' }
-    if (!exists(prdPath(n))) return { command: `add the PRD at ${prdRel(n)}, then ${k('chart')} ${n}`, by: 'person', why: 'the sprint starts from your PRD, in any format and from any path' }
-    if (!slugs.length) return { command: `${k('chart')} ${n}`, by: 'model', why: 'turn the PRD into traced intents, architecture and ADRs' }
+    if (!exists(prdPath(n)) && !exists(path.join(ROOT, prdHint(n)))) return { command: `add the PRD at ${prdHint(n)}, then ${k('chart')} ${n} @${prdHint(n)}`, by: 'person', why: 'the sprint starts from your PRD, in any format and from any path' }
+    if (!slugs.length) return { command: exists(prdPath(n)) ? `${k('chart')} ${n}` : `${k('chart')} ${n} @${prdHint(n)}`, by: 'model', why: 'turn the PRD into traced intents, architecture and ADRs' }
     if (!cases) return { command: `${k('testplan')} ${n}`, by: 'model', why: 'write the test plan and cases for the sprint' }
     if (!approved) return { command: `${k('approve')} chart-${n}`, by: 'person', why: 'review the chart branch, then approve the sprint once' }
     if (ready[0]) return { command: `${k('start')} ${intentRel(n, ready[0] as string)}`, by: 'model', why: `${ready.length} intent(s) ready to build` }
-    return shipped === slugs.length ? { command: `add the PRD at ${prdRel(n + 1)}, then ${k('chart')} ${n + 1}`, by: 'person', why: `sprint ${n} is shipped` } : { command: 'a change in flight must ship first', by: 'person', why: 'the remaining intents wait on their dependencies' }
+    return shipped === slugs.length ? { command: `add the PRD at ${prdHint(n + 1)}, then ${k('chart')} ${n + 1} @${prdHint(n + 1)}`, by: 'person', why: `sprint ${n} is shipped` } : { command: 'a change in flight must ship first', by: 'person', why: 'the remaining intents wait on their dependencies' }
   })()
   const next: Journey['next'] = act && st ? { command: plain(nextStep(act, st)), by: st === 'approve' || st === 'review' ? 'person' : 'model', why: `change ${act}` } : outerNext
   return { agents: latestAgents(path.join(SDLC, 'state', 'model.json')), initialised, kind, show, sprint: initialised ? n : null, outer, inner: act && st ? { slug: act, type: changeType(act), steps: innerSteps(st, i.gates.plan, act, exists(path.join(CHANGES, act, 'review.md'))) } : null, next, ready, rung: readAutonomy().rung, queue }
