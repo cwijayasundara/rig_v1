@@ -70,8 +70,16 @@ function humanSkill(cmd: 'approve' | 'waive' | 'autonomy', hint: string, what: s
   const run = `SDLC_HUMAN=1 node --disable-warning=ExperimentalWarning ${SDLC_HOOK} ${cmd}`
   return [
     '---', `name: rig:${cmd}`, `description: Human only. ${what} The model cannot run this.`, `argument-hint: ${hint}`,
-    'disable-model-invocation: true', `allowed-tools: Bash(${run} *)`, '---',
-    `!\`${run} ${cmd === 'autonomy' ? '$ARGUMENTS' : "'$ARGUMENTS'"} 2>&1 || true\``, '', 'Tell the person the result above in one line. Do nothing else.', '',
+    'disable-model-invocation: true', `allowed-tools: Bash(${run} *)${cmd === 'approve' ? ', AskUserQuestion, Skill' : ''}`, '---',
+    `!\`${run} ${cmd === 'autonomy' ? '$ARGUMENTS' : "'$ARGUMENTS'"}${cmd === 'approve' ? ' --ask' : ''} 2>&1 || true\``, '',
+    ...(cmd === 'approve' ? [
+      'If the result above starts with `ASK`, no argument was given: name the target in one `AskUserQuestion`.',
+      '- `ASK change <slug>`: options "Approve and build" (first, the default), "Only approve", "Cancel".',
+      '- `ASK chart-<N>`: no change is in flight, so ask about the chart: options "Approve chart-<N>" (first), "Cancel".',
+      '- `ASK none ...`: say so in one line and stop.',
+      `Then run \`${run} <target>\` as its own Bash call and tell the person its result in one line. After "Approve and build" succeeds, invoke \`/rig-build <slug>\` with the Skill tool. On Cancel do nothing.`, '',
+      'Otherwise tell the person the result above in one line. Do nothing else.', '',
+    ] : ['Tell the person the result above in one line. Do nothing else.', '']),
   ].join('\n')
 }
 

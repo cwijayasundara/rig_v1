@@ -36,9 +36,9 @@ import { cmdMaintain } from './maintain.ts'
 import { cmdReadiness } from './readiness.ts'
 import { cmdAutonomy, initAutonomy } from './autonomy.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'
-import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, prdPath, chartFiles } from './chart.ts'
+import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, prdPath, chartFiles, sprintsKnown, sprintIntents } from './chart.ts'
 import { journey, journeyText } from './journey.ts'
-import { TYPES, toType, changeDir, newChange, setActive, activeSlug, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
+import { TYPES, toType, changeDir, newChange, setActive, activeSlug, isShipped, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
 
 // ---------- commands ----------
 
@@ -124,6 +124,7 @@ const humanFallback = (cmd: string, usage: string): string => `! SDLC_HUMAN=1 no
 function cmdApprove(args: Args): void {
   if (process.env.SDLC_HUMAN !== '1') fail(`approvals are human-only: the person runs /rig:approve <slug>. If that command is not listed, restart Claude Code, or the person types: ${humanFallback('approve', '<slug>')}`, 3)
   const given = words(args)[0] // a second word (the old stage name) is ignored
+  if (!given && args.opt.ask) return out(approveTarget())
   const chart = CHART_RE.exec(given ?? '')?.[1]
   if (chart) return approveChart(Number(chart), args)
   const slug = given ? checkSlug(given) : activeSlug()
@@ -138,6 +139,14 @@ function cmdApprove(args: Args): void {
   // Not a refusal: the person may know better. But two writers on one file is a merge conflict later, so say so now.
   const clash = conflictsFor(slug)
   if (clash.length) out(`warning: another in-flight plan names the same file(s): ${clash.map(o => `${o.file} (${o.changes.join(' and ')})`).join('; ')}. Land one first, or split the work.`)
+}
+
+// What a bare /rig:approve would approve, for the skill to confirm with the person: the active change, else the first sprint chart waiting.
+function approveTarget(): string {
+  const active = activeSlug()
+  if (active && exists(changeDir(active)) && !isShipped(active)) return `ASK change ${active}`
+  const chart = sprintsKnown().find(n => exists(prdPath(n)) && sprintIntents(n).length > 0 && chartState(n).state !== 'approved')
+  return chart === undefined ? 'ASK none: no change is in flight and no chart is waiting' : `ASK chart-${chart}`
 }
 
 function approveChart(n: number, args: Args): void {
@@ -166,6 +175,17 @@ function cmdReady(args: Args): void {
   const ready = readyIntents()
   if (args.opt.json) return out(JSON.stringify(ready))
   out(ready.length ? ready.map(i => `${i.slug.padEnd(28)} sprint ${i.sprint}  ${i.estimateDays ?? '?'} day(s)`).join('\n') : 'no intents are ready')
+}
+
+// The opening of /rig:start: the branch warning and the intents ready to build, so the skill does not need the model to ask for them.
+function cmdStartBrief(): void {
+  const branch = git(['branch', '--show-current']) ?? ''
+  const base = git(['rev-parse', '--verify', '-q', 'main']) === null && git(['rev-parse', '--verify', '-q', 'master']) !== null ? 'master' : 'main'
+  const lines: string[] = []
+  if (branch && branch !== base) lines.push(`WARNING: you are on branch ${branch}, not ${base}. The previous change may not be merged yet; a new change starts from this branch.`)
+  const ready = readyIntents()
+  lines.push(ready.length ? `ready intents:\n${ready.map(i => `  ${i.slug.padEnd(28)} sprint ${i.sprint}  ${i.estimateDays ?? '?'} day(s)`).join('\n')}` : 'no intents are ready')
+  out(lines.join('\n'))
 }
 
 function cmdSecrets(args: Args): void {
@@ -284,6 +304,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   approve: cmdApprove,
   chart: cmdChart,
   ready: cmdReady,
+  'start-brief': () => cmdStartBrief(),
   pr: cmdPr,
   run: () => cmdRun(),
   verify: cmdVerify,

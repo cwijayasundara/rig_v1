@@ -19,6 +19,8 @@ export const approvalPath = (n: number): string => path.join(sprintDir(n), 'appr
 // Repo-relative posix forms, for messages and for matching git paths.
 export const sprintRel = (n: number): string => `.rig/product/sprints/sprint-${n}`
 export const prdRel = (n: number): string => `${sprintRel(n)}/prd.md`
+// Where a person is told to put a PRD: a repo-owned folder, not rig's. /rig:chart copies it to prdRel(n).
+export const prdHint = (n: number): string => `docs/prd/sprint-${n}.md`
 export const intentRel = (n: number, slug: string): string => `${sprintRel(n)}/intents/${slug}.md`
 export const testplanRel = (n: number): string => `${sprintRel(n)}/testplan`
 export const APPROVAL_REL_RE = /^\.rig\/product\/sprints\/sprint-(\d{1,4})\/approval\.json$/

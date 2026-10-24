@@ -36,6 +36,14 @@ export function pack(pieces: Piece[], columns: number, indent = 0): Piece[][] {
   }
   return lines
 }
+// The next command as one line. A person's hint ("add the PRD at X, then /rig:chart 0 @X") that does not fit keeps the command and drops
+// its arguments, since a half-shown "0" misleads; a bare command that does not fit is left to wrap.
+export function fitNext(command: string, room: number): string {
+  if (cells(command) <= room) return command
+  const at = command.search(/\/rig[:-]\w+/)
+  const head = at >= 0 ? command.slice(0, at + (/\/rig[:-]\w+/.exec(command.slice(at))?.[0].length ?? 0)) : command
+  return head
+}
 export const parseJourney = (stdout: string): Journey | null => { try { return JSON.parse(stdout) as Journey } catch { return null } }
 
 // A failed refresh keeps the last band: a hook on prompt.submit must never block the person's prompt.
@@ -84,6 +92,8 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const j = await read($, journey)
+    // /clear resets the atoms and no session.start follows: load the band again here instead of waiting for the next prompt.
+    if (!j && Date.now() - lastRefresh > 3000) { lastRefresh = Date.now(); void refresh($) }
     if (e.props.hasSurvey || !j || (await read($, isHidden))) return next(e)
     const s = await read($, spend)
     const { Box, Text, Button } = $.ui.resolve(e)
@@ -128,7 +138,7 @@ export const register: Register = on => {
         {lines([
           { text: '▸ next', color: 'cyan', bold: true },
           { text: j.next.by === 'person' ? (j.next.command.startsWith('/') ? 'a person runs' : 'a person:') : 'run', dim: true },
-          { text: j.next.command, bold: true },
+          { text: fitNext(j.next.command, columns - 12), bold: true },
           { text: '  ◆ you  ⟳ runs by itself  ● now', dim: true },
         ], 7)}
       </Box>
