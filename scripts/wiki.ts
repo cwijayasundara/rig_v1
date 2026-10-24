@@ -1,4 +1,4 @@
-// `sdlc.ts wiki <init|build|status|verify|refresh>` (wiki design 2026-10-17). Everything checkable is deterministic; only page writing
+// `sdlc.ts wiki <init|build|status|verify|refresh|sync>` (wiki design 2026-10-17). Everything checkable is deterministic; only page writing
 // and claim review call a model, through a Runner. Staleness is a warning: no subcommand fails because a page is stale.
 import fs from 'node:fs'
 import path from 'node:path'
@@ -28,7 +28,7 @@ function reader(root: string): (p: string) => string | null {
 }
 
 const sourceFiles = (root: string): string[] =>
-  (gitIn(root, ['ls-files']) ?? '').split('\n').filter(f => SOURCE_EXT.test(f) && !SKIPPED.test(f))
+  (gitIn(root, ['ls-files', '--cached', '--others', '--exclude-standard']) ?? '').split('\n').filter(f => SOURCE_EXT.test(f) && !SKIPPED.test(f))
 
 function pageSources(root: string, page: WikiPage, files: string[]): Record<string, string> {
   const read = reader(root)
@@ -189,6 +189,22 @@ function cmdRefresh(root: string, args: Args, run: Runner): WikiResult {
   })
 }
 
+// Run at the end of /rig:pr, before the commit: the first run on a repo with no wiki.json plans and builds it (no edit step, so a
+// greenfield repo gets a wiki once code exists); later runs refresh the stale pages. Warn-only: a failure or an over-budget estimate
+// is printed as a warning and never stops the change from shipping.
+function cmdSync(root: string, args: Args, run: Runner): WikiResult {
+  if (!sourceFiles(root).length) return ok('wiki: no source files yet; nothing to build')
+  const soft = (r: WikiResult): WikiResult => ({ code: 0, text: r.code === 0 ? r.text : `warning: the wiki was not fully synced\n${r.text}` })
+  if (fs.existsSync(path.join(root, CONFIG))) return soft(cmdRefresh(root, args, run))
+  const planned = cmdInit(root, run)
+  if (planned.code !== 0) return soft(planned)
+  // Marks the config as built from the repo's own sprints, so the journey still reads the repo as greenfield (journey.ts repoKind).
+  const file = path.join(root, CONFIG)
+  put(file, JSON.stringify({ origin: 'sync', ...JSON.parse(fs.readFileSync(file, 'utf8')) }, null, 2) + '\n')
+  const built = cmdBuild(root, args, run)
+  return soft({ code: built.code, text: `${planned.text}\n${built.text}` })
+}
+
 function cmdVerify(root: string, args: Args, run: Runner): WikiResult {
   const { pages } = loadPages(root, loadConfig(root))
   if (!Object.keys(pages).length) return ok('wiki: no pages yet')
@@ -212,8 +228,9 @@ export function wikiCommand(root: string, args: Args, run: Runner): WikiResult {
     case 'build': return cmdBuild(root, args, run)
     case 'status': return cmdStatus(root)
     case 'refresh': return cmdRefresh(root, args, run)
+    case 'sync': return cmdSync(root, args, run)
     case 'verify': return cmdVerify(root, args, run)
-    default: return bad('usage: wiki <init|build [--page <title>] [--max-usd N]|status|verify [--no-review]|refresh [--max-usd N]>', 2)
+    default: return bad('usage: wiki <init|build [--page <title>] [--max-usd N]|status|verify [--no-review]|refresh [--max-usd N]|sync [--max-usd N]>', 2)
   }
 }
 

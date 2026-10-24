@@ -26,8 +26,8 @@ function openPr(slug: string, branch: string, title: string): string | null {
 
 // The files a change's commit carries: its own folder, source outside .rig/, and the harness files a change may touch.
 // Another change's folder never rides along, so its own gate cannot fail this PR. A sprint chart approval does, so CI sees it.
-const SHARED = ['.rig/waivers.jsonl', '.rig/autonomy.json', '.rig/.gitignore', '.rig/sensors.json', '.rig/rules.json', '.rig/product/brief.md']
-const SHARED_DIRS = ['.rig/guides/']
+const SHARED = ['.rig/waivers.jsonl', '.rig/autonomy.json', '.rig/.gitignore', '.rig/sensors.json', '.rig/rules.json', '.rig/product/brief.md', '.rig/wiki.json']
+const SHARED_DIRS = ['.rig/guides/', '.rig/wiki/']
 const SHARED_RE = /^\.rig\/product\/sprints\/sprint-\d+\/approval\.json$/
 function changeFiles(slug: string): string[] {
   const dirty = [...(git(['diff', '--name-only', 'HEAD']) ?? '').split('\n'), ...(git(['ls-files', '--others', '--exclude-standard']) ?? '').split('\n')].filter(Boolean)
