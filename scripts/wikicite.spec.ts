@@ -111,3 +111,15 @@ test('a #symbol cite in a language with no symbol support never resolves; whole-
   assert.ok(citeHash({ kind: 'code', path: 'a.rb' }, () => 'def f; end'))
   assert.ok(citeHash({ kind: 'code', path: 'a.py', symbol: 'f' }, () => 'def f():\n    pass\n'))
 })
+
+test('a Class.method symbol resolves inside its class, so two classes may each have a method of the same name', () => {
+  const py = 'class A:\n    def add(self):\n        return 1\n\nclass B:\n    def add(self):\n        return 2\n    def only(self):\n        return 3\n'
+  assert.deepEqual(parseCites('- x. [src/m.py#A.add]'), [{ kind: 'code', path: 'src/m.py', symbol: 'A.add' }])
+  assert.match(findSymbol(py, 'A.add', 'src/m.py')!, /return 1/)
+  assert.match(findSymbol(py, 'B.add', 'src/m.py')!, /return 2/)
+  assert.equal(findSymbol(py, 'add', 'src/m.py'), null)
+  assert.equal(findSymbol(py, 'A.only', 'src/m.py'), null)
+  assert.equal(findSymbol(py, 'C.add', 'src/m.py'), null)
+  const ts = 'export class K {\n  run(): number {\n    return 1\n  }\n}\n'
+  assert.match(findSymbol(ts, 'K.run', 'src/k.ts')!, /return 1/)
+})

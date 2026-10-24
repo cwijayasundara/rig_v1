@@ -35,6 +35,13 @@ test('buildPage returns a clean page and sums the cost of every call', () => {
   assert.ok(Math.abs(r.usd - 0.02) < 1e-9)
 })
 
+test('the rewrite hint quotes each offending line, since a bare line number tells the model nothing', () => {
+  const bad = four().replace('- Claim 4. [src/a.ts#f]', '- Claim 4 with no citation.')
+  const { run, calls } = scripted({ write: [bad, four()], review: [ALL_OK] })
+  buildPage({ page: PAGE, sources: SOURCES, env, run })
+  assert.match(calls[1]!.prompt, /line 8: .* -> - Claim 4 with no citation\./)
+})
+
 test('an uncited first write triggers exactly one rewrite that carries the finding', () => {
   const bad = four().replace('- Claim 4. [src/a.ts#f]', '- Claim 4 with no citation.')
   const { run, calls } = scripted({ write: [bad, four()], review: [ALL_OK] })

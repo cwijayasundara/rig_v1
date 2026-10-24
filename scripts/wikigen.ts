@@ -62,7 +62,7 @@ export function planConfig(files: string[], run: Runner): { config: WikiConfig |
 const RULES = [
   'Write a Markdown wiki page for engineers. Format rules, checked by a script:',
   '- One sentence per line. Every body line ends with a citation. Headings and the first `> purpose` line are the only exceptions.',
-  '- Citations are `[path#symbol]` for a function, class or constant, or `[path]` for a whole file. Cite only the files supplied. No line ranges.',
+  '- Citations are `[path#symbol]` for a function, class or constant, `[path#Class.method]` for a method, or `[path]` for a whole file. Cite only the files supplied. No line ranges.',
   '- State what the code does. Give a reason ("why") only with `[adr:NNNN]`, `[commit:<sha>]` or `[pr:<number>]` that you were given.',
   '- Include one ```mermaid diagram if it helps; every diagram line ends with `%% [path#symbol]`.',
 ].join('\n')
@@ -134,7 +134,7 @@ export function buildPage(args: { page: WikiPage; sources: Record<string, string
     const check = (text: string): WikiFinding[] => [...validatePage(text, env), ...(bodyLines(text).length ? [] : [{ rule: 'uncited' as const, line: 0, message: 'the page has no cited claims; write lines that end in a citation' }])]
     let findings = check(w.text)
     if (findings.length) {
-      w = writePage(page, sources, run, [hint, ...findings.map(f => `line ${f.line}: ${f.message}`)].filter(Boolean).join('\n'))
+      w = writePage(page, sources, run, [hint, ...findings.map(f => `line ${f.line}: ${f.message}${w.text.split('\n')[f.line - 1] ? ` -> ${w.text.split('\n')[f.line - 1]}` : ''}`)].filter(Boolean).join('\n'))
       usd += w.usd
       findings = check(w.text)
       if (findings.length) return { text: null, findings, dropped: 0, usd, total: 0, removed: [] }
