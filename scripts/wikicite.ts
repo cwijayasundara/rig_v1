@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto'
 export type Cite = { kind: 'code'; path: string; symbol?: string } | { kind: 'why'; type: 'adr' | 'commit' | 'pr'; ref: string }
 
 const WHY = { adr: /^\d{1,6}$/, commit: /^[0-9a-f]{7,40}$/, pr: /^\d{1,7}$/ }
-const SYMBOL = /^[A-Za-z_$][\w$]*$/
+const SYMBOL = /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/ // `Class.method` is allowed
 const PATH = /^[\w@.\/-]+$/
 
 function parseOne(tok: string): Cite | null {
@@ -163,6 +163,8 @@ function pyEnd(source: string, from: number): number {
 // The declaration text of `symbol`, or null when it is absent or declared more than once (overloads, shadowing). `file` picks the
 // language by extension; without it, or for TS/JS, the TS/JS forms apply; a language with no forms never resolves.
 export function findSymbol(source: string, symbol: string, file = ''): string | null {
+  const dot = symbol.indexOf('.')
+  if (dot > 0) { const owner = findSymbol(source, symbol.slice(0, dot), file); return owner === null ? null : findSymbol(owner, symbol.slice(dot + 1), file) }
   const lang = extOf(file)
   const mk = LANG_HEADS[lang]
   if (file && !JS_EXT.test(file) && !mk) return null
