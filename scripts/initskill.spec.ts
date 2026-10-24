@@ -80,3 +80,12 @@ test('init skill: greenfield and PRD repos are sent to /rig:chart 0 first, a one
   assert.match(tpl, /\/rig:chart 0/)
   assert.match(tpl, /docs\/prd\/sprint-0\.md/)
 })
+
+test('init skill: a greenfield CLAUDE.md maps only files that exist on disk, PRD design is marked planned', () => {
+  assert.match(skill, /only files that exist on disk/)
+  assert.match(skill, /Planned \(from the PRD\)/)
+})
+
+test('init skill: --quick and --defaults end by telling the person the commit command, since they ask no question', () => {
+  assert.match(skill, /Under `--defaults` and `--quick` do not commit[^\n]*`git add /)
+})
