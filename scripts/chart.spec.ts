@@ -461,3 +461,59 @@ test('chartFindings checks the Access table in architecture.md against the chart
   assert.deepEqual((call('return C.chartFindings(1, false)') as { rule: string }[]).map(f => f.rule), ['access-intent'])
 })
 
+
+// ---- sprint plan view (plan.ts) ----
+const planRepo = (): void => {
+  chart1()
+  write(repo, `${P}/sprints/sprint-1/intents/beta.md`, intent(1, { depends: '[alpha]' }))
+  write(repo, `${P}/sprints/sprint-1/intents/gamma.md`, intent(1, { depends: '[alpha, beta]' }))
+}
+
+test('chart plan writes plan.md with waves, a text graph, a Mermaid graph and what can start', () => {
+  planRepo()
+  const r = sdlc(repo, ['chart', 'plan', '1'])
+  assert.equal(r.code, 0, r.stderr)
+  const text = fs.readFileSync(path.join(repo, P, 'sprints/sprint-1/plan.md'), 'utf8')
+  assert.match(text, /\| 1 \| alpha \| - \| 1 \| ready \|/)
+  assert.match(text, /\| 2 \| beta \| alpha \| 1 \| blocked \|/)
+  assert.match(text, /\| 3 \| gamma \| alpha, beta \| 1 \| blocked \|/)
+  assert.match(text, /alpha ○ ready\n└─ beta ✖ blocked\n   └─ gamma ✖ blocked  \(also after: alpha\)/)
+  assert.match(text, /graph LR[\s\S]*n_alpha --> n_beta[\s\S]*n_beta --> n_gamma/)
+  assert.match(text, /## Next up\n\n[\s\S]*- `\/rig:start \.rig\/product\/sprints\/sprint-1\/intents\/alpha\.md`/)
+})
+
+test('regenerating the plan does not make an approved chart stale', () => {
+  chart1()
+  const before = call('return C.chartDigest(1)')
+  sdlc(repo, ['chart', 'plan', '1'])
+  assert.equal(call('return C.chartDigest(1)'), before)
+})
+
+test('a refused start names the build order and what is ready now', () => {
+  planRepo()
+  const r = sdlc(repo, ['new', 'gamma', '--source', `${P}/sprints/sprint-1/intents/gamma.md`])
+  assert.notEqual(r.code, 0)
+  const msg = r.stdout + r.stderr
+  assert.match(msg, /blocked by alpha, beta/)
+  assert.match(msg, /build order is in \.rig\/product\/sprints\/sprint-1\/plan\.md/)
+  assert.ok(fs.existsSync(path.join(repo, P, 'sprints/sprint-1/plan.md')))
+})
+
+test('the text graph lists intents on a dependency cycle instead of dropping them, and Mermaid ids avoid keywords', () => {
+  write(repo, `${P}/sprints/sprint-1/prd.md`, prd(1))
+  write(repo, `${P}/sprints/sprint-1/intents/end.md`, intent(1, { depends: '[loop]' }))
+  write(repo, `${P}/sprints/sprint-1/intents/loop.md`, intent(1, { depends: '[end]' }))
+  write(repo, `${P}/sprints/sprint-1/intents/solo.md`, intent(1))
+  const text = (sdlc(repo, ['chart', 'plan', '1', '--print']).stdout)
+  assert.match(text, /solo ○ ready/)
+  assert.match(text, /end ✖ blocked {2}\(on a dependency cycle/)
+  assert.match(text, /loop ✖ blocked {2}\(on a dependency cycle/)
+  assert.match(text, /n_end\["end"\]/)
+})
+
+test('an unapproved chart is named in Next up, and a refused start lists no ready intent then', () => {
+  planRepo()
+  assert.match(sdlc(repo, ['chart', 'plan', '1', '--print']).stdout, /chart-1 is missing: a person runs `\/rig:approve chart-1`/)
+  const r = sdlc(repo, ['new', 'gamma', '--source', `${P}/sprints/sprint-1/intents/gamma.md`])
+  assert.doesNotMatch(r.stdout + r.stderr, /Ready now/)
+})

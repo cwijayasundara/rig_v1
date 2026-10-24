@@ -6,7 +6,8 @@ import path from 'node:path'
 import { ROOT, exists, read, sha, now, toPosix, frontmatter } from './core.ts'
 import { openQuestions, section } from './model.ts'
 import { changeDir, isShipped } from './lifecycle.ts'
-import { PRODUCT, prdPath, intentsDir, testplanDir, approvalPath, sprintDir, sprintsOnDisk, intentRel } from './product.ts'
+import { planText, type PlanRow } from './plan.ts'
+import { PRODUCT, prdPath, intentsDir, testplanDir, approvalPath, sprintDir, sprintsOnDisk, intentRel, planPath, sprintRel } from './product.ts'
 import { designIntents, architectureProblems, accessProblems, parseAccess, parseIntent, parseCases, parkedDecisions, prdIds, traceReport, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
 
 const ARCH = toPosix(path.relative(ROOT, path.join(PRODUCT, 'architecture.md')))
@@ -167,4 +168,21 @@ export function chartReport(n: number): string {
     `intents ${intents.length} (${days} engineer-days): started ${started}, shipped ${shipped}`,
     ...chain,
   ].join('\n')
+}
+
+// The sprint plan view: waves and graphs generated from the intents' `depends:` lines (see plan.ts), written beside the PRD. Not a chart
+// file, so regenerating it never makes an approved chart stale.
+export function planRows(n: number): PlanRow[] {
+  return intentsOf(n).map(i => ({
+    slug: i.slug, depends: i.depends, estimateDays: i.estimateDays,
+    status: isShipped(i.slug) ? 'done' : exists(changeDir(i.slug)) ? 'active' : i.depends.every(isShipped) ? 'ready' : 'blocked',
+  }))
+}
+export function sprintPlan(n: number): string {
+  return planText(n, planRows(n), { chart: chartState(n).state, startCmd: slug => `/rig:start ${intentRel(n, slug)}` })
+}
+export function writePlan(n: number): string {
+  fs.mkdirSync(sprintDir(n), { recursive: true })
+  fs.writeFileSync(planPath(n), sprintPlan(n))
+  return `${sprintRel(n)}/plan.md`
 }

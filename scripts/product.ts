@@ -14,6 +14,7 @@ export const prdPath = (n: number): string => path.join(sprintDir(n), 'prd.md')
 export const intentsDir = (n: number): string => path.join(sprintDir(n), 'intents')
 export const testplanDir = (n: number): string => path.join(sprintDir(n), 'testplan')
 export const reviewPath = (n: number): string => path.join(sprintDir(n), 'chart-review.md')
+export const planPath = (n: number): string => path.join(sprintDir(n), 'plan.md')
 export const approvalPath = (n: number): string => path.join(sprintDir(n), 'approval.json')
 
 // Repo-relative posix forms, for messages and for matching git paths.
