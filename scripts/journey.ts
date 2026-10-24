@@ -1,6 +1,7 @@
 // The journey view (dashboard spec 2026-10-18): where a repo is in the AI SDLC and the one command to run next, computed from
 // files only. The outer loop is a sprint (init, PRD, chart, test plan, approval, build); the inner loop is one change.
 // `show` says which loops a person should see: a greenfield repo has both, a brownfield repo is entered through the outer loop.
+import fs from 'node:fs'
 import path from 'node:path'
 import { ROOT, SDLC, CHANGES, exists } from './core.ts'
 import { activeSlug, changeType, isShipped, nextStep, status, type Status } from './lifecycle.ts'
@@ -25,7 +26,12 @@ export type Journey = {
 }
 
 // Brownfield is the repo init indexed (`wiki init` writes wiki.json); everything else entered empty.
-export const repoKind = (): 'greenfield' | 'brownfield' => (exists(path.join(SDLC, 'wiki.json')) ? 'brownfield' : 'greenfield')
+// A wiki.json that `wiki sync` wrote at the end of a change (origin: sync) does not make the repo brownfield.
+export const repoKind = (): 'greenfield' | 'brownfield' => {
+  const file = path.join(SDLC, 'wiki.json')
+  if (!exists(file)) return 'greenfield'
+  try { return (JSON.parse(fs.readFileSync(file, 'utf8')) as { origin?: unknown }).origin === 'sync' ? 'greenfield' : 'brownfield' } catch { return 'brownfield' }
+}
 
 // The first step not done is where the person is; a step only a person can take is a gate.
 function mark(steps: { id: string; label: string; command: string; done: boolean; detail?: string; gate?: boolean; person?: boolean; auto?: boolean }[]): JourneyStep[] {

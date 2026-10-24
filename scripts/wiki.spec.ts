@@ -162,3 +162,48 @@ test('a page removed from wiki.json is an orphan warning in status, not a stale 
   assert.doesNotMatch(r.text, /beta:/)
   assert.match(r.text, /wiki: fresh/)
 })
+
+test('sync on a repo with no wiki.json plans and builds the wiki, marks the config origin sync, and a second run is a no-op', () => {
+  const repo = repoWithSources()
+  const { run, calls } = fake()
+  const r = cmd(repo, ['sync'], run)
+  assert.equal(r.code, 0, r.text)
+  assert.equal(JSON.parse(fs.readFileSync(path.join(repo, '.rig/wiki.json'), 'utf8')).origin, 'sync')
+  assert.ok(fs.existsSync(path.join(repo, '.rig/wiki/index.md')))
+  assert.match(cmd(repo, ['status'], run).text, /wiki: fresh/)
+  calls.length = 0
+  assert.match(cmd(repo, ['sync'], run).text, /fresh; nothing to refresh/)
+  assert.equal(calls.length, 0)
+})
+
+test('sync after a change rebuilds only the stale page', () => {
+  const { repo, run, calls } = built()
+  write(repo, 'src/a.ts', A.replace('a * 2', 'a * 3'))
+  assert.equal(cmd(repo, ['sync'], run).code, 0)
+  assert.deepEqual(calls.filter(c => c.role === 'write').map(c => /Page title: (.+)/.exec(c.prompt)?.[1]), ['Alpha'])
+})
+
+test('a source file that is not committed yet is built from', () => {
+  const repo = repoWithSources()
+  write(repo, 'src/c.ts', 'export function k(): number {\n  return 3\n}\n')
+  write(repo, '.rig/wiki.json', JSON.stringify({ notes: [], pages: [{ title: 'Gamma', purpose: 'The c module.', paths: ['src/c.ts'] }] }))
+  const { run, calls } = fake()
+  cmd(repo, ['build'], run)
+  assert.ok(calls.some(c => c.role === 'write' && /src\/c\.ts/.test(c.prompt)))
+})
+
+test('sync is warn-only: an over-budget estimate exits 0 with a warning and writes nothing', () => {
+  const repo = repoWithSources()
+  const { run, calls } = fake()
+  const r = cmd(repo, ['sync', '--max-usd', '0'], run)
+  assert.equal(r.code, 0)
+  assert.match(r.text, /^warning:/)
+  assert.equal(calls.filter(c => c.role === 'write').length, 0)
+})
+
+test('sync with no source files does nothing', () => {
+  const repo = makeRepo()
+  const { run, calls } = fake()
+  assert.match(cmd(repo, ['sync'], run).text, /no source files yet/)
+  assert.equal(calls.length, 0)
+})

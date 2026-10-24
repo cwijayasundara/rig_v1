@@ -42,3 +42,16 @@ test('a change that only touches .rig/wiki files raises no finding in CI', () =>
   const ci = sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main'])
   assert.equal(ci.code, 0, ci.stdout + ci.stderr)
 })
+
+test('the pr skill syncs the wiki before it commits, with a budget, and the commit carries the wiki files', () => {
+  const skill = at('skills/pr/SKILL.md')
+  const sync = skill.search(/S wiki sync --max-usd/)
+  assert.ok(sync > 0 && sync < skill.search(/Run `S pr <slug>/), 'wiki sync must come before S pr')
+  const pr = at('scripts/pr.ts')
+  assert.match(pr, /'\.rig\/wiki\/'/)
+  assert.match(pr, /'\.rig\/wiki\.json'/)
+})
+
+test('a repo whose wiki.json came from `wiki sync` is still greenfield for the journey', () => {
+  assert.match(at('scripts/journey.ts'), /origin === 'sync'/)
+})
