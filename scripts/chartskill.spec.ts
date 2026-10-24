@@ -113,3 +113,18 @@ test('the architect writes ## Access when the PRD has roles, and QA writes an al
   assert.match(text('templates/architecture-format.md'), /\| Action \| Allowed \| Interfaces \| Intent \|/)
   assert.match(text('templates/testplan-format.md'), /\| Expected \| Access \|/)
 })
+
+// A live sprint-1 chart fixed layering by replacing "checked by review" with an `ast` test in the architecture, intents and ADR,
+// but the design doc the architect drew from still said "by review". The fix round must keep that doc in step.
+test('chart skill: the fix round updates the design doc lines a fix contradicts', () => {
+  assert.match(skill, /fix round[^\n]*design doc[^\n]*(contradict|out of date|in step)/i)
+})
+
+// A live sprint-1 chart wrote import-check cases as "imports only argparse, os, sys, pathlib" and "imports only cart.errors",
+// which a builder's `typing`, `dataclasses` or `from __future__` import would fail; and its fix round put TC-68..71 before TC-51.
+test('testplan format: import checks forbid modules instead of listing "only", and rows stay in ID order', () => {
+  const t = fs.readFileSync(path.resolve(import.meta.dirname, '../templates/testplan-format.md'), 'utf8')
+  assert.match(t, /never "imports only X"/)
+  assert.match(t, /`typing`, `dataclasses`/)
+  assert.match(t, /Rows stay in ID order[^\n]*next free ID/)
+})
