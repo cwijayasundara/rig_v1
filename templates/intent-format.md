@@ -35,7 +35,7 @@ touches: []
 
 ## Behaviours
 
-<!-- - B1 (FR-3): one observable behaviour, stated from outside the system -->
+<!-- - B1 (FR-3): one observable behaviour, stated from outside the system. The parentheses cite an FR-n or NFR-n id; an acceptance-criterion id may follow it (FR-3, AC-3.1) but never stands alone. -->
 
 ### Failure behaviour
 

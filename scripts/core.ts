@@ -186,7 +186,8 @@ export function scanSecrets(file: string): string[] {
 export const PLUGIN_ROOT = path.resolve(import.meta.dirname, '..')
 // A standalone repo runs its own copy from .rig/bin: its skills and agents are registered as rig-<name>, the plugin's skills as /rig:<name>.
 export const IS_VENDORED = path.basename(import.meta.dirname) === 'bin'
-export const skillRef = (name: string): string => (IS_VENDORED ? `/rig-${name}` : `/rig:${name}`)
+// A repo with the standalone skills answers to /rig-x even when the plugin's script runs there (2026-10-25 shop_app plan.md).
+export const skillRef = (name: string): string => (IS_VENDORED || exists(path.join(ROOT, '.claude/skills/rig-start/SKILL.md')) ? `/rig-${name}` : `/rig:${name}`)
 // Managed settings (the platform team's, which no engineer can edit): the OS file plus managed-settings.d/ drop-ins in name order.
 // Objects merge, arrays concatenate, later scalars win. RIG_MANAGED_DIR overrides the directory (tests). Server-managed settings are not visible here.
 const MANAGED_DIR = process.env.RIG_MANAGED_DIR || (process.platform === 'darwin' ? '/Library/Application Support/ClaudeCode'

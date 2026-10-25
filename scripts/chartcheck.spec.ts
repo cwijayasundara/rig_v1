@@ -62,6 +62,17 @@ test('intent-untraced: a behaviour that cites no requirement', () => {
   assert.ok(rules(full({ ...good, a: intent('a', { prd: '[]' }) }, goodCases)).includes('intent-untraced'))
 })
 
+// 2026-10-25 shop_app chart: behaviours cited only `(AC-4.1)`; the finding named no behaviour, so the coordinator read rig's source.
+test('intent-untraced names each behaviour that cites no requirement and says an AC id alone does not count', () => {
+  const bad = { ...good, a: intent('a', { prd: '[FR-1, NFR-1]', behaviours: '- B1 (AC-1.1): adds\n- B2 (NFR-1): fast\n- B3 (AC-1.2): refuses\n' }) }
+  const f = full(bad, goodCases).find(x => x.rule === 'intent-untraced')
+  assert.ok(f, 'an AC id alone is not a requirement')
+  assert.match(f.message, /B1, B3 cite no requirement/)
+  assert.doesNotMatch(f.message, /B2/)
+  assert.match(f.message, /FR-n or NFR-n/)
+  assert.match(full({ ...good, a: intent('a', { prd: '[]' }) }, goodCases).find(x => x.rule === 'intent-untraced')?.message ?? '', /`prd:` frontmatter is empty/)
+})
+
 test('unknown-id: an intent or a behaviour cites an id the PRD does not define', () => {
   assert.ok(rules(full({ ...good, b: intent('b', { prd: '[FR-2]', depends: '[a]', behaviours: '- B1 (FR-99): x\n' }) }, goodCases)).includes('unknown-id'))
   assert.ok(rules(full({ ...good, b: intent('b', { prd: '[FR-2, FR-9]', depends: '[a]' }) }, goodCases)).includes('unknown-id'), 'FR-9 is only in prose')
