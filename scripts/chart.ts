@@ -66,7 +66,19 @@ function readRow(n: number): Row | null {
     return typeof v.digest === 'string' && Array.isArray(v.files) && v.files.every(f => typeof f?.path === 'string' && typeof f?.sha === 'string') ? (v as Row) : null
   } catch { return null }
 }
+// Approval accepts the sprint's proposed ADRs and their Decisions rows, so "never edit an accepted ADR" can bite (2026-10-25 shop_app).
+function acceptAdrs(n: number): void {
+  const ids = walk(path.join(PRODUCT, 'adr')).filter(f => f.endsWith('.md')).flatMap(f => {
+    const text = read(f), fm = frontmatter(text).data
+    const next = text.replace(/^status:\s*["']?proposed["']?[ \t]*$/m, 'status: accepted')
+    if (fm.sprint !== String(n) || fm.status !== 'proposed' || next === text) return [] // the Decisions row flips only with the file
+    fs.writeFileSync(f, next)
+    return [/^\d+/.exec(path.basename(f))?.[0]].filter((x): x is string => Boolean(x))
+  })
+  if (ids.length && exists(archPath)) fs.writeFileSync(archPath, read(archPath).replace(new RegExp(`^(\\|\\s*(?:${ids.join('|')})\\s*\\|.*\\|\\s*)proposed(\\s*\\|\\s*${n}\\s*\\|\\s*)$`, 'gm'), '$1accepted$2'))
+}
 export function writeChartApproval(n: number, by: string): void {
+  acceptAdrs(n)
   const row: Row = { by, at: now(), digest: chartDigest(n), files: manifest(chartFiles(n)) }
   fs.mkdirSync(sprintDir(n), { recursive: true })
   fs.writeFileSync(approvalPath(n), JSON.stringify(row, null, 2) + '\n')

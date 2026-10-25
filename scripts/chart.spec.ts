@@ -68,6 +68,31 @@ test('an approval is missing, then approved, then stale after an edit that names
   assert.deepEqual(state(1).changed, [`${P}/sprints/sprint-1/intents/alpha.md`], 'another sprint does not change it')
 })
 
+// 2026-10-25 shop_app: ADRs stayed `proposed` after approval, so the architect's "never edit an accepted ADR" never applied.
+test('approval accepts that sprint\'s proposed ADRs and their Decisions rows, and the chart stays approved', () => {
+  chart1()
+  const adr = (s: number, status = 'proposed'): string => `---\nsprint: ${s}\nstatus: ${status}\ndate: 2026-10-25\n---\n# ADR\n\nstatus: proposed in prose stays\n`
+  write(repo, `${P}/adr/0001-one.md`, adr(1))
+  write(repo, `${P}/adr/0002-two.md`, adr(2))
+  write(repo, `${P}/adr/0003-three.md`, adr(1, 'superseded-by 0004'))
+  write(repo, `${P}/architecture.md`, `${ARCH_DOC()}\n## Decisions\n\n| ADR | Title | Status | Sprint |\n|---|---|---|---|\n| 0001 | One | proposed | 1 |\n| 0002 | Two | proposed | 2 |\n`)
+  call(`C.writeChartApproval(1, 'Pat')`)
+  const at = (f: string): string => fs.readFileSync(path.join(repo, P, f), 'utf8')
+  assert.match(at('adr/0001-one.md'), /^status: accepted$/m)
+  assert.match(at('adr/0001-one.md'), /status: proposed in prose stays/, 'only the frontmatter line changes')
+  assert.match(at('adr/0002-two.md'), /^status: proposed$/m, 'another sprint\'s ADR is left alone')
+  assert.match(at('adr/0003-three.md'), /^status: superseded-by 0004$/m)
+  write(repo, `${P}/adr/0005-quoted.md`, adr(3).replace('status: proposed\n', 'status: "proposed"\n'))
+  write(repo, `${P}/adr/0006-padded.md`, adr(3).replace('status: proposed\n', 'status: proposed  \n'))
+  write(repo, `${P}/sprints/sprint-3/prd.md`, prd(3))
+  write(repo, `${P}/sprints/sprint-3/intents/gamma.md`, intent(3))
+  call(`C.writeChartApproval(3, 'Pat')`)
+  for (const f of ['adr/0005-quoted.md', 'adr/0006-padded.md']) assert.match(at(f), /^status: accepted$/m, `${f}: a quoted or space-padded status is accepted too`)
+  assert.match(at('architecture.md'), /\| 0001 \| One \| accepted \| 1 \|/)
+  assert.match(at('architecture.md'), /\| 0002 \| Two \| proposed \| 2 \|/)
+  assert.equal(state(1).state, 'approved', 'the digest is taken after the ADRs are accepted')
+})
+
 test('a hand-edited or garbage approval file reads as missing and never throws', () => {
   chart1()
   write(repo, `${P}/sprints/sprint-1/approval.json`, '{ not json')
