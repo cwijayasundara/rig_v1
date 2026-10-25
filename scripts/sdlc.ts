@@ -105,14 +105,16 @@ function cmdActivate(args: Args): void {
   out(`active change: ${slug}`)
 }
 
+const notInitialised = (json: boolean): void => out(json ? JSON.stringify({ initialised: false }) : `rig not initialised here: run ${skillRef('init')}`)
+
 function cmdStatus(args: Args): void {
   const json = Boolean(args.opt.json)
   if (args.opt.journey) {
-    if (!exists(SDLC)) return out(json ? JSON.stringify({ initialised: false }) : `rig not initialised here: run ${skillRef('init')}`)
+    if (!exists(SDLC)) return notInitialised(json)
     const j = journey({ gates: loadConfig().registry.gates, tree: treeStamp() })
     return out(json ? JSON.stringify({ ...j, sensors: sensorStatus() }) : journeyText(j))
   }
-  if (!exists(SDLC)) return out(json ? JSON.stringify({ initialised: false }) : `rig not initialised here: run ${skillRef('init')}`)
+  if (!exists(SDLC)) return notInitialised(json)
   const gates = loadConfig().registry.gates
   const tree = treeStamp()
   const active = activeSlug()
@@ -157,8 +159,10 @@ function approveTarget(): string {
   return chart === undefined ? 'ASK none: no change is in flight and no chart is waiting' : `ASK chart-${chart}`
 }
 
+const needPrd = (n: number): void => { if (!exists(prdPath(n))) fail(`no PRD for sprint ${n}: write ${prdRel(n)} first`) }
+
 function approveChart(n: number, args: Args): void {
-  if (!exists(prdPath(n))) fail(`no PRD for sprint ${n}: write ${prdRel(n)} first`)
+  needPrd(n)
   const block = chartFindings(n, true).filter(f => f.severity === 'block')
   if (block.length) fail(`chart-${n} has ${block.length} blocking finding(s); fix them, then approve:\n${block.map(f => `  [${f.rule}] ${f.message}`).join('\n')}`)
   if (chartState(n).state === 'approved') return out(`chart-${n} is already approved`)
@@ -172,7 +176,7 @@ function cmdChart(args: Args): void {
   const [sub, num] = args.pos
   if ((sub !== 'check' && sub !== 'report' && sub !== 'plan') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: chart (check [--cases] [--json] | report | plan [--print]) <sprint number>')
   const n = Number(num)
-  if (!exists(prdPath(n))) fail(`no PRD for sprint ${n}: write ${prdRel(n)} first`)
+  needPrd(n)
   if (sub === 'plan') return out(args.opt.print ? sprintPlan(n) : `wrote ${writePlan(n)}`)
   if (sub === 'report') return out(chartReport(n))
   const found = chartFindings(n, Boolean(args.opt.cases))
@@ -181,10 +185,12 @@ function cmdChart(args: Args): void {
   out([...found.map(f => `[${f.rule}] ${f.severity === 'report' ? '(report) ' : ''}${f.message}`), `chart-${n}: ${block.length ? `${block.length} blocking finding(s)` : 'no blocking findings'}`].join('\n'))
 }
 
+const readyRow = (i: ReturnType<typeof readyIntents>[number]): string => `${i.slug.padEnd(28)} sprint ${i.sprint}  ${i.estimateDays ?? '?'} day(s)`
+
 function cmdReady(args: Args): void {
   const ready = readyIntents()
   if (args.opt.json) return out(JSON.stringify(ready))
-  out(ready.length ? ready.map(i => `${i.slug.padEnd(28)} sprint ${i.sprint}  ${i.estimateDays ?? '?'} day(s)`).join('\n') : 'no intents are ready')
+  out(ready.length ? ready.map(readyRow).join('\n') : 'no intents are ready')
 }
 
 // The opening of /rig:start: the branch warning and the intents ready to build, so the skill does not need the model to ask for them.
@@ -196,7 +202,7 @@ function cmdStartBrief(): void {
   const ready = readyIntents()
   const plans = sprintsKnown().filter(n => exists(prdPath(n)) && planRows(n).some(r => r.status !== 'done')).map(writePlan)
   if (plans.length) lines.push(`build order (waves and dependency graph): ${plans.join(', ')}`)
-  lines.push(ready.length ? `ready intents:\n${ready.map(i => `  ${i.slug.padEnd(28)} sprint ${i.sprint}  ${i.estimateDays ?? '?'} day(s)`).join('\n')}` : 'no intents are ready')
+  lines.push(ready.length ? `ready intents:\n${ready.map(i => `  ${readyRow(i)}`).join('\n')}` : 'no intents are ready')
   out(lines.join('\n'))
 }
 

@@ -204,6 +204,7 @@ export function parseUnifiedDiff(text: string): FileDiff[] {
 
 type Json = Record<string, unknown>
 export const isObject = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v)
+export const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 export const isStringList = (v: unknown): v is string[] => Array.isArray(v) && v.every(x => typeof x === 'string')
 
 export const posInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v > 0

@@ -4,7 +4,7 @@
 // Run it on a schedule (a native routine, /loop or cron): `node .rig/bin/sdlc.ts maintain`.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SDLC, out, fail, read, git, sha, writeAtomic, type Args } from './core.ts'
+import { ROOT, SENSORS_PATH, SDLC, out, fail, read, git, sha, writeAtomic, type Args } from './core.ts'
 import { parseRegistry } from './registry.ts'
 import { isTest } from './model.ts'
 
@@ -84,7 +84,7 @@ export function cmdMaintain(args: Args): void {
     const text = read(path.join(ROOT, f))
     if (text.length && text.length < MAX_BYTES && !text.includes('\0')) { files[f] = text; bytes += text.length }
   }
-  const paths = parseRegistry(read(path.join(SDLC, 'sensors.json'))).registry.paths
+  const paths = parseRegistry(read(SENSORS_PATH)).registry.paths
   const cap = Number(typeof args.opt.cap === 'string' ? args.opt.cap : DEFAULT_CAP)
   const seenFile = path.join(SDLC, 'maintain', 'seen.json')
   let seen: Record<string, string> = {}

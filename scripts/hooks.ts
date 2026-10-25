@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import {
-  ROOT, SDLC, IS_VENDORED, skillRef, now, exists, read, out, fail, frontmatter,
+  ROOT, SDLC, SENSORS_JSON, SENSORS_PATH, BUDGET_MS, IS_VENDORED, skillRef, now, exists, read, out, fail, frontmatter,
   managedSettings, scanSecrets, relPosix, sha, readGate, updateGate, type Args, type HookInput, type GateSummary,
 } from './core.ts'
 import { activeSlug, status, nextStep, changeType } from './lifecycle.ts'
@@ -35,7 +35,7 @@ function modeNow(registry: Registry, input: HookInput): { mode: Mode; model: str
 // One budget for all of them, inside the 75 s PostToolUse timeout (RIG_EDIT_BUDGET_MS overrides it in specs).
 function editSensorFailures(registry: Registry, rel: string): string[] {
   const out: string[] = []
-  const budget = Number(process.env.RIG_EDIT_BUDGET_MS) || 60_000
+  const budget = Number(process.env.RIG_EDIT_BUDGET_MS) || BUDGET_MS.edit
   let left = budget
   for (const s of activeSensors(registry, 'edit', 'continuous')) {
     if (!s.cmd || s.cadence !== 'edit' || !s.blocks) continue
@@ -151,7 +151,6 @@ function hookPostEdit(input: HookInput): void {
 
 const UNRESOLVED = path.join(SDLC, 'unresolved.json')
 const MAX_BLOCKS = 2
-const STOP_BUDGET_MS = 60_000
 const PASSED_TREES = 20
 
 const pushUnique = (list: string[], item: string): string[] => (list.includes(item) ? list : [...list, item])
@@ -213,7 +212,7 @@ function hookStop(input: HookInput = {}): { halt: boolean; warn?: string } {
   const gate = readGate()
   const diffs = turnDiff(snap).filter(d => isSource(d.file, registry.paths) || isProtected(d.file) || matchesAny(d.file, contractGlobs(registry.contracts)))
   if (!diffs.length) return { halt: false }
-  const hash = diffHash(diffs) + sha(read(path.join(SDLC, 'sensors.json')) + read(path.join(SDLC, 'rules.json'))) + mode
+  const hash = diffHash(diffs) + sha(read(SENSORS_PATH) + read(path.join(SDLC, 'rules.json'))) + mode
   if (gate.passed.main === hash) return { halt: false }
   const slug = activeSlug()
   // The fast commands are keyed by the whole tree, not this turn's diff: a tree that already passed them (an edit undone, a
@@ -221,11 +220,11 @@ function hookStop(input: HookInput = {}): { halt: boolean; warn?: string } {
   const stamp = treeStamp()
   const treePassed = stamp !== null && gate.trees.includes(stamp)
   const result = runChecks({
-    point: 'stop', diffs, config: registry, rules, slugs: slug ? [slug] : [], commands: treePassed || mode === 'final' ? 'none' : 'fast', budgetMs: STOP_BUDGET_MS,
+    point: 'stop', diffs, config: registry, rules, slugs: slug ? [slug] : [], commands: treePassed || mode === 'final' ? 'none' : 'fast', budgetMs: BUDGET_MS.stop,
     before: f => showAt(snap.sha, f) ?? '', toolEdited: new Set(gate.tool), base: null, ratchet: true, ratchetWrite: 'write',
     contracts: mode === 'continuous' && contractsTouched(registry.contracts, diffs.map(d => d.file)),
   })
-  const configBlocks: Finding[] = errors.map(e => ({ sensor: 'config', severity: 'block', file: '.rig/sensors.json', message: e, fix: 'fix the file' }))
+  const configBlocks: Finding[] = errors.map(e => ({ sensor: 'config', severity: 'block', file: SENSORS_JSON, message: e, fix: 'fix the file' }))
   const kept = mode === 'final' ? result.findings.filter(f => (ALWAYS_ON as string[]).includes(f.sensor)) : result.findings
   const roleOn = registry.sensors.some(s => s.id === 'model-role' && s.enabled)
   const roles = roleOn ? modelRoleFindings(registry, model, readModelState(MODEL_STATE).launches.filter(l => l.session === (input.session_id ?? 'default'))) : []

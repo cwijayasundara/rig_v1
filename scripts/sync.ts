@@ -2,7 +2,7 @@
 // checks that keep guides, sensors and the brief's behaviours in step. Text outside the block is the team's and never touched.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SDLC, CHANGES, read, exists, sha, git, out, fail, sanctionWrites, frontmatter, listChanges, type Args } from './core.ts'
+import { ROOT, SENSORS_PATH, CHANGES, read, exists, sha, git, out, fail, sanctionWrites, frontmatter, listChanges, type Args } from './core.ts'
 import { parseIntent, intentSpecProblems } from './chartcheck.ts'
 import { intentRelOf } from './product.ts'
 import { parseRegistry, isRegistryShape, type Registry } from './registry.ts'
@@ -90,7 +90,7 @@ function agentsPointer(): string {
 }
 
 export function cmdSync(args: Args): void {
-  const raw = read(path.join(SDLC, 'sensors.json'))
+  const raw = read(SENSORS_PATH)
   if (!isRegistryShape(raw)) fail('rig sync needs a registry-shaped .rig/sensors.json (a "sensors" list); run init --stack on a new repo')
   const { registry, errors } = parseRegistry(raw)
   if (!args.opt.check) return out(writeSync(registry) + agentsPointer())

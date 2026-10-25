@@ -1,9 +1,8 @@
 // The journey view (dashboard spec 2026-10-18): where a repo is in the AI SDLC and the one command to run next, computed from
 // files only. The outer loop is a sprint (init, PRD, chart, test plan, approval, build); the inner loop is one change.
 // `show` says which loops a person should see: a greenfield repo has both, a brownfield repo is entered through the outer loop.
-import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SDLC, CHANGES, exists } from './core.ts'
+import { ROOT, SENSORS_PATH, SDLC, CHANGES, exists, readJson } from './core.ts'
 import { activeSlug, changeType, isShipped, nextStep, status, type Status } from './lifecycle.ts'
 import { latestAgents } from './modelstate.ts'
 import { readAutonomy } from './autonomy.ts'
@@ -30,7 +29,7 @@ export type Journey = {
 export const repoKind = (): 'greenfield' | 'brownfield' => {
   const file = path.join(SDLC, 'wiki.json')
   if (!exists(file)) return 'greenfield'
-  try { return (JSON.parse(fs.readFileSync(file, 'utf8')) as { origin?: unknown }).origin === 'sync' ? 'greenfield' : 'brownfield' } catch { return 'brownfield' }
+  return readJson<{ origin?: unknown } | null>(file, null)?.origin === 'sync' ? 'greenfield' : 'brownfield'
 }
 
 // The first step not done is where the person is; a step only a person can take is a gate.
@@ -56,7 +55,7 @@ function innerSteps(s: Status, gates: boolean, slug: string, reviewed: boolean):
 
 export function journey(i: { gates: { plan: boolean }; tree: string | null }): Journey {
   const kind = repoKind(), show: ('outer' | 'inner')[] = kind === 'greenfield' ? ['outer', 'inner'] : ['outer']
-  const initialised = exists(path.join(SDLC, 'sensors.json'))
+  const initialised = exists(SENSORS_PATH)
   const sprints = sprintsKnown()
   const open = sprints.find(n => { const s = sprintIntents(n); return !exists(prdPath(n)) || !s.length || s.some(x => !isShipped(x)) })
   const n = open ?? (sprints.length ? (sprints[sprints.length - 1] as number) + 1 : 0)

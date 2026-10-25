@@ -3,13 +3,11 @@
 // tightens it once it passes).
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, read, out, fail, sanctionWrites } from './core.ts'
+import { ROOT, SENSORS_JSON, BUDGET_MS, read, out, fail, sanctionWrites } from './core.ts'
 import { runCommand } from './runs.ts'
 import { loadConfig } from './check.ts'
 import { updateKnownRed, activeSensors, commandFor } from './registry.ts'
 
-const SENSORS_JSON = '.rig/sensors.json'
-const BUDGET_MS = 600_000
 
 export function cmdBaseline(): void {
   const file = path.join(ROOT, SENSORS_JSON)
@@ -21,7 +19,7 @@ export function cmdBaseline(): void {
   for (const s of activeSensors(registry, 'commit', 'continuous')) {
     const cmd = commandFor(s, null)
     if (!cmd) continue
-    const r = runCommand(cmd, { timeoutMs: BUDGET_MS })
+    const r = runCommand(cmd, { timeoutMs: BUDGET_MS.commit })
     // A timed-out command blocks even when known red (check.ts), so listing it there would hide nothing: report it instead.
     if (r.timedOut) { rows.push(`${s.id}: timed out after ${r.ms} ms: make it faster; knownRed cannot cover a timeout`); continue }
     if (r.exit !== 0) red.push(s.id)

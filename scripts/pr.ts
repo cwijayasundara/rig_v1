@@ -3,7 +3,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { ROOT, CHANGES, WAIVERS, waiverLive, exists, read, readJsonl, out, fail, git, checkSlug, optString, ensureGitignore, type Args, type Waiver } from './core.ts'
+import { ROOT, CHANGES, WAIVERS, waiverLive, exists, isTrunk, read, readJsonl, out, fail, git, checkSlug, optString, ensureGitignore, type Args, type Waiver } from './core.ts'
 import { frozenFindings, frozenFor } from './contracts.ts'
 import { loadConfig } from './check.ts'
 import { ghBin } from './model.ts'
@@ -46,7 +46,7 @@ export function cmdPr(args: Args): void {
   const head = git(['rev-parse', '--abbrev-ref', 'HEAD']) ?? ''
   if (head !== branch) {
     if (followUp) fail(`not pushing: ${slug} already has a PR on ${branch}; check it out first (HEAD is ${head})`)
-    if (!['main', 'master'].includes(head)) fail(`not shipping: HEAD is ${head}; a change ships from the trunk or from ${branch}, never on top of another branch`)
+    if (!isTrunk(head)) fail(`not shipping: HEAD is ${head}; a change ships from the trunk or from ${branch}, never on top of another branch`)
   }
   const gates = loadConfig().registry.gates
   if (gates.plan && approvalState(slug) !== 'approved') fail(`not shipping: ${slug}'s plan is not approved (a person runs /rig:approve ${slug})`)

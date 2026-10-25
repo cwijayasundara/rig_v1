@@ -1,5 +1,6 @@
 // Wiki citations (wiki design 2026-10-17): the forms a page may cite, the declaration a citation names, and its hash. Pure over text.
 import { createHash } from 'node:crypto'
+import { escapeRe } from './model.ts'
 
 export type Cite = { kind: 'code'; path: string; symbol?: string } | { kind: 'why'; type: 'adr' | 'commit' | 'pr'; ref: string }
 
@@ -97,11 +98,10 @@ export function normalise(text: string): string {
 
 export const hashText = (text: string): string => createHash('sha256').update(normalise(text)).digest('hex').slice(0, 16)
 
-const esc = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 // Declaration heads for a name: keyword declarations, and a method head (`name(...) {` at the start of a line).
 function heads(source: string, name: string): number[] {
-  const n = esc(name)
+  const n = escapeRe(name)
   const decl = new RegExp(`^[ \\t]*(?:export\\s+)?(?:default\\s+)?(?:declare\\s+)?(?:abstract\\s+)?(?:async\\s+)?(?:function\\*?|class|interface|type|enum|const|let|var)\\s+${n}\\b`, 'gm')
   const method = new RegExp(`^[ \\t]*(?:(?:public|private|protected|static|async|get|set|readonly|override)\\s+)*${n}\\s*(?:<[^>\\n]*>)?\\s*\\([^\\n]*\\)\\s*(?::\\s*[^{;=\\n]+)?\\{[ \\t]*$`, 'gm')
   const at = new Set<number>()
@@ -168,7 +168,7 @@ export function findSymbol(source: string, symbol: string, file = ''): string | 
   const lang = extOf(file)
   const mk = LANG_HEADS[lang]
   if (file && !JS_EXT.test(file) && !mk) return null
-  const at = mk ? [...new Set([...source.matchAll(mk(esc(symbol)))].map(m => m.index! + m[0].length - m[0].trimStart().length))] : heads(source, symbol)
+  const at = mk ? [...new Set([...source.matchAll(mk(escapeRe(symbol)))].map(m => m.index! + m[0].length - m[0].trimStart().length))] : heads(source, symbol)
   const start = at[0]
   if (at.length !== 1 || start === undefined) return null
   return source.slice(start, lang === 'py' ? pyEnd(source, start) : spanEnd(source, start)).trim()

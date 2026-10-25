@@ -2,7 +2,7 @@
 // status is which files it has. Only a person writes approval.json; verify writes verify.json for the tree it judged.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SDLC, CHANGES, read, exists, sha, now, git, defaultBase, frontmatter, skillRef as k } from './core.ts'
+import { ROOT, SENSORS_PATH, SDLC, CHANGES, read, readJson, exists, isTrunk, sha, now, git, defaultBase, frontmatter, skillRef as k } from './core.ts'
 import { openQuestions, globToRegex, planFiles, blastRadius } from './model.ts'
 import { parseRegistry, contractGlobs } from './registry.ts'
 
@@ -21,7 +21,6 @@ export const changeDir = (slug: string): string => path.join(CHANGES, slug)
 const file = (slug: string, name: string): string => path.join(CHANGES, slug, name)
 // Trailing whitespace is left out: git's readers (the staged text at commit) return trimmed output.
 export const digest = (text: string): string => sha(text.replace(/\s+$/, ''))
-const json = <T>(p: string): T | null => { try { return JSON.parse(read(p)) as T } catch { return null } }
 
 export function activeSlug(): string | null {
   const s = read(ACTIVE).trim()
@@ -45,13 +44,13 @@ export function newChange(slug: string, type: ChangeType, title: string, source?
 // Contract files frozen by an approval, hashed one by one so a later edit names the file (spec §6).
 // The contract files under the registry's globs (spec §6), tracked or new.
 export function contractFiles(): string[] {
-  const globs = contractGlobs(parseRegistry(read(path.join(SDLC, 'sensors.json'))).registry.contracts)
+  const globs = contractGlobs(parseRegistry(read(SENSORS_PATH)).registry.contracts)
   if (!globs.length) return []
   return (git(['ls-files', '--cached', '--others', '--exclude-standard']) ?? '').split('\n').filter(f => f && globs.some(g => globToRegex(g).test(f))).sort()
 }
 export const freezeRecord = (): Record<string, string> => Object.fromEntries(contractFiles().filter(f => exists(path.join(ROOT, f))).map(f => [f, digest(read(path.join(ROOT, f)))]))
 const hashes = (slug: string): Record<string, string> => Object.fromEntries(APPROVED.filter(n => exists(file(slug, n))).map(n => [n, digest(read(file(slug, n)))]))
-export const readApproval = (slug: string): Approval | null => json<Approval>(file(slug, 'approval.json'))
+export const readApproval = (slug: string): Approval | null => readJson<Approval | null>(file(slug, 'approval.json'), null)
 export function approvalState(slug: string): 'missing' | 'stale' | 'approved' {
   const a = readApproval(slug)
   if (!a?.hashes) return 'missing'
@@ -80,7 +79,7 @@ export function writeApproval(slug: string, by: string): Approval {
   return a
 }
 
-const readVerify = (slug: string): Verify | null => json<Verify>(file(slug, 'verify.json'))
+const readVerify = (slug: string): Verify | null => readJson<Verify | null>(file(slug, 'verify.json'), null)
 export const writeVerify = (slug: string, v: Verify): void => fs.writeFileSync(file(slug, 'verify.json'), JSON.stringify(v, null, 2) + '\n')
 export const verifyFresh = (slug: string, tree: string | null): boolean => { const v = readVerify(slug); return Boolean(v?.pass && tree && v.tree === tree) }
 
@@ -89,7 +88,7 @@ export const verifyFresh = (slug: string, tree: string | null): boolean => { con
 let shippedOnTrunk: Set<string> | null = null
 export function isShipped(slug: string): boolean {
   if (!shippedOnTrunk) {
-    const base = defaultBase() ?? (['main', 'master'].includes(git(['rev-parse', '--abbrev-ref', 'HEAD']) ?? '') ? 'HEAD' : null)
+    const base = defaultBase() ?? (isTrunk(git(['rev-parse', '--abbrev-ref', 'HEAD']) ?? '') ? 'HEAD' : null)
     const files = base ? (git(['ls-tree', '-r', '--name-only', base, '--', '.rig/changes']) ?? '').split('\n') : []
     shippedOnTrunk = new Set(files.filter(f => f.endsWith('/pr.md')).map(f => f.split('/')[2] ?? ''))
   }

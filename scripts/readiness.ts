@@ -2,7 +2,7 @@
 // configuration checks only (no model, no network, the same answer every run). Binary criteria in four levels; the repo's level is the highest
 // one where it passes at least 80% of that level's criteria and of every level below. Repo-level, not person-level: it names what to fix, never who.
 import path from 'node:path'
-import { ROOT, SDLC, WAIVERS, out, read, exists, git, readJsonl, waiverLive, type Args, type Waiver } from './core.ts'
+import { ROOT, SENSORS_PATH, SDLC, WAIVERS, out, read, readJson, exists, git, readJsonl, waiverLive, type Args, type Waiver } from './core.ts'
 import { parseRegistry, type Registry } from './registry.ts'
 import { layerState } from './arch.ts'
 import { appStates } from './app.ts'
@@ -12,7 +12,7 @@ export type Criterion = { id: string; level: 1 | 2 | 3 | 4; what: string; fix: s
 export const GATE = 0.8
 
 export function criteria(): Criterion[] {
-  const reg: Registry = parseRegistry(read(path.join(SDLC, 'sensors.json'))).registry
+  const reg: Registry = parseRegistry(read(SENSORS_PATH)).registry
   const has = (id: string): boolean => reg.sensors.some(s => s.id === id && s.cmd && s.enabled)
   const claude = read(path.join(ROOT, 'CLAUDE.md'))
   // The hooks sit in core.hooksPath when rig installed them there, else in .git/hooks.
@@ -23,11 +23,11 @@ export function criteria(): Criterion[] {
   // Existence alone would let an empty file satisfy a criterion: these need content.
   const filled = (rel: string): boolean => read(path.join(ROOT, rel)).trim().length > 0
   const owners = (read(path.join(ROOT, 'CODEOWNERS')) + '\n' + read(path.join(ROOT, '.github/CODEOWNERS'))).split('\n').filter(l => l.trim() && !l.trim().startsWith('#'))
-  const wiki = ((): boolean => { try { return Object.keys(JSON.parse(read(path.join(SDLC, 'wiki.json')))).length > 0 } catch { return false } })()
+  const wiki = Object.keys(readJson<object | null>(path.join(SDLC, 'wiki.json'), null) ?? {}).length > 0
   const c = (level: Criterion['level'], id: string, what: string, fix: string, ok: boolean): Criterion => ({ id, level, what, fix, ok })
   return [
     c(1, 'git', 'the repo is under git', '`git init`', git(['rev-parse', '--is-inside-work-tree']) === 'true'),
-    c(1, 'rig', 'rig is initialised (.rig/sensors.json)', '`/rig:init`', exists(path.join(SDLC, 'sensors.json'))),
+    c(1, 'rig', 'rig is initialised (.rig/sensors.json)', '`/rig:init`', exists(SENSORS_PATH)),
     c(1, 'unit', 'a unit-test command is a sensor', 'add a "unit" command sensor to .rig/sensors.json (the stack pack has one)', has('unit')),
     c(1, 'claude-md', 'CLAUDE.md carries the sensors\' guides', '`sdlc.ts sync`', claude.includes('rig:guides start')),
     c(1, 'readme', 'a README says what the project is', 'write README.md', exists(path.join(ROOT, 'README.md'))),

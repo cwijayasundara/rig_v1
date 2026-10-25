@@ -37,6 +37,11 @@ export type HookInput = {
 export const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd()
 export const SDLC = path.join(ROOT, '.rig')
 export const CHANGES = path.join(SDLC, 'changes')
+// sensors.json: repo-relative posix form (messages, diff paths, joined to ROOT) and absolute.
+export const SENSORS_JSON = '.rig/sensors.json'
+export const SENSORS_PATH = path.join(SDLC, 'sensors.json')
+// Time budget in ms per check cadence.
+export const BUDGET_MS = { edit: 60_000, stop: 60_000, commit: 600_000, ship: 1_800_000, ci: 1_800_000 } as const
 
 export const SOFT_HOOK_FAILURE = 'sdlc hook error (ignored)'
 
@@ -100,6 +105,11 @@ export function frontmatter(text: string): { data: Fields; body: string } {
   return { data, body: text.slice(m[0].length) }
 }
 
+// The parsed file, or the fallback when it is missing, empty or not valid JSON.
+export function readJson<T>(p: string, fallback: T): T {
+  try { return JSON.parse(read(p)) as T } catch { return fallback }
+}
+
 export function readJsonl<T>(p: string): T[] {
   return read(p)
     .split('\n')
@@ -150,6 +160,7 @@ export function relPosix(file: string): string {
 }
 
 export const TRUNKS = ['origin/main', 'main', 'origin/master', 'master']
+export const isTrunk = (name: string): boolean => ['main', 'master'].includes(name)
 export function defaultBase(): string | null {
   const head = git(['rev-parse', '--abbrev-ref', 'HEAD'])
   for (const ref of TRUNKS) {
@@ -186,11 +197,10 @@ export function managedFiles(dir = MANAGED_DIR): string[] {
   try { drops = fs.readdirSync(d).filter(f => f.endsWith('.json')).sort().map(f => path.join(d, f)) } catch { /* none, or unreadable */ }
   return [path.join(dir, 'managed-settings.json'), ...drops].filter(f => { try { JSON.parse(fs.readFileSync(f, 'utf8')); return true } catch { return false } })
 }
-const isObj = isObject as (v: unknown) => v is Record<string, unknown>
 const deepMerge = (a: Record<string, unknown>, b: Record<string, unknown>): Record<string, unknown> => Object.fromEntries([...new Set([...Object.keys(a), ...Object.keys(b)])].map(k => [k,
-  isObj(a[k]) && isObj(b[k]) ? deepMerge(a[k], b[k]) : Array.isArray(a[k]) && Array.isArray(b[k]) ? [...a[k], ...b[k]] : k in b ? b[k] : a[k]]))
+  isObject(a[k]) && isObject(b[k]) ? deepMerge(a[k], b[k]) : Array.isArray(a[k]) && Array.isArray(b[k]) ? [...a[k], ...b[k]] : k in b ? b[k] : a[k]]))
 export const managedSettings = (dir = MANAGED_DIR): Record<string, unknown> =>
-  managedFiles(dir).reduce<Record<string, unknown>>((acc, f) => { const v: unknown = JSON.parse(fs.readFileSync(f, 'utf8')); return isObj(v) ? deepMerge(acc, v) : acc }, {})
+  managedFiles(dir).reduce<Record<string, unknown>>((acc, f) => { const v: unknown = JSON.parse(fs.readFileSync(f, 'utf8')); return isObject(v) ? deepMerge(acc, v) : acc }, {})
 
 const GITIGNORED = [
   'state/', 'maintain/seen.json', '.baseline', '.gate', 'unresolved.json', 'gates.jsonl', '.onboarding', 'changes/*/prototype/', 'learn/',

@@ -7,17 +7,16 @@ import { ROOT, exists, read, sha, now, toPosix, frontmatter } from './core.ts'
 import { openQuestions, section } from './model.ts'
 import { changeDir, isShipped } from './lifecycle.ts'
 import { planText, type PlanRow } from './plan.ts'
-import { PRODUCT, prdPath, intentsDir, testplanDir, approvalPath, sprintDir, sprintsOnDisk, intentRel, planPath, sprintRel } from './product.ts'
+import { PRODUCT, ARCH_REL, archPath, prdPath, intentsDir, testplanDir, approvalPath, sprintDir, sprintsOnDisk, intentRel, planPath, sprintRel } from './product.ts'
 import { designIntents, architectureProblems, accessProblems, parseAccess, parseIntent, parseCases, parkedDecisions, prdIds, traceReport, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
 
-const ARCH = toPosix(path.relative(ROOT, path.join(PRODUCT, 'architecture.md')))
 const SHARED_DIRS = ['adr'].map(d => `${toPosix(path.relative(ROOT, path.join(PRODUCT, d)))}/`)
 export const CHART_RE = /^chart-(\d{1,4})$/
 type ChartFile = { path: string; sha: string }
 type ChartState = 'approved' | 'stale' | 'missing'
 type Row = { by: string; at: string; digest: string; files: ChartFile[] }
 
-const isShared = (p: string): boolean => p === ARCH || SHARED_DIRS.some(d => p.startsWith(d))
+const isShared = (p: string): boolean => p === ARCH_REL || SHARED_DIRS.some(d => p.startsWith(d))
 
 // Dotfiles (.DS_Store, editor swap files) and backups (name~) are machine-local: hashing them would make a chart stale on every clone but the approver's.
 const local = (name: string): boolean => name.startsWith('.') || name.endsWith('~')
@@ -40,7 +39,7 @@ export const intentOf = (slug: string): Intent | null => allIntents().find(i => 
 // `<path or none>` prompt left in); an older sprint's is the `<date>-sprint-<N>-design.md` beside it, so charting sprint 2 leaves sprint 1's design,
 // and its approval, alone. The raw string comes back for a path outside the repo, so the design-missing rule can name it.
 export function designDocOf(n: number): string | null {
-  const arch = path.join(PRODUCT, 'architecture.md')
+  const arch = archPath
   const d = exists(arch) ? frontmatter(read(arch)).data.design?.trim() : undefined
   if (!d || d === 'none' || d.startsWith('<')) return null
   if (escapes(d)) return d
@@ -56,7 +55,7 @@ function ownFiles(n: number): string[] {
   const own = intentsOf(n)
   return rel([prdPath(n), ...designFile(n), ...walk(testplanDir(n)), ...own.map(i => i.file), ...own.flatMap(i => [...i.contractFiles, ...i.exampleFiles]).filter(f => !escapes(f)).map(f => path.join(ROOT, f))])
 }
-const sharedFiles = (): string[] => rel([path.join(PRODUCT, 'architecture.md'), ...walk(path.join(PRODUCT, 'adr')).filter(f => f.endsWith('.md'))])
+const sharedFiles = (): string[] => rel([archPath, ...walk(path.join(PRODUCT, 'adr')).filter(f => f.endsWith('.md'))])
 export const chartFiles = (n: number): string[] => [...new Set([...ownFiles(n), ...sharedFiles()])].sort()
 const manifest = (paths: string[]): ChartFile[] => paths.map(p => ({ path: p, sha: sha(read(path.join(ROOT, p))) }))
 export const chartDigest = (n: number): string => sha(manifest(chartFiles(n)).map(f => `${f.path}\n${f.sha}\n`).join(''))
@@ -117,12 +116,12 @@ export function chartFindings(n: number, withCases: boolean): ChartFinding[] {
     for (const s of listed.filter(x => !mine.includes(x))) found.push({ rule: 'design-intent', severity: 'block', where: 'architecture', message: `${s} is in the design doc's ## Intents but has no ${intentRel(n, s)} (the list is read from \`- <slug>: scope\` lines; slugs are lowercase kebab-case)` })
     for (const s of mine.filter(x => !listed.includes(x))) found.push({ rule: 'design-intent', severity: 'block', where: s, message: `${s} is an intent of sprint ${n} but the design doc's ## Intents does not list it` })
   }
-  const arch = uncomment(read(path.join(PRODUCT, 'architecture.md')))
+  const arch = uncomment(read(archPath))
   found.push(...architectureProblems(arch, read(prdPath(n)), n))
   found.push(...accessProblems(parseAccess(arch), allIntents().map(i => i.slug), cases, intentsOf(n).map(i => i.slug)))
   for (const q of openQuestions(arch)) found.push({ rule: 'open-question', severity: 'block', where: 'architecture', message: `architecture.md has an open question: ${q}` })
   for (const l of section(arch, 'Concerns').split('\n').map(x => x.replace(/^\s*[-*]\s*/, '').trim()).filter(x => x && !/^none\.?$/i.test(x) && !/^\[x\]/i.test(x) && !/\(resolved\)/i.test(x))) found.push({ rule: 'concern', severity: 'block', where: 'architecture', message: `unresolved concern: ${l}` })
-  for (const [where, file] of [['architecture.md', path.join(PRODUCT, 'architecture.md')], ...intentsOf(n).map(i => [`${i.slug}.md`, i.file] as const)]) found.push(...parkedDecisions(where, read(file)))
+  for (const [where, file] of [['architecture.md', archPath], ...intentsOf(n).map(i => [`${i.slug}.md`, i.file] as const)]) found.push(...parkedDecisions(where, read(file)))
   return found
 }
 

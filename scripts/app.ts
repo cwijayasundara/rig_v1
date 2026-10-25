@@ -3,7 +3,7 @@
 // nothing here assumes what kind of app it is. A driver nobody has approved is a draft: not enforced, and listed as such.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SDLC, PLUGIN_ROOT, ownerOrFail, out, fail, read, exists, sha, writeAtomic, sanctionWrites, type Args } from './core.ts'
+import { ROOT, SDLC, PLUGIN_ROOT, ownerOrFail, out, fail, read, readJson, BUDGET_MS, exists, sha, writeAtomic, sanctionWrites, type Args } from './core.ts'
 import { runCommand } from './runs.ts'
 import { formatFindings, type Finding } from './model.ts'
 import type { Inert } from './registry.ts'
@@ -13,14 +13,14 @@ export type App = { name: string; run: string; files: string[]; timeoutMs: numbe
 type AppState = 'draft' | 'current' | 'changed' | 'stale'
 type Approval = { by: string; at: string; hash: string }
 
-const readJson = <T>(rel: string): T | null => { try { return JSON.parse(read(path.join(ROOT, rel))) as T } catch { return null } }
+const readRel = <T>(rel: string): T | null => readJson<T | null>(path.join(ROOT, rel), null)
 
 const UNSAFE = /(^|\/)\.\.(\/|$)|^\//
 const appDirs = (): string[] => (exists(path.join(ROOT, VERIFY)) ? fs.readdirSync(path.join(ROOT, VERIFY), { withFileTypes: true }).filter(d => d.isDirectory() && /^[a-z0-9][a-z0-9-]*$/.test(d.name)).map(d => d.name) : [])
 
 function listApps(): App[] {
   return appDirs().flatMap(name => {
-    const def = readJson<{ run?: unknown; files?: unknown; timeoutMs?: unknown }>(`${VERIFY}/${name}/app.json`)
+    const def = readRel<{ run?: unknown; files?: unknown; timeoutMs?: unknown }>(`${VERIFY}/${name}/app.json`)
     if (!def || typeof def.run !== 'string' || !def.run.trim() || !Array.isArray(def.files)) return []
     return [{ name, run: def.run, files: def.files.filter((f): f is string => typeof f === 'string' && !UNSAFE.test(f)), timeoutMs: Number(def.timeoutMs) > 0 ? Number(def.timeoutMs) : 120_000 }]
   })
@@ -43,7 +43,7 @@ const featureFiles = (a: App): string[] => {
 }
 // Everything that makes the journeys what they are: the definition, the driver files, the shared helper they import, and the feature map.
 const hashOf = (a: App): string => sha([`${VERIFY}/${a.name}/app.json`, ...a.files.map(f => `${VERIFY}/${a.name}/${f}`), `${VERIFY}/lib.mjs`, ...featureFiles(a)].map(f => `${f}\n${read(path.join(ROOT, f))}`).join('\n--\n'))
-const approvalOf = (a: App): Approval | null => readJson<Approval>(`${VERIFY}/${a.name}.approved.json`)
+const approvalOf = (a: App): Approval | null => readRel<Approval>(`${VERIFY}/${a.name}.approved.json`)
 
 // A feature file says where its feature lives with `entry: <path>` lines; a path that no longer exists means the map has gone stale.
 function missingEntries(a: App): string[] {
@@ -79,8 +79,7 @@ function runDriver(a: App, budgetMs: number): { exit: number; tail: string; time
   const row = runCommand(a.run, { timeoutMs: Math.max(1000, Math.min(a.timeoutMs, budgetMs)), env: { RIG_VERIFY_STATE: stateDir }, unsetEnv: SECRETISH })
   reap(stateDir)
   // Exit 0 is not enough: the driver must say what it checked. No evidence, or none that holds, is a failed run.
-  let evidence: { ok?: boolean; steps?: unknown[] } | null = null
-  try { evidence = JSON.parse(read(path.join(stateDir, 'evidence.json'))) } catch { /* none */ }
+  const evidence = readJson<{ ok?: boolean; steps?: unknown[] } | null>(path.join(stateDir, 'evidence.json'), null)
   const hollow = row.exit === 0 && !(evidence?.ok === true && Array.isArray(evidence.steps) && evidence.steps.length > 0)
   return { exit: hollow ? 1 : row.exit, tail: hollow ? `${row.tail}\nthe driver exited 0 but wrote no evidence of any journey step to $RIG_VERIFY_STATE/evidence.json` : row.tail, timedOut: Boolean(row.timedOut) }
 }
@@ -147,7 +146,7 @@ export function cmdApp(args: Args): void {
   }
   if (sub === 'check') {
     if (args.pos[1] && !apps.some(a => a.name === args.pos[1])) fail(`no such app: ${args.pos[1]}${apps.length ? ` (known: ${apps.map(a => a.name).join(', ')})` : ''}`)
-    const found = journeyFindings(1_800_000, args.pos[1])
+    const found = journeyFindings(BUDGET_MS.ci, args.pos[1])
     out(formatFindings(found) || (apps.length ? 'journeys: pass' : 'journeys: not configured'))
     process.exitCode = found.some(f => f.severity === 'block') ? 1 : 0
     return

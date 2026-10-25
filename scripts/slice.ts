@@ -4,8 +4,9 @@
 // feature from the exemplar. Nothing is ever overwritten, and nothing is enforced that a person has not approved.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SDLC, PLUGIN_ROOT, out, fail, read, exists, sanctionWrites, type Args } from './core.ts'
+import { ROOT, SENSORS_PATH, PLUGIN_ROOT, out, fail, read, readJson, exists, sanctionWrites, type Args } from './core.ts'
 import { parseRegistry } from './registry.ts'
+import { ARCH_REL } from './product.ts'
 import { parseLayers, approvedDef, layerState, layerStateText } from './arch.ts'
 
 type Slice = { stack: string; paths: string[]; layers: string[]; test: string; needs?: { file: string; json: string; equals: string; note: string }[] }
@@ -13,7 +14,7 @@ const RULES_FILE = '.claude/rules/rig-slice.md'
 const MARK = '<!-- rig:slice'
 const RESERVED = ['domain', 'app', 'infra', 'http', 'src', 'test', 'tests']
 
-const stackOf = (): string => parseRegistry(read(path.join(SDLC, 'sensors.json'))).registry.stack ?? ''
+const stackOf = (): string => parseRegistry(read(SENSORS_PATH)).registry.stack ?? ''
 
 function loadSlice(stack: string): { slice: Slice; rules: string; files: { rel: string; text: string }[] } | null {
   const dir = path.join(PLUGIN_ROOT, 'templates', 'slices', stack)
@@ -57,14 +58,14 @@ function gen(): void {
   fs.writeFileSync(rulesPath, `${frontmatter}${MARK} stack=${stack}. Written by \`sdlc slice gen\`; rerun it to refresh. -->\n${loaded.rules}`)
   const written = [RULES_FILE]
   const lines = [`wrote ${RULES_FILE}: Claude Code loads it when the model works on ${loaded.slice.paths.join(', ')}.`]
-  const archFile = path.join(ROOT, '.rig/product/architecture.md')
+  const archFile = path.join(ROOT, ARCH_REL)
   if (parseLayers(read(archFile)).def) lines.push('architecture.md already declares layers: left as it is. The slice\'s layers are in templates/slices/' + stack + '/slice.json.')
   else {
     fs.mkdirSync(path.dirname(archFile), { recursive: true })
     const text = read(archFile).trimEnd() || '# Architecture'
     // An existing "## Layers" heading with no block (the architect's prose) gets the block under it, not a second heading.
     fs.writeFileSync(archFile, /^## Layers[ \t]*$/m.test(text) ? text.replace(/^## Layers[ \t]*$/m, `## Layers\n\n${block(loaded.slice).trimEnd()}`) + '\n' : `${text}\n\n## Layers\n\n${block(loaded.slice)}`)
-    written.push('.rig/product/architecture.md')
+    written.push(ARCH_REL)
     lines.push(`proposed the slice's layers under "## Layers" in .rig/product/architecture.md. Nothing is enforced until a person reviews them and runs \`sdlc.ts arch approve\`${layerState().state === 'none' ? '.' : '; the rules approved earlier still apply until then.'}`)
   }
   sanctionWrites(written)
@@ -106,7 +107,7 @@ function scaffold(args: Args): void {
     for (const d of [...dirs].sort((a, b) => b.length - a.length)) { try { fs.rmdirSync(path.join(ROOT, d)) } catch { /* not empty, or not ours */ } }
     fail(`scaffold stopped and removed what it wrote: ${e instanceof Error ? e.message : String(e)}`)
   }
-  const notes = (loaded.slice.needs ?? []).filter(n => { try { return (JSON.parse(read(path.join(ROOT, n.file))) as Record<string, unknown>)[n.json] !== n.equals } catch { return false } }).map(n => `note: ${n.note}`)
+  const notes = (loaded.slice.needs ?? []).filter(n => { const j = readJson<Record<string, unknown> | null>(path.join(ROOT, n.file), null); return j !== null && j[n.json] !== n.equals }).map(n => `note: ${n.note}`)
   out([`scaffolded ${n.kebab} (${stack} slice):`, ...targets.map(t => `  ${t.rel}`), ...notes, `Run the tests: ${loaded.slice.test}`].join('\n'))
 }
 

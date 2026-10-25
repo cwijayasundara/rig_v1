@@ -2,7 +2,7 @@
 // no network, no model, no money. It never reports a PR count as a result, only as the denominator. What git cannot tell it
 // (CI outcomes, review time, findings fixed without a person) is listed as unavailable instead of being guessed.
 import path from 'node:path'
-import { ROOT, out, read, readJsonl, gitIn, type Args } from './core.ts'
+import { ROOT, out, readJson, readJsonl, gitIn, type Args } from './core.ts'
 import { mineCandidates, shippedChanges } from './learnmine.ts'
 import type { RunRow } from './runs.ts'
 
@@ -41,8 +41,7 @@ export function buildReport(root: string, since: string | null = null): Report {
     const runs = readJsonl<RunRow>(path.join(dir, 'evidence', 'runs.jsonl'))
     if (runs.length) { measured++; if (runs.every(r => (r.exit === 0 || r.expectFail) && !r.timedOut)) clean++ }
     const first = gitIn(root, ['log', '--reverse', '--format=%cI', '--', `.rig/changes/${slug}`])?.split('\n')[0]
-    let approved = ''
-    try { approved = (JSON.parse(read(path.join(dir, 'approval.json'))) as { at?: string }).at ?? '' } catch { /* no approval record */ }
+    const approved = readJson<{ at?: string } | null>(path.join(dir, 'approval.json'), null)?.at ?? '' // no approval record: ''
     if (first && approved && Date.parse(approved) >= Date.parse(first)) hours.push((Date.parse(approved) - Date.parse(first)) / 3_600_000)
   }
   const slugs = new Set(shipped.map(c => c.slug))
