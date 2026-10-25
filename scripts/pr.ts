@@ -9,12 +9,13 @@ import { loadConfig } from './check.ts'
 import { ghBin } from './model.ts'
 import { treeStamp } from './stamp.ts'
 import { activeSlug, setActive, approvalState, verifyFresh } from './lifecycle.ts'
+import { prBody } from './prbody.ts'
 
 const ghLast = (text: string): string => text.trim().split('\n').at(-1) ?? ''
 const URL_RE = /^https?:\/\//
 
 function openPr(slug: string, branch: string, title: string): string | null {
-  const body = path.join(CHANGES, slug, 'pr.md')
+  const body = path.join(CHANGES, slug, 'pr-body.md')
   const gh = (argv: string[]): string => execFileSync(ghBin(), argv, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 })
   try { gh(['pr', 'create', '--title', title, '--body-file', body]) } catch (e) {
     const x = e as { stdout?: unknown; stderr?: unknown }
@@ -63,18 +64,22 @@ export function cmdPr(args: Args): void {
   if (!followUp) {
     fs.writeFileSync(path.join(CHANGES, slug, 'pr.md'), `---\nstate: ${remote ? 'open' : 'local-only'}\nbranch: ${branch}\n---\n${title}\n`)
     ensureGitignore()
+    const c = (name: string): string => read(path.join(CHANGES, slug, name))
+    let verify: Parameters<typeof prBody>[0]['verify'] = null
+    try { verify = JSON.parse(c('verify.json')) } catch { /* no verify.json: the body says so */ }
+    fs.writeFileSync(path.join(CHANGES, slug, 'pr-body.md'), prBody({ intent: c('intent.md'), spec: c('spec.md'), plan: c('plan.md'), verify, outline: c('pr-outline.md') }))
   }
   const files = changeFiles(slug)
   if (!files.length) return out(followUp ? `${slug} already has a PR (.rig/changes/${slug}/pr.md); nothing new to commit` : 'not shipping: nothing to commit')
   // A first run that fails before the PR is open must leave no pr.md (and no commit), or a rerun reads it as a follow-up and never opens the PR.
-  const undo = (committed: boolean): void => { if (followUp) return; if (committed) git(['reset', '-q', 'HEAD~1']); fs.rmSync(path.join(CHANGES, slug, 'pr.md'), { force: true }) }
+  const undo = (committed: boolean): void => { if (followUp) return; if (committed) git(['reset', '-q', 'HEAD~1']); fs.rmSync(path.join(CHANGES, slug, 'pr.md'), { force: true }); fs.rmSync(path.join(CHANGES, slug, 'pr-body.md'), { force: true }) }
   if (git(['add', '--', ...files]) === null) { undo(false); fail('git add failed') }
   // verify judged this tree with waivers applied: the git hooks would only run the same checks again.
   if (git(['commit', '-q', '--no-verify', '-m', message]) === null) { undo(false); fail('git commit failed') }
   // The review's fix wave re-activates the change so the hooks guard it; its follow-up ends it. Another active change stays.
   if (!followUp || activeSlug() === slug) setActive(null)
   if (!remote) return out(`pr ${slug}: committed on ${branch}${followUp ? ' (follow-up)' : ''}; no origin remote, local only`)
-  const retry = `gh pr create --title ${JSON.stringify(title)} --body-file .rig/changes/${slug}/pr.md`
+  const retry = `gh pr create --title ${JSON.stringify(title)} --body-file .rig/changes/${slug}/pr-body.md`
   if (git(['push', '--no-verify', '-u', 'origin', branch]) === null) { undo(true); fail(`git push failed; ${followUp ? `the follow-up is committed on ${branch}: push it` : 'nothing was kept: fix the remote and rerun pr'}`) }
   if (followUp) return out(`pr ${slug}: follow-up pushed to ${branch}`)
   const url = openPr(slug, branch, title)

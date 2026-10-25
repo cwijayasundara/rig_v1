@@ -131,3 +131,15 @@ test('a failed push on the first pr leaves no pr.md or commit, so a rerun still 
   gitIn(repo, 'remote', 'set-url', 'origin', bare)
   assert.match(pr().stderr, /pushed sdlc\/demo but gh pr create|gh pr create/)
 })
+
+test('the PR body is built from the change files, kept apart from the pr.md state file, and ships in the commit', () => {
+  shipReady()
+  write(repo, '.rig/changes/demo/pr-outline.md', '## Change outline\n\nsrc only\n')
+  assert.equal(pr().code, 0)
+  const body = fs.readFileSync(path.join(repo, '.rig/changes/demo/pr-body.md'), 'utf8')
+  assert.match(body, /## Why the change/)
+  assert.match(body, /- B1: the change works/)
+  assert.match(body, /## Change outline\n\nsrc only/)
+  assert.doesNotMatch(body, /^state:/m)
+  assert.match(gitIn(repo, 'show', '--name-only', '--format=', 'HEAD'), /\.rig\/changes\/demo\/pr-body\.md/)
+})
