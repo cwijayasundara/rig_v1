@@ -3,7 +3,7 @@ import path from 'node:path'
 import { Checks } from '../lib/checks.mjs'
 import { assertOnboarding } from '../assert/onboarding.mjs'
 
-export const ROUTING = 'sdlc routes all work in this repo: start with /rig:start; use superpowers skills only when an sdlc skill names one.'
+const ROUTING = 'sdlc routes all work in this repo: start with /rig:start; use superpowers skills only when an sdlc skill names one.'
 
 // The live S0 prompt describes the project, not the feature: the shop arrives later, as its own change from the brief.
 export const SCAFFOLD_PROMPT = 'Node.js 22 ESM project named shop-app, no dependencies, tests with node --test, an npm start script that runs src/server.js. Scaffold ONLY the empty skeleton and one passing smoke test. Do not implement any shop behaviour: that arrives later as its own change. Copy nothing into scripts/; the contract tool is provided.'

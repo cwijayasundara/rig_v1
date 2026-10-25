@@ -16,10 +16,10 @@ import { formatLesson } from '../scripts/learnfile.ts'
 const FIX = path.join(import.meta.dirname, 'fixtures/learn')
 const SDLC_TS = path.join(import.meta.dirname, '../scripts/sdlc.ts')
 export const TASKS = JSON.parse(fs.readFileSync(path.join(FIX, 'tasks.json'), 'utf8'))
-export const KEY = 'error-shape'
-export const LAG_FROM = 4
-export const WIN_BY = 0.34
-export const COST_SLACK = 1.1
+const KEY = 'error-shape'
+const LAG_FROM = 4
+const WIN_BY = 0.34
+const COST_SLACK = 1.1
 
 // A bare string sent as a reply: res.send('...') or res.status(n).send("..."), not res.send(item) and not fail(...).
 const BARE = /\.send\(\s*(['"`])/

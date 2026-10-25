@@ -4,9 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { globToRegex, isObject, SECRET_PATTERNS } from './model.ts'
-
-export { globToRegex }
+import { isObject, SECRET_PATTERNS } from './model.ts'
 
 // ---------- types ----------
 

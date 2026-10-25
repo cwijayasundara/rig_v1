@@ -1,6 +1,6 @@
 // The sprint plan view (`chart plan <N>`): a read-only picture of the order the sprint's intents can be built in, generated from their
 // `depends:` lines so it cannot disagree with them. Waves, an ASCII tree for the terminal, a Mermaid graph for GitHub, and what can start now.
-export type PlanStatus = 'done' | 'active' | 'ready' | 'blocked'
+type PlanStatus = 'done' | 'active' | 'ready' | 'blocked'
 export type PlanRow = { slug: string; depends: string[]; estimateDays: number | null; status: PlanStatus }
 
 const ICON: Record<PlanStatus, string> = { done: '✔', active: '▶', ready: '○', blocked: '✖' }
@@ -28,7 +28,7 @@ const sorted = (rows: PlanRow[], wave: Map<string, number>): PlanRow[] => [...ro
 
 // A tree of the DAG: each intent hangs under its latest in-sprint dependency, and names its other dependencies in "(also after: ...)", so
 // every intent is printed once.
-export function asciiTree(rows: PlanRow[]): string {
+function asciiTree(rows: PlanRow[]): string {
   const wave = waves(rows)
   const by = new Map(rows.map(r => [r.slug, r]))
   const inSprint = (r: PlanRow): string[] => r.depends.filter(d => by.has(d))

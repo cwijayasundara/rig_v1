@@ -13,11 +13,10 @@
       "Bash(gh pr comment *)", "Bash(gh pr view *)"
     ],
     "ask": [
-      "Edit(./.rig/sensors.json)", "Edit(./.rig/rules.json)", "Edit(./.rig/layers.approved.json)", "Edit(./.rig/ratchets.json)", "Edit(./.rig/gen/**)", "Edit(./.rig/lessons.md)", "Edit(./.rig/lessons-archive.md)", "Edit(./.rig/evals/*.json)", "Edit(./.claude/settings.json)",
+      "Edit(./.rig/sensors.json)", "Edit(./.rig/rules.json)", "Edit(./.rig/layers.approved.json)", "Edit(./.rig/ratchets.json)", "Edit(./.rig/gen/**)", "Edit(./.rig/lessons.md)", "Edit(./.rig/lessons-archive.md)", "Edit(./.claude/settings.json)",
       "Edit(./.rig/bin/**)", "Edit(./.rig/githooks/**)", "Edit(./.rig/mod/**)", "Edit(./.rig/guides/**)",
       "Edit(./.github/workflows/rig-*.yml)", "Edit(./CODEOWNERS)", "Edit(./.github/CODEOWNERS)",
-      "Edit(./migrations/**)", "Edit(./infra/**)",
-      "Bash(node --disable-warning=ExperimentalWarning .rig/bin/sdlc.ts evals*)"
+      "Edit(./migrations/**)", "Edit(./infra/**)"
     ],
     "deny": [
       "Read(.env*)", "Read(./secrets/**)", "WebFetch", "Bash(curl *)", "Bash(wget *)",
