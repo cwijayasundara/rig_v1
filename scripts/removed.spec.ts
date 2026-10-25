@@ -169,3 +169,39 @@ test('6: the eval runner is wired: dry in CI, live by hand, results committed un
   assert.ok(evalRuns.length > 0 && evalRuns.every(r => r.endsWith(':dry')), `live evals never run in CI (spec §9); CI runs ${evalRuns.join(', ')}`)
   assert.ok(fs.existsSync('eval/results/.gitkeep'))
 })
+
+// Docs audit guards: the user-facing docs name only what exists.
+const skillDirs = (): string[] => fs.readdirSync(path.join(ROOT, 'skills'), { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name)
+
+test('docs: no intent inbox and no graph command in the README or its template', () => {
+  for (const f of ['README.md', 'templates/readme-rig.md', 'skills/start/SKILL.md']) assert.doesNotMatch(read(f), /\.rig\/intent\//, f)
+  for (const f of ['README.md', 'templates/readme-rig.md']) assert.doesNotMatch(read(f), /\bgraph\b *[·|,`]|[·|,`] *graph\b/, `${f} lists a graph command`)
+})
+
+test('docs: every /rig:<x> in the README, DESIGN and GOAL names a skill', () => {
+  const skills = new Set(skillDirs())
+  for (const f of ['README.md', 'DESIGN.md', 'docs/GOAL.md', 'templates/readme-rig.md']) {
+    for (const m of read(f).matchAll(/\/rig:([a-z][a-z-]*)/g)) assert.ok(skills.has(m[1]), `${f}: /rig:${m[1]} is not a skill`)
+  }
+})
+
+test('docs: the README skill count equals the skill directories', () => {
+  const counts = [...read('README.md').matchAll(/(?:SKILLS \(|`skills\/` \()(\d+)\)/g)].map(m => Number(m[1]))
+  assert.ok(counts.length >= 2, 'the README states the skill count')
+  for (const n of counts) assert.equal(n, skillDirs().length)
+})
+
+test('docs: README and DESIGN do not cite scripts/context.ts', () => {
+  assert.ok(!fs.existsSync(path.join(ROOT, 'scripts/context.ts')))
+  for (const f of ['README.md', 'DESIGN.md']) assert.doesNotMatch(read(f), /scripts\/context\.ts/, f)
+})
+
+test('docs: the architect is Sonnet in the README, as in its frontmatter', () => {
+  assert.match(read('agents/architect.md'), /^model: sonnet$/m)
+  assert.doesNotMatch(read('README.md'), /architect[^\n]{0,20}\(?Opus|`architect` agent \(Opus\)|architect\.md` \| Opus/)
+})
+
+test('docs: README lists every sdlc.ts command in its script line', () => {
+  const line = read('README.md').split('\n').find(l => l.startsWith('**The script underneath**')) ?? ''
+  for (const c of commands()) assert.ok(line.includes(`\`${c}`), `README script line lacks ${c}`)
+})

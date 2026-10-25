@@ -1,6 +1,6 @@
 ---
 name: start
-description: Start or continue a change - write intent.md and spec.md with numbered behaviours. Use for any new request, an idea file under .rig/intent/, or /rig:start <slug> to continue one.
+description: Start or continue a change - write intent.md and spec.md with numbered behaviours. Use for any new request, a charted intent file, or /rig:start <slug> to continue one.
 argument-hint: '"<request>" | <slug> | .rig/product/sprints/sprint-<N>/intents/<slug>.md'
 allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Read, Grep, Glob, Write, Edit, Agent, Skill
 ---
