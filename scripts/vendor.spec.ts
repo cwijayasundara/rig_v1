@@ -56,6 +56,22 @@ test('vendor --cloud rewrites the CLAUDE.md routing line to the vendored command
   assert.equal(fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8'), claude.replace('start with /rig:start;', 'start with /rig-start;'))
 })
 
+test('vendor --cloud names the vendored /rig-x commands in the README rig block and its template, and leaves the rest alone', () => {
+  // 2026-10-25 shop_app run: CLAUDE.md said /rig-start but the README block said /rig:start, which a standalone copy does not answer to.
+  const repo = makeRepo()
+  sdlc(repo, ['init'])
+  const block = '<!-- rig:begin (written by /rig:init) -->\nStart with `/rig:start "<idea>"`, then `/rig:approve <slug>`.\n<!-- rig:end -->'
+  write(repo, 'README.md', `# App\n\nRun /rig:start outside the block.\n\n${block}\n`)
+  assert.equal(sdlc(repo, ['vendor', '--cloud']).code, 0)
+  const readme = fs.readFileSync(path.join(repo, 'README.md'), 'utf8')
+  assert.match(readme, /Run \/rig:start outside the block/, 'text outside the markers is untouched')
+  assert.match(readme, /Start with `\/rig-start "<idea>"`, then `\/rig-approve <slug>`/)
+  assert.doesNotMatch(readme.slice(readme.indexOf('<!-- rig:begin')), /\/rig:[a-z]/)
+  const tpl = fs.readFileSync(path.join(repo, '.rig/templates/readme-rig.md'), 'utf8')
+  assert.match(tpl, /\/rig-start/)
+  assert.doesNotMatch(tpl, /\/rig:[a-z]/)
+})
+
 test('the vendored copy points its skills at .rig/bin and the session start names the active change', () => {
   const repo = makeRepo()
   sdlc(repo, ['init'])

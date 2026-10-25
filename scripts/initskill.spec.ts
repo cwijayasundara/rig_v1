@@ -89,3 +89,15 @@ test('init skill: a greenfield CLAUDE.md maps only files that exist on disk, PRD
 test('init skill: --quick and --defaults end by telling the person the commit command, since they ask no question', () => {
   assert.match(skill, /Under `--defaults` and `--quick` do not commit[^\n]*`git add /)
 })
+
+test('init skill: only brownfield runs wiki init; greenfield and Both never do (2026-10-25 shop_app greenfield got a wiki.json)', () => {
+  const brownfield = skill.slice(skill.indexOf('## Brownfield'), skill.indexOf('## Greenfield'))
+  const rest = skill.slice(skill.indexOf('## Greenfield'))
+  assert.match(brownfield, /sdlc\.ts wiki init/)
+  assert.doesNotMatch(rest, /sdlc\.ts wiki init/)
+})
+
+test('init skill: the README block comes from the vendored template, which carries the standalone /rig-x names', () => {
+  assert.match(skill, /from `\.rig\/templates\/readme-rig\.md`/)
+  assert.match(skill, /write them as `\/rig-start`/)
+})

@@ -181,7 +181,7 @@ test('docs: no intent inbox and no graph command in the README or its template',
 test('docs: every /rig:<x> in the README, DESIGN and GOAL names a skill', () => {
   const skills = new Set(skillDirs())
   for (const f of ['README.md', 'DESIGN.md', 'docs/GOAL.md', 'templates/readme-rig.md']) {
-    for (const m of read(f).matchAll(/\/rig:([a-z][a-z-]*)/g)) assert.ok(skills.has(m[1]), `${f}: /rig:${m[1]} is not a skill`)
+    for (const m of read(f).matchAll(/\/rig:([a-z][a-z-]*)/g)) assert.ok(skills.has(m[1] ?? ''),`${f}: /rig:${m[1]} is not a skill`)
   }
 })
 

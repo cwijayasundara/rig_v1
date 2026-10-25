@@ -93,12 +93,18 @@ function vendorStandalone(written: string[]): void {
   }
   const templates = path.join(PLUGIN_ROOT, 'templates')
   for (const file of (fs.readdirSync(templates, { recursive: true }) as string[]).filter(f => fs.statSync(path.join(templates, f)).isFile()).sort()) {
-    writeFile(`.rig/templates/${file}`, read(path.join(templates, file)), written)
+    const text = read(path.join(templates, file))
+    writeFile(`.rig/templates/${file}`, file === README_TEMPLATE ? vendoredCommands(text) : text, written)
   }
   vendorDashboard(written)
   mergeHooks(written)
   routeClaudeMd(written)
+  routeReadme(written)
 }
+
+const README_TEMPLATE = 'readme-rig.md'
+const README_BLOCK = /<!-- rig:begin[\s\S]*?<!-- rig:end -->/
+const vendoredCommands = (text: string): string => text.replace(/\/rig:([a-z]+)\b/g, '/rig-$1')
 
 // CLAUDE.md's routing line is written while the plugin's /rig:x names are live; a standalone copy answers to /rig-x (the folder name),
 // so the line a model reads agrees with the session-start hook and `status`. Only that one command is touched.
@@ -106,6 +112,15 @@ function routeClaudeMd(written: string[]): void {
   const file = 'CLAUDE.md'
   const text = read(path.join(ROOT, file))
   const routed = text.replace('start with /rig:start;', 'start with /rig-start;')
+  if (routed !== text) writeFile(file, routed, written)
+}
+
+// The README's rig block (from templates/readme-rig.md) tells a person which commands to type; in a standalone copy those are /rig-x
+// (2026-10-25 shop_app run: the block said /rig:start, which does not exist there). Text outside the markers is never touched.
+function routeReadme(written: string[]): void {
+  const file = 'README.md'
+  const text = read(path.join(ROOT, file))
+  const routed = text.replace(README_BLOCK, vendoredCommands)
   if (routed !== text) writeFile(file, routed, written)
 }
 
