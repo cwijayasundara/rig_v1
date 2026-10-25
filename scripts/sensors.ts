@@ -1,8 +1,9 @@
 // Language-agnostic sensors: pure functions from a parsed diff and config to findings.
 // Language knowledge lives in the pattern tables below, never in code paths per language.
-import { parseRules, section, type FileDiff, type Finding, type Layer, isTest, isSource, matchesAny, globToRegex, SECRET_PATTERNS } from './model.ts'
+import { parseRules, section, type FileDiff, type Finding, type Layer, isTest, isSource, matchesAny, escapeRe, globToRegex, SECRET_PATTERNS } from './model.ts'
 import { weakensRegistry, parseRegistry, builtinOptions, type Registry } from './registry.ts'
 import { RATCHET_FILE, weakensRatchets } from './counts.ts'
+import { SENSORS_JSON } from './core.ts'
 
 export const TAMPER_PATTERNS: { id: string; re: RegExp; what: string }[] = [
   { id: 'skip-or-only', re: /\b(?:it|describe|test|context|suite)\.(?:skip|only|todo)\s*[.(]/, what: 'test skipped or focused' },
@@ -102,7 +103,7 @@ export function suppressions(diffs: FileDiff[], r: Registry): Finding[] {
 }
 
 const IMPORT_LINE = /^\s*(?:import|from|require|use|using|#\s*include|include|extern\s+crate)\b|\brequire\s*\(|\bimport\s*\(/
-const word = (t: string): RegExp => new RegExp(`(?:^|[^A-Za-z0-9_])${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:$|[^A-Za-z0-9_])`)
+const word = (t: string): RegExp => new RegExp(`(?:^|[^A-Za-z0-9_])${escapeRe(t)}(?:$|[^A-Za-z0-9_])`)
 
 export function layering(diffs: FileDiff[], r: Registry): Finding[] {
   const findings: Finding[] = []
@@ -182,7 +183,6 @@ export function rulesSensor(diffs: FileDiff[], rules: { id: string; pattern: str
 export const PROTECTED = ['.rig/sensors.json', '.rig/rules.json', '.rig/layers.approved.json', '.rig/gen/**', '.rig/ratchets.json', '.rig/verify/**', '.rig/lessons.md', '.rig/lessons-archive.md', '.rig/guides/**', '.rig/bin/**', '.rig/mod/**', '.rig/githooks/**', '.claude-plugin/**', 'CLAUDE.md', '.claude/**', '.github/workflows/rig-*.yml', '.github/workflows/sdlc-check.yml', 'CODEOWNERS', '.github/CODEOWNERS']
 // ci: compare case-insensitively (macOS and Windows file systems treat CLAUDE.MD and CLAUDE.md as one file).
 export const isProtected = (file: string, ci = false): boolean => (ci ? matchesAny(file.toLowerCase(), PROTECTED.map(p => p.toLowerCase())) : matchesAny(file, PROTECTED))
-const SENSORS = '.rig/sensors.json'
 const RULES = '.rig/rules.json'
 
 const removedFrom = (before: string[], after: string[]): string[] => before.filter(x => !after.includes(x))
@@ -215,13 +215,13 @@ export function harnessTamper(diffs: FileDiff[], o: { point: 'stop' | 'ship' | '
     // harness on their trunk, so it gets the plain review warning, or that first push could never pass. CI still compares it,
     // since a PR adding a config from scratch could declare no-op levels. Stop compares it as advice.
     const adopting = o.point === 'ship' && d.status === 'A' && !o.before(d.file).trim()
-    const compare = (d.file === SENSORS || d.file === RULES || d.file === RATCHET_FILE) && !adopting
-    const dirs = (): Record<string, 'down' | 'up'> => Object.fromEntries(parseRegistry(o.after(SENSORS)).registry.sensors.flatMap(s => (s.ratchet ? [[s.id, s.ratchet]] : [])))
-    const weaker = !compare ? [] : d.file === SENSORS ? weakensRegistry(o.before(d.file), o.after(d.file)) : d.file === RATCHET_FILE ? weakensRatchets(o.before(d.file), o.after(d.file), dirs()) : weakensRules(o.before(d.file), o.after(d.file))
+    const compare = (d.file === SENSORS_JSON || d.file === RULES || d.file === RATCHET_FILE) && !adopting
+    const dirs = (): Record<string, 'down' | 'up'> => Object.fromEntries(parseRegistry(o.after(SENSORS_JSON)).registry.sensors.flatMap(s => (s.ratchet ? [[s.id, s.ratchet]] : [])))
+    const weaker = !compare ? [] : d.file === SENSORS_JSON ? weakensRegistry(o.before(d.file), o.after(d.file)) : d.file === RATCHET_FILE ? weakensRatchets(o.before(d.file), o.after(d.file), dirs()) : weakensRules(o.before(d.file), o.after(d.file))
     const reasons = d.status === 'D' ? [`${d.file} deleted`, ...weaker] : weaker
     if (o.point === 'stop') {
       if (o.toolEdited && !o.toolEdited.has(d.file)) {
-        if (d.file === SENSORS && onlyKnownRedRemoved(o.before(d.file), o.after(d.file))) continue
+        if (d.file === SENSORS_JSON && onlyKnownRedRemoved(o.before(d.file), o.after(d.file))) continue
         findings.push({ sensor: 'harness-tamper', severity: 'block', file: d.file, message: 'harness file changed outside Write/Edit (via Bash?)', fix: `revert it (git checkout -- ${d.file}), or ask the person to make this change` })
       } else if (reasons.length) {
         findings.push({ sensor: 'harness-tamper', severity: 'warn', file: d.file, message: reasons.join('; '), fix: 'the person allowed this edit; it shows in the review brief', labels: ['weakens-harness'] })

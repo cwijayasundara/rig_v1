@@ -3,6 +3,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { read, readJsonl, gitIn, SLUG_RE, type Waiver } from './core.ts'
+import { escapeRe } from './model.ts'
 import type { Lesson } from './learnfile.ts'
 
 type Candidate = { key: string; kind: 'finding' | 'waiver'; changes: string[]; count: number; sample: string; rung: Rung['rung']; how: string }
@@ -81,7 +82,7 @@ export function lessonStatus(lessons: Lesson[], shipped: Shipped[], waivers: { s
       if (later >= STALE_AFTER) retire.push({ id: l.id, why: `not fired in ${later} later changes` })
     } else if (l.status.startsWith('promoted:')) {
       const rule = l.status.slice('promoted:'.length)
-      const named = new RegExp(`(?<![\\w-])${rule.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w-])`)
+      const named = new RegExp(`(?<![\\w-])${escapeRe(rule)}(?![\\w-])`)
       const waived = waivers.filter(w => w.sensor === 'rules' && named.test(w.reason ?? '')).length
       if (waived >= WAIVED_AFTER) retire.push({ id: l.id, why: `rule ${rule} waived ${waived} times` })
     }

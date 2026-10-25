@@ -1,7 +1,7 @@
 // `verify` (behavioural harness spec 2026-10-16 §8): every commit and ci sensor, the contracts (validate first) and the
 // change's own verdicts on the branch diff. verify.json records the tree it judged, so pr can tell a stale verification.
 import path from 'node:path'
-import { CHANGES, exists, out, fail, now, defaultBase, checkSlug, optString, type Args } from './core.ts'
+import { CHANGES, BUDGET_MS, exists, out, fail, now, defaultBase, checkSlug, optString, type Args } from './core.ts'
 import { loadConfig, runChecks } from './check.ts'
 import { branchDiff, showAt } from './diffs.ts'
 import { treeStamp } from './stamp.ts'
@@ -14,7 +14,7 @@ export function cmdVerify(args: Args): void {
   if (!slug || !exists(path.join(CHANGES, slug))) fail('usage: verify [<slug>] (no active change)')
   const { registry: config, rules, errors } = loadConfig()
   const base = defaultBase(), ref = base ?? 'HEAD', before = treeStamp()
-  const budgetMs = Number(optString(args, 'budget-ms') ?? 1_800_000)
+  const budgetMs = Number(optString(args, 'budget-ms') ?? BUDGET_MS.ship)
   const r = runChecks({ point: 'ship', diffs: branchDiff(ref), config, rules, slugs: [slug], commands: 'full', budgetMs, before: f => showAt(ref, f) ?? '', base, ratchet: false, gates: config.gates })
   const blocks = [...errors.map(e => `config: ${e}`), ...r.blocks.map(f => `${f.sensor}${f.file ? ` ${f.file}` : ''}: ${(f.message.split('\n')[0] ?? '').slice(0, 200)}`)]
   writeVerify(slug, { at: now(), tree: treeStamp() === before ? before : null, base, pass: !blocks.length, blocks })

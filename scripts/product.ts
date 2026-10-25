@@ -6,6 +6,8 @@ import path from 'node:path'
 import { SDLC, exists } from './core.ts'
 
 export const PRODUCT = path.join(SDLC, 'product')
+export const ARCH_REL = '.rig/product/architecture.md'
+export const archPath = path.join(PRODUCT, 'architecture.md')
 const SPRINTS = path.join(PRODUCT, 'sprints')
 const SPRINT_DIR_RE = /^sprint-(\d{1,4})$/
 

@@ -1,7 +1,7 @@
 // Git hooks: the same checker as Stop, ship and CI, run at `git commit` and `git push`, so any editor, agent or person is judged.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SDLC, TRUNKS, git, exists, out, fail, type Args } from './core.ts'
+import { ROOT, SDLC, TRUNKS, SENSORS_JSON, BUDGET_MS, git, exists, out, fail, type Args } from './core.ts'
 import { loadConfig, runChecks, slugsIn } from './check.ts'
 import { rangeDiff, showAt } from './diffs.ts'
 import { activeSlug, verifyFresh } from './lifecycle.ts'
@@ -126,7 +126,6 @@ function pushBase(r: PushRef): string | null {
 const readStdin = (): string => { try { return fs.readFileSync(0, 'utf8') } catch { return '' } }
 // Running out of budget is a warning at push: CI still runs the commands.
 // Pre-push always runs, inside the commit-cadence budget (spec §3.1).
-const PUSH_BUDGET_MS = 600_000
 const soften = (f: Finding): Finding => (f.outOfTime ? { ...f, severity: 'warn' } : f)
 
 export function cmdCheckPush(_args: Args): void {
@@ -136,7 +135,7 @@ export function cmdCheckPush(_args: Args): void {
   const all = raw.trim() ? parsePushRefs(raw) : [{ localRef: 'refs/heads/HEAD', localSha: git(['rev-parse', 'HEAD']) ?? '', remoteRef: 'refs/heads/HEAD', remoteSha: '0' }]
   const refs = all.filter(judged)
   if (!refs.length) return out('sdlc check push: nothing to judge (a delete or tag push)')
-  const findings: Finding[] = errors.map(e => ({ sensor: 'config', severity: 'block', file: '.rig/sensors.json', message: e, fix: 'fix the file' }))
+  const findings: Finding[] = errors.map(e => ({ sensor: 'config', severity: 'block', file: SENSORS_JSON, message: e, fix: 'fix the file' }))
   const notes = all.filter(r => !judged(r)).map(r => `${r.remoteRef}: skipped (a delete or tag)`)
   const head = git(['rev-parse', 'HEAD'])
   if (refs.some(r => r.localSha !== head) || git(['status', '--porcelain', '--untracked-files=no'])) notes.push('note: the full commands and quality ratchet run against your working tree, not the pushed commits')
@@ -151,7 +150,7 @@ export function cmdCheckPush(_args: Args): void {
     // A change verified on exactly this tree, pushed from a clean checkout of it, needs its full commands no second time.
     const covered = Boolean(slug) && r.localSha === head && !git(['status', '--porcelain', '--untracked-files=all', '--', '.', ':(exclude).rig']) && verifyFresh(slug as string, treeStamp())
     const result = runChecks({
-      point: 'ship', diffs, config, rules, slugs: [], commands: covered ? 'none' : 'full', budgetMs: PUSH_BUDGET_MS,
+      point: 'ship', diffs, config, rules, slugs: [], commands: covered ? 'none' : 'full', budgetMs: BUDGET_MS.commit,
       before: f => showAt(base, f) ?? '', after: f => showAt(r.localSha, f) ?? '', base, ratchet: false,
     })
     findings.push(...result.findings.map(soften))

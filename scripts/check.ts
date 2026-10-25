@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { waiverLive,
-  ROOT, SDLC, CHANGES, WAIVERS, exists, read, out, fail, git, toPosix, optString, readJsonl, defaultBase, checkSlug,
+  ROOT, SDLC, CHANGES, WAIVERS, SENSORS_JSON, BUDGET_MS, readJson, exists, read, out, fail, git, toPosix, optString, readJsonl, defaultBase, checkSlug,
   type Args, type Waiver,
 } from './core.ts'
 import { parseRules, formatFindings, warnLines, matchesAny, isTest, ghBin, planFiles, type FileDiff, type Finding, type Rule } from './model.ts'
@@ -40,7 +40,6 @@ type CheckInput = {
 }
 type CheckResult = { findings: Finding[]; blocks: Finding[]; warns: Finding[]; waived: number }
 
-const SENSORS_JSON = '.rig/sensors.json'
 const TAIL_IN_FINDING = 15
 
 // The pre-registry format is recognised by its keys; anything else (`{}`, a registry missing its sensors list, broken
@@ -285,8 +284,7 @@ function humanRowsAdded(base: string): string[] {
   for (const f of (git(['diff', '--name-only', base, 'HEAD', '--', '.rig/changes', '.rig/product/sprints']) ?? '').split('\n')) {
     const name = /^\.rig\/changes\/([^/]+)\/approval\.json$/.exec(f)?.[1] ?? (/^\.rig\/product\/sprints\/sprint-(\d+)\/approval\.json$/.exec(f)?.[1] ? `chart-${/^\.rig\/product\/sprints\/sprint-(\d+)\//.exec(f)?.[1]}` : undefined)
     if (!name) continue
-    let by = '?'
-    try { by = String((JSON.parse(read(path.join(ROOT, f))) as { by?: unknown }).by ?? '?') } catch { /* deleted or unreadable: still a row */ }
+    const by = String(readJson<{ by?: unknown } | null>(path.join(ROOT, f), null)?.by ?? '?') // deleted or unreadable: still a row
     rows.push(`approval ${name} by ${clean(by)}`)
   }
   // autonomy.json: the rung is a person's decision; every PR that adds or edits it is a row, naming the newest history row's author.
@@ -363,7 +361,7 @@ export function cmdCheck(args: Args): void {
   const slugArg = optString(args, 'slug')
   if (slugArg) checkSlug(slugArg)
   const slugs = slugArg ? [slugArg] : at === 'ci' ? slugsIn(diffs) : [activeSlug()].filter((s): s is string => Boolean(s))
-  const budgetMs = Number(optString(args, 'budget-ms') ?? (at === 'stop' ? 60_000 : at === 'commit' ? 600_000 : 1_800_000))
+  const budgetMs = Number(optString(args, 'budget-ms') ?? BUDGET_MS[at])
   if (!Number.isFinite(budgetMs) || budgetMs <= 0) fail('--budget-ms must be a positive number')
   const humanRows = at === 'ci' && base ? humanRowsAdded(base) : []
   const why = humanRows.length ? independentApproval() : null // before runChecks: the PR's test commands could rewrite the event file or shadow gh

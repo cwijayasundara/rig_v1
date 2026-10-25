@@ -12,7 +12,6 @@ export type Stale = { page: string; cite: string; why: 'changed' | 'missing' | '
 
 const MAX_PAGES = 30
 
-const isObj = isObject as (v: unknown) => v is Record<string, unknown>
 const str = (v: unknown): v is string => typeof v === 'string' && v.trim() !== ''
 const strs = (v: unknown): v is string[] => Array.isArray(v) && v.every(x => typeof x === 'string')
 
@@ -20,12 +19,12 @@ const strs = (v: unknown): v is string[] => Array.isArray(v) && v.every(x => typ
 export function parseWikiConfig(json: string): WikiConfig | string {
   let v: unknown
   try { v = JSON.parse(json) } catch { return 'wiki.json is not valid JSON' }
-  if (!isObj(v)) return 'wiki.json must be a JSON object with "pages"'
+  if (!isObject(v)) return 'wiki.json must be a JSON object with "pages"'
   if (!Array.isArray(v.pages) || v.pages.length === 0) return 'wiki.json needs at least one page'
   if (v.pages.length > MAX_PAGES) return `wiki.json has ${v.pages.length} pages; the limit is ${MAX_PAGES}`
   const pages: WikiPage[] = []
   for (const p of v.pages) {
-    if (!isObj(p) || !str(p.title)) return 'every page needs a title'
+    if (!isObject(p) || !str(p.title)) return 'every page needs a title'
     if (!str(p.purpose)) return `page "${p.title}" needs a purpose`
     if (p.parent !== undefined && !str(p.parent)) return `page "${p.title}" has an invalid parent`
     if (p.notes !== undefined && !strs(p.notes)) return `page "${p.title}" notes must be an array of strings`

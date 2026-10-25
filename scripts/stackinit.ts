@@ -2,7 +2,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { ROOT, SDLC, PLUGIN_ROOT, exists, read, git, listChanges, sanctionWrites } from './core.ts'
+import { ROOT, SENSORS_PATH, SENSORS_JSON, SDLC, PLUGIN_ROOT, exists, read, git, listChanges, sanctionWrites } from './core.ts'
 import { loadPacks, detectStacks, packFile, packRegistry, PACKS_DIR } from './stackpacks.ts'
 import { writeSync, BRIEF } from './sync.ts'
 import { isRegistryShape, type Contracts } from './registry.ts'
@@ -30,11 +30,11 @@ function upgradeText(opt: string | true): string {
 }
 
 export function declareStack(opt: string | true): string {
-  const file = path.join(SDLC, 'sensors.json')
+  const file = SENSORS_PATH
   const text = exists(file) ? read(file).trim() : ''
   if (text && isRegistryShape(text)) return '.rig/sensors.json already exists; edit it'
   if (text && text !== '{}') return upgradeText(opt)
-  if ((git(['ls-tree', '-r', '--name-only', 'HEAD']) ?? '').split('\n').includes('.rig/sensors.json')) return '.rig/sensors.json is committed; changing it is a reviewed harness edit, not onboarding'
+  if ((git(['ls-tree', '-r', '--name-only', 'HEAD']) ?? '').split('\n').includes(SENSORS_JSON)) return '.rig/sensors.json is committed; changing it is a reviewed harness edit, not onboarding'
   if (listChanges().length) return 'a change already exists; --stack is for onboarding only'
   const { packs, found } = packsFor(opt)
   if (found.length > 1) return `several stacks match (${found.sort().join(', ')}); run init --stack <name> with one of them`
@@ -43,7 +43,7 @@ export function declareStack(opt: string | true): string {
   fs.mkdirSync(SDLC, { recursive: true })
   const pc = packContracts(pack.contracts, javaOk())
   fs.writeFileSync(file, JSON.stringify({ ...packFile(pack), contracts: pc.contracts }, null, 2) + '\n')
-  sanctionWrites(['.rig/sensors.json'])
+  sanctionWrites([SENSORS_JSON])
   const brief = path.join(ROOT, BRIEF)
   if (!exists(brief)) { fs.mkdirSync(path.dirname(brief), { recursive: true }); fs.copyFileSync(path.join(PLUGIN_ROOT, 'templates', 'brief.md'), brief) }
   const synced = writeSync(packRegistry(pack))

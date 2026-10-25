@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { ROOT, SDLC, git, read, sha } from './core.ts'
+import { ROOT, SENSORS_PATH, SDLC, git, read, sha } from './core.ts'
 
 // What `git write-tree` would record for the working tree (tracked and untracked files, ignored ones left out) with
 // .rig/ removed: harness evidence changes with every run, and the same content has the same stamp before and after a
@@ -25,7 +25,7 @@ export function treeStamp(): string | null {
     const run = (args: string[]): string => execFileSync('git', args, { cwd: ROOT, env: { ...process.env, GIT_INDEX_FILE: tmp }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 256 * 1024 * 1024 }).trim()
     run(['add', '-A', '--', '.', ':(exclude).rig'])
     run(['rm', '-r', '--cached', '-q', '--ignore-unmatch', '.rig'])
-    return sha([run(['write-tree']), sha(read(path.join(SDLC, 'sensors.json'))), sha(read(path.join(SDLC, 'rules.json')))].join('|'))
+    return sha([run(['write-tree']), sha(read(SENSORS_PATH)), sha(read(path.join(SDLC, 'rules.json')))].join('|'))
   } catch {
     return null
   } finally {

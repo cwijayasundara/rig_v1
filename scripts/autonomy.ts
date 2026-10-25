@@ -2,7 +2,7 @@
 // A person sets it; the repo's own record of shipped changes only proposes a move. Zero dependencies.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SDLC, SLUG_RE, exists, read, now, out, fail, ownerOrFail, type Args } from './core.ts'
+import { ROOT, SDLC, SLUG_RE, exists, read, readJson, now, out, fail, ownerOrFail, type Args } from './core.ts'
 import { shippedChanges, mineCandidates, waiversOf, findingsSection } from './learnmine.ts'
 
 export type Autonomy = { rung: 0 | 1 | 2; since: string; deferred: string[]; history: { at: string; by: string; from: number; to: number; why: string }[] }
@@ -67,7 +67,7 @@ export function proposeRung(root = ROOT): { to: number; why: string } | null {
   const last = ships.slice(-CLEAN_SHIPS)
   const clean = (slug: string): boolean => {
     const dir = path.join(root, '.rig', 'changes', slug)
-    try { if ((JSON.parse(read(path.join(dir, 'verify.json'))) as { pass?: unknown }).pass !== true) return false } catch { return false }
+    if (readJson<{ pass?: unknown } | null>(path.join(dir, 'verify.json'), null)?.pass !== true) return false
     const review = read(path.join(dir, 'review.md'))
     const section = findingsSection(review)
     return !section.split('\n').some(l => BLOCKING.test(l)) && !waivers.some(w => w.slug === slug)
