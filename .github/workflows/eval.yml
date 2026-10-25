@@ -1,11 +1,8 @@
-# Evals for rig itself (harness readiness 3.2). A push to main that touches rig's own files runs the dry evals at $0 (ci.yml already runs them on pull
-# requests); the live paired eval runs nightly and on demand, costs real money, and is capped. It never runs on a pull request: it holds a secret.
+# Evals for rig itself (harness readiness 3.2). The live paired eval runs nightly and on demand, costs real money, and is capped; the dry evals
+# run first as its precondition (ci.yml runs them at $0 on every push and pull request). It never runs on a pull request: it holds a secret.
 # The gate fails the run when an arm's accepted rate or dollars per accepted task is worse than eval/baseline.json; an arm with no baseline is listed as not enforced.
 name: eval
 on:
-  push:
-    branches: [main]
-    paths: ['CLAUDE.md', '.claude/**', '.claude-plugin/**', 'skills/**', 'agents/**', 'guides/**', 'hooks/**', 'templates/**', 'scripts/**', 'eval/**', 'tests/e2e/**', 'package.json', 'package-lock.json', '.github/workflows/eval.yml']
   schedule:
     - cron: '17 5 * * *'
   workflow_dispatch:
@@ -25,10 +22,9 @@ jobs:
       - run: npm run eval:dry
       - run: npm run eval:review:dry
       - run: npm run eval:app:dry
-      - run: npm run eval:ablate:dry
   live:
     # The live job holds a secret, so it runs only from main: a manual dispatch on another branch would run that branch's code with it.
-    if: github.event_name != 'push' && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main'
     needs: dry
     runs-on: ubuntu-latest
     timeout-minutes: 90

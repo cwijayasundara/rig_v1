@@ -43,8 +43,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
       - run: npm run eval:app:dry
         if: matrix.os == 'ubuntu-latest'
-      - run: npm run eval:ablate:dry
-        if: matrix.os == 'ubuntu-latest'
+      # the ablate dry run is eval/ablation.test.mjs, already run by test:e2e:unit above
   e2e-stacks:
     # Stack fixtures: each pack onboards a tiny repo and check --at commit blocks a broken edit on its core sensor.
     # Every toolchain is installed explicitly and --require all fails the job if one still cannot run: no silent skips here.
@@ -67,15 +66,3 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: npm ci || npm install
       - run: npm run test:e2e:stacks -- --require all
-  dogfood:
-    if: false # off for now: the harness is not run on its own repo; to re-enable: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22.18'
-      - run: npm ci || npm install
-      - run: node --disable-warning=ExperimentalWarning scripts/sdlc.ts check --at ci --base "origin/${{ github.base_ref || 'main' }}"
