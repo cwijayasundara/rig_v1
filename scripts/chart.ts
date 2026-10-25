@@ -70,8 +70,9 @@ function readRow(n: number): Row | null {
 function acceptAdrs(n: number): void {
   const ids = walk(path.join(PRODUCT, 'adr')).filter(f => f.endsWith('.md')).flatMap(f => {
     const text = read(f), fm = frontmatter(text).data
-    if (fm.sprint !== String(n) || fm.status !== 'proposed') return []
-    fs.writeFileSync(f, text.replace(/^status: proposed$/m, 'status: accepted'))
+    const next = text.replace(/^status:\s*["']?proposed["']?[ \t]*$/m, 'status: accepted')
+    if (fm.sprint !== String(n) || fm.status !== 'proposed' || next === text) return [] // the Decisions row flips only with the file
+    fs.writeFileSync(f, next)
     return [/^\d+/.exec(path.basename(f))?.[0]].filter((x): x is string => Boolean(x))
   })
   if (ids.length && exists(archPath)) fs.writeFileSync(archPath, read(archPath).replace(new RegExp(`^(\\|\\s*(?:${ids.join('|')})\\s*\\|.*\\|\\s*)proposed(\\s*\\|\\s*${n}\\s*\\|\\s*)$`, 'gm'), '$1accepted$2'))
