@@ -1,6 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { scoreAnswer, verdict, renderWikiTable, runWikiEval, QUESTIONS } from './wiki.mjs'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { scoreAnswer, verdict, renderWikiTable, runWikiEval, ask, QUESTIONS } from './wiki.mjs'
 
 const rows = (arm, corrects, tokens) => corrects.map((correct, run) => ({ arm, run: run + 1, correct, tokens }))
 
@@ -36,4 +39,19 @@ test('--dry replays a fake and spends nothing', async () => {
   assert.equal(r.rows.length, 2)
   assert.ok(r.rows.every(x => x.usd === 0))
   assert.equal(r.verdict, 'wiki beats native')
+})
+
+test('--max-usd stops new runs once it is spent', async () => {
+  assert.equal((await runWikiEval({ dry: true, runs: 3, maxUsd: 0 })).rows.length, 0)
+})
+
+test('a claude that prints no JSON fails the eval instead of scoring a wrong answer', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-wiki-ask-'))
+  const bin = path.join(dir, 'claude')
+  fs.writeFileSync(bin, '#!/bin/sh\necho "Invalid API key" >&2\nexit 1\n', { mode: 0o755 })
+  const before = process.env.RIG_CLAUDE
+  process.env.RIG_CLAUDE = bin
+  try { assert.throws(() => ask(dir, 'q', 'm'), /no JSON result: Invalid API key/) } finally { if (before === undefined) delete process.env.RIG_CLAUDE; else process.env.RIG_CLAUDE = before }
+  process.env.RIG_CLAUDE = path.join(dir, 'missing')
+  try { assert.throws(() => ask(dir, 'q', 'm'), /did not finish/) } finally { if (before === undefined) delete process.env.RIG_CLAUDE; else process.env.RIG_CLAUDE = before }
 })

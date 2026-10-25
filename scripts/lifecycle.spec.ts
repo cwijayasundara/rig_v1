@@ -137,12 +137,12 @@ test('cli: verify blocks a planned change that is not approved, with a plan-gate
   assert.match(v.stdout, /\[plan-gate\]/)
 })
 
-test('cli: a typed /rig:approve with no slug approves the active change once; a change that is not ready is refused with the reason', () => {
+test('cli: a typed /rig:approve <slug> approves that change once; a change that is not ready is refused with the reason', () => {
   sdlc(repo, ['new', 'early', '--type', 'feature'])
-  const early = JSON.parse(hook(repo, 'prompt-submit', { prompt: '/rig:approve' }).stdout).hookSpecificOutput.additionalContext as string
+  const early = JSON.parse(hook(repo, 'prompt-submit', { prompt: '/rig:approve early' }).stdout).hookSpecificOutput.additionalContext as string
   assert.match(early, /no spec\.md or plan\.md/)
   planned()
-  hook(repo, 'prompt-submit', { prompt: '/rig:approve' })
+  hook(repo, 'prompt-submit', { prompt: '/rig:approve demo' })
   hook(repo, 'prompt-submit', { prompt: '/rig:approve demo' })
   const a = JSON.parse(fs.readFileSync(path.join(repo, '.rig/changes/demo/approval.json'), 'utf8'))
   assert.ok(a.by)

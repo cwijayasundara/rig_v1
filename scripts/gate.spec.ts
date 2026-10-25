@@ -189,7 +189,7 @@ test('Stop skips the fast commands on a tree they already passed, and still judg
   assert.equal(JSON.parse(stop().stdout).decision, 'block')
 })
 
-test('a typed /rig:approve (either spelling, with or without arguments) records the approval and tells the model to carry on', () => {
+test('a typed /rig:approve <target> (either spelling) records the approval and tells the model to carry on; a bare one is left to the skill\'s question', () => {
   sdlc(repo, ['init'])
   sdlc(repo, ['new', 'demo', '--type', 'feature'])
   write(repo, '.rig/changes/demo/spec.md', '# Spec\n\n## Behaviours\n- B1 x\n\n## Open questions\nnone\n')
@@ -198,7 +198,9 @@ test('a typed /rig:approve (either spelling, with or without arguments) records 
   const ask = (prompt: string) => JSON.parse(hook(repo, 'prompt-submit', { prompt }).stdout).hookSpecificOutput.additionalContext as string
   assert.equal(hook(repo, 'prompt-submit', { prompt: 'please /rig:approve demo' }).stdout, '', 'only a prompt that starts with the command counts')
   assert.ok(!fs.existsSync(approval))
-  assert.match(ask('/rig:approve'), /recorded it/, 'a bare command approves the active change')
+  assert.equal(hook(repo, 'prompt-submit', { prompt: '/rig:approve' }).stdout, '', 'a bare command is the skill\'s: it asks, and Cancel must leave nothing')
+  assert.ok(!fs.existsSync(approval), 'a bare command approves nothing before the person answers')
+  assert.match(ask('/rig:approve demo'), /recorded it/)
   const first = fs.readFileSync(approval, 'utf8')
   assert.match(ask('/rig-approve demo design'), /already approved/, 'the old stage word is ignored')
   assert.equal(fs.readFileSync(approval, 'utf8'), first, 'a repeat writes nothing')

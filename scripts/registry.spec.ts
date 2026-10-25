@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { parseRegistry, defaultRegistry, BUILTIN_IDS } from './registry.ts'
+import { SENSOR_NAMES } from './model.ts'
 
 const reg = (v: unknown) => parseRegistry(JSON.stringify(v))
 
@@ -169,7 +170,8 @@ test('contracts.covers parses as globs, defaults to empty, and losing one weaken
 })
 
 test('a command sensor may not take a harness finding\'s name', () => {
-  for (const id of ['commands', 'config', 'contracts', 'unscanned', 'plan-gate', 'human-approval', 'sync']) {
+  const harness = SENSOR_NAMES.filter(n => !(BUILTIN_IDS as readonly string[]).includes(n)) // every finding name that is not a built-in, e.g. scope, journeys
+  for (const id of new Set(['commands', 'plan-gate', 'human-approval', 'sync', ...harness])) {
     const { errors } = parseRegistry(JSON.stringify({ sensors: [{ id, cmd: 'true', cadence: 'turn', blocks: true, guide: 'g' }] }))
     assert.ok(errors.some(e => e.includes(`"${id}" is reserved for a harness finding`)), `${id}: ${errors.join('; ')}`)
   }

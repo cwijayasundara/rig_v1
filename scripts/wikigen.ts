@@ -1,6 +1,7 @@
 // Wiki page writing and claim review (wiki design 2026-10-17): the only model-facing code. Every call goes through a Runner, so the
 // logic around it (validate, rewrite once, review, drop, regenerate once) is tested with a scripted one.
 import { spawnSync } from 'node:child_process'
+import { cleanClaudeEnv } from './model.ts'
 import { findSymbol, parseCites, type Cite } from './wikicite.ts'
 import { bodyLines, validatePage, type PageEnv, type WikiFinding } from './wikivalidate.ts'
 import { parseWikiConfig, type WikiConfig, type WikiPage } from './wikistate.ts'
@@ -26,9 +27,7 @@ export function estimateUsd(pages: number, sourceChars: number): number {
 export function claudeRunner(model: string = WIKI_MODEL): Runner {
   return ({ prompt }) => {
     const bin = process.env.RIG_CLAUDE || 'claude'
-    const env = { ...process.env }
-    for (const k of Object.keys(env)) if (k.startsWith('CLAUDE_CODE_MESSAGING_')) delete env[k]
-    for (const k of ['CLAUDECODE', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_SSE_PORT', 'CLAUDE_CODE_CHILD_SESSION', 'CLAUDE_EFFORT', 'NODE_TEST_CONTEXT']) delete env[k]
+    const env = cleanClaudeEnv()
     const c = spawnSync(bin, ['-p', '--output-format', 'json', '--model', model, '--tools', '', '--setting-sources', 'user', '--disable-slash-commands', '--no-session-persistence'], { input: prompt, env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 600_000 })
     if ((c.error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT') throw new Error(`${bin} not found: install Claude Code`)
     if (c.error) throw new Error(`${bin} did not finish: ${c.error.message}`)

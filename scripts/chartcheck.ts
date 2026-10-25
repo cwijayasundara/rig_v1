@@ -1,7 +1,7 @@
 // The sprint chart's trace rules (outer-loop spec 2026-10-17 §7): parse the PRD, the intents and the test cases, and report
 // where the chain requirement → intent → behaviour → test case breaks. Pure over text; no repo, no model.
 import path from 'node:path'
-import { frontmatter } from './core.ts'
+import { frontmatter, fmList } from './core.ts'
 import { openQuestions, section } from './model.ts'
 
 export type Behaviour = { id: string; reqs: string[]; text: string }
@@ -19,9 +19,9 @@ const REQ = /\bN?FR-\d+\b/g
 const SPRINT_DAYS = 10
 const MAX_DAYS = 2
 
-// Frontmatter lists are flow style on one line; brackets, quotes and a trailing `.md` are tolerated.
-const listField = (v: string | undefined): string[] =>
-  (v ?? '').replace(/^\[|\]$/g, '').split(',').map(s => s.trim().replace(/^["']|["']$/g, '').replace(/\.md$/, '')).filter(s => /^[A-Za-z0-9][\w.-]*$/.test(s))
+// A frontmatter list of ids, flow or block style; brackets, quotes and a trailing `.md` are tolerated.
+const listField = (text: string, key: string): string[] =>
+  fmList(text, key).map(s => s.replace(/\.md$/, '')).filter(s => /^[A-Za-z0-9][\w.-]*$/.test(s))
 // Template prompts are HTML comments: they are never content.
 export const uncomment = (text: string): string => text.replace(/<!--[\s\S]*?-->/g, '')
 export const escapes = (p: string): boolean => path.isAbsolute(p) || p.split(/[\\/]/).includes('..')
@@ -51,7 +51,7 @@ export function parseIntent(slug: string, raw: string): Intent {
   const iface = section(text, 'Interfaces').split('\n')
   const files = (label: string): string[] => iface.flatMap(l => { const m = new RegExp(`^\\s*[-*]?\\s*${label}:\\s*(\\S+)`).exec(l); return m?.[1] ? [m[1]] : [] })
   return {
-    slug, sprint: whole(data.sprint), prd: listField(data.prd), depends: listField(data.depends), estimateDays: whole(data.estimate_days),
+    slug, sprint: whole(data.sprint), prd: listField(text, 'prd'), depends: listField(text, 'depends'), estimateDays: whole(data.estimate_days),
     kind: data.kind === 'boundary' || data.kind === 'internal' ? data.kind : null,
     behaviours: parseBehaviours(text), contractFiles: files('Contract'), exampleFiles: files('Example'), openQuestions: openQuestions(text),
     failures: [...(section(text, 'Behaviours').split(/^###\s+Failure behaviour\s*$/m)[1] ?? '').matchAll(/^\s*[-*]\s+(B\d+)/gm)].map(m => m[1]!),

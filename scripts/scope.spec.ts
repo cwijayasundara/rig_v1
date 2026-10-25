@@ -1,7 +1,8 @@
 // The scope check (harness readiness 1.3): a charted intent says which paths its change may touch; a diff outside them is a finding.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { scopeFindings, fmList, intentScope } from './scope.ts'
+import { scopeFindings, intentScope } from './scope.ts'
+import { fmList } from './core.ts'
 import { defaultRegistry } from './registry.ts'
 import { type FileDiff } from './model.ts'
 import fs from 'node:fs'

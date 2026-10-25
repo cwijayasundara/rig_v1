@@ -464,7 +464,7 @@ test('CI waivers apply only to changes the PR adds, to any file of that change',
   assert.match(touched.stdout, /suppression/)
   // A change the PR adds: its waiver applies to its findings in its plan's ## Files (or its own folder) only.
   sdlc(repo, ['new', 'fresh-one', '--type', 'chore'])
-  write(repo, '.rig/changes/fresh-one/plan.md', '# Plan\n## Files\n- src/app.js\n')
+  write(repo, '.rig/changes/fresh-one/plan.md', '# Plan\n## Files\n- Modify: `src/app.js`\n') // a labelled bullet, as planFiles reads it
   write(repo, '.rig/waivers.jsonl', waiver('old-one', '*') + waiver('fresh-one', '*'))
   gitIn(repo, 'add', '-A')
   gitIn(repo, 'commit', '-qm', 'add fresh change')
