@@ -33,9 +33,9 @@ The biggest lever is **bounded context**. Everything below follows from that.
 ## 3. Architecture
 
 ```
-skills/      the stages, /rig:* (start plan build test pr rule init, plus human-only approve and waive), prompts only
-agents/      evaluator (sprint chart review; a change's diff is reviewed by a clean-context reviewer agent and /security-review in /rig:pr)
-hooks/       hooks.json = four settings hooks, none on Bash (work in -p and CI)
+skills/      the stages, /rig:* (start plan build test pr rule init, chart testplan wiki learn app arch, plus human-only approve, waive and autonomy), prompts only
+agents/      architect (charts a sprint); evaluator (sprint chart review; a change's diff is reviewed by a clean-context reviewer agent and /security-review in /rig:pr)
+hooks/       hooks.json = six settings hook events (session start, prompt submit, post-edit, stop, agent launch/done, model switch) plus the journey dashboard module, none on Bash (work in -p and CI)
 scripts/     zero-dependency Node, no build step; sdlc.ts is the CLI; check.ts is the one checker
 templates/   CI workflow (rig-check), settings.json, stacks/ (stack packs), brief.md, REVIEW.md
 guides/      contracts, engineering, testing: injected on first touch of a matching path
@@ -43,7 +43,7 @@ guides/      contracts, engineering, testing: injected on first touch of a match
 ```
 
 - **Skills, not commands.** Plugin agents ignore `hooks`, `mcpServers` and `permissionMode`, so an agent's limits are its `tools:` list; there are no per-agent gates.
-- **Standalone by default.** `vendor --standalone` copies skills, agents, hooks and scripts into the repo (`.claude/skills/rig-*`, `.claude/agents/rig-*`, `.rig/bin`), so a repo never depends on the plugin and a cloud session runs it as is. `/rig-approve` and `/rig-waive` are vendored skills with `disable-model-invocation` and a pinned `!` command; `$ARGUMENTS` is single-quoted because it is substituted raw.
+- **Standalone by default.** `vendor --standalone` copies skills, agents, hooks and scripts into the repo (`.claude/skills/rig-*`, `.claude/agents/rig-*`, `.rig/bin`), so a repo never depends on the plugin and a cloud session runs it as is. `/rig-approve`, `/rig-waive` and `/rig-autonomy` are vendored skills with `disable-model-invocation` and a pinned `!` command; `$ARGUMENTS` is single-quoted because it is substituted raw.
 - **Artifacts live in `.rig/`, not `.claude/`.** Claude Code protects `.claude/`: writes there prompt, or are denied in `-p`, and allow rules cannot change that.
 
 ## 4. The change lifecycle
@@ -74,7 +74,7 @@ Evidence files (`approval.json`, waivers, `runs.jsonl`, `verify.json`, `pr.md`, 
 | Lever | Mechanism |
 |---|---|
 | Bounded context | Small fresh contexts per subagent (briefs of ≤ 60 lines); `/compact` rather than a handoff skill |
-| Context sensor: a session whose first call is over 25k tokens, or a turn over 150k, gets a toast naming the cause (`scripts/context.ts`) | Live guard for the 50% finding above, not a retrospective; two review systems per turn is the single biggest waste found (proposal 2026-10-08) |
+| Context guard: the session-start rules say to `/compact` at ~150k context, and the journey dashboard shows the session's context and dollars live | Live guard for the 50% finding above, not a retrospective; two review systems per turn is the single biggest waste found (proposal 2026-10-08) |
 | Sonnet main thread, Opus advisor **off** | Template sets `CLAUDE_CODE_DISABLE_ADVISOR_TOOL` (the advisor was a third of each run's cost; a user-level `advisorModel` otherwise still applies) |
 | One review per change | One clean-context reviewer agent (diff and intent only, builder triage with recorded dismissals) + native `/security-review` on the delta before the PR opens |
 | Stamp, don't re-run | `verify` runs every commit and ci sensor once against the current tree and writes `verify.json`, tied to the working tree; `/rig:pr` checks it instead of re-running, and a stale one re-runs. CI reads no stamp |

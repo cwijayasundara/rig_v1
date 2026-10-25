@@ -37,7 +37,7 @@ These come from the research (`docs/research/`) and from the one week this repo 
 5. **Cadence follows model grade.** The only cost study (Jain, two OpenAI models, one task) found a harness was pure overhead on the
    strong model (7x cost, no gain) and decisive on the cheap one (3/10 to 10/10). Sensors run continuously for cheaper models and
    as a final gate for stronger ones; CI always runs everything. No Claude model has been measured, so ours is a hypothesis.
-6. **Bounded context and cost.** Sonnet main thread and generators (architect, QA), Haiku reads, Opus evaluates (the change review and the chart review). Project-scope plugins only.
+6. **Bounded context and cost.** Sonnet main thread and generators (architect, QA), Haiku reads, Sonnet reviews a change's diff, Opus reviews the chart. Project-scope plugins only.
    One review per change. Briefs under 60 lines. See `CLAUDE.md` and `docs/proposals/2026-10-08-why-slow-and-the-fix.md`.
 7. **Fix the harness, not its output.** When rig produces wrong output in a target repo, fix and test the cause here and regenerate.
 
@@ -47,7 +47,7 @@ These come from the research (`docs/research/`) and from the one week this repo 
 |---|---|---|
 | Guide injection | `.claude/rules/*.md` with `paths:` | generating them from the sensor registry, so guide and sensor share one source (`sync --check`) |
 | Planning, parallel work, auto mode | plan mode, subagents, worktrees, `/goal` | the approval gate: person-only, hash-and-staleness, frozen contracts |
-| Code review | `/code-review`, `REVIEW.md`, `/security-review` | one `evaluator` that reviews against the spec, plan and contracts |
+| Code review | `/code-review`, `REVIEW.md`, `/security-review` | a clean-context Sonnet reviewer in `/rig:pr`, and one `evaluator` (Opus) that reviews each sprint chart |
 | Edit-time feedback | LSP plugins, hooks | the registry of sensors with cadence per grade, and test-tamper, suppression and harness-tamper detection |
 | Merge gate | `claude -p`, `claude-code-action` | the base-branch CI check and git hooks that judge any editor |
 | Traceability | nothing | requirement, intent, behaviour, test case, checked by a script (`chart check`, `sync`, red-proof) |
@@ -58,13 +58,14 @@ These come from the research (`docs/research/`) and from the one week this repo 
 
 ## Scope, in the order the person set
 
-1. **Inner loop (one change):** done. Registry of sensors, three hooks, frozen contracts, approval and verify gates, PR.
+1. **Inner loop (one change):** done. Registry of sensors, six hook events, frozen contracts, approval and verify gates, PR.
 2. **Outer loop (a sprint):** done (b07c0dc). PRD to traced intents, architecture, test plan; one approval per sprint.
 3. **Code wiki:** built (5eb09a1), not yet shown to beat native. A native Read/Grep arm tied 6/6 on a small repo, so the search index
    was not rebuilt; the wiki is judged on accuracy and staleness (`npm run eval:wiki`). `init` on an existing repo should index it.
-4. **CI evals and the PR review loop** (playbook plays 10, 11, 13): not started. Evals run on changes to CLAUDE.md, `.claude/**` and
-   rig files, plus nightly; one `claude-code-action` workflow for review and triage.
-5. **Maintain** (plays 14 to 16): not started. One detection script, `bands.yaml`, a scheduled routine; a breach becomes an
+4. **CI evals and the PR review loop** (playbook plays 10, 11, 13): built. The dry evals run in `ci.yml` on every push and pull request;
+   the live paired eval runs nightly and on demand (`.github/workflows/eval.yml`, gated by `eval/gate.mjs`, whose `eval/baseline.json`
+   is still empty). The review loop is the clean-context reviewer in `/rig:pr`; there is no `claude-code-action` workflow.
+5. **Maintain** (plays 14 to 16): built (`scripts/maintain.ts`; no `bands.yaml` or scheduled routine yet). One detection script; a finding becomes an
    `intent.md`. Scheduled scans use native routines and `/security-review`.
 6. **Learning loop** (was `brain/memory`): built on `rig/learn`, not yet shown to lift. `sdlc.ts learn mine|replay|check|status` mines
    review findings and waivers seen in at least 2 changes; `/rig:learn` proposes delta edits to the committed `.rig/lessons.md`
@@ -75,7 +76,7 @@ These come from the research (`docs/research/`) and from the one week this repo 
    First live pass (2026-10-17, Haiku, 3 runs, $0.33, one seeded mistake): the mistake recurred in 3/3 baseline runs on changes 4 to 6 and in 0/3 with the loop;
    the cost rule was changed to dollars per accepted change after seeing it, so the pass counts as one of the two, with that caveat.
 
-7. **Journey dashboard (a mod):** not started. Allowed by the owner on 2026-10-18, reversing the 2026-10-16 deletion of the mod UI
+7. **Journey dashboard (a mod):** built (`hooks/dashboard.tsx`). Allowed by the owner on 2026-10-18, reversing the 2026-10-16 deletion of the mod UI
    (634244c) and its "dashboards" non-goal. It reads and never decides: tokens, context and dollars of the session (from the
    session, not a ledger we keep), where the person is in the AI SDLC journey (init, chart, testplan, approve, build, test, pr, review,
    merge) with the active change or sprint, any blocking finding, and the **next rig command to run**. It reuses `sdlc.ts status`,
@@ -131,8 +132,7 @@ small PR); a **drift report** (stale wiki pages and `design` review findings fil
 - Evidence: `docs/proposals/2026-10-08-why-slow-and-the-fix.md` (cost), `docs/research/` (findings, gap analysis, raw notes,
   `sensor-catalogue.md`),
   `docs/ai-sdlc-checklist.md` (the playbook's plays with measures), `docs/stuff.eml` (scaffold metrics digest, Sept 2026).
-- Removed 2026-10-17, in git history before this commit: all implementation plans (`docs/superpowers/plans/`, every one executed
-  and merged), `reports/` and `research_notes/` (pre-rebuild audits; the useful parts are in `docs/research/`), the specs for the superseded chart workflow, e2e design and lite harness, the release-integration proposal
+- Removed 2026-10-17, in git history before this commit: the implementation plans of that date, `reports/` and the pre-rebuild audits (the useful parts are in `docs/research/`), the specs for the superseded chart workflow, e2e design and lite harness, the release-integration proposal
   (replaced by the scripted and live e2e in `tests/e2e/`), and `ai-sdlc-map.html` (a rendering of the checklist).
 
 ## Sources

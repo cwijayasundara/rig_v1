@@ -91,7 +91,7 @@ A model never approves. Every gate is a command the person types (`SDLC_HUMAN` i
 | `approval.json` (per change and per chart), `.rig/waivers.jsonl` | Every human decision, with the hashes of the files it covered | `/rig:approve`, `/rig:waive` (people only) |
 | `.rig/sensors.json`, `.rig/rules.json`, `.rig/guides/` | The sensor registry (commands and built-ins, cadences, guides, contracts, gates, policy, `knownRed`) and regex rules | `/rig:init`, then reviewed edits |
 | `.rig/autonomy.json` | The autonomy rung (0, 1 or 2), deferred intents and the history of changes | a person, via `/rig:autonomy` |
-| `.rig/product/design/` (named by `design:` in `architecture.md`) | The sprint design doc, frozen by the chart approval | `/rig:chart`, from the brainstorm |
+| `docs/superpowers/specs/<date>-sprint-<N>-design.md` (named by `design:` in `architecture.md`) | The sprint design doc, frozen by the chart approval | `/rig:chart`, from the brainstorm |
 | `.rig/wiki.json`, `.rig/wiki/` | The code wiki: page list, generated pages, hash state | `/rig:wiki` |
 | `.rig/lessons.md`, `.rig/learn/` | Active one-line lessons (at most 30); mined candidates and proposals | a person, from `/rig:learn` proposals |
 | `.rig/bin/`, `.claude/` | The vendored harness, so the repo needs no plugin | `/rig:init` (`init --full`, i.e. `vendor --standalone`) |
@@ -140,10 +140,10 @@ These are the principles, and [DESIGN.md](DESIGN.md) §2 gives the reason for ea
  ┌────────────────────────────────────────────────────────────────────────┐
  │ YOU            /rig:start  /rig:approve  /rig:waive                    │  intent, approval
  ├────────────────────────────────────────────────────────────────────────┤
- │ SKILLS (13)    start plan build test pr · chart testplan · wiki learn  │  the stages: prompts
- │                rule init · approve waive (human only)                  │
+ │ SKILLS (16)    start plan build test pr · chart testplan · wiki learn  │  the stages: prompts
+ │                rule init app arch autonomy · approve waive (human only)│
  ├────────────────────────────────────────────────────────────────────────┤
- │ AGENTS (2)     architect (Opus, charts a sprint)                       │  small fresh contexts
+ │ AGENTS (2)     architect (Sonnet, charts a sprint)                     │  small fresh contexts
  │                evaluator (Opus, reviews each sprint chart)             │
  ├────────────────────────────────────────────────────────────────────────┤
  │ HOOKS          session-start · prompt-submit · post-edit · stop        │  guardrails: run in
@@ -209,7 +209,7 @@ A change's status comes from which of its files exist: spec, plan, approve, buil
 | `/rig:build` | Approved spec and plan: build test-first. | tokens |
 | `/rig:test` | After the build: run `verify` and record `verify.json`. | mostly zero-token |
 | `/rig:pr` | Ship: a clean-context reviewer agent (diff and intent only) and native /security-review on the delta, builder triage, fixes, then one commit, push and PR. | tokens |
-| `/rig:chart <N>` | Architect: the sprint's PRD becomes intents, architecture and ADRs on branch `rig/chart-<N>`. | tokens (Opus) |
+| `/rig:chart <N>` | Architect: the sprint's PRD becomes intents, architecture and ADRs on branch `rig/chart-<N>`. | tokens |
 | `/rig:testplan <N>` | QA lead: the sprint's test plan, cases and data. | tokens |
 | `/rig:wiki init \| build \| status \| refresh \| verify` | Build and keep the code wiki current. `status` is free and only warns. | tokens, bounded by `--max-usd` |
 | `/rig:learn [--max-usd <N>]` | At sprint close: mine recurring review findings and waivers into proposed lessons and rule promotions. | tokens |
@@ -223,7 +223,7 @@ A change's status comes from which of its files exist: spec, plan, approve, buil
 | `/rig:approve chart-<N>` | A sprint's PRD, intents, architecture, ADRs, test plan and the contract files its intents name, as written. Refused while a blocking finding stands; goes stale when any of them changes. |
 | `/rig:waive <sensor> <file\|*> <reason>` | One sensor finding on the active change. |
 
-**The script underneath** (`node .rig/bin/sdlc.ts <cmd>`): `status`, `new`, `activate`, `approve`, `chart check|report <N>`, `ready`, `run`, `verify`, `pr`, `check`, `check-file`, `diff`, `baseline`, `sensors`, `secrets`, `waive`, `sync`, `vendor`, `hooks`, `hook <event>`, `wiki`, `learn mine|replay|check|status`. Skills and CI call these, and so can you.
+**The script underneath** (`node .rig/bin/sdlc.ts <cmd>`): `stamp`, `init`, `new`, `activate`, `status`, `approve`, `chart check|report <N>`, `ready`, `start-brief`, `pr`, `run`, `verify`, `secrets`, `hook <event>`, `diff`, `baseline`, `check`, `check-file`, `sync`, `vendor`, `hooks`, `waive`, `sensors`, `wiki`, `learn mine|replay|check|status`, `report`, `arch`, `queue`, `app`, `slice`, `maintain`, `readiness`, `autonomy`. Skills and CI call these, and so can you.
 
 ### Sensors, policy and guides
 
@@ -246,7 +246,7 @@ Computational sensors run at zero tokens and only one inferential review runs pe
 | Moment | Hook | What happens, at zero tokens |
 |---|---|---|
 | Session opens | `session-start` | Injects the active change, its next command, the policy for this model and the guides that apply. Wires the git hooks unless opted out. |
-| You submit a prompt | `prompt-submit` | Snapshots the tree as the turn baseline, so Stop judges exactly this turn's diff, and records `/rig:approve` and `/rig:waive` from the person's own prompt. |
+| You submit a prompt | `prompt-submit` | Snapshots the tree as the turn baseline, so Stop judges exactly this turn's diff, and records `/rig:approve <target>` from the person's own prompt (a bare `/rig:approve` is left to the skill's question). |
 | After an edit | `post-edit` | Rejects secrets and plans containing code, runs the file's sensors against the turn baseline, and injects a matching guide once per session. |
 | An agent launches or finishes, or `/model` switches | `agent-launch`, `agent-done`, `model-switch` | Records which model did what, which also selects the policy. |
 | A turn ends | `stop` | Runs the sensors on the turn's diff. Blocks at most 2 times, then records `unresolved.json`. |
@@ -259,7 +259,7 @@ Computational sensors run at zero tokens and only one inferential review runs pe
 ### Code wiki and learning loop
 
 - **Wiki.** `/rig:wiki init` proposes `.rig/wiki.json` (at most 30 pages) for a person to edit. `/rig:wiki build --max-usd <N>` writes pages in which every line is one sentence ending in a citation such as `[src/a.ts#f]`. A script validates the citations, and a clean-context reviewer drops claims the cited code does not support. `status` lists pages whose cited code changed, and only warns. `refresh` rebuilds only the stale pages. Never edit a page by hand.
-- **Learning.** `sdlc.ts learn mine` finds review findings and waivers that recur in at least 2 changes. `/rig:learn` proposes delta edits to `.rig/lessons.md` (ADD, MERGE, RETIRE, PROMOTE) in `.rig/learn/proposal.md`. A rule is proposed only after `learn replay` shows it fires on the changes that earned it and on no others. A person applies the proposal in a PR. Add `@.rig/lessons.md` to CLAUDE.md so the lessons load each session.
+- **Learning.** `sdlc.ts learn mine` finds review findings and waivers that recur in at least 2 changes. `/rig:learn` proposes delta edits to `.rig/lessons.md` (ADD, MERGE, RETIRE, PROMOTE, LAYER) in `.rig/learn/proposal.md`. A rule is proposed only after `learn replay` shows it fires on the changes that earned it and on no others. A person applies the proposal in a PR. Add `@.rig/lessons.md` to CLAUDE.md so the lessons load each session.
 
 ## Install
 
@@ -285,7 +285,7 @@ The harness lives in each repo it runs on, so a repo never depends on the plugin
 2. **Initialise** with `/rig:init` (see the user guide below for greenfield and brownfield). It writes a compact CLAUDE.md, `.rig/` and a rig block in `README.md`, and copies the harness into the repo with `init --full`:
    - skills to `.claude/skills/rig-*`, named `rig:x`;
    - agents to `.claude/agents/rig-*`;
-   - hooks and [`templates/settings.json`](templates/settings.json) merged into `.claude/settings.json` (Sonnet main thread, Opus advisor off, Haiku 5.5 general subagents, subagents kept in the foreground, `ENABLE_STOP_REVIEW=0`);
+   - hooks and [`templates/settings.json`](templates/settings.json) merged into `.claude/settings.json` (Sonnet main thread, Opus advisor off, Sonnet general subagents (`CLAUDE_CODE_SUBAGENT_MODEL`), subagents kept in the foreground, `ENABLE_STOP_REVIEW=0`);
    - scripts to `.rig/bin`.
 
    It also wires the git hooks. On your yes, and only when the repo has a remote, it adds `.github/workflows/rig-check.yml` and `REVIEW.md`.
@@ -329,7 +329,7 @@ An empty repo has two ways in. You can start from the first feature (steps 1 to 
 
 1. **Init with the goal.** `/rig:init greenfield "<stack and goal from the PRD>"`, then commit `README.md`, `.rig/`, `.claude/` and `CLAUDE.md`. `/rig:chart` refuses to run until `.rig/sensors.json` exists.
 2. **Write the inputs.** The product owner and BA write `.rig/product/brief.md` ([`templates/brief.md`](templates/brief.md)) and `.rig/product/sprints/sprint-0/prd.md` ([`templates/prd-format.md`](templates/prd-format.md)). Give every requirement an id (`FR-1`, `NFR-1`) with Given/When/Then acceptance criteria, set `engineers:` in the frontmatter to the number of people building in parallel, and leave `## Open questions` as `none` when they are settled. Ids stay stable across sprints.
-3. **Chart sprint 0.** The architect runs `/rig:chart 0`. The `architect` agent (Opus) writes `.rig/product/sprints/sprint-<N>/intents/<slug>.md` files, each at most 2 engineer-days with a `prd:` list, `depends:` and numbered behaviours, plus the first `architecture.md` and ADRs. Sprint 0 always has a `walking-skeleton` intent that every other intent depends on, so the first merge proves the build, test and deploy path end to end. A script (`sdlc.ts chart check 0`, no model call) blocks any intent that traces to no requirement, any requirement with no intent, and any intent over 2 days; the architect gets one fix round. The result is committed on `rig/chart-0`.
+3. **Chart sprint 0.** The architect runs `/rig:chart 0`. The `architect` agent (Sonnet) writes `.rig/product/sprints/sprint-<N>/intents/<slug>.md` files, each at most 2 engineer-days with a `prd:` list, `depends:` and numbered behaviours, plus the first `architecture.md` and ADRs. Sprint 0 always has a `walking-skeleton` intent that every other intent depends on, so the first merge proves the build, test and deploy path end to end. A script (`sdlc.ts chart check 0`, no model call) blocks any intent that traces to no requirement, any requirement with no intent, and any intent over 2 days; the architect gets one fix round. The result is committed on `rig/chart-0`.
 4. **Test plan.** The QA lead runs `/rig:testplan 0`. A Sonnet agent writes `plan.md`, `cases.md` and synthetic `data/`; every requirement gets at least one case, and a case for a boundary intent reuses that intent's contract examples.
 5. **Approve once.** The architect, QA lead and product owner review the branch. One of them types `/rig:approve chart-0` themselves; it is refused while any blocking finding stands, and it goes stale if the PRD, architecture, ADRs, test plan or an intent is edited afterwards. Merge the branch.
 6. **Build the intents.** `node .rig/bin/sdlc.ts ready` lists the intents whose dependencies have shipped. Each engineer runs `/rig:start .rig/product/sprints/sprint-<N>/intents/<slug>.md` in their own checkout, then `/rig:plan` (the mini design), the approval, `/rig:build`, `/rig:test` and `/rig:pr`. The intent's behaviours arrive in `spec.md` with the same B-numbers, so the hidden acceptance is known up front. Start the `walking-skeleton` first; the rest can run in parallel.
@@ -391,7 +391,7 @@ Small work during a sprint (a hotfix, a chore) still goes straight to `/rig:star
 
 1. **Init first.** `/rig:chart` stops if `.rig/sensors.json` is missing. For an empty repo, init greenfield with the stack and goal from the PRD.
 2. **Write the inputs.** The product owner and BA write `.rig/product/brief.md` and `.rig/product/sprints/sprint-<N>/prd.md` from [`templates/prd-format.md`](templates/prd-format.md), giving each requirement an FR or NFR id.
-3. **Chart.** The architect runs `/rig:chart <N>`. The `architect` agent (Opus) writes the intents, each at most 2 engineer-days with `depends:` and a `prd:` list, plus `architecture.md` and the ADRs. Then `chart check <N>` runs with one fix round, and the result is committed on `rig/chart-<N>`.
+3. **Chart.** The architect runs `/rig:chart <N>`. The `architect` agent (Sonnet) writes the intents, each at most 2 engineer-days with `depends:` and a `prd:` list, plus `architecture.md` and the ADRs. Then `chart check <N>` runs with one fix round, and the result is committed on `rig/chart-<N>`.
 4. **Test plan.** The QA lead runs `/rig:testplan <N>` and gets the plan, the cases and the data, each case traced to a requirement.
 5. **Approve once.** After review, a person runs `/rig:approve chart-<N>`. The approval is refused while a blocking finding stands, and goes stale on any edit. Merge the branch.
 6. **Build the intents.** `node .rig/bin/sdlc.ts ready` lists the intents whose dependencies have shipped. Each engineer runs `/rig:start .rig/product/sprints/sprint-<N>/intents/<slug>.md` in their own checkout. The intent's behaviours carry into `spec.md` with the same B-numbers, and from there the change follows path A or B.
@@ -421,8 +421,8 @@ Long builds belong in a Claude Code cloud session (claude.ai/code or `claude --c
 
 | Part | Role |
 |---|---|
-| `skills/` (13) | The stages, run by the main thread (Sonnet). Only `/rig:learn` pins a model, because a model switch re-reads the whole conversation uncached. |
-| `agents/architect.md` | Opus. Charts a sprint; never edits source code. |
+| `skills/` (16) | The stages, run by the main thread (Sonnet). Only `/rig:init` and `/rig:learn` pin a model (Sonnet), because a model switch re-reads the whole conversation uncached. |
+| `agents/architect.md` | Sonnet. Charts a sprint; never edits source code. |
 | `agents/evaluator.md` | Opus. Reviews each sprint chart in `/rig:chart`; a change's diff goes to the clean-context reviewer in `/rig:pr`. |
 | `hooks/hooks.json` | Session start, prompt submit, post-edit and Stop guardrails, plus model recording. None runs on Bash, and all of them hold in `-p`. |
 | `scripts/*.ts` | Zero-dependency Node with no build step. The main files: `sdlc` (the CLI), `core` (paths, change state, approvals), `model` (the pure diff, config and glob model), `registry` (sensors.json and policy), `sensors` (the pure sensors), `check` (one entry point for Stop, git hooks and CI), `hooks`, `verify`, `pr`, `chart` / `chartcheck`, `wiki` / `wikicite`, `learn*`, `vendor`, `githooks`. |
