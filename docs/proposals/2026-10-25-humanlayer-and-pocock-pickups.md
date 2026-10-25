@@ -55,3 +55,7 @@ a standalone glossary skill (rig already pins its terms in CLAUDE.md and DESIGN.
 ## Order
 
 A1 (own change, spec-first) → A2+A3+A4 (one skill-text change) → B folded into the Maintain design when it starts → C as an eval.
+
+## Status (2026-10-25)
+
+A1 merged (dd866af). A2, A3, A4 merged (76fef40). B written into `docs/GOAL.md` as "Rules for anything that runs unattended"; the Maintain tasks there are candidates, not built. C recorded under GOAL.md "Open" with its eval plan; not built, because it needs a paid paired run a person starts.

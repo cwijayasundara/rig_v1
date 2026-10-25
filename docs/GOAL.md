@@ -85,6 +85,26 @@ These come from the research (`docs/research/`) and from the one week this repo 
    a model. Judged by a person using it on a real sprint, and cut if it costs more context or latency than it saves (rule 4).
    Old code: `git show 634244c^:hooks/band.tsx` and `mission.tsx`. Design first, in `docs/superpowers/specs/`.
 
+## Rules for anything that runs unattended
+
+For scope 4 (CI and PR loop), 5 (Maintain) and the autonomy rungs. From Matt Pocock's software-factory language
+([skills#1316](https://github.com/mattpocock/skills/pull/1316)); a design for any new automated trigger fails review without an answer to each.
+
+1. **Five questions per automated task**, written in its design before any code: what triggers it; what it reads and writes; what it
+   triggers next; where a person re-enters; what stops two runs doing the same work (rig's answer for changes is `queue --check`, one writer per file).
+2. **Start slow.** One automated trigger at a time, throttled at first (for example one merged PR in ten, or one scan a day), a person
+   reviewing every PR it opens, and a cap on tries (verify already stops after two) before a person. Open the throttle only as the brakes
+   (sensors, the single review, human review) earn trust.
+3. **A run never waits for a person.** It ends; the person's later change to a file or the PR triggers a new run. Runs are stateless:
+   their only memory is the repo, the PR and the change records. No new store.
+4. **A source files an item once.** A monitor or scan that sees the same problem again comments on the open intent instead of filing a
+   new one, and reopens it if the problem persists after the fix merges.
+5. **Fix runs never chain.** A run that fixes the harness's own failure triggers nothing further and always gets human review.
+
+Candidate Maintain tasks, each to pass the five questions first: a **ratchet** (a baseline-waived sensor loses one exempt file a day, one
+small PR); a **drift report** (stale wiki pages and `design` review findings filed as one intent); **triage** of `.rig/intent/` ideas
+(easy / needs a person / not a bug); a **CI-failure fix** run (rule 5).
+
 ## How we know it worked (the gate to "production ready")
 
 - **Lift:** on the paired task set, harness arms beat bare arms on accepted rate or on dollars per accepted run, with enough runs
@@ -124,6 +144,7 @@ the cost?*; Devin: DeepWiki, Memory, index-repo; Claude Code docs (`https://code
 
 ## Open
 
+- Blind recon before brainstorming (HumanLayer's research-questions step: ask only how the code works today, never how to build the task). Not built: it adds a step to `start`, so it needs a paired arm first. Plan: add a `recon` arm to `eval/review.mjs`-style paired runs on the shop intents, scored by spec defects the review finds and by reviewer findings per change, no model judge; keep only on lift, and only for large intents. A live run costs money, so a person starts it.
 - Run the first honest paired eval; the brief that does not state the contract is the known next fix.
 - Re-fetch the secondhand claims before leaning on them: Jain's exact results, the ETH Zurich AGENTS.md study, Bugbot figures.
 - Journey dashboard: does the mod API still exist in the current Claude Code, and can a status line alone show the journey and next command?
