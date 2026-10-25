@@ -3,7 +3,7 @@
 // nothing here assumes what kind of app it is. A driver nobody has approved is a draft: not enforced, and listed as such.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SDLC, PLUGIN_ROOT, ownerOrFail, out, fail, read, readJson, BUDGET_MS, exists, sha, writeAtomic, sanctionWrites, type Args } from './core.ts'
+import { ROOT, SDLC, PLUGIN_ROOT, ownerOrFail, out, fail, read, readJson, BUDGET_MS, exists, sha, writeAtomic, sanctionWrites, skillRef, type Args } from './core.ts'
 import { runCommand } from './runs.ts'
 import { formatFindings, type Finding } from './model.ts'
 import type { Inert } from './registry.ts'
@@ -107,7 +107,7 @@ export function journeyFindings(budgetMs: number, only?: string, ci = false): Fi
 const pick = (args: Args, apps: App[]): App => {
   const name = args.pos[1]
   const a = name ? apps.find(x => x.name === name) : apps.length === 1 ? apps[0] : undefined
-  if (!a) fail(apps.length ? `name the app: ${apps.map(x => x.name).join(', ')}` : 'no app under .rig/verify/<name>/app.json; run /rig:app')
+  if (!a) fail(apps.length ? `name the app: ${apps.map(x => x.name).join(', ')}` : `no app under .rig/verify/<name>/app.json; run ${skillRef('app')}`)
   return a as App
 }
 
@@ -118,12 +118,12 @@ export function cmdApp(args: Args): void {
     fs.mkdirSync(path.join(ROOT, VERIFY), { recursive: true })
     writeAtomic(path.join(ROOT, VERIFY, 'lib.mjs'), read(path.join(PLUGIN_ROOT, 'templates', 'verify', 'lib.mjs')))
     sanctionWrites([`${VERIFY}/lib.mjs`])
-    return out(`wrote ${VERIFY}/lib.mjs: the optional Node helper (launch, verify). A driver in any language works; see /rig:app.`)
+    return out(`wrote ${VERIFY}/lib.mjs: the optional Node helper (launch, verify). A driver in any language works; see ${skillRef('app')}.`)
   }
   if (sub === 'status') {
     const states = appStates()
     if (args.opt.json) return out(JSON.stringify(states))
-    return out(states.length ? states.map(s => `${s.name}: ${({ draft: 'draft (never approved, not enforced)', current: 'current', changed: 'changed since approved (review it)', stale: 'stale (the feature map names a missing path)' })[s.state]}`).join('\n') : 'journeys: not configured (run /rig:app)')
+    return out(states.length ? states.map(s => `${s.name}: ${({ draft: 'draft (never approved, not enforced)', current: 'current', changed: 'changed since approved (review it)', stale: 'stale (the feature map names a missing path)' })[s.state]}`).join('\n') : `journeys: not configured (run ${skillRef('app')})`)
   }
   if (sub === 'run') {
     const a = pick(args, apps)

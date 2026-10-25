@@ -2,7 +2,7 @@
 // and claim review call a model, through a Runner. Staleness is a warning: no subcommand fails because a page is stale.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, out, fail, gitIn, writeAtomic, type Args } from './core.ts'
+import { ROOT, out, fail, gitIn, writeAtomic, skillRef, type Args } from './core.ts'
 import { claudeRunner, planConfig, buildPage, reviewPage, estimateUsd, type Runner } from './wikigen.ts'
 import { parseWikiConfig, slugOf, snapshot, wikiStatus, type WikiConfig, type WikiPage, type WikiState } from './wikistate.ts'
 import { validatePage, pageCitations, type PageEnv } from './wikivalidate.ts'
@@ -222,9 +222,15 @@ function cmdVerify(root: string, args: Args, run: Runner): WikiResult {
   return lines.length ? bad(lines.join('\n')) : ok(`wiki: ${Object.keys(pages).length} page(s) pass`)
 }
 
+// `wiki init` indexes an existing codebase, which has history. A repo with no commit is a fresh scaffold: refuse before the paid planner
+// runs (2026-10-25 shop_app: greenfield /rig:init ran it on a two-file skeleton). A greenfield repo gets its wiki from `wiki sync`.
+const hasCommit = (root: string): boolean => gitIn(root, ['rev-parse', '--verify', '-q', 'HEAD']) !== null
+const NO_COMMIT = `wiki init: this repo has no commit yet, so there is no codebase to index (nothing was run, no cost).
+Greenfield: skip it; ${skillRef('pr')} builds the wiki after the first change. Brownfield: commit the code, then run wiki init again.`
+
 export function wikiCommand(root: string, args: Args, run: Runner): WikiResult {
   switch (args.pos[0]) {
-    case 'init': return cmdInit(root, run)
+    case 'init': return hasCommit(root) ? cmdInit(root, run) : bad(NO_COMMIT)
     case 'build': return cmdBuild(root, args, run)
     case 'status': return cmdStatus(root)
     case 'refresh': return cmdRefresh(root, args, run)

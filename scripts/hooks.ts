@@ -177,7 +177,7 @@ function approveTyped(typedArgs: string): void {
   if (!slug) return
   const say = (text: string): void => out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: text } }))
   const r = runSdlc(['approve', slug], true)
-  say(`rig: the person typed /rig:approve and rig ${r.code === 0 ? 'recorded it' : 'refused it'}:\n${r.text}\nTell them the result in one line${r.code === 0 ? `, then continue with ${skillRef('build')} ${slug}` : ' and stop'}. Do not run /rig:approve or sdlc.ts approve yourself.`)
+  say(`rig: the person typed ${skillRef('approve')} and rig ${r.code === 0 ? 'recorded it' : 'refused it'}:\n${r.text}\nTell them the result in one line${r.code === 0 ? `, then continue with ${skillRef('build')} ${slug}` : ' and stop'}. Do not run ${skillRef('approve')} or sdlc.ts approve yourself.`)
 }
 
 // Each prompt starts a turn: record the tree and reset the per-turn gate, so Stop diffs exactly this turn's changes.

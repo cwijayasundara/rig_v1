@@ -4,7 +4,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { ROOT, SLUG_RE, exists, read, out, fail, git, type Args } from './core.ts'
+import { ROOT, SLUG_RE, exists, read, out, fail, git, skillRef, type Args } from './core.ts'
 import { planFiles } from './model.ts'
 import { activeSlug, status } from './lifecycle.ts'
 import { loadConfig } from './check.ts'
@@ -115,7 +115,7 @@ export function cmdQueue(args: Args): void {
   if (args.pos[0] === 'defer' || args.pos[0] === 'undefer') return cmdDefer(args, args.pos[0] === 'defer')
   if (args.pos[0] === 'next') {
     const q = queueNext()
-    return out(args.opt.json ? JSON.stringify(q) : 'slug' in q ? `start ${q.slug}: /rig:start ${q.path} (rung ${readAutonomy().rung})` : `queue: ${q.none}`)
+    return out(args.opt.json ? JSON.stringify(q) : 'slug' in q ? `start ${q.slug}: ${skillRef('start')} ${q.path} (rung ${readAutonomy().rung})` : `queue: ${q.none}`)
   }
   if (args.opt.check === true) fail('usage: queue --check <slug>')
   const check = typeof args.opt.check === 'string' ? args.opt.check : null

@@ -72,7 +72,7 @@ function cmdNew(args: Args): void {
   const raw = optString(args, 'type') ?? 'feature'
   // The four types, plus the older names toType folds in (greenfield, incident, migration, spike).
   if (![...TYPES, 'greenfield', 'incident', 'migration', 'spike'].includes(raw)) fail(`usage: new <slug> [--type ${TYPES.join('|')}] [--title "..."]`)
-  if (exists(changeDir(slug))) fail(`${slug} already exists: /rig:start ${slug} continues it`)
+  if (exists(changeDir(slug))) fail(`${slug} already exists: ${skillRef('start')} ${slug} continues it`)
   const source = optString(args, 'source')
   if (source) {
     const rel = toPosix(path.relative(ROOT, path.resolve(ROOT, source)))
@@ -132,7 +132,7 @@ const words = (args: Args): string[] => (args.pos.length === 1 ? (args.pos[0] ??
 const humanFallback = (cmd: string, usage: string): string => `! SDLC_HUMAN=1 node --disable-warning=ExperimentalWarning ${path.relative(process.cwd(), process.argv[1] ?? 'sdlc.ts')} ${cmd} ${usage}`
 
 function cmdApprove(args: Args): void {
-  if (process.env.SDLC_HUMAN !== '1') fail(`approvals are human-only: the person runs /rig:approve <slug>. If that command is not listed, restart Claude Code, or the person types: ${humanFallback('approve', '<slug>')}`, 3)
+  if (process.env.SDLC_HUMAN !== '1') fail(`approvals are human-only: the person runs ${skillRef('approve')} <slug>. If that command is not listed, restart Claude Code, or the person types: ${humanFallback('approve', '<slug>')}`, 3)
   const given = words(args)[0] // a second word (the old stage name) is ignored
   if (!given && args.opt.ask) return out(approveTarget())
   const chart = CHART_RE.exec(given ?? '')?.[1]
@@ -141,11 +141,11 @@ function cmdApprove(args: Args): void {
   if (!slug || !exists(changeDir(slug))) fail('usage: approve <slug>')
   const refusal = approvalRefusal(slug)
   if (refusal) fail(refusal)
-  if (approvalState(slug) === 'approved' && JSON.stringify(readApproval(slug)?.contracts ?? {}) === JSON.stringify(freezeRecord())) return out(`${slug} is already approved. Next: /rig:build ${slug}`)
+  if (approvalState(slug) === 'approved' && JSON.stringify(readApproval(slug)?.contracts ?? {}) === JSON.stringify(freezeRecord())) return out(`${slug} is already approved. Next: ${skillRef('build')} ${slug}`)
   const by = ownerOrFail(args, 'approvals')
   const a = writeApproval(slug, by)
   const n = Object.keys(a.contracts).length
-  out(`approved ${slug} by ${by}: spec.md and plan.md${n ? `, ${n} contract file(s) frozen` : ''}. Next: /rig:build ${slug}`)
+  out(`approved ${slug} by ${by}: spec.md and plan.md${n ? `, ${n} contract file(s) frozen` : ''}. Next: ${skillRef('build')} ${slug}`)
   // Not a refusal: the person may know better. But two writers on one file is a merge conflict later, so say so now.
   const clash = conflictsFor(slug)
   if (clash.length) out(`warning: another in-flight plan names the same file(s): ${clash.map(o => `${o.file} (${o.changes.join(' and ')})`).join('; ')}. Land one first, or split the work.`)
@@ -224,7 +224,7 @@ function cmdRun(): void {
   const cmd = argv.slice(dash + 1).join(' ')
   const given = optString(head, 'slug')
   const slug = given ? checkSlug(given) : activeSlug()
-  if (!slug || !exists(path.join(CHANGES, slug))) fail('no such change: run /rig:start first, or pass an existing --slug')
+  if (!slug || !exists(path.join(CHANGES, slug))) fail(`no such change: run ${skillRef('start')} first, or pass an existing --slug`)
   const expectFail = Boolean(head.opt['expect-fail'])
   const before = treeStamp()
   const row = runCommand(cmd)
@@ -248,7 +248,7 @@ function cmdDiff(args: Args): void {
 }
 
 function cmdWaive(args: Args): void {
-  if (process.env.SDLC_HUMAN !== '1') fail(`waivers are human-only: the person runs /rig:waive <sensor> <file|*> <reason>. If that command is not listed, restart Claude Code, or the person types: ${humanFallback('waive', "<sensor> <file|*> '<reason>'")}`, 3)
+  if (process.env.SDLC_HUMAN !== '1') fail(`waivers are human-only: the person runs ${skillRef('waive')} <sensor> <file|*> <reason>. If that command is not listed, restart Claude Code, or the person types: ${humanFallback('waive', "<sensor> <file|*> '<reason>'")}`, 3)
   const [sensor, file, ...reason] = words(args)
   const given = optString(args, 'slug')
   const slug = given ? checkSlug(given) : activeSlug()

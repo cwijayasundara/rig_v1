@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { waiverLive,
-  ROOT, SDLC, CHANGES, WAIVERS, SENSORS_JSON, BUDGET_MS, readJson, exists, read, out, fail, git, toPosix, optString, readJsonl, defaultBase, checkSlug,
+  ROOT, SDLC, CHANGES, WAIVERS, SENSORS_JSON, BUDGET_MS, readJson, exists, read, out, fail, git, toPosix, optString, readJsonl, defaultBase, checkSlug, skillRef,
   type Args, type Waiver,
 } from './core.ts'
 import { parseRules, formatFindings, warnLines, matchesAny, isTest, ghBin, planFiles, type FileDiff, type Finding, type Rule } from './model.ts'
@@ -198,7 +198,7 @@ function shipVerdicts(slug: string, config: Registry, diffs: FileDiff[], base: s
   if (!exists(dir)) return [{ sensor: 'traceability', severity: 'block', message: `unknown change ${slug}`, fix: 'pass a slug that exists under .rig/changes/' }]
   const findings: Finding[] = []
   const state = approvalState(slug)
-  if (planGate && state !== 'approved') findings.push({ sensor: 'plan-gate', severity: 'block', message: `${slug}: the plan is ${state === 'missing' ? 'not approved' : 'changed since it was approved'}`, fix: `a person reviews spec.md and plan.md and runs /rig:approve ${slug}` })
+  if (planGate && state !== 'approved') findings.push({ sensor: 'plan-gate', severity: 'block', message: `${slug}: the plan is ${state === 'missing' ? 'not approved' : 'changed since it was approved'}`, fix: `a person reviews spec.md and plan.md and runs ${skillRef('approve')} ${slug}` })
   const spec = read(path.join(dir, 'spec.md'))
   const ids = behaviourIds(spec, 'Behaviours')
   for (const id of missingBehaviours(ids, ids.length ? testCorpus(config, diffs) : '')) {

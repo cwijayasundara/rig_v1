@@ -3,7 +3,7 @@
 // tightens it once it passes).
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SENSORS_JSON, BUDGET_MS, read, out, fail, sanctionWrites } from './core.ts'
+import { ROOT, SENSORS_JSON, BUDGET_MS, read, out, fail, sanctionWrites, skillRef } from './core.ts'
 import { runCommand } from './runs.ts'
 import { loadConfig } from './check.ts'
 import { updateKnownRed, activeSensors, commandFor } from './registry.ts'
@@ -11,7 +11,7 @@ import { updateKnownRed, activeSensors, commandFor } from './registry.ts'
 
 export function cmdBaseline(): void {
   const file = path.join(ROOT, SENSORS_JSON)
-  if (!fs.existsSync(file)) fail('no .rig/sensors.json: write it first (/rig:init, Sensors step)')
+  if (!fs.existsSync(file)) fail(`no .rig/sensors.json: write it first (${skillRef('init')}, Sensors step)`)
   const { registry, errors } = loadConfig()
   if (errors.length) fail(`fix .rig/sensors.json first:\n${errors.map(e => `- ${e}`).join('\n')}`)
   const rows: string[] = []

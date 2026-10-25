@@ -1,5 +1,6 @@
 // The sprint plan view (`chart plan <N>`): a read-only picture of the order the sprint's intents can be built in, generated from their
 // `depends:` lines so it cannot disagree with them. Waves, an ASCII tree for the terminal, a Mermaid graph for GitHub, and what can start now.
+import { skillRef } from './core.ts'
 type PlanStatus = 'done' | 'active' | 'ready' | 'blocked'
 export type PlanRow = { slug: string; depends: string[]; estimateDays: number | null; status: PlanStatus }
 
@@ -101,7 +102,7 @@ export function planText(n: number, rows: PlanRow[], opts: { chart: string; star
     '',
     '## Next up',
     '',
-    ...(opts.chart !== 'approved' ? [`- chart-${n} is ${opts.chart}: a person runs \`/rig:approve chart-${n}\` before anything can start`] : []),
+    ...(opts.chart !== 'approved' ? [`- chart-${n} is ${opts.chart}: a person runs \`${skillRef('approve')} chart-${n}\` before anything can start`] : []),
     ...(ready.length ? ready.map(r => `- \`${opts.startCmd(r.slug)}\``) : ['- nothing can start now (everything is done, in progress or blocked)']),
     '',
   ].join('\n')

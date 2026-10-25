@@ -2,17 +2,16 @@
 // files only. The outer loop is a sprint (init, PRD, chart, test plan, approval, build); the inner loop is one change.
 // `show` says which loops a person should see: a greenfield repo has both, a brownfield repo is entered through the outer loop.
 import path from 'node:path'
-import { ROOT, SENSORS_PATH, SDLC, CHANGES, exists, readJson } from './core.ts'
+import { ROOT, SENSORS_PATH, SDLC, CHANGES, exists, readJson, skillRef } from './core.ts'
 import { activeSlug, changeType, isShipped, nextStep, status, type Status } from './lifecycle.ts'
 import { latestAgents } from './modelstate.ts'
 import { readAutonomy } from './autonomy.ts'
 import { queueNext } from './queue.ts'
 import { chartState, readyIntents, sprintIntents, sprintsKnown } from './chart.ts'
-import { testplanDir, prdHint, intentRel, prdPath } from './product.ts'
+import { testplanDir, prdHint, prdsInDocs, intentRel, prdPath } from './product.ts'
 
-// Skills are /rig:<name> in every install mode (their frontmatter names), so the journey never prints the vendored directory spelling /rig-<name>.
-const k = (name: string): string => `/rig:${name}`
-const plain = (text: string): string => text.replace(/\/rig-([a-z]+)\b/g, '/rig:$1')
+// The command a person types: /rig:<name> from the plugin, /rig-<name> (the skill's folder, never /rig:<name>) from a standalone copy.
+const k = skillRef
 
 type StepState = 'done' | 'current' | 'gate' | 'todo'
 // `by` says who takes the step; `auto` marks the unattended run (build, test, fix, PR, advisory review) that one approval starts and no person gates until merge.
@@ -48,7 +47,7 @@ function innerSteps(s: Status, gates: boolean, slug: string, reviewed: boolean):
     { id: 'approve', label: gates ? 'Approve' : 'Approve (off)', command: `${k('approve')} ${slug}`, done: done(2) || !gates, gate: true },
     { id: 'build', label: 'Build', command: `${k('build')} ${slug}`, done: at > 3, auto: true }, { id: 'test', label: 'Test', command: `${k('test')} ${slug}`, done: at > 3, auto: true },
     { id: 'pr', label: 'PR', command: `${k('pr')} ${slug}`, done: done(5), auto: true },
-    { id: 'review', label: 'Review', command: 'review and its fixes (the /rig:pr reviewer)', done: s === 'shipped' || (at > 5 && reviewed), auto: true }, { id: 'merge', label: 'Merge', command: 'review and merge the PR', done: s === 'shipped', gate: true },
+    { id: 'review', label: 'Review', command: `review and its fixes (the ${k('pr')} reviewer)`, done: s === 'shipped' || (at > 5 && reviewed), auto: true }, { id: 'merge', label: 'Merge', command: 'review and merge the PR', done: s === 'shipped', gate: true },
   ]
   return mark(rows)
 }
@@ -58,14 +57,16 @@ export function journey(i: { gates: { plan: boolean }; tree: string | null }): J
   const initialised = exists(SENSORS_PATH)
   const sprints = sprintsKnown()
   const open = sprints.find(n => { const s = sprintIntents(n); return !exists(prdPath(n)) || !s.length || s.some(x => !isShipped(x)) })
-  const n = open ?? (sprints.length ? (sprints[sprints.length - 1] as number) + 1 : 0)
+  const docs = prdsInDocs()
+  const n = open ?? (sprints.length ? (sprints[sprints.length - 1] as number) + 1 : docs[0]?.n ?? 0)
+  const hint = (m: number): string => docs.find(d => d.n === m)?.rel ?? prdHint(m)
   const slugs = sprintIntents(n), shipped = slugs.filter(isShipped).length
   const cases = exists(path.join(testplanDir(n), 'cases.md'))
   const approved = slugs.length > 0 && chartState(n).state === 'approved'
   const ready = readyIntents().map(r => r.slug)
   const outer = mark([
     { id: 'init', label: 'Init', command: k('init'), done: initialised },
-    { id: 'prd', label: 'PRD', command: `add PRD → ${prdHint(n)}`, person: true, done: exists(prdPath(n)) || exists(path.join(ROOT, prdHint(n))), detail: `sprint ${n}` },
+    { id: 'prd', label: 'PRD', command: `add PRD → ${hint(n)}`, person: true, done: exists(prdPath(n)) || exists(path.join(ROOT, hint(n))), detail: `sprint ${n}` },
     { id: 'chart', label: 'Chart', command: `${k('chart')} ${n}`, done: slugs.length > 0, detail: slugs.length ? `${slugs.length} intents` : undefined },
     { id: 'testplan', label: 'Test plan', command: `${k('testplan')} ${n}`, done: cases },
     { id: 'approve', label: 'Approve', command: `${k('approve')} chart-${n}`, done: approved, gate: true },
@@ -77,14 +78,14 @@ export function journey(i: { gates: { plan: boolean }; tree: string | null }): J
   const st = act ? status(act, i.gates, i.tree) : null
   const outerNext = ((): Journey['next'] => {
     if (!initialised) return { command: k('init'), by: 'model', why: 'set this repo up for rig' }
-    if (!exists(prdPath(n)) && !exists(path.join(ROOT, prdHint(n)))) return { command: `add the PRD at ${prdHint(n)}, then ${k('chart')} ${n} @${prdHint(n)}`, by: 'person', why: 'the sprint starts from your PRD, in any format and from any path' }
-    if (!slugs.length) return { command: exists(prdPath(n)) ? `${k('chart')} ${n}` : `${k('chart')} ${n} @${prdHint(n)}`, by: 'model', why: 'turn the PRD into traced intents, architecture and ADRs' }
+    if (!exists(prdPath(n)) && !exists(path.join(ROOT, hint(n)))) return { command: `add the PRD at ${hint(n)}, then ${k('chart')} ${n} @${hint(n)}`, by: 'person', why: 'the sprint starts from your PRD, in any format and from any path' }
+    if (!slugs.length) return { command: exists(prdPath(n)) ? `${k('chart')} ${n}` : `${k('chart')} ${n} @${hint(n)}`, by: 'model', why: 'turn the PRD into traced intents, architecture and ADRs' }
     if (!cases) return { command: `${k('testplan')} ${n}`, by: 'model', why: 'write the test plan and cases for the sprint' }
     if (!approved) return { command: `${k('approve')} chart-${n}`, by: 'person', why: 'review the chart branch, then approve the sprint once' }
     if (ready[0]) return { command: `${k('start')} ${intentRel(n, ready[0] as string)}`, by: 'model', why: `${ready.length} intent(s) ready to build` }
-    return shipped === slugs.length ? { command: `add the PRD at ${prdHint(n + 1)}, then ${k('chart')} ${n + 1} @${prdHint(n + 1)}`, by: 'person', why: `sprint ${n} is shipped` } : { command: 'a change in flight must ship first', by: 'person', why: 'the remaining intents wait on their dependencies' }
+    return shipped === slugs.length ? { command: exists(path.join(ROOT, hint(n + 1))) ? `${k('chart')} ${n + 1} @${hint(n + 1)}` : `add the PRD at ${hint(n + 1)}, then ${k('chart')} ${n + 1} @${hint(n + 1)}`, by: 'person', why: `sprint ${n} is shipped` } : { command: 'a change in flight must ship first', by: 'person', why: 'the remaining intents wait on their dependencies' }
   })()
-  const next: Journey['next'] = act && st ? { command: plain(nextStep(act, st)), by: st === 'approve' || st === 'review' ? 'person' : 'model', why: `change ${act}` } : outerNext
+  const next: Journey['next'] = act && st ? { command: nextStep(act, st), by: st === 'approve' || st === 'review' ? 'person' : 'model', why: `change ${act}` } : outerNext
   return { agents: latestAgents(path.join(SDLC, 'state', 'model.json')), initialised, kind, show, sprint: initialised ? n : null, outer, inner: act && st ? { slug: act, type: changeType(act), steps: innerSteps(st, i.gates.plan, act, exists(path.join(CHANGES, act, 'review.md'))) } : null, next, ready, rung: readAutonomy().rung, queue }
 }
 

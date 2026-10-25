@@ -3,7 +3,7 @@
 // edits stays at `.rig/product/`: brief.md, architecture.md and adr/. Paths here are the only place that layout is written down.
 import fs from 'node:fs'
 import path from 'node:path'
-import { SDLC, exists } from './core.ts'
+import { ROOT, SDLC, exists } from './core.ts'
 
 export const PRODUCT = path.join(SDLC, 'product')
 export const ARCH_REL = '.rig/product/architecture.md'
@@ -23,6 +23,14 @@ export const sprintRel = (n: number): string => `.rig/product/sprints/sprint-${n
 export const prdRel = (n: number): string => `${sprintRel(n)}/prd.md`
 // Where a person is told to put a PRD: a repo-owned folder, not rig's. /rig:chart copies it to prdRel(n).
 export const prdHint = (n: number): string => `docs/prd/sprint-${n}.md`
+// A PRD the person already wrote under docs/prd/ as sprint-<n>.md or sprint-<n>-<title>.md, lowest sprint first, so the journey names
+// it instead of asking for a sprint-0.md (2026-10-25 shop_app: the PRDs were sprint-1-cart-add-remove.md and sprint-2-cart-get-items.md).
+export function prdsInDocs(): { n: number; rel: string }[] {
+  const dir = path.join(ROOT, 'docs', 'prd')
+  if (!exists(dir)) return []
+  return fs.readdirSync(dir).flatMap(f => { const m = /^sprint-(\d{1,4})(?:-[\w.-]+)?\.md$/.exec(f); return m?.[1] ? [{ n: Number(m[1]), rel: `docs/prd/${f}` }] : [] })
+    .sort((a, b) => a.n - b.n || a.rel.localeCompare(b.rel))
+}
 export const intentRel = (n: number, slug: string): string => `${sprintRel(n)}/intents/${slug}.md`
 
 export function sprintsOnDisk(): number[] {

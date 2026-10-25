@@ -2,7 +2,7 @@
 // Only a key seen in at least two distinct changes is a candidate; one occurrence is never a lesson.
 import fs from 'node:fs'
 import path from 'node:path'
-import { read, readJsonl, gitIn, SLUG_RE, type Waiver } from './core.ts'
+import { read, readJsonl, gitIn, SLUG_RE, skillRef, type Waiver } from './core.ts'
 import { escapeRe } from './model.ts'
 import type { Lesson } from './learnfile.ts'
 
@@ -11,7 +11,7 @@ type Candidate = { key: string; kind: 'finding' | 'waiver'; changes: string[]; c
 // The promotion ladder (harness readiness 1.2): the strongest fix that fits a recurring mistake, strongest first. A person applies it; the
 // table is data, keyed on the review category (a waiver has no category, so it is a lesson until a person says otherwise).
 export type Rung = { rung: 'architecture' | 'ratchet' | 'test' | 'rule' | 'lesson'; how: string }
-const ARCH: Rung = { rung: 'architecture', how: 'make the bad dependency impossible: declare the layer edge under ## Layers in architecture.md (/rig:arch), then `learn replay --layers .rig/learn/layers-<id>.md --earned <a>,<b>`' }
+const ARCH: Rung = { rung: 'architecture', how: `make the bad dependency impossible: declare the layer edge under ## Layers in architecture.md (${skillRef('arch')}), then \`learn replay --layers .rig/learn/layers-<id>.md --earned <a>,<b>\`` }
 const RATCHET: Rung = { rung: 'ratchet', how: 'a count that may only fall: a command sensor with "ratchet": "down" in .rig/sensors.json (duplication share, lint warnings)' }
 const TEST: Rung = { rung: 'test', how: 'pin it with a test, or a frozen contract example, that fails without the fix' }
 const RULE: Rung = { rung: 'rule', how: 'a pattern over added lines in .rig/rules.json, proven with `learn replay .rig/learn/rule-<id>.json --earned <a>,<b>`' }
