@@ -128,3 +128,12 @@ test('testplan format: import checks forbid modules instead of listing "only", a
   assert.match(t, /`typing`, `dataclasses`/)
   assert.match(t, /Rows stay in ID order[^\n]*next free ID/)
 })
+
+// 2026-10-25 shop_app chart: after a fix round that fixed all five findings, chart-review.md still said `changes-needed`, and a
+// finding the reviewer gave to QA alone left the architect's intent line contradicting the fixed case.
+test('chart skill: the fix round marks findings fixed and rewrites the verdict, and routes a finding by the files it cites', () => {
+  assert.match(skill, /append ` → fixed` to each finding line/)
+  assert.match(skill, /set line 1 to `verdict: pass` when every item under `## Findings` is marked fixed/)
+  assert.match(skill, /leave `changes-needed` when any is still open/)
+  assert.match(skill, /a finding citing files of both goes to both/)
+})

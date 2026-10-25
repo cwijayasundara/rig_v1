@@ -517,3 +517,13 @@ test('an unapproved chart is named in Next up, and a refused start lists no read
   const r = sdlc(repo, ['new', 'gamma', '--source', `${P}/sprints/sprint-1/intents/gamma.md`])
   assert.doesNotMatch(r.stdout + r.stderr, /Ready now/)
 })
+
+// 2026-10-25 shop_app: `/rig:chart` from the plugin ran in a standalone repo and wrote `/rig:approve` into plan.md, though
+// the repo's skills and README answer to /rig-approve only.
+test('the plugin copy names /rig-x commands in a repo with the standalone skills installed', () => {
+  planRepo()
+  write(repo, '.claude/skills/rig-start/SKILL.md', '---\nname: rig:start\n---\n')
+  const text = sdlc(repo, ['chart', 'plan', '1', '--print']).stdout
+  assert.match(text, /a person runs `\/rig-approve chart-1`/)
+  assert.doesNotMatch(text, /\/rig:[a-z]/)
+})

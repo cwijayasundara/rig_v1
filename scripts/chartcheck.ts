@@ -91,7 +91,9 @@ export function traceReport(i: { prd: string; intents: Intent[]; others?: Intent
   const cycle = cyclic([...i.intents, ...others])
   for (const q of openQuestions(prd)) add('open-question', 'prd', `the PRD has an open question: ${q}`)
   for (const t of i.intents) {
-    if (!t.prd.length || !t.behaviours.length || t.behaviours.some(b => !b.reqs.length)) add('intent-untraced', t.slug, `${t.slug} has a behaviour or an intent that cites no PRD requirement`)
+    const untraced = t.behaviours.filter(b => !b.reqs.length).map(b => b.id) // name them: `(AC-4.1)` alone blocked shop_app with no hint
+    const gaps = [!t.prd.length && 'its `prd:` frontmatter is empty', !t.behaviours.length && 'it has no `- B<n> (FR-n): ...` behaviours', untraced.length && `${untraced.join(', ')} cite no requirement`].filter(Boolean)
+    if (gaps.length) add('intent-untraced', t.slug, `${t.slug}: ${gaps.join('; ')}. Cite an FR-n or NFR-n id in the parentheses, e.g. \`- B1 (FR-4, AC-4.1): ...\`; an acceptance-criterion id alone does not count`)
     const cited = [...t.prd, ...t.behaviours.flatMap(b => b.reqs)]
     for (const id of new Set(cited)) if (!defined.has(id)) add('unknown-id', t.slug, `${t.slug} cites ${id}, which the PRD does not define`)
     if (t.estimateDays === null || t.estimateDays > MAX_DAYS || t.estimateDays < 1) add('estimate', t.slug, `${t.slug} needs estimate_days of 1 or ${MAX_DAYS} (split anything larger)`)
