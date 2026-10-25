@@ -9,6 +9,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { createSandbox } from './lib/sandbox.mjs'
+import { arg } from '../../eval/lib/cli.mjs'
 import { writeReport } from './lib/report.mjs'
 import { mergeToMain } from './lib/merge.mjs'
 import { Checks } from './lib/checks.mjs'
@@ -24,7 +25,6 @@ import { createSessions, liveDriver } from './driver/live.mjs'
 import { assertOnboarding } from './assert/onboarding.mjs'
 import { assertProcess } from './assert/process.mjs'
 
-const arg = (n, d) => { const i = process.argv.indexOf(`--${n}`); return i > 0 ? process.argv[i + 1] : d }
 const driverName = arg('driver', 'scripted')
 const only = arg('phase')
 const out = path.resolve(arg('out', fs.mkdtempSync(path.join(os.tmpdir(), 'rig-e2e-'))))

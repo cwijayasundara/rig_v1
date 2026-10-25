@@ -6,7 +6,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { resultsAllowed } from './run.mjs'
+import { resultsAllowed, arg, mean } from './lib/cli.mjs'
 import { wikiCommand } from '../scripts/wiki.ts'
 import { claudeRunner } from '../scripts/wikigen.ts'
 import { cleanClaudeEnv } from '../scripts/model.ts'
@@ -18,7 +18,6 @@ const WIN_BY = 2
 
 export const scoreAnswer = (expect, answer) => expect.every(s => answer.includes(s))
 
-const mean = xs => xs.reduce((a, b) => a + b, 0) / (xs.length || 1)
 const of = (rows, arm) => rows.filter(r => r.arm === arm)
 
 // The cut-the-feature rule: two more right of eight, or the same number right for fewer tokens; anything else is no lift.
@@ -106,7 +105,6 @@ export async function runWikiEval({ dry = false, runs = 3, model = 'claude-haiku
 }
 
 if (process.argv[1] === import.meta.filename) {
-  const arg = (name, d) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : d }
   const dry = process.argv.includes('--dry')
   const results = path.resolve(arg('results', dry ? path.join(os.tmpdir(), 'rig-eval-wiki-dry.jsonl') : path.join(import.meta.dirname, 'results', `${new Date().toISOString().slice(0, 10)}-wiki.jsonl`)))
   const refusal = resultsAllowed(results, dry)

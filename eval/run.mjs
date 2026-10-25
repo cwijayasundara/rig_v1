@@ -11,6 +11,7 @@ import { createSessions, liveDriver } from '../tests/e2e/driver/live.mjs'
 import { totals } from '../tests/e2e/assert/process.mjs'
 import { PHASE as S2 } from '../tests/e2e/phases/s2-greenfield.mjs'
 import { PHASE as S3 } from '../tests/e2e/phases/s3-delete.mjs'
+import { EVAL_ALLOW, arg, nextRunAllowed, resultsAllowed } from './lib/cli.mjs'
 import { armsFrom } from './arms.mjs'
 import { scoreRun } from './score.mjs'
 import { setupBare, setupRig, dryBare, BARE_PROMPT, BARE_PROMPT_LINKS, BARE_PROMPT_RULES } from './setup.mjs'
@@ -18,8 +19,6 @@ import { PHASE as S7 } from './variants/links.mjs'
 import { PHASE_S8 as S8, PHASE_S9 as S9 } from './variants/rules.mjs'
 
 const RESULTS = path.resolve(import.meta.dirname, 'results')
-// The same extra permissions for every arm: a bare model must be able to run its own tests, as a rig arm does through sdlc.ts.
-export const EVAL_ALLOW = ['Bash(npm *)', 'Bash(node *)', 'Bash(git *)', 'Bash(ls *)', 'Bash(mkdir *)', 'Bash(cat *)']
 
 // Arm order is shuffled per run from a seed (recorded in the row), so no arm always goes first and meets the quiet hours or the cold cache.
 export function orderArms(arms, seed, n) {
@@ -29,8 +28,7 @@ export function orderArms(arms, seed, n) {
   return arms.map(a => [rand(), a]).sort((a, b) => a[0] - b[0]).map(([, a]) => a)
 }
 
-export const nextRunAllowed = (spent, capRun, capTotal) => spent + capRun <= capTotal + 1e-9
-export const resultsAllowed = (file, dry) => (dry && path.resolve(file).startsWith(RESULTS + path.sep) ? 'dry runs never write under eval/results: they replay fixtures, not a model' : null)
+export { EVAL_ALLOW, nextRunAllowed, resultsAllowed } from './lib/cli.mjs'
 
 const PHASES = { links: [S2, S3, S7], rules: [S2, S3, S7, S8, S9] }
 const failing = (driver, failAt) => (failAt ? { ...driver, [failAt]: async () => { throw new Error(`injected failure at ${failAt}`) } } : driver)
@@ -80,7 +78,6 @@ export async function runOne(arm, n, { dry, out, capRunUsd, failAt, seed = null,
 }
 
 if (process.argv[1] === import.meta.filename) {
-  const arg = (n, d) => { const i = process.argv.indexOf(`--${n}`); return i > 0 ? process.argv[i + 1] : d }
   const dry = process.argv.includes('--dry')
   const out = path.resolve(arg('out', fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-'))))
   const results = path.resolve(arg('results', dry ? path.join(out, 'results.jsonl') : path.join(RESULTS, `${new Date().toISOString().slice(0, 10)}.jsonl`)))

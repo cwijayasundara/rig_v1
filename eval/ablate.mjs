@@ -6,8 +6,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { components, loadTags, tagProblems, verdict } from './ablation.mjs'
-import { runOne, nextRunAllowed } from './run.mjs'
-import { orderArms } from './run.mjs'
+import { runOne, orderArms } from './run.mjs'
+import { arg, nextRunAllowed } from './lib/cli.mjs'
 import { ARMS, MODELS } from './arms.mjs'
 
 const HISTORY = path.resolve(import.meta.dirname, 'ablation.json')
@@ -18,7 +18,6 @@ export function listText(tags, history) {
 }
 
 if (process.argv[1] === import.meta.filename) {
-  const arg = (n, d) => { const i = process.argv.indexOf(`--${n}`); return i > 0 ? process.argv[i + 1] : d }
   const tags = loadTags()
   if (process.argv.includes('--list')) { console.log(listText(tags, readHistory())); process.exit(0) }
   if (process.argv.includes('--check')) {

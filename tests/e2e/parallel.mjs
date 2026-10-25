@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
-import { createSandbox, PLUGIN } from './lib/sandbox.mjs'
+import { createSandbox, bindSandbox, PLUGIN } from './lib/sandbox.mjs'
 import { Checks } from './lib/checks.mjs'
 import { runChange } from './lib/flow.mjs'
 import { mergeToMain } from './lib/merge.mjs'
@@ -14,6 +14,7 @@ import { PHASE as S2 } from './phases/s2-greenfield.mjs'
 import { PHASE as S3 } from './phases/s3-delete.mjs'
 import { ARMS } from '../../eval/arms.mjs'
 import { setupRig } from '../../eval/setup.mjs'
+import { arg } from '../../eval/lib/cli.mjs'
 
 const fx = rel => path.join(import.meta.dirname, 'fixtures/parallel', rel)
 // An independent change: new files only, so it cannot conflict with the cart change.
@@ -35,15 +36,7 @@ function sandboxAt(base, dir, name) {
   fs.mkdirSync(logs, { recursive: true })
   const env = { ...base.env, CONTRACT_LOG: path.join(logs, 'contract.log'), TMPDIR: path.join(dir, '.tmp') }
   fs.mkdirSync(env.TMPDIR, { recursive: true })
-  const run = (cmd, args, opts = {}) => spawnSync(cmd, args, { cwd: dir, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, ...opts, env: { ...env, ...opts.env } })
-  const git = (...args) => { const r = run('git', args); if (r.status !== 0) throw new Error(`git ${args.join(' ')}: ${(r.stderr || r.stdout).trim()}`); return r.stdout.trim() }
-  return {
-    ...base, dir, env, run, git,
-    file: rel => path.join(dir, rel),
-    read: rel => (fs.existsSync(path.join(dir, rel)) ? fs.readFileSync(path.join(dir, rel), 'utf8') : ''),
-    write(rel, text) { fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true }); fs.writeFileSync(path.join(dir, rel), text) },
-    sdlc(args, { human = false } = {}) { return run('node', ['--disable-warning=ExperimentalWarning', path.join(dir, '.rig/bin/sdlc.ts'), ...args], { env: { CLAUDE_PROJECT_DIR: dir, ...(human ? { SDLC_HUMAN: '1' } : {}) } }) },
-  }
+  return bindSandbox({ ...base, dir, env })
 }
 
 // ---------- worker: one instance, in its own process ----------
@@ -64,7 +57,6 @@ if (process.argv[2] === '--worker') {
 }
 
 // ---------- the experiment ----------
-const arg = (n, d) => { const i = process.argv.indexOf(`--${n}`); return i > 0 ? process.argv[i + 1] : d }
 const out = path.resolve(arg('out', fs.mkdtempSync(path.join(os.tmpdir(), 'rig-parallel-'))))
 const c = new Checks('parallel instances')
 const sb = createSandbox({ name: 'parallel', out })

@@ -5,9 +5,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { createSandbox } from './lib/sandbox.mjs'
+import { arg } from '../../eval/lib/cli.mjs'
 import { STACKS, probe, runStack, requiredStacks } from './lib/stacks.mjs'
 
-const arg = (n, d) => { const i = process.argv.indexOf(`--${n}`); return i > 0 ? process.argv[i + 1] : d }
 const only = arg('stack')
 const required = requiredStacks(arg('require'))
 const out = path.resolve(arg('out', fs.mkdtempSync(path.join(os.tmpdir(), 'rig-stacks-'))))

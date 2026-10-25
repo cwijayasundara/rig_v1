@@ -9,7 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { CASES } from './review/cases.mjs'
-import { resultsAllowed } from './run.mjs'
+import { resultsAllowed, arg, readJsonl } from './lib/cli.mjs'
 import { claudeRunner } from '../scripts/wikigen.ts'
 
 const ROOT = path.resolve(import.meta.dirname, '..')
@@ -77,7 +77,6 @@ export function renderMarkdown(rows, { date, files }) {
 }
 
 if (process.argv[1] === import.meta.filename) {
-  const arg = (n, d) => { const i = process.argv.indexOf(`--${n}`); return i > 0 ? process.argv[i + 1] : d }
   const dry = process.argv.includes('--dry')
   const runs = Number(arg('runs', 3)), maxUsd = Number(arg('max-usd', 8)), model = arg('model', 'claude-sonnet-5-5')
   const results = path.resolve(arg('results', dry ? path.join(os.tmpdir(), `rig-review-${Date.now()}.jsonl`) : path.join(ROOT, 'eval/results', `${new Date().toISOString().slice(0, 10)}-review.jsonl`)))
@@ -103,7 +102,7 @@ if (process.argv[1] === import.meta.filename) {
     }
     fs.rmSync(repo.dir, { recursive: true, force: true })
   }
-  const rows = fs.readFileSync(results, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l))
+  const rows = readJsonl(results)
   console.log(`\n${renderMarkdown(rows, { date: new Date().toISOString().slice(0, 10), files: [path.basename(results)] })}`)
   console.log(`${results}  spent $${spent.toFixed(2)}`)
 }
