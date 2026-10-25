@@ -180,16 +180,59 @@ test('standalone vendoring installs the journey dashboard as the local plugin ri
   for (const cmd of ['approve', 'waive']) assert.doesNotMatch(fs.readFileSync(path.join(repo, `.claude/skills/rig-${cmd}/SKILL.md`), 'utf8'), /CLAUDE_PLUGIN_ROOT/)
 })
 
-test('the vendored journey prints /rig:<name>, the skills\' own names, never the directory spelling /rig-<name>', () => {
+test('the vendored journey prints /rig-<name>, the command a standalone copy answers to, never the plugin spelling /rig:<name>', () => {
+  // cbe4be4 (2026-10-18) printed /rig:<name> here; every standalone transcript since resolves /rig-<name> and never /rig:<name>.
   const repo = makeRepo()
   sdlc(repo, ['init'])
   write(repo, '.rig/sensors.json', JSON.stringify({ stack: 'x', paths: { tests: ['**/*.test.ts'] }, sensors: [] }))
   assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
   sdlc(repo, ['new', 'add-x', '--type', 'feature'])
   const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', '.rig/bin/sdlc.ts', 'status', '--journey'], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo } })
-  assert.match(r.stdout, /\/rig:init/)
-  assert.match(r.stdout, /next: \/rig:start add-x/)
-  assert.doesNotMatch(r.stdout, /\/rig-/)
+  assert.match(r.stdout, /\/rig-init/)
+  assert.match(r.stdout, /next: \/rig-start add-x/)
+  assert.doesNotMatch(r.stdout, /\/rig:[a-z]/)
+})
+
+test('every script names a skill through skillRef, never a hard-coded /rig:<name> (2026-10-25 shop_app: readiness told a standalone repo to run /rig:chart)', () => {
+  const dir = import.meta.dirname
+  const hits: string[] = []
+  for (const f of fs.readdirSync(dir).filter(f => f.endsWith('.ts') && !f.endsWith('.spec.ts') && f !== 'testkit.ts' && f !== 'vendor.ts')) {
+    fs.readFileSync(path.join(dir, f), 'utf8').split('\n').forEach((line, i) => {
+      const code = line.trimStart().startsWith('//') ? '' : line.replace(/\s\/\/\s.*$/, '')
+      if (/\/rig:[a-z]/.test(code) && !code.includes('export const skillRef')) hits.push(`${f}:${i + 1}: ${code.trim().slice(0, 100)}`)
+    })
+  }
+  assert.deepEqual(hits, [])
+})
+
+test('a standalone copy prints /rig-<name> in readiness, refusals and the dashboard, and rewrites the CLAUDE.md guides block', () => {
+  const repo = makeRepo()
+  sdlc(repo, ['init'])
+  write(repo, '.rig/sensors.json', JSON.stringify({ stack: 'x', paths: { tests: ['**/*.test.ts'] }, sensors: [] }))
+  assert.equal(sdlc(repo, ['sync']).code, 0)
+  assert.match(fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8'), /the \/rig:pr reviewer/, 'the plugin copy writes the plugin spelling')
+  assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
+  const claude = fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8')
+  assert.match(claude, /the \/rig-pr reviewer/)
+  assert.doesNotMatch(claude, /\/rig:[a-z]/)
+  assert.match(vendored(repo, ['sync']).stdout, /guides block is up to date/, 'the re-hashed block is what the vendored sync writes')
+  const ready = vendored(repo, ['readiness'])
+  assert.match(ready.stdout, /\/rig-chart/)
+  assert.doesNotMatch(ready.stdout + ready.stderr, /\/rig:[a-z]/)
+  const refused = vendored(repo, ['approve', 'x'])
+  assert.equal(refused.code, 3)
+  assert.match(refused.stderr + refused.stdout, /the person runs \/rig-approve <slug>/)
+  const dash = fs.readFileSync(path.join(repo, '.rig/mod/hooks/dashboard.tsx'), 'utf8')
+  assert.match(dash, /\/rig-init/)
+  assert.doesNotMatch(dash, /\/rig:[a-z]/)
+})
+
+test('vendoring leaves a hand-edited guides block alone, so sync still reports the edit', () => {
+  const repo = makeRepo()
+  sdlc(repo, ['init'])
+  write(repo, 'CLAUDE.md', '# App\n\n<!-- rig:guides start hash=0000000000000000 -->\n- See /rig:pr. [sensor:x]\n<!-- rig:guides end -->\n')
+  assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
+  assert.match(fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8'), /hash=0000000000000000 -->\n- See \/rig:pr\./)
 })
 
 test('vendoring leaves a team\'s own .claude-plugin/marketplace.json alone', () => {

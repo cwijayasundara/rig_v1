@@ -33,6 +33,16 @@ test('journey: initialised, no PRD → the person writes sprint-0.md', () => {
   assert.equal(j.next.by, 'person')
 })
 
+test('journey: a PRD already under docs/prd/ is named with its own sprint number, not sprint-0.md (2026-10-25 shop_app)', () => {
+  write(repo, 'docs/prd/sprint-2-cart-get-items.md', PRD)
+  write(repo, 'docs/prd/sprint-1-cart-add-remove.md', PRD)
+  const j = view()
+  assert.equal(j.sprint, 1)
+  assert.match(states(j), /^init:done prd:done chart:current/)
+  assert.equal(j.next.command, '/rig:chart 1 @docs/prd/sprint-1-cart-add-remove.md')
+  assert.equal(j.next.by, 'model')
+})
+
 test('journey: PRD but no intents → chart', () => {
   write(repo, '.rig/product/sprints/sprint-0/prd.md', PRD)
   const j = view()

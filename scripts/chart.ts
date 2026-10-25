@@ -3,7 +3,7 @@
 // contract files those name, all under sprints/sprint-N/; the architecture and ADRs are shared and every sprint edits them.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, exists, read, sha, now, toPosix, frontmatter } from './core.ts'
+import { ROOT, exists, read, sha, now, toPosix, frontmatter, skillRef } from './core.ts'
 import { openQuestions, section } from './model.ts'
 import { changeDir, isShipped } from './lifecycle.ts'
 import { planText, type PlanRow } from './plan.ts'
@@ -133,7 +133,7 @@ export function intentReady(slug: string): { ready: boolean; why: string[] } {
   const why: string[] = []
   const s = chartState(i.sprint)
   if (s.state === 'missing') why.push(`chart-${i.sprint} is not approved`)
-  else if (s.state === 'stale') why.push(`chart-${i.sprint} is stale: run /rig:approve chart-${i.sprint} after reviewing (changed: ${s.changed.join(', ')})`)
+  else if (s.state === 'stale') why.push(`chart-${i.sprint} is stale: run ${skillRef('approve')} chart-${i.sprint} after reviewing (changed: ${s.changed.join(', ')})`)
   const blocked = i.depends.filter(d => !isShipped(d))
   if (blocked.length) why.push(`blocked by ${blocked.join(', ')}`)
   return { ready: !why.length, why }
@@ -177,7 +177,7 @@ export function planRows(n: number): PlanRow[] {
   }))
 }
 export function sprintPlan(n: number): string {
-  return planText(n, planRows(n), { chart: chartState(n).state, startCmd: slug => `/rig:start ${intentRel(n, slug)}` })
+  return planText(n, planRows(n), { chart: chartState(n).state, startCmd: slug => `${skillRef('start')} ${intentRel(n, slug)}` })
 }
 export function writePlan(n: number): string {
   fs.mkdirSync(sprintDir(n), { recursive: true })

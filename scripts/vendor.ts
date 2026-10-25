@@ -2,7 +2,8 @@
 // (alias --cloud) also writes the skills, agents and hooks into .claude/, so the repo needs no plugin, cloud sessions included.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SDLC, PLUGIN_ROOT, IS_VENDORED, read, out, fail, sanctionWrites, type Args } from './core.ts'
+import { ROOT, SDLC, PLUGIN_ROOT, IS_VENDORED, read, out, fail, sanctionWrites, sha, type Args } from './core.ts'
+import { findBlock, withBlock } from './sync.ts'
 import { writeHookScripts, installHooks } from './githooks.ts'
 
 // Every script the checker imports; testkit and specs stay behind. CI runs this copy, so it never needs the plugin.
@@ -72,7 +73,7 @@ function vendorDashboard(written: string[]): void {
   const version = pluginVersion()
   fs.rmSync(path.join(ROOT, '.rig', 'mod'), { recursive: true, force: true })
   const json = (v: object): string => JSON.stringify(v, null, 2) + '\n'
-  writeFile('.rig/mod/hooks/dashboard.tsx', read(path.join(PLUGIN_ROOT, 'hooks', 'dashboard.tsx')), written)
+  writeFile('.rig/mod/hooks/dashboard.tsx', vendoredCommands(read(path.join(PLUGIN_ROOT, 'hooks', 'dashboard.tsx'))), written)
   writeFile('.rig/mod/hooks/hooks.json', json({ modules: ['./dashboard.tsx'] }), written)
   writeFile('.rig/mod/.claude-plugin/plugin.json', json({ name: 'rig', version, types: './types/index.d.ts' }), written)
   writeFile('.rig/mod/types/index.d.ts', read(path.join(PLUGIN_ROOT, 'types', 'index.d.ts')), written)
@@ -106,12 +107,15 @@ const README_TEMPLATE = 'readme-rig.md'
 const README_BLOCK = /<!-- rig:begin[\s\S]*?<!-- rig:end -->/
 const vendoredCommands = (text: string): string => text.replace(/\/rig:([a-z]+)\b/g, '/rig-$1')
 
-// CLAUDE.md's routing line is written while the plugin's /rig:x names are live; a standalone copy answers to /rig-x (the folder name),
-// so the line a model reads agrees with the session-start hook and `status`. Only that one command is touched.
+// CLAUDE.md's routing line and guides block are written while the plugin's /rig:x names are live; a standalone copy answers to /rig-x
+// (the folder name), so what a model reads agrees with the session-start hook and `status`. Only the routing line and the guides block
+// are touched; the block is re-hashed so the vendored `sync` finds it current, unless it was edited by hand (then `sync` reports it).
 function routeClaudeMd(written: string[]): void {
   const file = 'CLAUDE.md'
   const text = read(path.join(ROOT, file))
-  const routed = text.replace('start with /rig:start;', 'start with /rig-start;')
+  let routed = text.replace('start with /rig:start;', 'start with /rig-start;')
+  const block = findBlock(routed)
+  if (block && sha(block.lines.join('\n')) === block.hash) routed = withBlock(routed, block.lines.map(vendoredCommands))
   if (routed !== text) writeFile(file, routed, written)
 }
 

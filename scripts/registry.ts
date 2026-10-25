@@ -1,5 +1,6 @@
 // The sensor registry (behavioural harness spec 2026-10-16 §3): one .rig/sensors.json, language-free.
 // A sensor is a command or a built-in, a cadence, a blocks flag and one guide sentence. Tool commands live in templates/stacks/.
+import { skillRef } from './core.ts'
 import { isObject, isStringList, posInt, SENSOR_NAMES } from './model.ts'
 
 export type Cadence = 'edit' | 'turn' | 'commit' | 'ci' | 'nightly'
@@ -29,7 +30,7 @@ const BUILTIN_DEFAULTS: Record<BuiltinId, Base> = {
   'rules': { cadence: 'edit', blocks: true, guide: 'Follow the project rules in .rig/rules.json.' },
   'red-proof': { cadence: 'commit', blocks: true, guide: 'A new test must fail before the change and pass after it.' },
   'traceability': { cadence: 'commit', blocks: true, guide: 'Every behaviour in the change spec.md needs a test that names its B-number; brief behaviours with no test yet only warn.' },
-  'model-role': { cadence: 'turn', blocks: false, guide: 'Build on the build model; leave diff review to the /rig:pr reviewer and /security-review; the evaluator agent reviews charts.' },
+  'model-role': { cadence: 'turn', blocks: false, guide: `Build on the build model; leave diff review to the ${skillRef('pr')} reviewer and /security-review; the evaluator agent reviews charts.` },
 }
 const GENERIC_TESTS = ['**/test/**', '**/tests/**', '**/__tests__/**']
 const DEFAULT_POLICY: Policy = { haiku: 'continuous', sonnet: 'continuous', opus: 'final', default: 'continuous' }

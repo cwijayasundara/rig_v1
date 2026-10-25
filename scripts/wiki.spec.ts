@@ -2,6 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { makeRepo, write, sdlc, gitIn } from './testkit.ts'
 import { wikiCommand } from './wiki.ts'
@@ -56,6 +57,20 @@ test('init writes a parseable wiki.json from the planner and refuses to overwrit
   assert.match(first.text, /wiki build/)
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(repo, '.rig/wiki.json'), 'utf8')).pages.length, 2)
   assert.notEqual(cmd(repo, ['init'], run).code, 0)
+})
+
+test('init refuses in a repo with no commit (a greenfield scaffold) before the paid planner runs', () => {
+  // 2026-10-25 shop_app: greenfield /rig:init --quick ran `wiki init` on a two-file skeleton and paid for the plan.
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-test-'))
+  gitIn(repo, 'init', '-q', '-b', 'main')
+  write(repo, 'src/a.ts', A)
+  const { run, calls } = fake()
+  const r = cmd(repo, ['init'], run)
+  assert.equal(r.code, 1)
+  assert.match(r.text, /no commit yet[\s\S]*Greenfield: skip it/)
+  assert.equal(calls.length, 0, 'the planner is never called')
+  assert.ok(!fs.existsSync(path.join(repo, '.rig/wiki.json')))
+  assert.equal(cmd(repoWithSources(), ['init'], run).code, 0, 'a repo with history is indexed as before')
 })
 
 test('build needs a wiki.json and says so', () => {

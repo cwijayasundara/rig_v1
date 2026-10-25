@@ -3,7 +3,7 @@
 import { parseRules, section, type FileDiff, type Finding, type Layer, isTest, isSource, matchesAny, escapeRe, globToRegex, SECRET_PATTERNS } from './model.ts'
 import { weakensRegistry, parseRegistry, builtinOptions, type Registry } from './registry.ts'
 import { RATCHET_FILE, weakensRatchets } from './counts.ts'
-import { SENSORS_JSON } from './core.ts'
+import { SENSORS_JSON, skillRef } from './core.ts'
 
 export const TAMPER_PATTERNS: { id: string; re: RegExp; what: string }[] = [
   { id: 'skip-or-only', re: /\b(?:it|describe|test|context|suite)\.(?:skip|only|todo)\s*[.(]/, what: 'test skipped or focused' },
@@ -27,7 +27,7 @@ const ASSERTION = /\bassert(?:\.\w+\s*\(|\w*\s*[!(])|^\s*assert\s|\bexpect\s*[({
 const THRESHOLD_KEY = /coverage|threshold|fail[_-]under|minimum|\b(?:lines|branches|functions|statements)\b/i
 const CONFIG_FILE = /(?:^|\/)(?:[^/]*\.(?:json|ya?ml|toml|cfg|ini|xml|gradle|kts|properties)|\.[\w-]*rc(?:\.\w+)?|[^/]*\.config\.[cm]?[jt]s)$/
 const SNAPSHOT = /(?:^|\/)__snapshots__\/|\.snap$/
-const KEEP_TESTS = "keep the test and make the code pass it; removing a test needs the person's /rig:waive"
+const KEEP_TESTS = `keep the test and make the code pass it; removing a test needs the person's ${skillRef('waive')}`
 
 const countAssertions = (texts: string[]): number =>
   texts.filter(t => !COMMENT_LINE.test(t)).reduce((n, t) => n + (t.match(ASSERTION)?.length ?? 0), 0)
@@ -138,7 +138,7 @@ export function size(diffs: FileDiff[], r: Registry, fileLines: Record<string, n
   if (total > limits.diffLines && point !== 'edit') {
     findings.push({
       sensor: 'size', severity: point === 'stop' ? 'warn' : 'block', message: `diff is ${total} changed lines (limit ${limits.diffLines})`,
-      fix: 'ship it as smaller changes, or the person approves the plan (/rig:approve <slug>) or waives with /rig:waive size * <reason>',
+      fix: `ship it as smaller changes, or the person approves the plan (${skillRef('approve')} <slug>) or waives with ${skillRef('waive')} size * <reason>`,
     })
   }
   if (point !== 'edit') {

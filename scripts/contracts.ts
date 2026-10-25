@@ -1,5 +1,6 @@
 // Contracts (behavioural harness spec 2026-10-16 §6): frozen per file at plan approval (lifecycle.ts writes the freeze into
 // approval.json), validated before they run.
+import { skillRef } from './core.ts'
 import { readApproval, digest } from './lifecycle.ts'
 import { contractGlobs, type Contracts } from './registry.ts'
 import { matchesAny, type Finding } from './model.ts'
@@ -14,7 +15,7 @@ export function frozenFindings(slugs: string[], touched: string[], after: (file:
   const out: Finding[] = []
   for (const slug of slugs) for (const [file, hash] of Object.entries(frozenFor(slug))) {
     if (!touched.includes(file) || digest(after(file)) === hash || out.some(f => f.file === file)) continue
-    out.push({ sensor: 'harness-tamper', severity: 'block', file, message: `${file} is a contract frozen by the approval of ${slug} and has changed since`, fix: `revert it (git checkout -- ${file}); if the contract must change, ask the person to run /rig:waive harness-tamper ${file} <reason> or to re-approve the plan` })
+    out.push({ sensor: 'harness-tamper', severity: 'block', file, message: `${file} is a contract frozen by the approval of ${slug} and has changed since`, fix: `revert it (git checkout -- ${file}); if the contract must change, ask the person to run ${skillRef('waive')} harness-tamper ${file} <reason> or to re-approve the plan` })
   }
   return out
 }

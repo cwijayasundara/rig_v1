@@ -101,3 +101,15 @@ test('init skill: the README block comes from the vendored template, which carri
   assert.match(skill, /from `\.rig\/templates\/readme-rig\.md`/)
   assert.match(skill, /write them as `\/rig-start`/)
 })
+
+test('init skill: the 2026-10-25 shop_app --quick run gaps are closed in the text', () => {
+  // The model wrote README.md with `{ printf; cat; } > README.md`, declared cart.cli:main with no cli.py, put PRD rules under
+  // Conventions, ran wiki init on greenfield, left the --quick commit on master and was told to chart a sprint-0.md that did not exist.
+  assert.match(skill, /write them with Write \(never a redirect, `printf` or heredoc\)/)
+  assert.match(skill, /Every entry point the manifest declares[^\n]*exists and the smoke test runs it/)
+  assert.match(skill, /Conventions and Gotchas describe only files that exist on disk after the scaffold and the rules that code already follows/)
+  const greenfield = skill.slice(skill.indexOf('## Greenfield'), skill.indexOf('## Both'))
+  assert.match(greenfield, /Skip the Brownfield \*\*Wiki\*\* step/)
+  assert.match(skill, /Under `--defaults` and `--quick` do not commit[^\n]*`git branch -m main` first when the repo has no commits and is not on `main`/)
+  assert.match(skill, /docs\/prd\/sprint-<n>-<title>\.md`[^\n]*`Next: \/rig:chart 1 @docs\/prd\/sprint-1-cart\.md`/)
+})

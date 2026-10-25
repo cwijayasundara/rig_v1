@@ -2,7 +2,7 @@
 // A person sets it; the repo's own record of shipped changes only proposes a move. Zero dependencies.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SDLC, SLUG_RE, exists, read, readJson, now, out, fail, ownerOrFail, type Args } from './core.ts'
+import { ROOT, SDLC, SLUG_RE, exists, read, readJson, now, out, fail, ownerOrFail, skillRef, type Args } from './core.ts'
 import { shippedChanges, mineCandidates, waiversOf, findingsSection } from './learnmine.ts'
 
 export type Autonomy = { rung: 0 | 1 | 2; since: string; deferred: string[]; history: { at: string; by: string; from: number; to: number; why: string }[] }
@@ -85,7 +85,7 @@ export function autonomyText(a: Autonomy, p: ReturnType<typeof proposeRung>, mal
 
 export function cmdAutonomy(args: Args): void {
   if (args.pos[0] === 'set') {
-    if (process.env.SDLC_HUMAN !== '1') fail('the autonomy rung is human-only: the person runs /rig:autonomy set <0|1|2> --why "<text>"', 3)
+    if (process.env.SDLC_HUMAN !== '1') fail(`the autonomy rung is human-only: the person runs ${skillRef('autonomy')} set <0|1|2> --why "<text>"`, 3)
     const to = Number(args.pos[1])
     const why = typeof args.opt.why === 'string' ? args.opt.why.trim() : ''
     if (![0, 1, 2].includes(to) || !why) fail('usage: autonomy set <0|1|2> --why "<text>"')
