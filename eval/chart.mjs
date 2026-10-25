@@ -10,7 +10,7 @@ import { totals } from '../tests/e2e/assert/process.mjs'
 import { writeFixture } from '../tests/e2e/phases/s6-chart.mjs'
 import { setupRig } from './setup.mjs'
 import { MODELS } from './arms.mjs'
-import { EVAL_ALLOW, resultsAllowed } from './run.mjs'
+import { EVAL_ALLOW, resultsAllowed, arg, mean } from './lib/cli.mjs'
 import { parseIntent } from '../scripts/chartcheck.ts'
 
 const ROOT = path.resolve(import.meta.dirname, '..')
@@ -38,7 +38,6 @@ export function scoreChart(key, findings, intents) {
 }
 
 export function renderChartTable(rows) {
-  const mean = (xs) => xs.reduce((a, b) => a + b, 0) / (xs.length || 1)
   const head = '| arm | runs | recall | invented | size ok | deps valid | design | failure | USD (mean) |\n|---|---|---|---|---|---|---|---|---|'
   const arms = [...new Set(rows.map(r => r.arm))]
   return [head, ...arms.map(a => {
@@ -74,7 +73,6 @@ export async function runChartOne(arm, n, { dry, out, capRunUsd }) {
 }
 
 if (process.argv[1] === import.meta.filename) {
-  const arg = (name, d) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : d }
   const dry = process.argv.includes('--dry')
   const out = path.resolve(arg('out', fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-chart-'))))
   const results = path.resolve(arg('results', dry ? path.join(out, 'results.jsonl') : path.join(import.meta.dirname, 'results', `${new Date().toISOString().slice(0, 10)}-chart.jsonl`)))

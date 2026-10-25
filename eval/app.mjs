@@ -11,7 +11,7 @@ import { spawnSync } from 'node:child_process'
 import { createSandbox, installedPlugins } from '../tests/e2e/lib/sandbox.mjs'
 import { createSessions } from '../tests/e2e/driver/live.mjs'
 import { totals } from '../tests/e2e/assert/process.mjs'
-import { resultsAllowed, EVAL_ALLOW } from './run.mjs'
+import { resultsAllowed, EVAL_ALLOW, arg, readJsonl } from './lib/cli.mjs'
 
 const FX = path.resolve(import.meta.dirname, '../tests/e2e/fixtures/journeys')
 export const PROMPT = '/rig-app journeys-shop. The person confirms these three journeys, so do not ask: (1) a shopper sees the two products at GET /products; (2) a shopper adds 2 of TEA-001 with POST /cart; (3) POST /checkout then totals 900 cents. The app starts with `npm start` and prints `listening on <port>`. Write the app definition, the driver and the feature map, run the driver with `app run`, then stop for the person to approve it. In this unattended session run each command as its own Bash call (no cd, pipes, redirects, && or ;).'
@@ -67,7 +67,6 @@ export function renderMarkdown(rows, { date, files }) {
 }
 
 if (process.argv[1] === import.meta.filename) {
-  const arg = (n, d) => { const i = process.argv.indexOf(`--${n}`); return i > 0 ? process.argv[i + 1] : d }
   const dry = process.argv.includes('--dry')
   const runs = Number(arg('runs', 3)), capRun = Number(arg('cap-run', 3)), capTotal = Number(arg('cap-total', 8)), model = arg('model', 'claude-sonnet-5-5')
   const out = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-app-eval-'))
@@ -96,6 +95,6 @@ if (process.argv[1] === import.meta.filename) {
     fs.appendFileSync(results, JSON.stringify(row) + '\n')
     console.log(`#${n}: ${row.failed ? `failed (${row.error})` : `wrote ${row.wrote}, green ${row.runsGreen}, approved ${row.approved}, caught ${JSON.stringify(row.caught)}, $${row.usd}${row.sessionError ? ` (${row.sessionError})` : ''}`}`)
   }
-  const rows = fs.readFileSync(results, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l))
+  const rows = readJsonl(results)
   console.log(`\n${renderMarkdown(rows, { date: new Date().toISOString().slice(0, 10), files: [path.basename(results)] })}\n${results}  spent $${spent.toFixed(2)}`)
 }

@@ -1,5 +1,6 @@
 // The results table of spec §9 from one or more runner JSONL files: node eval/report.mjs <results.jsonl...> [--out FILE]
 import fs from 'node:fs'
+import { readJsonl } from './lib/cli.mjs'
 import { ARMS } from './arms.mjs'
 
 const median = xs => { if (!xs.length) return null; const s = [...xs].sort((a, b) => a - b); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2 }
@@ -62,7 +63,7 @@ if (process.argv[1] === import.meta.filename) {
   const i = args.indexOf('--out')
   const outFile = i >= 0 ? args[i + 1] : null
   const files = args.filter((a, k) => i < 0 || (k !== i && k !== i + 1))
-  const rows = files.flatMap(f => fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)))
+  const rows = files.flatMap(f => readJsonl(f))
   const date = (files[0]?.match(/\d{4}-\d{2}-\d{2}/) ?? [new Date().toISOString().slice(0, 10)])[0]
   const md = renderMarkdown(summarize(rows), { date, files })
   if (outFile) fs.writeFileSync(outFile, md)

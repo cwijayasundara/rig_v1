@@ -23,20 +23,8 @@ export function installedPlugins() {
   }
 }
 
-export function createSandbox({ name, out }) {
-  const root = path.join(out, name)
-  fs.rmSync(root, { recursive: true, force: true })
-  const dir = path.join(root, 'repo')
-  const origin = path.join(root, 'origin.git')
-  const bin = path.join(root, 'bin')
-  const logs = path.join(root, 'logs')
-  for (const d of [dir, bin, logs]) fs.mkdirSync(d, { recursive: true })
-  fs.copyFileSync(path.join(import.meta.dirname, 'gh-stub.sh'), path.join(bin, 'gh'))
-  fs.chmodSync(path.join(bin, 'gh'), 0o755)
-
-  // RIG_GH points at the stub by absolute path: a headless agent session rebuilds PATH, so a PATH-only stub
-  // would silently resolve to the machine's real gh (which then refuses the local bare origin).
-  const env = { ...CLEAN_ENV, PATH: `${bin}${path.delimiter}${process.env.PATH}`, RIG_GH: path.join(bin, 'gh'), RIG_GH_LOG: path.join(logs, 'gh.log'), CONTRACT_LOG: path.join(logs, 'contract.log') }
+// The methods of a sandbox, all bound to `dir` and `env` (env is read live, so a caller may still add to it).
+export function bindSandbox({ name, root, dir, origin, bin, logs, env }) {
   const run = (cmd, args, opts = {}) =>
     spawnSync(cmd, args, { cwd: dir, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, ...opts, env: { ...env, ...opts.env } })
   const git = (...args) => {
@@ -44,17 +32,6 @@ export function createSandbox({ name, out }) {
     if (r.status !== 0) throw new Error(`git ${args.join(' ')}: ${(r.stderr || r.stdout).trim()}`)
     return r.stdout.trim()
   }
-
-  git('init', '-q', '-b', 'main')
-  git('config', 'user.email', 'operator@rig.test')
-  git('config', 'user.name', 'rig operator')
-  execFileSync('git', ['init', '-q', '--bare', origin])
-  git('remote', 'add', 'origin', origin)
-  // A temp dir inside the repo, hidden from git: sessions inherit TMPDIR, and writes outside the repo are denied unattended.
-  fs.mkdirSync(path.join(dir, '.tmp'))
-  fs.appendFileSync(path.join(dir, '.git/info/exclude'), '.tmp/\n')
-  env.TMPDIR = path.join(dir, '.tmp')
-
   const sb = {
     name, root, dir, origin, bin, logs, env, run, git,
     file: rel => path.join(dir, rel),
@@ -96,5 +73,34 @@ export function createSandbox({ name, out }) {
       }
     },
   }
+  return sb
+}
+
+export function createSandbox({ name, out }) {
+  const root = path.join(out, name)
+  fs.rmSync(root, { recursive: true, force: true })
+  const dir = path.join(root, 'repo')
+  const origin = path.join(root, 'origin.git')
+  const bin = path.join(root, 'bin')
+  const logs = path.join(root, 'logs')
+  for (const d of [dir, bin, logs]) fs.mkdirSync(d, { recursive: true })
+  fs.copyFileSync(path.join(import.meta.dirname, 'gh-stub.sh'), path.join(bin, 'gh'))
+  fs.chmodSync(path.join(bin, 'gh'), 0o755)
+
+  // RIG_GH points at the stub by absolute path: a headless agent session rebuilds PATH, so a PATH-only stub
+  // would silently resolve to the machine's real gh (which then refuses the local bare origin).
+  const env = { ...CLEAN_ENV, PATH: `${bin}${path.delimiter}${process.env.PATH}`, RIG_GH: path.join(bin, 'gh'), RIG_GH_LOG: path.join(logs, 'gh.log'), CONTRACT_LOG: path.join(logs, 'contract.log') }
+  const sb = bindSandbox({ name, root, dir, origin, bin, logs, env })
+  const { git } = sb
+
+  git('init', '-q', '-b', 'main')
+  git('config', 'user.email', 'operator@rig.test')
+  git('config', 'user.name', 'rig operator')
+  execFileSync('git', ['init', '-q', '--bare', origin])
+  git('remote', 'add', 'origin', origin)
+  // A temp dir inside the repo, hidden from git: sessions inherit TMPDIR, and writes outside the repo are denied unattended.
+  fs.mkdirSync(path.join(dir, '.tmp'))
+  fs.appendFileSync(path.join(dir, '.git/info/exclude'), '.tmp/\n')
+  env.TMPDIR = path.join(dir, '.tmp')
   return sb
 }

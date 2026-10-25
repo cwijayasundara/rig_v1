@@ -4,6 +4,7 @@
 // listed as not enforced, never silently passed: a gate that checks nothing must say so (the same rule as an inert sensor).
 import fs from 'node:fs'
 import path from 'node:path'
+import { readJsonl } from './lib/cli.mjs'
 
 export function gate(rows, baseline, variant = 'default') {
   const want = baseline?.[variant] ?? {}
@@ -32,7 +33,7 @@ if (process.argv[1] === import.meta.filename) {
   const files = args.filter(a => !skip.has(a))
   const baselineFile = path.resolve(opt('baseline') ?? path.join(import.meta.dirname, 'baseline.json'))
   const baseline = fs.existsSync(baselineFile) ? JSON.parse(fs.readFileSync(baselineFile, 'utf8')) : {}
-  const rows = files.flatMap(f => fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)))
+  const rows = files.flatMap(f => readJsonl(f))
   const r = gate(rows, baseline, opt('variant') ?? 'default')
   console.log([...r.lines, ...(r.unenforced.length ? [`not enforced (no baseline): ${r.unenforced.join(', ')}`] : []), ...r.failures.map(f => `REGRESSION ${f}`), r.pass ? 'gate: pass' : 'gate: FAIL'].join('\n'))
   process.exitCode = r.pass ? 0 : 1

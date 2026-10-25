@@ -8,7 +8,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { resultsAllowed } from './run.mjs'
+import { resultsAllowed, arg, mean } from './lib/cli.mjs'
 import { claudeRunner } from '../scripts/wikigen.ts'
 import { cleanClaudeEnv } from '../scripts/model.ts'
 import { formatLesson } from '../scripts/learnfile.ts'
@@ -25,7 +25,6 @@ const COST_SLACK = 1.1
 const BARE = /\.send\(\s*(['"`])/
 export const scoreChange = addedLines => ({ recurred: addedLines.some(l => BARE.test(l)) })
 
-const mean = xs => xs.reduce((a, b) => a + b, 0) / (xs.length || 1)
 // A run whose model call failed (no result, a crash, a timeout) says nothing about learning, so it never counts.
 const late = (rows, arm) => rows.filter(r => r.arm === arm && r.change >= LAG_FROM && !r.failed)
 // Dollars per accepted change: everything the arm spent over the changes that did not break the contract. An arm that accepts nothing is unbounded.
@@ -137,7 +136,6 @@ export async function runLearnEval({ dry = false, runs = 3, model = 'claude-haik
 }
 
 if (process.argv[1] === import.meta.filename) {
-  const arg = (name, d) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : d }
   const dry = process.argv.includes('--dry')
   const results = path.resolve(arg('results', dry ? path.join(os.tmpdir(), 'rig-eval-learn-dry.jsonl') : path.join(import.meta.dirname, 'results', `${new Date().toISOString().slice(0, 10)}-learn.jsonl`)))
   const refusal = resultsAllowed(results, dry)
