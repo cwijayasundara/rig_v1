@@ -165,17 +165,18 @@ function summarize(findings: Finding[]): GateSummary {
   return { at: now(), blocks: findings.filter(f => f.severity === 'block').length, warns: warns.length, bySensor, warnRows: warns.slice(0, 5).map(warnRow) }
 }
 
-// The person typed /rig:approve (or /rig-approve): a hook sees only what the person typed, never a model's tool call, so this is as
-// human-only as the skill, and it works in a session that started before the skill was installed. A bare command approves the gate the
-// active change waits at. The model is told to carry on with /rig:next, so the build starts without a second command.
+// The person typed /rig:approve <target> (or /rig-approve): a hook sees only what the person typed, never a model's tool call, so this is
+// as human-only as the skill, and it works in a session that started before the skill was installed. A bare command is left to the
+// skill, which asks what to approve; approving here first would make its Cancel undo nothing. The model is told to carry on with
+// /rig:build, so the build starts without a second command.
 function runSdlc(args: string[], human = false): { code: number; text: string } {
   const r = spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', process.argv[1] ?? '', ...args], { encoding: 'utf8', env: { ...process.env, ...(human ? { SDLC_HUMAN: '1' } : {}) } })
   return { code: r.status ?? 1, text: `${r.stdout}${r.stderr}`.trim() }
 }
 function approveTyped(typedArgs: string): void {
-  const slug = typedArgs.trim().split(/\s+/).filter(Boolean)[0] ?? activeSlug()
+  const slug = typedArgs.trim().split(/\s+/).filter(Boolean)[0]
+  if (!slug) return
   const say = (text: string): void => out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: text } }))
-  if (!slug) return say('rig: the person typed /rig:approve but there is no active change. Tell them so in one line and stop.')
   const r = runSdlc(['approve', slug], true)
   say(`rig: the person typed /rig:approve and rig ${r.code === 0 ? 'recorded it' : 'refused it'}:\n${r.text}\nTell them the result in one line${r.code === 0 ? `, then continue with ${skillRef('build')} ${slug}` : ' and stop'}. Do not run /rig:approve or sdlc.ts approve yourself.`)
 }

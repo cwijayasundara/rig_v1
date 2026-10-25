@@ -36,10 +36,12 @@ test('a good chart has no findings', () => {
   assert.deepEqual(full(good, goodCases), [])
 })
 
-test('parseIntent reads the canonical and the loose forms alike (CRLF, no brackets, .md in depends)', () => {
+test('parseIntent reads the canonical and the loose forms alike (CRLF, no brackets, .md in depends, a multi-line list)', () => {
   const canon = parseIntent('b', intent('b', { prd: '[FR-3]', depends: '[a]', behaviours: '- B1 (FR-3): x\n' }))
   const loose = parseIntent('b', intent('b', { prd: 'FR-3', depends: '[a.md]', behaviours: '- B1 (FR-3): x\n' }).replace(/\n/g, '\r\n'))
   assert.deepEqual(loose, canon)
+  const block = parseIntent('b', intent('b', { prd: '\n  - FR-3', depends: '\n  - a.md', behaviours: '- B1 (FR-3): x\n' }))
+  assert.deepEqual(block, canon, 'a block list is a list, not an empty field')
   assert.deepEqual(canon.prd, ['FR-3'])
   assert.deepEqual(canon.depends, ['a'])
   assert.deepEqual(canon.behaviours, [{ id: 'B1', reqs: ['FR-3'], text: 'x' }])

@@ -16,6 +16,7 @@ const AGENTS = ['architect', 'evaluator', 'implementer', 'researcher', 'reviewer
 // an agent takes a hyphen (`rig-scout`).
 function forProject(text: string, kind: 'skill' | 'agent' = 'skill'): string {
   return text
+    .replaceAll('"${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts"', SDLC_HOOK) // the human skills quote the plugin path; the project path needs no quotes
     .replaceAll('${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts', SDLC_HOOK)
     .replaceAll('<plugin>/scripts/sdlc.ts', SDLC_HOOK)
     .replaceAll('${CLAUDE_PLUGIN_ROOT}/templates/', '.rig/templates/')
@@ -62,27 +63,6 @@ function mergeHooks(written: string[]): void {
   writeFile('.claude/settings.json', JSON.stringify(merged, null, 2) + '\n', written)
 }
 
-// Human-only gates without the mod: the person invokes these, the model cannot (disable-model-invocation), and
-// CI refuses approval rows a PR adds unless an independent reviewer approves.
-// '$ARGUMENTS' is quoted so the shell never globs or splits it. `|| true`: a refusal (open concern, wrong stage) is an answer to show,
-// not a failed command; without it the host prints "Shell command failed" and the person thinks the command is broken.
-function humanSkill(cmd: 'approve' | 'waive' | 'autonomy', hint: string, what: string): string {
-  const run = `SDLC_HUMAN=1 node --disable-warning=ExperimentalWarning ${SDLC_HOOK} ${cmd}`
-  return [
-    '---', `name: rig:${cmd}`, `description: Human only. ${what} The model cannot run this.`, `argument-hint: ${hint}`,
-    'disable-model-invocation: true', `allowed-tools: Bash(${run} *)${cmd === 'approve' ? ', AskUserQuestion, Skill' : ''}`, '---',
-    `!\`${run} ${cmd === 'autonomy' ? '$ARGUMENTS' : "'$ARGUMENTS'"}${cmd === 'approve' ? ' --ask' : ''} 2>&1 || true\``, '',
-    ...(cmd === 'approve' ? [
-      'If the result above starts with `ASK`, no argument was given: name the target in one `AskUserQuestion`.',
-      '- `ASK change <slug>`: options "Approve and build" (first, the default), "Only approve", "Cancel".',
-      '- `ASK chart-<N>`: no change is in flight, so ask about the chart: options "Approve chart-<N>" (first), "Cancel".',
-      '- `ASK none ...`: say so in one line and stop.',
-      `Then run \`${run} <target>\` as its own Bash call and tell the person its result in one line. After "Approve and build" succeeds, invoke \`/rig-build <slug>\` with the Skill tool. On Cancel do nothing.`, '',
-      'Otherwise tell the person the result above in one line. Do nothing else.', '',
-    ] : ['Tell the person the result above in one line. Do nothing else.', '']),
-  ].join('\n')
-}
-
 // The journey dashboard (GOAL Scope 7) as a local plugin named 'rig': its state atoms are owned by plugin 'rig', so the copy must
 // carry that name or the host refuses its writes. Its marketplace file is rewritten only when it is rig's own.
 function vendorDashboard(written: string[]): void {
@@ -99,13 +79,12 @@ function vendorDashboard(written: string[]): void {
 }
 
 function vendorStandalone(written: string[]): void {
-  for (const name of fs.readdirSync(path.join(PLUGIN_ROOT, 'skills')).filter(n => n !== 'approve' && n !== 'waive' && n !== 'autonomy')) {
+  // The human-only skills (approve, waive, autonomy) come through here too: disable-model-invocation keeps them the person's, and
+  // CI refuses approval rows a PR adds unless an independent reviewer approves.
+  for (const name of fs.readdirSync(path.join(PLUGIN_ROOT, 'skills'))) {
     const src = path.join(PLUGIN_ROOT, 'skills', name, 'SKILL.md')
     if (fs.existsSync(src)) writeFile(`.claude/skills/rig-${name}/SKILL.md`, forProject(read(src)), written)
   }
-  writeFile('.claude/skills/rig-approve/SKILL.md', humanSkill('approve', '<slug>', 'Approve a change: its spec.md, plan.md and contract files.'), written)
-  writeFile('.claude/skills/rig-autonomy/SKILL.md', humanSkill('autonomy', '[set <0|1|2> --why "<text>"]', 'Show the autonomy rung and its proposal, or set it.'), written)
-  writeFile('.claude/skills/rig-waive/SKILL.md', humanSkill('waive', '<sensor> <file|*> <reason>', 'Waive a sensor finding for the active change.'), written)
   for (const file of fs.readdirSync(path.join(PLUGIN_ROOT, 'agents')).filter(f => f.endsWith('.md'))) {
     writeFile(`.claude/agents/rig-${file}`, forProject(read(path.join(PLUGIN_ROOT, 'agents', file)), 'agent'), written)
   }

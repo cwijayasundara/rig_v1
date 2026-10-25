@@ -116,3 +116,13 @@ test('warn rows and block rows never carry control or bidi characters from file 
   assert.equal(text.split('\n').length, 4, 'a block message keeps its line breaks')
   assert.match(text, /RED/)
 })
+
+import { cleanClaudeEnv } from './model.ts'
+test('an inner claude gets none of the outer session\'s Claude Code variables, but keeps its credentials and provider switches', () => {
+  const env = cleanClaudeEnv({
+    PATH: '/bin', HOME: '/h', CLAUDE_CONFIG_DIR: '/c', CLAUDECODE: '1', CLAUDE_EFFORT: 'high', NODE_TEST_CONTEXT: 'child',
+    CLAUDE_CODE_SESSION_ID: 's', CLAUDE_CODE_SSE_PORT: '1', CLAUDE_CODE_CHILD_SESSION: '1', CLAUDE_CODE_MESSAGING_X: 'x', CLAUDE_CODE_ENTRYPOINT: 'cli',
+    CLAUDE_CODE_OAUTH_TOKEN: 't', CLAUDE_CODE_USE_BEDROCK: '1', CLAUDE_CODE_SKIP_BEDROCK_AUTH: '1',
+  })
+  assert.deepEqual(Object.keys(env).sort(), ['CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CODE_SKIP_BEDROCK_AUTH', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CONFIG_DIR', 'HOME', 'PATH'])
+})

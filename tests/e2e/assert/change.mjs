@@ -39,8 +39,8 @@ export async function assertChange(c, sb, slug, phase) {
     (!!v?.base && sb.run('git', ['merge-base', '--is-ancestor', v.base, 'HEAD']).status === 0) || `base ${v?.base}`)
   const pr = sb.read(`${dir}/pr.md`)
   await c.check(`${id}: pr.md records an open PR on sdlc/${slug}`, () => (/state: open/.test(pr) && new RegExp(`branch: sdlc/${slug}`).test(pr)) || pr.split('\n').slice(0, 3).join(' | '))
-  await c.check(`${id}: the PR was opened through gh, once, with this change's pr.md`, () => {
-    const calls = sb.read('../logs/gh.log').split('\n').filter(l => l.startsWith('pr create ') && l.endsWith(`.rig/changes/${slug}/pr.md`))
+  await c.check(`${id}: the PR was opened through gh, once, with this change's generated pr-body.md`, () => {
+    const calls = sb.read('../logs/gh.log').split('\n').filter(l => l.startsWith('pr create ') && l.endsWith(`.rig/changes/${slug}/pr-body.md`))
     return calls.length === 1 || `${calls.length} gh pr create call(s) for ${slug}`
   })
   const st = json(sb.sdlc(['status', '--json']).stdout) ?? {}

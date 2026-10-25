@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { execFileSync, spawnSync } from 'node:child_process'
+import { cleanClaudeEnv } from '../../../scripts/model.ts'
 
 export const PLUGIN = path.resolve(import.meta.dirname, '../../..')
 export const FIXTURES = path.join(PLUGIN, 'tests/fixtures')
@@ -11,9 +12,7 @@ export const FIXTURES = path.join(PLUGIN, 'tests/fixtures')
 // The runner's own test or CI context must not leak into the sandbox's commands.
 const { NODE_TEST_CONTEXT: _n, GITHUB_EVENT_PATH: _e, GITHUB_STEP_SUMMARY: _s, CLAUDE_PROJECT_DIR: _p, SDLC_HUMAN: _h, ...RUNNER_ENV } = process.env
 // Nor the runner's own Claude Code session (its id, scratchpad, entrypoint): an inner claude must start as a teammate's would.
-// Credentials and provider switches stay, so a live run still authenticates.
-const KEEP = /^CLAUDE_CODE_(?:OAUTH_TOKEN|USE_[A-Z]+|SKIP_[A-Z_]+_AUTH)$/
-const CLEAN_ENV = Object.fromEntries(Object.entries(RUNNER_ENV).filter(([k]) => k !== 'CLAUDECODE' && (!k.startsWith('CLAUDE_CODE_') || KEEP.test(k))))
+const CLEAN_ENV = cleanClaudeEnv(RUNNER_ENV)
 
 // Every plugin installed for this person, so the sandbox can switch each off. Empty when the CLI is absent.
 export function installedPlugins() {

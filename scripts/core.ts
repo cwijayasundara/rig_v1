@@ -78,6 +78,19 @@ export function gitIn(cwd: string, args: string[]): string | null {
 }
 export const git = (args: string[]): string | null => gitIn(ROOT, args)
 
+const fmTidy = (s: string): string => s.trim().replace(/^["']|["']$/g, '').replace(/^(\.\/)+/, '').replace(/\/+$/, '')
+const fmInline = (v: string): string[] => v.trim().replace(/\s+#.*$/, '').replace(/^\[|\]$/g, '').split(',').map(fmTidy).filter(Boolean)
+
+// A frontmatter list in the `key: [a, b]`, `key: a` and the multi-line `key:` then `  - a` forms; frontmatter() keeps only scalars.
+export function fmList(text: string, key: string): string[] {
+  const rows = (/^---\n([\s\S]*?)\n---/.exec(text)?.[1] ?? '').split('\n')
+  const at = rows.findIndex(r => new RegExp(`^${key}:`).test(r))
+  if (at < 0) return []
+  const here = fmInline(rows[at]!.slice(key.length + 1))
+  if (here.length || rows[at]!.slice(key.length + 1).trim()) return here
+  return rows.slice(at + 1).filter((r, i, all) => /^\s+-\s*\S/.test(r) && all.slice(0, i).every(x => /^\s+-/.test(x))).map(r => fmTidy(r.replace(/^\s+-\s*/, '').replace(/\s+#.*$/, '')))
+}
+
 export function frontmatter(text: string): { data: Fields; body: string } {
   const m = /^---\n([\s\S]*?)\n---\n?/.exec(text)
   if (!m) return { data: {}, body: text }

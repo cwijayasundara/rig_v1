@@ -81,6 +81,14 @@ test('standalone ships human-only /rig:approve and /rig:waive skills the model c
     assert.ok(skill.includes(`allowed-tools: Bash(${humanCommand(cmd)} *)`), `${cmd}: the grant covers exactly the injected command`)
     assert.ok(skill.includes(`!\`${humanCommand(cmd)} '$ARGUMENTS'${cmd === 'approve' ? ' --ask' : ''} 2>&1 || true\``), `${cmd}: arguments are single-quoted, never globbed`)
   }
+  // The vendored human skills are the plugin's own text with project paths, never a second copy that can drift.
+  for (const cmd of ['approve', 'waive', 'autonomy']) {
+    const plugin = fs.readFileSync(path.join(import.meta.dirname, '..', 'skills', cmd, 'SKILL.md'), 'utf8')
+    const skill = fs.readFileSync(path.join(repo, `.claude/skills/rig-${cmd}/SKILL.md`), 'utf8')
+    const field = (text: string, key: string) => new RegExp(`^${key}: (.*)$`, 'm').exec(text)?.[1]
+    for (const key of ['description', 'argument-hint']) assert.equal(field(skill, key), field(plugin, key), `${cmd}: ${key}`)
+    assert.equal(skill.split('---\n').slice(2).join('---\n'), plugin.split('---\n').slice(2).join('---\n').replaceAll('"${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts"', '.rig/bin/sdlc.ts').replaceAll('/rig:', '/rig-'), `${cmd}: body`)
+  }
 })
 
 test('a quoted argument string is split: /rig:approve and /rig:waive work from a standalone skill', () => {

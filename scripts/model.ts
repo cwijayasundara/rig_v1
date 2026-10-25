@@ -10,6 +10,12 @@ export const SENSOR_NAMES = [
   'traceability', 'red-proof', 'unscanned', 'config', 'contracts', 'model-role', 'journeys', 'scope',
 ]
 
+// The environment for an inner `claude`: none of the outer Claude Code session (its id, port, effort, entrypoint, messaging) or the test
+// runner's context, so it starts as a teammate's would. Credentials and provider switches stay, so a live run still authenticates.
+const KEEP_CLAUDE = /^CLAUDE_CODE_(?:OAUTH_TOKEN|USE_[A-Z]+|SKIP_[A-Z_]+_AUTH)$/
+export const cleanClaudeEnv = (env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv =>
+  Object.fromEntries(Object.entries(env).filter(([k]) => !['CLAUDECODE', 'CLAUDE_EFFORT', 'NODE_TEST_CONTEXT'].includes(k) && (!k.startsWith('CLAUDE_CODE_') || KEEP_CLAUDE.test(k))))
+
 export type Finding = { sensor: string; severity: Severity; file?: string; line?: number; message: string; fix: string; labels?: string[]; outOfTime?: true }
 export type Layer = { from: string; mustNotImport: string[]; why: string; example?: string }
 export type Rule = { id: string; pattern: string; paths?: string[]; message: string; why: string; action: Severity }

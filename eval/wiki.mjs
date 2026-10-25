@@ -9,6 +9,7 @@ import { spawnSync } from 'node:child_process'
 import { resultsAllowed } from './run.mjs'
 import { wikiCommand } from '../scripts/wiki.ts'
 import { claudeRunner } from '../scripts/wikigen.ts'
+import { cleanClaudeEnv } from '../scripts/model.ts'
 import { bodyLines } from '../scripts/wikivalidate.ts'
 
 const FIX = path.join(import.meta.dirname, 'fixtures/wiki')
@@ -45,12 +46,14 @@ function stage(name, base, withWiki) {
   return dir
 }
 
-function ask(dir, prompt, model) {
-  const env = { ...process.env }
-  for (const k of ['CLAUDECODE', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_SSE_PORT', 'NODE_TEST_CONTEXT']) delete env[k]
-  const c = spawnSync(process.env.RIG_CLAUDE || 'claude', ['-p', prompt, '--output-format', 'json', '--model', model, '--tools', 'Read,Grep,Glob', '--allowedTools', 'Read,Grep,Glob', '--setting-sources', 'user', '--disable-slash-commands', '--no-session-persistence', '--max-turns', '15'], { cwd: dir, env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 600_000 })
-  let j = {}
-  try { j = JSON.parse(c.stdout) } catch { /* an unreadable result scores as a wrong answer with no cost */ }
+// A result the model got wrong (or ran out of turns on) scores as a wrong answer; a CLI that is missing, hung or printed no JSON
+// is a broken eval, never a "no lift" verdict.
+export function ask(dir, prompt, model) {
+  const bin = process.env.RIG_CLAUDE || 'claude'
+  const c = spawnSync(bin, ['-p', prompt, '--output-format', 'json', '--model', model, '--tools', 'Read,Grep,Glob', '--allowedTools', 'Read,Grep,Glob', '--setting-sources', 'user', '--disable-slash-commands', '--no-session-persistence', '--max-turns', '15'], { cwd: dir, env: cleanClaudeEnv(), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 600_000 })
+  if (c.error) throw new Error(`${bin} did not finish: ${c.error.message}`)
+  let j
+  try { j = JSON.parse(c.stdout) } catch { throw new Error(`${bin} exited ${c.status} with no JSON result: ${(c.stderr || c.stdout || '').trim().split('\n').slice(-2).join(' ')}`) }
   const u = j.usage ?? {}
   return { answer: typeof j.result === 'string' ? j.result : '', usd: j.total_cost_usd ?? 0, tokens: (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.output_tokens ?? 0) }
 }
@@ -77,10 +80,12 @@ function buildWiki(model) {
   return { dir, buildUsd: cost(built.text), refreshUsd: cost(refreshed.text), claimSupport: claims ? 1 - bad / claims : 0, built: built.code === 0 }
 }
 
-export async function runWikiEval({ dry = false, runs = 3, model = 'claude-haiku-5-5' } = {}) {
+// maxUsd caps the whole live run, the wiki build included: no new run starts once it is spent.
+export async function runWikiEval({ dry = false, runs = 3, model = 'claude-haiku-5-5', maxUsd = Infinity } = {}) {
   const wiki = dry ? null : buildWiki()
   const rows = []
-  for (let n = 1; n <= runs; n++) {
+  let spent = wiki ? wiki.buildUsd + wiki.refreshUsd : 0
+  for (let n = 1; n <= runs && spent < maxUsd; n++) {
     for (const arm of ['native', 'wiki']) {
       const dir = dry ? null : stage(`${arm}-${n}`, wiki.dir, arm === 'wiki')
       const hint = arm === 'wiki' ? ' A wiki of this codebase is in .rig/wiki (start at index.md); its pages cite the source files.' : ''
@@ -94,9 +99,10 @@ export async function runWikiEval({ dry = false, runs = 3, model = 'claude-haiku
         tokens += r.tokens
       })
       rows.push({ arm, run: n, model, correct, usd: Number(usd.toFixed(4)), tokens, at: new Date().toISOString() })
+      spent += usd
     }
   }
-  return { rows, verdict: verdict(rows), wiki: wiki && { buildUsd: wiki.buildUsd, refreshUsd: wiki.refreshUsd, claimSupport: wiki.claimSupport } }
+  return { rows, verdict: verdict(rows), spent, wiki: wiki && { buildUsd: wiki.buildUsd, refreshUsd: wiki.refreshUsd, claimSupport: wiki.claimSupport } }
 }
 
 if (process.argv[1] === import.meta.filename) {
@@ -105,9 +111,11 @@ if (process.argv[1] === import.meta.filename) {
   const results = path.resolve(arg('results', dry ? path.join(os.tmpdir(), 'rig-eval-wiki-dry.jsonl') : path.join(import.meta.dirname, 'results', `${new Date().toISOString().slice(0, 10)}-wiki.jsonl`)))
   const refusal = resultsAllowed(results, dry)
   if (refusal) { console.error(refusal); process.exit(2) }
-  const r = await runWikiEval({ dry, runs: Number(arg('runs', 3)), model: arg('model', 'claude-haiku-5-5') })
-  fs.mkdirSync(path.dirname(results), { recursive: true })
-  for (const row of r.rows) fs.appendFileSync(results, JSON.stringify(row) + '\n')
-  if (r.wiki) fs.appendFileSync(results, JSON.stringify({ arm: 'wiki-upkeep', ...r.wiki, at: new Date().toISOString() }) + '\n')
-  console.log(`${renderWikiTable(r.rows)}\n\n${r.wiki ? `wiki build $${r.wiki.buildUsd}, refresh after one change $${r.wiki.refreshUsd}, claim support ${(r.wiki.claimSupport * 100).toFixed(0)}%\n` : ''}verdict: ${r.verdict}\n${results}`)
+  const r = await runWikiEval({ dry, runs: Number(arg('runs', 3)), model: arg('model', 'claude-haiku-5-5'), maxUsd: Number(arg('max-usd', 2)) })
+  if (!dry) {
+    fs.mkdirSync(path.dirname(results), { recursive: true })
+    for (const row of r.rows) fs.appendFileSync(results, JSON.stringify(row) + '\n')
+    if (r.wiki) fs.appendFileSync(results, JSON.stringify({ arm: 'wiki-upkeep', ...r.wiki, at: new Date().toISOString() }) + '\n')
+  }
+  console.log(`${renderWikiTable(r.rows)}\n\n${r.wiki ? `wiki build $${r.wiki.buildUsd}, refresh after one change $${r.wiki.refreshUsd}, claim support ${(r.wiki.claimSupport * 100).toFixed(0)}%\n` : ''}spent $${r.spent.toFixed(4)}\nverdict: ${r.verdict}${dry ? '' : `\n${results}`}`)
 }

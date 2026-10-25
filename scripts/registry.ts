@@ -1,6 +1,6 @@
 // The sensor registry (behavioural harness spec 2026-10-16 §3): one .rig/sensors.json, language-free.
 // A sensor is a command or a built-in, a cadence, a blocks flag and one guide sentence. Tool commands live in templates/stacks/.
-import { isObject, isStringList, posInt } from './model.ts'
+import { isObject, isStringList, posInt, SENSOR_NAMES } from './model.ts'
 
 export type Cadence = 'edit' | 'turn' | 'commit' | 'ci' | 'nightly'
 const CADENCES: Cadence[] = ['edit', 'turn', 'commit', 'ci', 'nightly']
@@ -8,7 +8,8 @@ export type Mode = 'continuous' | 'final'
 export const BUILTIN_IDS = ['secrets', 'test-tamper', 'suppression', 'harness-tamper', 'size', 'layering', 'rules', 'red-proof', 'traceability', 'model-role'] as const
 type BuiltinId = typeof BUILTIN_IDS[number]
 // Harness finding names that are not built-ins: a command sensor with one of these ids would inherit that finding's gate rules.
-const RESERVED_IDS = ['commands', 'config', 'contracts', 'unscanned', 'plan-gate', 'human-approval', 'sync'] as const
+// Derived from SENSOR_NAMES so a new harness finding is reserved the day it is added.
+const RESERVED_IDS: readonly string[] = [...new Set(['commands', 'plan-gate', 'human-approval', 'sync', ...SENSOR_NAMES.filter(n => !(BUILTIN_IDS as readonly string[]).includes(n))])]
 export const ALWAYS_ON: BuiltinId[] = ['secrets', 'harness-tamper']
 
 export type RegistrySensor = { id: string; cmd?: string; builtin?: true; cadence: Cadence; blocks: boolean; guide: string; timeoutMs?: number; enabled: boolean; options?: Record<string, unknown>; ratchet?: 'down' | 'up' }
@@ -66,7 +67,7 @@ function parseSensor(raw: unknown, at: string, errors: string[]): RegistrySensor
   const builtin = raw.builtin === true
   if (builtin && id && !isBuiltinId(id)) errors.push(`${at}: "${id}" is not a built-in sensor (known: ${BUILTIN_IDS.join(', ')})`)
   if (!builtin && isBuiltinId(id)) errors.push(`${at}: "${id}" is a built-in id; add "builtin": true or rename the sensor`)
-  if (!builtin && (RESERVED_IDS as readonly string[]).includes(id)) errors.push(`${at}: "${id}" is reserved for a harness finding; rename the sensor`)
+  if (!builtin && RESERVED_IDS.includes(id)) errors.push(`${at}: "${id}" is reserved for a harness finding; rename the sensor`)
   if (builtin && 'cmd' in raw) errors.push(`${at}: a built-in sensor has no cmd`)
   if (!builtin && (typeof raw.cmd !== 'string' || !raw.cmd.trim())) errors.push(`${at}.cmd must be a non-empty command string`)
   const base = builtin && isBuiltinId(id) ? BUILTIN_DEFAULTS[id] : null

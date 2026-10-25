@@ -10,6 +10,7 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { resultsAllowed } from './run.mjs'
 import { claudeRunner } from '../scripts/wikigen.ts'
+import { cleanClaudeEnv } from '../scripts/model.ts'
 import { formatLesson } from '../scripts/learnfile.ts'
 
 const FIX = path.join(import.meta.dirname, 'fixtures/learn')
@@ -54,11 +55,6 @@ export function renderLearnTable(rows) {
 }
 
 const git = (dir, ...args) => spawnSync('git', ['-c', 'user.email=e@e', '-c', 'user.name=eval', ...args], { cwd: dir, encoding: 'utf8' }).stdout ?? ''
-const cleanEnv = () => {
-  const env = { ...process.env }
-  for (const k of ['CLAUDECODE', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_SSE_PORT', 'NODE_TEST_CONTEXT']) delete env[k]
-  return env
-}
 
 function stage(name) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `rig-eval-learn-${name}-`))
@@ -72,7 +68,7 @@ function stage(name) {
 // The agent reads CLAUDE.md (project settings only: no user hooks or plugins) and may use only file tools.
 function implement(dir, prompt, model) {
   const tools = 'Read,Edit,Write,Grep,Glob'
-  const c = spawnSync(process.env.RIG_CLAUDE || 'claude', ['-p', prompt, '--output-format', 'json', '--model', model, '--tools', tools, '--allowedTools', tools, '--setting-sources', 'project', '--disable-slash-commands', '--no-session-persistence', '--max-turns', '15'], { cwd: dir, env: cleanEnv(), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 600_000 })
+  const c = spawnSync(process.env.RIG_CLAUDE || 'claude', ['-p', prompt, '--output-format', 'json', '--model', model, '--tools', tools, '--allowedTools', tools, '--setting-sources', 'project', '--disable-slash-commands', '--no-session-persistence', '--max-turns', '15'], { cwd: dir, env: cleanClaudeEnv(), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 600_000 })
   let j = {}
   try { j = JSON.parse(c.stdout) } catch { /* an unreadable result is a failed run */ }
   const u = j.usage ?? {}

@@ -6,7 +6,7 @@ import { waiverLive,
   ROOT, SDLC, CHANGES, WAIVERS, exists, read, out, fail, git, toPosix, optString, readJsonl, defaultBase, checkSlug,
   type Args, type Waiver,
 } from './core.ts'
-import { parseRules, formatFindings, warnLines, matchesAny, isTest, ghBin, type FileDiff, type Finding, type Rule } from './model.ts'
+import { parseRules, formatFindings, warnLines, matchesAny, isTest, ghBin, planFiles, type FileDiff, type Finding, type Rule } from './model.ts'
 import { withoutFixtures, testTamper, suppressions, layering, size, secretsInDiff, rulesSensor, harnessTamper, isProtected, behaviourIds, behaviourText, missingBehaviours } from './sensors.ts'
 import { readBaseline, snapshot, turnDiff, fileDiff, branchDiff, showAt, fileLines, stagedDiff, showStaged } from './diffs.ts'
 import { runCommand, recordRun, normCmd } from './runs.ts'
@@ -139,8 +139,7 @@ export function runSensors(r: Registry, at: Cadence, slug: string | null, budget
 // an older change's wildcard waiver must not cover what a later PR does.
 function ciScope(slug: string, base: string | null | undefined): ((file: string | undefined) => boolean) | null {
   if (!base || showAt(base, `.rig/changes/${slug}/intent.md`) !== null) return null
-  const plan = read(path.join(CHANGES, slug, 'plan.md')).split(/^## Files[ \t]*$/m)[1]?.split(/^## /m)[0] ?? ''
-  const entries = plan.split('\n').map(l => /^\s*[-*]\s+`?([^`\s]+)`?/.exec(l)?.[1]).filter((e): e is string => Boolean(e))
+  const entries = planFiles(read(path.join(CHANGES, slug, 'plan.md')))
   const own = `.rig/changes/${slug}/`
   return file => file !== undefined && (file.startsWith(own) || entries.some(e => e.endsWith('/') ? file.startsWith(e) : file === e || matchesAny(file, [e])))
 }
