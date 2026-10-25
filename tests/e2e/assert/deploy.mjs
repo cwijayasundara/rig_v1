@@ -58,7 +58,7 @@ export async function assertRollbackRehearsal(c, sb) {
 const cli = () => fs.readFileSync(path.join(PLUGIN, 'scripts/sdlc.ts'), 'utf8')
 
 // One workflow template: it parses and defines jobs, and every sdlc.ts subcommand it calls exists in the CLI's command table.
-export async function assertWorkflowText(c, name, text) {
+async function assertWorkflowText(c, name, text) {
   const known = cmd => new RegExp(`^\\s+'?${cmd}'?:`, 'm').test(cli())
   await c.check(`workflow ${name}: parses as YAML with jobs`, () => Object.keys(parse(text).jobs ?? {}).length > 0 || 'no jobs')
   const code = text.split('\n').filter(l => !/^\s*#/.test(l)).join('\n')

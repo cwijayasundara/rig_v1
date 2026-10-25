@@ -8,14 +8,14 @@ import { activeSlug, changeType, isShipped, nextStep, status, type Status } from
 import { latestAgents } from './modelstate.ts'
 import { readAutonomy } from './autonomy.ts'
 import { queueNext } from './queue.ts'
-import { chartState, prdPath, readyIntents, sprintIntents, sprintsKnown } from './chart.ts'
-import { testplanDir, prdHint, intentRel } from './product.ts'
+import { chartState, readyIntents, sprintIntents, sprintsKnown } from './chart.ts'
+import { testplanDir, prdHint, intentRel, prdPath } from './product.ts'
 
 // Skills are /rig:<name> in every install mode (their frontmatter names), so the journey never prints the vendored directory spelling /rig-<name>.
 const k = (name: string): string => `/rig:${name}`
 const plain = (text: string): string => text.replace(/\/rig-([a-z]+)\b/g, '/rig:$1')
 
-export type StepState = 'done' | 'current' | 'gate' | 'todo'
+type StepState = 'done' | 'current' | 'gate' | 'todo'
 // `by` says who takes the step; `auto` marks the unattended run (build, test, fix, PR, advisory review) that one approval starts and no person gates until merge.
 export type JourneyStep = { id: string; label: string; command: string; state: StepState; by: 'model' | 'person'; auto?: true; detail?: string }
 export type Journey = {

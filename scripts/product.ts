@@ -6,14 +6,13 @@ import path from 'node:path'
 import { SDLC, exists } from './core.ts'
 
 export const PRODUCT = path.join(SDLC, 'product')
-export const SPRINTS = path.join(PRODUCT, 'sprints')
-export const SPRINT_DIR_RE = /^sprint-(\d{1,4})$/
+const SPRINTS = path.join(PRODUCT, 'sprints')
+const SPRINT_DIR_RE = /^sprint-(\d{1,4})$/
 
 export const sprintDir = (n: number): string => path.join(SPRINTS, `sprint-${n}`)
 export const prdPath = (n: number): string => path.join(sprintDir(n), 'prd.md')
 export const intentsDir = (n: number): string => path.join(sprintDir(n), 'intents')
 export const testplanDir = (n: number): string => path.join(sprintDir(n), 'testplan')
-export const reviewPath = (n: number): string => path.join(sprintDir(n), 'chart-review.md')
 export const planPath = (n: number): string => path.join(sprintDir(n), 'plan.md')
 export const approvalPath = (n: number): string => path.join(sprintDir(n), 'approval.json')
 
@@ -23,8 +22,6 @@ export const prdRel = (n: number): string => `${sprintRel(n)}/prd.md`
 // Where a person is told to put a PRD: a repo-owned folder, not rig's. /rig:chart copies it to prdRel(n).
 export const prdHint = (n: number): string => `docs/prd/sprint-${n}.md`
 export const intentRel = (n: number, slug: string): string => `${sprintRel(n)}/intents/${slug}.md`
-export const testplanRel = (n: number): string => `${sprintRel(n)}/testplan`
-export const APPROVAL_REL_RE = /^\.rig\/product\/sprints\/sprint-(\d{1,4})\/approval\.json$/
 
 export function sprintsOnDisk(): number[] {
   if (!exists(SPRINTS)) return []

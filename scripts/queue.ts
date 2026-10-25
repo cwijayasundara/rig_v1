@@ -14,8 +14,8 @@ import { intentRel } from './product.ts'
 import { designIntents } from './chartcheck.ts'
 import { readAutonomy, writeAutonomy } from './autonomy.ts'
 
-export type QueueRow = { worktree: string; branch: string; slug: string; status: string; next: string; person: boolean; files: string[] }
-export type Overlap = { file: string; changes: string[] }
+type QueueRow = { worktree: string; branch: string; slug: string; status: string; next: string; person: boolean; files: string[] }
+type Overlap = { file: string; changes: string[] }
 // unreadable: worktrees that have a .rig whose status could not be read, so a clean answer would not cover them.
 export type Queue = { rows: QueueRow[]; overlaps: Overlap[]; unreadable?: string[] }
 
@@ -29,8 +29,6 @@ export function worktrees(): { dir: string; branch: string }[] {
     return { dir, branch }
   }).filter(w => w.dir && fs.existsSync(path.join(w.dir, '.rig')))
 }
-
-export { planFiles }
 
 // Two plans overlap on a file when one names it, or names a directory holding it (with or without a trailing slash).
 const norm = (p: string): string => p.trim().replace(/\\/g, '/').replace(/^(\.\/)+/, '')
@@ -48,7 +46,7 @@ export function overlaps(rows: { slug: string; worktree: string; files: string[]
   return [...found].map(([file, changes]) => ({ file, changes: [...changes].sort() })).sort((a, b) => a.file.localeCompare(b.file))
 }
 
-export function buildQueue(): Queue {
+function buildQueue(): Queue {
   const rows: QueueRow[] = []
   const unreadable: string[] = []
   for (const w of worktrees()) {

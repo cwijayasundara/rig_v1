@@ -17,7 +17,7 @@ import { setupRig } from '../../eval/setup.mjs'
 
 const fx = rel => path.join(import.meta.dirname, 'fixtures/parallel', rel)
 // An independent change: new files only, so it cannot conflict with the cart change.
-export const SLUGIFY = {
+const SLUGIFY = {
   id: 'P1', slug: 'slugify', type: 'feature', title: 'A slugify helper',
   intent: { problem: 'Product names cannot be turned into URL parts.', outcome: 'B8 holds and the earlier behaviour is unchanged.', nonGoals: 'Unicode transliteration.' },
   spec: '# Spec: slugify\n\n## Behaviours\n- B8: slugify lowercases and hyphenates a product name.\n\n## Out of scope\n- Transliteration.\n\n## Open questions\nnone\n',

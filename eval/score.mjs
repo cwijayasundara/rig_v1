@@ -16,7 +16,7 @@ const SDLC = path.join(PLUGIN, 'scripts/sdlc.ts')
 const ACCEPTANCE = path.resolve(import.meta.dirname, '../tests/e2e/acceptance/shop.mjs')
 
 // Its own process group with output to a file (no pipe a grandchild can hold open), killed as a group at the limit.
-export function runBounded(cmd, args, { cwd, timeoutMs, env = process.env }) {
+function runBounded(cmd, args, { cwd, timeoutMs, env = process.env }) {
   const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-out-')), 'out')
   const fd = fs.openSync(log, 'w')
   return new Promise(resolve => {

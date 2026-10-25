@@ -10,7 +10,7 @@ import type { Inert } from './registry.ts'
 
 const VERIFY = '.rig/verify'
 export type App = { name: string; run: string; files: string[]; timeoutMs: number }
-export type AppState = 'draft' | 'current' | 'changed' | 'stale'
+type AppState = 'draft' | 'current' | 'changed' | 'stale'
 type Approval = { by: string; at: string; hash: string }
 
 const readJson = <T>(rel: string): T | null => { try { return JSON.parse(read(path.join(ROOT, rel))) as T } catch { return null } }
@@ -18,7 +18,7 @@ const readJson = <T>(rel: string): T | null => { try { return JSON.parse(read(pa
 const UNSAFE = /(^|\/)\.\.(\/|$)|^\//
 const appDirs = (): string[] => (exists(path.join(ROOT, VERIFY)) ? fs.readdirSync(path.join(ROOT, VERIFY), { withFileTypes: true }).filter(d => d.isDirectory() && /^[a-z0-9][a-z0-9-]*$/.test(d.name)).map(d => d.name) : [])
 
-export function listApps(): App[] {
+function listApps(): App[] {
   return appDirs().flatMap(name => {
     const def = readJson<{ run?: unknown; files?: unknown; timeoutMs?: unknown }>(`${VERIFY}/${name}/app.json`)
     if (!def || typeof def.run !== 'string' || !def.run.trim() || !Array.isArray(def.files)) return []
@@ -28,7 +28,7 @@ export function listApps(): App[] {
 
 // What would otherwise switch a journey off in silence: an app.json that does not read, a driver file it names that is missing, an approval
 // whose app is gone.
-export function appProblems(): string[] {
+function appProblems(): string[] {
   const apps = listApps().map(a => a.name)
   const out: string[] = []
   for (const name of appDirs().filter(n => exists(path.join(ROOT, VERIFY, n, 'app.json')) && !apps.includes(n))) out.push(`${name}: app.json is not valid (it needs a non-empty "run" and a "files" list of paths inside the app folder)`)
@@ -46,11 +46,11 @@ const hashOf = (a: App): string => sha([`${VERIFY}/${a.name}/app.json`, ...a.fil
 const approvalOf = (a: App): Approval | null => readJson<Approval>(`${VERIFY}/${a.name}.approved.json`)
 
 // A feature file says where its feature lives with `entry: <path>` lines; a path that no longer exists means the map has gone stale.
-export function missingEntries(a: App): string[] {
+function missingEntries(a: App): string[] {
   return featureFiles(a).flatMap(f => [...read(path.join(ROOT, f)).matchAll(/^entry:\s*(\S+)\s*$/gm)].map(m => m[1] as string).filter(p => !exists(path.join(ROOT, p))).map(p => `${path.basename(f)}: ${p}`))
 }
 
-export function appState(a: App): AppState {
+function appState(a: App): AppState {
   const ap = approvalOf(a)
   if (!ap) return 'draft'
   if (missingEntries(a).length) return 'stale'

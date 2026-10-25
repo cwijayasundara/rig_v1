@@ -17,7 +17,6 @@ type ChartFile = { path: string; sha: string }
 type ChartState = 'approved' | 'stale' | 'missing'
 type Row = { by: string; at: string; digest: string; files: ChartFile[] }
 
-export { prdPath }
 const isShared = (p: string): boolean => p === ARCH || SHARED_DIRS.some(d => p.startsWith(d))
 
 // Dotfiles (.DS_Store, editor swap files) and backups (name~) are machine-local: hashing them would make a chart stale on every clone but the approver's.
@@ -42,7 +41,7 @@ export const intentOf = (slug: string): Intent | null => allIntents().find(i => 
 // and its approval, alone. The raw string comes back for a path outside the repo, so the design-missing rule can name it.
 export function designDocOf(n: number): string | null {
   const arch = path.join(PRODUCT, 'architecture.md')
-  const d = exists(arch) ? frontmatter(read(arch).replace(/\r\n/g, '\n')).data.design?.trim() : undefined
+  const d = exists(arch) ? frontmatter(read(arch)).data.design?.trim() : undefined
   if (!d || d === 'none' || d.startsWith('<')) return null
   if (escapes(d)) return d
   const named = path.join(ROOT, path.dirname(d))
@@ -118,7 +117,7 @@ export function chartFindings(n: number, withCases: boolean): ChartFinding[] {
     for (const s of listed.filter(x => !mine.includes(x))) found.push({ rule: 'design-intent', severity: 'block', where: 'architecture', message: `${s} is in the design doc's ## Intents but has no ${intentRel(n, s)} (the list is read from \`- <slug>: scope\` lines; slugs are lowercase kebab-case)` })
     for (const s of mine.filter(x => !listed.includes(x))) found.push({ rule: 'design-intent', severity: 'block', where: s, message: `${s} is an intent of sprint ${n} but the design doc's ## Intents does not list it` })
   }
-  const arch = uncomment(read(path.join(PRODUCT, 'architecture.md')).replace(/\r\n/g, '\n'))
+  const arch = uncomment(read(path.join(PRODUCT, 'architecture.md')))
   found.push(...architectureProblems(arch, read(prdPath(n)), n))
   found.push(...accessProblems(parseAccess(arch), allIntents().map(i => i.slug), cases, intentsOf(n).map(i => i.slug)))
   for (const q of openQuestions(arch)) found.push({ rule: 'open-question', severity: 'block', where: 'architecture', message: `architecture.md has an open question: ${q}` })

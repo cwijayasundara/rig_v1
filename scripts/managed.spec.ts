@@ -1,4 +1,4 @@
-// Managed settings: the reader, rig's hooks under allowManagedHooksOnly, the template, the production gate, preflight and metrics.
+// Managed settings: the reader, rig's hooks under allowManagedHooksOnly, the template and the production gate.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'

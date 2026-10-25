@@ -14,7 +14,7 @@ import { bodyLines } from '../scripts/wikivalidate.ts'
 
 const FIX = path.join(import.meta.dirname, 'fixtures/wiki')
 export const QUESTIONS = JSON.parse(fs.readFileSync(path.join(FIX, 'questions.json'), 'utf8'))
-export const WIN_BY = 2
+const WIN_BY = 2
 
 export const scoreAnswer = (expect, answer) => expect.every(s => answer.includes(s))
 

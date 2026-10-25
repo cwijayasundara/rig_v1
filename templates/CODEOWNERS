@@ -11,7 +11,6 @@
 /.rig/lessons.md                  @your-org/platform
 /.rig/lessons-archive.md          @your-org/platform
 /.rig/guides/                     @your-org/platform
-/.rig/evals/                      @your-org/platform
 /.rig/bin/                        @your-org/platform
 /.rig/mod/                        @your-org/platform
 /.rig/githooks/                   @your-org/platform

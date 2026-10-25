@@ -5,15 +5,16 @@ import path from 'node:path'
 import { ROOT, SDLC, PLUGIN_ROOT, IS_VENDORED, read, out, fail, sanctionWrites, type Args } from './core.ts'
 import { writeHookScripts, installHooks } from './githooks.ts'
 
+// Every script the checker imports; testkit and specs stay behind. CI runs this copy, so it never needs the plugin.
 export const VENDORED = ['core', 'model', 'sensors', 'diffs', 'runs', 'check', 'stamp', 'basetree', 'verify', 'hooks', 'pr', 'prbody', 'sdlc', 'githooks', 'vendor', 'initbaseline', 'registry', 'stackpacks', 'modelstate', 'stackinit', 'contracts', 'sync', 'lifecycle', 'chart', 'chartcheck', 'plan', 'product', 'journey', 'wiki', 'wikicite', 'wikigen', 'wikistate', 'wikivalidate', 'learn', 'learnfile', 'learnmine', 'learnreplay', 'learntranscripts', 'report', 'arch', 'counts', 'queue', 'app', 'scope', 'slice', 'maintain', 'readiness', 'autonomy']
 const SDLC_HOOK = '.rig/bin/sdlc.ts'
 type HookGroup = { matcher?: string; hooks: { type: string; command: string; timeout?: number; async?: boolean }[] }
 
 // Plugin references rewritten for a project copy: script paths, /rig:x skills, rig:x agents and the skill's name.
-const AGENTS = ['architect', 'evaluator', 'implementer', 'researcher', 'reviewer', 'scout']
+const AGENTS = ['architect', 'evaluator'] // agents/*.md; removed.spec.ts pins the set
 
 // A vendored skill is registered under its folder name, so `/rig:start` becomes `/rig-start` (the 2026-10-16 pilot's init events);
-// an agent takes a hyphen (`rig-scout`).
+// an agent takes a hyphen (`rig-architect`).
 function forProject(text: string, kind: 'skill' | 'agent' = 'skill'): string {
   return text
     .replaceAll('"${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts"', SDLC_HOOK) // the human skills quote the plugin path; the project path needs no quotes

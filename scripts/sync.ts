@@ -81,7 +81,7 @@ export function writeSync(registry: Registry): string {
 
 // Other agent tools read AGENTS.md, not CLAUDE.md. One source: a short pointer to CLAUDE.md, written only when the repo has no AGENTS.md of its own.
 // Whether Claude Code reads AGENTS.md natively is unverified; it reads CLAUDE.md, which can import AGENTS.md with `@AGENTS.md`.
-export function agentsPointer(): string {
+function agentsPointer(): string {
   const file = path.join(ROOT, 'AGENTS.md')
   if (exists(file)) return ''
   sanctionWrites(['AGENTS.md'])

@@ -70,7 +70,7 @@ export function scan(files: Record<string, string>, isTestFile: (f: string) => b
 
 const slugOf = (f: Finding, n: number): string => `${f.kind}-${n}-${path.basename(f.files[0] ?? 'x').replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`
 
-export function proposalText(f: Finding, slug: string): string {
+function proposalText(f: Finding, slug: string): string {
   return `---\nkind: maintain\ntype: chore\nstatus: proposed\nfound: ${new Date().toISOString().slice(0, 10)}\nscope: [${f.files.join(', ')}]\n---\n# ${f.title}\n\n## Intent\n\n${f.evidence}\n\nFound by \`sdlc.ts maintain\`, not by a person: confirm it is real before acting on it.\n\n## Non-goals\n\nDo not change behaviour. Do not touch files outside \`scope\`.\n\n## How to start\n\n\`/rig:start ${slug.replace(/^[a-z]+-\d+-/, `${f.kind}-`)}\` with this file as the intent, then plan, approve and build as for any chore.\n`
 }
 

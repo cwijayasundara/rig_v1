@@ -5,7 +5,7 @@ import path from 'node:path'
 import { ROOT, read, gitIn, sanctionWrites, writeAtomic, withLock } from './core.ts'
 
 export const RATCHET_FILE = '.rig/ratchets.json'
-export type Direction = 'down' | 'up'
+type Direction = 'down' | 'up'
 export type RatchetWrite = 'write' | 'stage' | null
 
 // A plain decimal only: 0x10, 1e3 and +5 are not counts.

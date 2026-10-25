@@ -7,7 +7,6 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { cleanClaudeEnv } from '../../../scripts/model.ts'
 
 export const PLUGIN = path.resolve(import.meta.dirname, '../../..')
-export const FIXTURES = path.join(PLUGIN, 'tests/fixtures')
 
 // The runner's own test or CI context must not leak into the sandbox's commands.
 const { NODE_TEST_CONTEXT: _n, GITHUB_EVENT_PATH: _e, GITHUB_STEP_SUMMARY: _s, CLAUDE_PROJECT_DIR: _p, SDLC_HUMAN: _h, ...RUNNER_ENV } = process.env
@@ -95,9 +94,6 @@ export function createSandbox({ name, out }) {
       } finally {
         git('worktree', 'remove', '--force', wt)
       }
-    },
-    copyFixture(name) {
-      fs.cpSync(path.join(FIXTURES, name), dir, { recursive: true })
     },
   }
   return sb

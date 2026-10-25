@@ -30,13 +30,13 @@ import { cmdReport } from './report.ts'
 import { cmdArch, layerState, layerStateText } from './arch.ts'
 import { cmdQueue, conflictsFor } from './queue.ts'
 import { intentScope } from './scope.ts'
-import { intentRelOf, prdRel, sprintRel } from './product.ts'
+import { intentRelOf, prdRel, sprintRel, prdPath } from './product.ts'
 import { cmdSlice } from './slice.ts'
 import { cmdMaintain } from './maintain.ts'
 import { cmdReadiness } from './readiness.ts'
 import { cmdAutonomy, initAutonomy } from './autonomy.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'
-import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, planRows, writePlan, sprintPlan, prdPath, chartFiles, sprintsKnown, sprintIntents } from './chart.ts'
+import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, sprintsKnown, sprintIntents } from './chart.ts'
 import { journey, journeyText } from './journey.ts'
 import { TYPES, toType, changeDir, newChange, setActive, activeSlug, isShipped, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
 
@@ -241,7 +241,6 @@ function cmdDiff(args: Args): void {
   out(diffs.map(d => `${d.status} ${d.file} (+${d.added.length} -${d.removed.length})`).join('\n') || 'no changes')
 }
 
-// Every script the checker imports; testkit and specs stay behind. CI runs this copy, so it never needs the plugin.
 function cmdWaive(args: Args): void {
   if (process.env.SDLC_HUMAN !== '1') fail(`waivers are human-only: the person runs /rig:waive <sensor> <file|*> <reason>. If that command is not listed, restart Claude Code, or the person types: ${humanFallback('waive', "<sensor> <file|*> '<reason>'")}`, 3)
   const [sensor, file, ...reason] = words(args)

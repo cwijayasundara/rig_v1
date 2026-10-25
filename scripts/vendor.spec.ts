@@ -232,10 +232,9 @@ test('the settings template protects evidence with deny rules and the harness co
   for (const f of ['approval.json', 'verify.json', 'evidence/runs.jsonl']) assert.ok(deny.has(`Edit(/.rig/changes/*/${f})`), f)
   assert.ok(deny.has('Read(.env)') && deny.has('Edit(.env)'), 'the .env rules stay')
   assert.deepEqual(settings.permissions.ask, [
-    'Edit(/.rig/sensors.json)', 'Edit(/.rig/rules.json)', 'Edit(/.rig/layers.approved.json)', 'Edit(/.rig/ratchets.json)', 'Edit(/.rig/gen/**)', 'Edit(/.rig/lessons.md)', 'Edit(/.rig/lessons-archive.md)', 'Edit(/.rig/evals/*.json)', 'Edit(/.claude/settings.json)',
+    'Edit(/.rig/sensors.json)', 'Edit(/.rig/rules.json)', 'Edit(/.rig/layers.approved.json)', 'Edit(/.rig/ratchets.json)', 'Edit(/.rig/gen/**)', 'Edit(/.rig/lessons.md)', 'Edit(/.rig/lessons-archive.md)', 'Edit(/.claude/settings.json)',
     'Edit(/.rig/bin/**)', 'Edit(/.rig/githooks/**)', 'Edit(/.rig/mod/**)', 'Edit(/.rig/guides/**)',
     'Edit(/.github/workflows/rig-*.yml)', 'Edit(/CODEOWNERS)', 'Edit(/.github/CODEOWNERS)', 'Edit(/migrations/**)', 'Edit(/infra/**)',
-    'Bash(node --disable-warning=ExperimentalWarning .rig/bin/sdlc.ts evals*)',
   ])
   assert.ok(settings.permissions.ask.includes('Edit(/.rig/bin/**)'), 'a model edit to the vendored checker (.rig/bin/sensors.ts) asks the person')
   assert.ok(!settings.permissions.ask.some(r => /CLAUDE\.md/.test(r)), 'unattended init writes CLAUDE.md, so it never asks')

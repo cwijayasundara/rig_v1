@@ -128,7 +128,7 @@ async function b9Check(repo) {
   return (cart.lines().length === 1 && cart.lines()[0].qty === 1 && cart.subtotalCents() === 450) || 'adding a SKU already in the cart did not replace its quantity'
 }
 
-export async function rulesChecks(repo) {
+async function rulesChecks(repo) {
   const run = async f => { try { return await f(repo) } catch (e) { return `check crashed: ${String(e?.message ?? e).split('\n')[0]}` } }
   const b8 = []
   for (const f of B8_CHECKS) b8.push(await run(f))

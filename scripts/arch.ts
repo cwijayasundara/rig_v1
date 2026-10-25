@@ -23,7 +23,7 @@ export type Def = { layers: { name: string; glob: string; token: string }[]; all
 type Analyser = 'import-linter' | 'dependency-cruiser'
 // templates/layers/<stack>.json: the tool's own commands live there as data, never in this file (core neutrality).
 type Tool = { analyser: Analyser; root: string; config: string; baseline: string; install: string }
-export type Record_ = { by: string; at: string; blockHash: string; analyser: Analyser | null; def: Def; layers: Layer[] }
+type Record_ = { by: string; at: string; blockHash: string; analyser: Analyser | null; def: Def; layers: Layer[] }
 
 const list = (s: string): string[] => s.split(',').map(x => x.trim()).filter(Boolean)
 // The last path segment without a wildcard: src/features/*/domain/** is "domain".
@@ -124,7 +124,7 @@ export const approvedLayers = (text: string): Layer[] => { try { const r = JSON.
 export const approvedDef = (): Def | null => readRecord()?.def ?? null
 const readRecord = (): Record_ | null => { try { return JSON.parse(read(path.join(ROOT, APPROVED))) as Record_ } catch { return null } }
 
-export type LayerState = 'none' | 'proposed' | 'approved' | 'drifted'
+type LayerState = 'none' | 'proposed' | 'approved' | 'drifted'
 export function layerState(): { state: LayerState; by?: string; at?: string } {
   const block = parseLayers(read(path.join(ROOT, ARCH_MD))).block
   const rec = readRecord()

@@ -6,7 +6,7 @@ import { BUILTIN_IDS } from '../scripts/registry.ts'
 
 const ROOT = path.resolve(import.meta.dirname, '..')
 export const MIN_RUNS = 3
-export const PASSES_TO_CUT = 2
+const PASSES_TO_CUT = 2
 
 // Every component the repo ships, as `kind:name`.
 export function components(root = ROOT) {
