@@ -29,10 +29,10 @@ none
 
 ## Behaviours
 
-- B1 (FR-1, FR-1.1): a product added with a stock count reports it from get and list.
+- B1 (FR-1, AC-1.1): a product added with a stock count reports it from get and list.
 ### Failure behaviour
 
-- B2 (NFR-1, NFR-1.1): an invalid stock count throws a message that names the SKU.
+- B2 (NFR-1): an invalid stock count throws a message that names the SKU.
 
 ## Tests required
 

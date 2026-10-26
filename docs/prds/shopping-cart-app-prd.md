@@ -1,29 +1,29 @@
-# PRD: Simple Shopping Cart (Python)
+---
+product: simple-cart
+sprint: 0
+engineers: 1
+owner: product owner
+---
+# PRD: Simple Shopping Cart (Python), sprint 0
 
-Status: Draft v1 · 2026-10-17
-Purpose: a small, fully specified greenfield app, used to exercise the rig harness end to end (intent, build, verify).
+<!-- The reference example of templates/prd-format.md: a small, fully specified greenfield app used to exercise rig end to end. -->
 
-## 1. Summary
+## Context and problem
 
-A single-user shopping cart written in Python. A user can add an item to the cart, edit an item already in the cart, and remove an item from the cart. The cart always shows correct line totals and an overall total. State survives between runs.
+A single shopper keeps a cart from the command line and needs correct line totals and an overall total, kept between runs.
 
-## 2. Goals
+## Goals and success metrics
 
-- G1. Add an item to the cart.
-- G2. Edit an item already in the cart (quantity and unit price).
-- G3. Remove an item from the cart.
-- G4. Show the cart contents with line totals and a grand total.
-- G5. Keep the cart between runs.
-- G6. Keep the business logic separate from the interface so it can be tested without the CLI.
+- Every criterion below passes under pytest, and the three scenarios work by hand from the CLI.
 
-## 3. Non-goals
+## Non-goals
 
 - User accounts, login, multiple carts or multi-user concurrency.
 - Product catalogue, inventory, stock checks.
 - Checkout, payment, shipping, tax, discounts, currency conversion.
 - A web UI or GUI.
 
-## 4. Users and scenarios
+## Users and scenarios
 
 One persona: a shopper managing a personal cart from the command line.
 
@@ -31,37 +31,96 @@ One persona: a shopper managing a personal cart from the command line.
 - S2. Realises they need 3. Edits the quantity. Line total 25.50.
 - S3. Changes their mind and removes the item. The cart is empty, total 0.00.
 
-## 5. Functional requirements
+## Functional requirements
 
-An **item** has: `sku` (string, the unique key within a cart), `name` (string), `quantity` (integer), `unit_price` (decimal, 2 places).
+### FR-1: Add an item
 
-| ID | Requirement |
-|---|---|
-| FR-1 | **Add.** `add(sku, name, quantity, unit_price)` puts a new line in the cart. |
-| FR-2 | Adding a `sku` already in the cart increases that line's quantity by the added amount. It does not create a second line, and it does not change the stored name or price. |
-| FR-3 | **Edit.** `edit(sku, quantity=None, unit_price=None)` changes the given fields of an existing line. Fields left as `None` are unchanged. |
-| FR-4 | Editing quantity to 0 is rejected. Removal is a separate, explicit action. |
-| FR-5 | **Remove.** `remove(sku)` deletes the whole line. |
-| FR-6 | **View.** `list()` returns all lines in the order they were first added, each with its line total (`quantity * unit_price`), plus the grand total. |
-| FR-7 | Money uses `decimal.Decimal` and is rounded half-up to 2 places. Floats are never used for money. |
-| FR-8 | The cart persists to a JSON file after every successful change and loads on start. A missing file means an empty cart. |
+Need: put a new line in the cart.
+Priority: must
 
-## 6. Validation and errors
+- AC-1.1: Given an empty cart, when add("coffee", "Coffee beans", 2, "8.50") is called, then the cart holds exactly one line with those values
+- AC-1.2: WHEN quantity is not an integer or is below 1 THE SYSTEM SHALL raise ValidationError and leave the cart and the file unchanged
+- AC-1.3: WHEN unit_price is negative or not a valid decimal THE SYSTEM SHALL raise ValidationError and leave the cart and the file unchanged
+- AC-1.4: WHEN sku or name is empty or whitespace only THE SYSTEM SHALL raise ValidationError and leave the cart and the file unchanged
 
-| Case | Behaviour |
-|---|---|
-| `quantity` is not an integer, or is < 1 (add) | `ValidationError`, cart unchanged |
-| `unit_price` is negative or not a valid decimal | `ValidationError`, cart unchanged |
-| `sku` or `name` empty or whitespace only | `ValidationError`, cart unchanged |
-| `edit` with no fields given | `ValidationError`, cart unchanged |
-| `edit` or `remove` on a `sku` not in the cart | `ItemNotFoundError`, cart unchanged |
-| Corrupt or unreadable JSON file on load | `StorageError` naming the file. The file is not overwritten. |
+### FR-2: Add the same sku twice
 
-A failed operation never writes to disk.
+Need: adding a sku already in the cart grows that line.
+Priority: must
 
-## 7. CLI
+- AC-2.1: Given a cart holding coffee with quantity 2, when add("coffee", "Coffee beans", 3, "8.50") is called, then the cart holds one coffee line with quantity 5 and its stored name and price unchanged
 
-Command `cart`, using `argparse`. Exit code 0 on success, 1 on a user error (message to stderr), 2 on a storage error.
+### FR-3: Edit an item
+
+Need: change the quantity or unit price of an existing line.
+Priority: must
+
+- AC-3.1: WHEN edit(sku, quantity=N) is called THE SYSTEM SHALL change only that line's quantity
+- AC-3.2: WHEN edit(sku, unit_price=P) is called THE SYSTEM SHALL change only that line's unit price
+- AC-3.3: WHEN edit is called with neither field THE SYSTEM SHALL raise ValidationError and leave the cart unchanged
+- AC-3.4: WHEN edit(sku, quantity=0) is called THE SYSTEM SHALL raise ValidationError and leave the line unchanged
+- AC-3.5: WHEN edit is called on a sku not in the cart THE SYSTEM SHALL raise ItemNotFoundError and leave the cart unchanged
+
+### FR-4: Remove an item
+
+Need: delete a whole line.
+Priority: must
+
+- AC-4.1: WHEN remove(sku) is called THE SYSTEM SHALL delete that line and leave the other lines untouched and in order
+- AC-4.2: WHEN remove is called on a sku not in the cart THE SYSTEM SHALL raise ItemNotFoundError and leave the cart unchanged
+
+### FR-5: View the cart
+
+Need: see every line with its total and the grand total.
+Priority: must
+
+- AC-5.1: WHEN list() is called THE SYSTEM SHALL return the lines in the order they were first added, each with quantity * unit_price as its line total, plus the grand total
+- AC-5.2: Given lines of 3 x 0.10, when list() is called, then the grand total is exactly 0.30
+- AC-5.3: WHEN a line total has a half cent THE SYSTEM SHALL round it half up to 2 places
+
+### FR-6: Keep the cart between runs
+
+Need: the cart survives a restart.
+Priority: must
+
+- AC-6.1: WHEN a change succeeds THE SYSTEM SHALL write the cart to the JSON file, and a new Cart loaded from that file SHALL equal the previous one
+- AC-6.2: WHEN the file does not exist THE SYSTEM SHALL start with an empty cart
+- AC-6.3: WHEN the file is corrupt or unreadable THE SYSTEM SHALL raise StorageError naming the file and leave it byte-for-byte unchanged
+- AC-6.4: WHEN an operation fails THE SYSTEM SHALL not write to disk
+
+### FR-7: Command line
+
+Need: every operation is a `cart` command.
+Priority: must
+
+- AC-7.1: WHEN a command succeeds THE SYSTEM SHALL exit 0
+- AC-7.2: WHEN a command fails on user input THE SYSTEM SHALL print the message to stderr and exit 1
+- AC-7.3: WHEN a command fails on storage THE SYSTEM SHALL exit 2
+- AC-7.4: WHEN --file PATH or CART_FILE is given THE SYSTEM SHALL use that file instead of ~/.simple_cart.json
+
+## Data rules
+
+- DR-1: sku is the unique key of a line within a cart, matched case-sensitively and exactly.
+- DR-2: quantity is an integer of at least 1.
+- DR-3: Money is a decimal.Decimal with 2 places, never a float, and is stored in JSON as a string such as "8.50".
+
+## Non-functional requirements
+
+| ID | Category | Requirement | Target | Verified by |
+|---|---|---|---|---|
+| NFR-1 | reliability | a crash during a save cannot leave a half-written cart file | 0 partial files in a kill-during-write test | unit |
+
+## Examples
+
+`cart list` output (AC-5.1):
+
+```
+SKU     NAME          QTY   PRICE   TOTAL
+coffee  Coffee beans    3    8.50   25.50
+                           TOTAL   25.50
+```
+
+Commands (FR-7):
 
 ```
 cart add <sku> <name> <quantity> <unit_price>
@@ -70,50 +129,22 @@ cart remove <sku>
 cart list
 ```
 
-The cart file defaults to `~/.simple_cart.json` and can be overridden with `--file PATH` or `CART_FILE`.
+## Boundaries
 
-`cart list` output:
+- Always: keep the business logic out of cli.py (argparse only).
+- Ask first: adding a runtime dependency.
+- Never: use floats for money.
 
-```
-SKU     NAME          QTY   PRICE   TOTAL
-coffee  Coffee beans    3    8.50   25.50
-                           TOTAL   25.50
-```
+## Integrations and constraints
 
-## 8. Acceptance criteria
+- Python 3.11+, standard library only at runtime; pytest for tests.
+- Layout: `src/cart/` with `models.py`, `storage.py`, `cli.py`, `errors.py`; tests in `tests/`.
+- Writes are atomic: write a temp file, then rename.
 
-Each is a testable statement.
+## Decisions
 
-- AC-1. Adding a new item gives a cart with exactly one line holding the given values.
-- AC-2. Adding the same `sku` twice (qty 2 then 3) gives one line with quantity 5.
-- AC-3. Editing quantity changes only the quantity. Editing price changes only the price. Editing both changes both.
-- AC-4. `edit(sku, quantity=0)` raises `ValidationError` and the line is unchanged.
-- AC-5. Removing an item leaves other lines untouched and in order.
-- AC-6. `edit` and `remove` on an unknown `sku` raise `ItemNotFoundError`.
-- AC-7. Grand total equals the sum of line totals. 3 x 0.10 totals exactly 0.30. A half-cent result rounds up.
-- AC-8. Every invalid input in section 6 raises the named error and leaves both the in-memory cart and the file unchanged.
-- AC-9. After add, edit and remove, a new `Cart` loaded from the same file equals the previous one.
-- AC-10. A corrupt file raises `StorageError` and is left byte-for-byte unchanged.
-- AC-11. Each CLI command works end to end against a temp file and returns the exit codes in section 7.
+- 2026-10-17: one cart per file; prices in one unspecified currency, shown without a symbol.
 
-## 9. Technical constraints (my defaults, change freely)
+## Open questions
 
-- Python 3.11+, standard library only at runtime.
-- pytest for tests. Aim for every acceptance criterion above to map to at least one test.
-- Layout: `src/cart/` with `models.py` (item and cart logic), `storage.py` (JSON load/save), `cli.py` (argparse only, no business logic), `errors.py`. Tests in `tests/`.
-- Money is stored in JSON as strings (e.g. `"8.50"`), never floats.
-- Writes are atomic (write a temp file, then rename) so a crash cannot leave a half-written cart.
-
-## 10. Out of scope for v1, possible later
-
-Clearing the whole cart, a quantity-decrement shortcut, a catalogue lookup, a REST API.
-
-## 11. Success measure
-
-All acceptance criteria pass under `pytest`, and the three scenarios in section 4 work by hand from the CLI.
-
-## 12. Open assumptions
-
-- A1. One cart per file is enough.
-- A2. Prices are in a single unspecified currency, shown without a symbol.
-- A3. `sku` matching is case-sensitive and exact.
+none

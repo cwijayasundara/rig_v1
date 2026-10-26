@@ -30,11 +30,11 @@ Example: contracts/examples/stock-low.json
 
 ## Behaviours
 
-- B1 (FR-3, FR-3.1): GET /stock/<sku> returns 200 with { sku, stock }.
+- B1 (FR-3, AC-3.1): GET /stock/<sku> returns 200 with { sku, stock }.
 
 ### Failure behaviour
 
-- B2 (FR-3, FR-3.1): GET /stock/<sku> for an unknown SKU returns 404.
+- B2 (FR-3, AC-3.1): GET /stock/<sku> for an unknown SKU returns 404.
 
 ## Tests required
 

@@ -145,3 +145,12 @@ test('a criterion marked out of scope becomes an out-of-scope ledger row with wh
   assert.deepEqual([row?.kind, row?.when, row?.by, row?.reason, row?.quote], ['out-of-scope', 'sprint 2', 'Ana', 'storage first', 'Ids are archived after a year.'])
   assert.deepEqual(lp('- B1 (FR-4, AC-4.1): next id\n- B2 (FR-4, DR-1): starts at 1\n- B4 (NFR-1): fast\n', prd), [])
 })
+
+test('the reference PRD and the e2e chart fixture PRD are in format', () => {
+  for (const f of ['docs/prds/shopping-cart-app-prd.md', 'tests/e2e/prd/chart-fixture/product/sprints/sprint-1/prd.md']) assert.deepEqual(prdFormatProblems(fs.readFileSync(path.join(ROOT, f), 'utf8')), [], f)
+})
+
+test('the e2e chart fixture ledger is what its PRD generates', () => {
+  const dir = path.join(ROOT, 'tests/e2e/prd/chart-fixture/product/sprints/sprint-1')
+  assert.equal(fs.readFileSync(path.join(dir, 'requirements.md'), 'utf8'), prdLedger(fs.readFileSync(path.join(dir, 'prd.md'), 'utf8')))
+})
