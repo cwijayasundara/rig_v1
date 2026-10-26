@@ -212,7 +212,7 @@ A change's status comes from which of its files exist: spec, plan, approve, buil
 | `/rig:chart <N>` | Architect: the sprint's PRD becomes intents, architecture and ADRs on branch `rig/chart-<N>`. | tokens |
 | `/rig:testplan <N>` | QA lead: the sprint's test plan, cases and data. | tokens |
 | `/rig:wiki init \| build \| status \| refresh \| verify` | Build and keep the code wiki current. `status` is free and only warns. | tokens, bounded by `--max-usd` |
-| `/rig:upgrade [--force]` | A newer plugin is installed: shows the plan, asks about files you changed, applies on `chore/rig-upgrade-<version>` and stops for review. Nothing is pushed. | tokens, small |
+| `/rig:upgrade [--force]` | Run from the newer plugin (not vendored into standalone repos): shows the plan, asks about files you changed, applies on `chore/rig-upgrade-<version>` and stops for review. Nothing is pushed. | tokens, small |
 | `/rig:learn [--max-usd <N>]` | At sprint close: mine recurring review findings and waivers into proposed lessons and rule promotions. | tokens |
 | `/rig:rule "<what recurs>"` | The agent made the same mistake twice: promote it to a regex rule, or to one line of CLAUDE.md's `## Things Claude gets wrong`, which you add. | tokens |
 

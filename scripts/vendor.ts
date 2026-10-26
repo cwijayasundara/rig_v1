@@ -101,6 +101,7 @@ export function harnessFiles(standalone: boolean): Map<string, string> {
   // The human-only skills (approve, waive, autonomy) come through here too: disable-model-invocation keeps them the person's, and
   // CI refuses approval rows a PR adds unless an independent reviewer approves.
   for (const name of fs.readdirSync(path.join(PLUGIN_ROOT, 'skills'))) {
+    if (name === 'upgrade') continue // upgrade runs only from the plugin (upgradeGates refuses a vendored copy)
     const src = path.join(PLUGIN_ROOT, 'skills', name, 'SKILL.md')
     if (fs.existsSync(src)) files.set(`.claude/skills/rig-${name}/SKILL.md`, forProject(read(src)))
   }

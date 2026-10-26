@@ -54,7 +54,7 @@ const expiryText = (w: Waiver): string => (!w.expires ? 'no expiry' : !waiverLiv
 // An install older than this plugin is upgraded, not re-initialised (design 2026-10-26-rig-upgrade); `--full` takes the same way out.
 function upgradePointer(): string | null {
   const have = read(path.join(SDLC, 'bin', 'VERSION')).trim()
-  return have && !IS_VENDORED && older(have, pluginVersion()) ? `.rig/bin is ${have}, older than this plugin (${pluginVersion()}): nothing was changed. Run ${skillRef('upgrade')} to bring it up to date.` : null
+  return have && !IS_VENDORED && older(have, pluginVersion()) ? `.rig/bin is ${have}, older than this plugin (${pluginVersion()}): nothing was changed. Run /rig:upgrade from the newer plugin to bring it up to date.` : null // plugin-only: the upgrade skill is not vendored, so no skillRef
 }
 
 function cmdInit(args: Args): void {

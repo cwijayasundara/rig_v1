@@ -28,8 +28,9 @@ test('vendor --cloud writes project skills, agents and hooks with no plugin refe
   assert.equal(sdlc(repo, ['vendor', '--cloud']).code, 0)
   const skills = walk(path.join(repo, '.claude/skills')).filter(f => f.endsWith('SKILL.md'))
   const agents = walk(path.join(repo, '.claude/agents'))
-  assert.ok(skills.some(f => f.endsWith('rig-start/SKILL.md')) && skills.length === 17, `${skills.length} skills`)
-  for (const s of ['start', 'plan', 'approve', 'waive', 'autonomy', 'chart', 'testplan', 'upgrade']) assert.ok(skills.some(f => f.endsWith(`rig-${s}/SKILL.md`)), `rig-${s} is vendored`)
+  assert.ok(skills.some(f => f.endsWith('rig-start/SKILL.md')) && skills.length === 16, `${skills.length} skills`)
+  for (const s of ['start', 'plan', 'approve', 'waive', 'autonomy', 'chart', 'testplan']) assert.ok(skills.some(f => f.endsWith(`rig-${s}/SKILL.md`)), `rig-${s} is vendored`)
+  assert.ok(!fs.existsSync(path.join(repo, '.claude/skills/rig-upgrade')), 'the upgrade skill runs only from the plugin, so it is not vendored')
   assert.deepEqual(agents.map(f => path.basename(f)), ['rig-architect.md', 'rig-evaluator.md'], 'the architect and the evaluator are the agents')
   for (const f of [...skills, ...agents]) {
     const text = fs.readFileSync(f, 'utf8')
@@ -214,7 +215,7 @@ test('every script names a skill through skillRef, never a hard-coded /rig:<name
   for (const f of fs.readdirSync(dir).filter(f => f.endsWith('.ts') && !f.endsWith('.spec.ts') && f !== 'testkit.ts' && f !== 'vendor.ts')) {
     fs.readFileSync(path.join(dir, f), 'utf8').split('\n').forEach((line, i) => {
       const code = line.trimStart().startsWith('//') ? '' : line.replace(/\s\/\/\s.*$/, '')
-      if (/\/rig:[a-z]/.test(code) && !code.includes('export const skillRef')) hits.push(`${f}:${i + 1}: ${code.trim().slice(0, 100)}`)
+      if (/\/rig:[a-z]/.test(code) && !code.includes('export const skillRef') && !line.includes('// plugin-only:')) hits.push(`${f}:${i + 1}: ${code.trim().slice(0, 100)}`)
     })
   }
   assert.deepEqual(hits, [])
@@ -410,6 +411,7 @@ test('plain vendor (not standalone) manifest lists only .rig/bin and .rig/githoo
   assert.equal(sdlc(repo, ['vendor']).code, 0)
   const m = JSON.parse(fs.readFileSync(path.join(repo, '.rig/bin/MANIFEST.json'), 'utf8')) as { files: Record<string, string> }
   const keys = Object.keys(m.files)
+  assert.ok(!keys.some(k => k.includes('rig-upgrade')), 'no rig-upgrade key in the manifest')
   assert.ok(keys.length > 10 && keys.every(k => k.startsWith('.rig/bin/') || k.startsWith('.rig/githooks/')), keys.join(','))
 })
 
@@ -420,7 +422,7 @@ test('init on an install older than the plugin points at the upgrade skill and r
   fs.rmSync(path.join(repo, '.rig/autonomy.json'), { force: true })
   const r = sdlc(repo, ['init', '--full'])
   assert.equal(r.code, 0)
-  assert.match(r.stdout, /older than this plugin[^\n]*\/rig-upgrade/)
+  assert.match(r.stdout, /older than this plugin[^\n]*\/rig:upgrade from the newer plugin/)
   assert.equal(fs.readFileSync(path.join(repo, '.rig/bin/VERSION'), 'utf8'), '0.0.1\n', 'nothing was vendored')
   assert.ok(!fs.existsSync(path.join(repo, '.rig/autonomy.json')), 'nothing was re-initialised')
 })

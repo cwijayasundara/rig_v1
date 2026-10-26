@@ -23,6 +23,7 @@ test('upgrade skill: the dry run comes first, then the decisions, then the apply
 test('upgrade skill: one AskUserQuestion batch for all conflicts, with the four choices', () => {
   assert.match(body, /ONE `?AskUserQuestion`? (batch|call)/)
   assert.match(body, /one question per conflicting file/)
+  assert.match(body, /entries whose value is `"conflict"`/)
   for (const c of ['keep mine', 'take new', 'show diff', 'write .rig-new']) assert.ok(body.includes(c), `choice: ${c}`)
   assert.match(body, /upgrade --diff <file>/)
   assert.match(body, /multiSelect/)
