@@ -30,6 +30,7 @@ import { cmdReport } from './report.ts'
 import { cmdArch, layerState, layerStateText } from './arch.ts'
 import { cmdQueue, conflictsFor } from './queue.ts'
 import { intentScope } from './scope.ts'
+import { prdFormatProblems } from './prdformat.ts'
 import { intentRelOf, prdRel, sprintRel, prdPath, reviewPath } from './product.ts'
 import { cmdSlice } from './slice.ts'
 import { cmdMaintain } from './maintain.ts'
@@ -191,6 +192,17 @@ function cmdChart(args: Args): void {
   out([...found.map(f => `[${f.rule}] ${f.severity === 'report' ? '(report) ' : ''}${f.message}`), `chart-${n}: ${block.length ? `${block.length} blocking finding(s)` : 'no blocking findings'}`].join('\n'))
 }
 
+// The PRD format for coding agents (spec 2026-10-26): `prd check <N>` says whether the sprint PRD is in rig's template.
+function cmdPrd(args: Args): void {
+  const [sub, num] = args.pos
+  if (sub !== 'check' || !/^\d{1,4}$/.test(num ?? '')) fail('usage: prd check [--json] <sprint number>')
+  const n = Number(num)
+  needPrd(n)
+  const found = prdFormatProblems(read(prdPath(n)))
+  if (args.opt.json) return out(JSON.stringify(found))
+  out([...found.map(f => `[${f.rule}] ${f.where}: ${f.message}`), `prd-${n}: ${found.length ? `${found.length} format finding(s); convert it into templates/prd-format.md` : 'in format'}`].join('\n'))
+}
+
 const readyRow = (i: ReturnType<typeof readyIntents>[number]): string => `${i.slug.padEnd(28)} sprint ${i.sprint}  ${i.estimateDays ?? '?'} day(s)`
 
 function cmdReady(args: Args): void {
@@ -339,6 +351,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   status: cmdStatus,
   approve: cmdApprove,
   chart: cmdChart,
+  prd: cmdPrd,
   ready: cmdReady,
   'start-brief': () => cmdStartBrief(),
   pr: cmdPr,
