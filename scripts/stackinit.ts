@@ -54,8 +54,8 @@ export function declareStack(opt: string | true): string {
 // PRD (that would read as one written) and never over a file the repo already has.
 function prdFolder(): string {
   const dir = path.join(ROOT, 'docs', 'prd')
+  if (exists(dir) && !fs.statSync(dir).isDirectory()) return ''
   fs.mkdirSync(dir, { recursive: true })
-  for (const [to, from] of [['README.md', 'prd-readme.md'], ['prd-template.md', 'prd-format.md']] as const)
-    if (!exists(path.join(dir, to))) fs.copyFileSync(path.join(PLUGIN_ROOT, 'templates', from), path.join(dir, to))
+  for (const [to, from] of [['README.md', 'prd-readme.md'], ['prd-template.md', 'prd-format.md']] as const) if (!exists(path.join(dir, to))) fs.copyFileSync(path.join(PLUGIN_ROOT, 'templates', from), path.join(dir, to))
   return `Put each sprint's PRD in docs/prd/sprint-<n>/prd.md (docs/prd/sprint-0/prd.md first; docs/prd/prd-template.md is the format). `
 }

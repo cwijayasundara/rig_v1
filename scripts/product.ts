@@ -37,11 +37,11 @@ export const prdHint = (n: number): string => `docs/prd/sprint-${n}/prd.md`
 export function prdsInDocs(): { n: number; rel: string }[] {
   const dir = path.join(ROOT, 'docs', 'prd')
   if (!exists(dir)) return []
-  return fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => {
-    const m = /^sprint-(\d{1,4})(?:-[\w.-]+?)?(\.md)?$/.exec(e.name)
-    if (!m?.[1]) return []
-    if (e.isDirectory() && !m[2]) return exists(path.join(dir, e.name, 'prd.md')) ? [{ n: Number(m[1]), rel: `docs/prd/${e.name}/prd.md`, folder: 0 }] : []
-    return e.isFile() && m[2] ? [{ n: Number(m[1]), rel: `docs/prd/${e.name}`, folder: 1 }] : []
+  return fs.readdirSync(dir).flatMap(f => {
+    const m = /^sprint-(\d{1,4})(?:-[\w.-]+?)?(\.md)?$/.exec(f), st = m?.[1] ? fs.statSync(path.join(dir, f), { throwIfNoEntry: false }) : undefined // follows symlinks
+    if (!m?.[1] || !st) return []
+    if (st.isDirectory() && !m[2]) return exists(path.join(dir, f, 'prd.md')) ? [{ n: Number(m[1]), rel: `docs/prd/${f}/prd.md`, folder: 0 }] : []
+    return st.isFile() && m[2] ? [{ n: Number(m[1]), rel: `docs/prd/${f}`, folder: 1 }] : []
   }).sort((a, b) => a.n - b.n || a.folder - b.folder || a.rel.localeCompare(b.rel)).map(({ n, rel }) => ({ n, rel }))
 }
 export const intentRel = (n: number, slug: string): string => `${sprintRel(n)}/intents/${slug}.md`

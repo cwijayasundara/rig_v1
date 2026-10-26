@@ -194,6 +194,13 @@ test('init --stack writes docs/prd/README.md and the PRD template, never over a 
   assert.match(fs.readFileSync(path.join(repo, 'docs/prd/README.md'), 'utf8'), /sprint-<n>\/prd\.md/)
 })
 
+test('init --stack still writes sensors.json when docs/prd is a file, and leaves that file alone', () => {
+  write('package.json', '{ "type": "module" }\n')
+  write('docs/prd', 'not a folder\n')
+  assert.match(run(['init', '--stack']).stdout, /wrote \.rig\/sensors\.json/)
+  assert.equal(fs.readFileSync(path.join(repo, 'docs/prd'), 'utf8'), 'not a folder\n')
+})
+
 test('init --stack refuses once sensors.json is committed or a change exists', () => {
   write('package.json', '{ "type": "module" }\n')
   run(['init'])

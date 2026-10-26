@@ -52,6 +52,13 @@ test('journey: a sprint folder under docs/prd/ is named, and wins over a flat fi
   assert.equal(j.next.command, '/rig:chart 1 @docs/prd/sprint-1/prd.md')
 })
 
+test('journey: a symlinked PRD under docs/prd/ still counts', () => {
+  write(repo, 'elsewhere/prd.md', PRD)
+  fs.mkdirSync(`${repo}/docs/prd`, { recursive: true })
+  fs.symlinkSync('../../elsewhere/prd.md', `${repo}/docs/prd/sprint-1.md`)
+  assert.equal(view().next.command, '/rig:chart 1 @docs/prd/sprint-1.md')
+})
+
 test('journey: the README and template init writes under docs/prd/ are not a PRD', () => {
   write(repo, 'docs/prd/README.md', '# PRDs\n')
   write(repo, 'docs/prd/prd-template.md', PRD)
