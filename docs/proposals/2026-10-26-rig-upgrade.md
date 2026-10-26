@@ -1,6 +1,6 @@
 # /rig:upgrade: upgrade a repo's rig without starting over
 
-Status: direction agreed 2026-10-26, not designed or built. Next: `superpowers:brainstorming` on this file.
+Status: built 2026-10-26 (`scripts/upgrade.ts`, `scripts/migrations.ts`, `skills/upgrade/SKILL.md`, the init hand-off in `cmdInit`). Decisions taken in the build: (1) a repo with no manifest has no base, so every differing file is a conflict the person decides; (2) in plugin mode (no vendored copy) upgrade runs migrations and sensor proposals only; (3) `init` and `init --full` on an install older than the plugin print a pointer to `/rig:upgrade` and change nothing.
 
 ## The ask (tester feedback, 2026-10-26)
 

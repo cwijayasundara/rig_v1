@@ -140,7 +140,7 @@ These are the principles, and [DESIGN.md](DESIGN.md) §2 gives the reason for ea
  ┌────────────────────────────────────────────────────────────────────────┐
  │ YOU            /rig:start  /rig:approve  /rig:waive                    │  intent, approval
  ├────────────────────────────────────────────────────────────────────────┤
- │ SKILLS (16)    start plan build test pr · chart testplan · wiki learn  │  the stages: prompts
+ │ SKILLS (17)    start plan build test pr · chart testplan · wiki learn  │  the stages: prompts
  │                rule init app arch autonomy · approve waive (human only)│
  ├────────────────────────────────────────────────────────────────────────┤
  │ AGENTS (2)     architect (Sonnet, charts a sprint)                     │  small fresh contexts
@@ -212,6 +212,7 @@ A change's status comes from which of its files exist: spec, plan, approve, buil
 | `/rig:chart <N>` | Architect: the sprint's PRD becomes intents, architecture and ADRs on branch `rig/chart-<N>`. | tokens |
 | `/rig:testplan <N>` | QA lead: the sprint's test plan, cases and data. | tokens |
 | `/rig:wiki init \| build \| status \| refresh \| verify` | Build and keep the code wiki current. `status` is free and only warns. | tokens, bounded by `--max-usd` |
+| `/rig:upgrade [--force]` | A newer plugin is installed: shows the plan, asks about files you changed, applies on `chore/rig-upgrade-<version>` and stops for review. Nothing is pushed. | tokens, small |
 | `/rig:learn [--max-usd <N>]` | At sprint close: mine recurring review findings and waivers into proposed lessons and rule promotions. | tokens |
 | `/rig:rule "<what recurs>"` | The agent made the same mistake twice: promote it to a regex rule, or to one line of CLAUDE.md's `## Things Claude gets wrong`, which you add. | tokens |
 
@@ -421,7 +422,7 @@ Long builds belong in a Claude Code cloud session (claude.ai/code or `claude --c
 
 | Part | Role |
 |---|---|
-| `skills/` (16) | The stages, run by the main thread (Sonnet). Only `/rig:init` and `/rig:learn` pin a model (Sonnet), because a model switch re-reads the whole conversation uncached. |
+| `skills/` (17) | The stages, run by the main thread (Sonnet). Only `/rig:init` and `/rig:learn` pin a model (Sonnet), because a model switch re-reads the whole conversation uncached. |
 | `agents/architect.md` | Sonnet. Charts a sprint; never edits source code. |
 | `agents/evaluator.md` | Opus. Reviews each sprint chart in `/rig:chart`; a change's diff goes to the clean-context reviewer in `/rig:pr`. |
 | `hooks/hooks.json` | Session start, prompt submit, post-edit and Stop guardrails, plus model recording. None runs on Bash, and all of them hold in `-p`. |

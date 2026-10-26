@@ -28,8 +28,8 @@ test('vendor --cloud writes project skills, agents and hooks with no plugin refe
   assert.equal(sdlc(repo, ['vendor', '--cloud']).code, 0)
   const skills = walk(path.join(repo, '.claude/skills')).filter(f => f.endsWith('SKILL.md'))
   const agents = walk(path.join(repo, '.claude/agents'))
-  assert.ok(skills.some(f => f.endsWith('rig-start/SKILL.md')) && skills.length === 16, `${skills.length} skills`)
-  for (const s of ['start', 'plan', 'approve', 'waive', 'autonomy', 'chart', 'testplan']) assert.ok(skills.some(f => f.endsWith(`rig-${s}/SKILL.md`)), `rig-${s} is vendored`)
+  assert.ok(skills.some(f => f.endsWith('rig-start/SKILL.md')) && skills.length === 17, `${skills.length} skills`)
+  for (const s of ['start', 'plan', 'approve', 'waive', 'autonomy', 'chart', 'testplan', 'upgrade']) assert.ok(skills.some(f => f.endsWith(`rig-${s}/SKILL.md`)), `rig-${s} is vendored`)
   assert.deepEqual(agents.map(f => path.basename(f)), ['rig-architect.md', 'rig-evaluator.md'], 'the architect and the evaluator are the agents')
   for (const f of [...skills, ...agents]) {
     const text = fs.readFileSync(f, 'utf8')
@@ -411,4 +411,25 @@ test('plain vendor (not standalone) manifest lists only .rig/bin and .rig/githoo
   const m = JSON.parse(fs.readFileSync(path.join(repo, '.rig/bin/MANIFEST.json'), 'utf8')) as { files: Record<string, string> }
   const keys = Object.keys(m.files)
   assert.ok(keys.length > 10 && keys.every(k => k.startsWith('.rig/bin/') || k.startsWith('.rig/githooks/')), keys.join(','))
+})
+
+test('init on an install older than the plugin points at the upgrade skill and re-initialises nothing', () => {
+  const repo = makeRepo()
+  assert.equal(sdlc(repo, ['init', '--full']).code, 0)
+  write(repo, '.rig/bin/VERSION', '0.0.1\n')
+  fs.rmSync(path.join(repo, '.rig/autonomy.json'), { force: true })
+  const r = sdlc(repo, ['init', '--full'])
+  assert.equal(r.code, 0)
+  assert.match(r.stdout, /older than this plugin[^\n]*\/rig-upgrade/)
+  assert.equal(fs.readFileSync(path.join(repo, '.rig/bin/VERSION'), 'utf8'), '0.0.1\n', 'nothing was vendored')
+  assert.ok(!fs.existsSync(path.join(repo, '.rig/autonomy.json')), 'nothing was re-initialised')
+})
+
+test('init on a current install is unchanged', () => {
+  const repo = makeRepo()
+  assert.equal(sdlc(repo, ['init', '--full']).code, 0)
+  const r = sdlc(repo, ['init'])
+  assert.equal(r.code, 0)
+  assert.match(r.stdout, /initialised/)
+  assert.doesNotMatch(r.stdout, /upgrade/)
 })
