@@ -18,6 +18,9 @@ export const testplanDir = (n: number): string => path.join(sprintDir(n), 'testp
 export const planPath = (n: number): string => path.join(sprintDir(n), 'plan.md')
 export const implPlanPath = (n: number): string => path.join(sprintDir(n), 'implementation-plan.md')
 export const approvalPath = (n: number): string => path.join(sprintDir(n), 'approval.json')
+export const ledgerPath = (n: number): string => path.join(sprintDir(n), 'requirements.md')
+export const waiversPath = (n: number): string => path.join(sprintDir(n), 'waivers.json')
+export const reviewPath = (n: number): string => path.join(sprintDir(n), 'chart-review.md')
 
 // Repo-relative posix forms, for messages and for matching git paths.
 export const sprintRel = (n: number): string => `.rig/product/sprints/sprint-${n}`

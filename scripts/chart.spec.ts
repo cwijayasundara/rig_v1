@@ -69,6 +69,32 @@ test('an approval is missing, then approved, then stale after an edit that names
   assert.deepEqual(state(1).changed, [`${P}/sprints/sprint-1/intents/alpha.md`], 'another sprint does not change it')
 })
 
+// 2026-10-26 PRD fidelity: the ledger is read by chart check, and it and the chart waivers are part of what a person approves.
+const RULE_PRD = prd(1, '').replace('### FR-1: thing\n', '### FR-1: thing\n\n- Ids are never reused.\n')
+test('chart check blocks on a missing ledger before approval and only reports it for a sprint approved without one', () => {
+  chart1()
+  write(repo, `${P}/sprints/sprint-1/prd.md`, RULE_PRD)
+  const ledger = (): { rule: string; severity: string }[] => (call('return C.chartFindings(1, false)') as { rule: string; severity: string }[]).filter(f => f.rule.startsWith('ledger'))
+  assert.deepEqual(ledger().map(f => [f.rule, f.severity]), [['ledger-missing', 'block']])
+  call(`C.writeChartApproval(1, 'Pat')`)
+  assert.deepEqual(ledger().map(f => [f.rule, f.severity]), [['ledger-missing', 'report']])
+})
+
+test('the ledger and the chart waivers are approved files; chart-review.md is not', () => {
+  chart1()
+  write(repo, `${P}/sprints/sprint-1/requirements.md`, '- G-1 [rule] prd.md:7 "Ids are never reused."\n')
+  write(repo, `${P}/sprints/sprint-1/waivers.json`, '[]\n')
+  write(repo, `${P}/sprints/sprint-1/chart-review.md`, 'verdict: pass\n## Findings\n')
+  call(`C.writeChartApproval(1, 'Pat')`)
+  write(repo, `${P}/sprints/sprint-1/chart-review.md`, 'verdict: pass\n## Findings\n\nedited\n')
+  assert.equal(state(1).state, 'approved')
+  write(repo, `${P}/sprints/sprint-1/requirements.md`, '- G-1 [rule] prd.md:7 "Ids are never reused." \n')
+  assert.deepEqual(state(1), { state: 'stale', changed: [`${P}/sprints/sprint-1/requirements.md`] })
+  write(repo, `${P}/sprints/sprint-1/requirements.md`, '- G-1 [rule] prd.md:7 "Ids are never reused."\n')
+  write(repo, `${P}/sprints/sprint-1/waivers.json`, '[{"finding":1}]\n')
+  assert.deepEqual(state(1), { state: 'stale', changed: [`${P}/sprints/sprint-1/waivers.json`] })
+})
+
 // 2026-10-25 shop_app: ADRs stayed `proposed` after approval, so the architect's "never edit an accepted ADR" never applied.
 test('approval accepts that sprint\'s proposed ADRs and their Decisions rows, and the chart stays approved', () => {
   chart1()
