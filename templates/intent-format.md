@@ -36,7 +36,7 @@ touches: []
 
 ## Behaviours
 
-<!-- - B1 (FR-3): one observable behaviour, stated from outside the system. The parentheses cite an FR-n or NFR-n id; an acceptance-criterion id may follow it (FR-3, AC-3.1) but never stands alone. -->
+<!-- - B1 (FR-3): one observable behaviour, stated from outside the system. The parentheses cite an FR-n or NFR-n id, then the requirements.md ids the behaviour serves, e.g. (FR-4, FR-4.2), keeping every number, limit and "never" of those rows; an acceptance-criterion id may follow it (FR-3, AC-3.1) but never stands alone. -->
 
 ### Failure behaviour
 
