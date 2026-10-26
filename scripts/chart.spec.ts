@@ -683,3 +683,34 @@ test('new --source with no sprint ledger writes no requirements.md', () => {
   assert.equal(sdlc(repo, ['new', 'alpha', '--source', SRC]).code, 0)
   assert.ok(!fs.existsSync(path.join(repo, '.rig/changes/alpha/requirements.md')))
 })
+
+// 2026-10-26 final review: approval failed open on a review it could not read, and a deleted ledger stopped blocking.
+test('a changes-needed review with no finding rig can read refuses approval', () => {
+  cleanChart()
+  write(repo, `${P}/sprints/sprint-1/chart-review.md`, 'verdict: changes-needed\n## Findings (2)\n- nextId can repeat\n')
+  const r = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  assert.equal(r.code, 1)
+  assert.match(r.stderr, /changes-needed/)
+})
+
+test('a ledger approved once and then deleted blocks again', () => {
+  cleanChart()
+  write(repo, `${P}/sprints/sprint-1/prd.md`, RULE_PRD)
+  write(repo, `${P}/sprints/sprint-1/requirements.md`, '- G-1 [rule] prd.md:9 "Ids are never reused."\n')
+  write(repo, `${P}/sprints/sprint-1/intents/alpha.md`, intent(1).replace('- B1 (FR-1): works', '- B1 (FR-1, G-1): never reused'))
+  write(repo, `${P}/sprints/sprint-1/testplan/cases.md`, '| ID | Req | Intent | B | Level | Data | Expected |\n| TC-1 | FR-1, G-1 | alpha | B1 | unit | - | ok |\n')
+  const ok = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  assert.equal(ok.code, 0, ok.stderr)
+  fs.rmSync(path.join(repo, `${P}/sprints/sprint-1/requirements.md`))
+  const missing = (call('return C.chartFindings(1, false)') as { rule: string; severity: string }[]).filter(f => f.rule === 'ledger-missing')
+  assert.deepEqual(missing.map(f => f.severity), ['block'])
+})
+
+test('approve on a chart already approved before reviews were read still says already approved', () => {
+  cleanChart()
+  call(`C.writeChartApproval(1, 'Pat')`)
+  fs.rmSync(path.join(repo, `${P}/sprints/sprint-1/chart-review.md`))
+  const r = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  assert.equal(r.code, 0, r.stderr)
+  assert.match(r.stdout, /already approved/)
+})

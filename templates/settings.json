@@ -65,6 +65,7 @@
       "Edit(.env.*)",
       "Edit(/.rig/changes/*/approval.json)",
       "Edit(/.rig/product/sprints/**/approval.json)",
+      "Edit(/.rig/product/sprints/**/waivers.json)",
       "Edit(/.rig/waivers.jsonl)",
       "Edit(/.rig/.gate)",
       "Edit(/.rig/.baseline)",

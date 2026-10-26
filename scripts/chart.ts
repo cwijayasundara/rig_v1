@@ -120,7 +120,7 @@ export function chartFindings(n: number, withCases: boolean): ChartFinding[] {
     exists: p => exists(path.join(testplan, p)),
   })
   // A sprint approved before the ledger existed is not made to grow one; any sprint never approved is.
-  found.push(...ledgerProblems({ prd: read(prdPath(n)), ledger: exists(ledgerPath(n)) ? read(ledgerPath(n)) : null, intents: intentsOf(n), cases, required: chartState(n).state === 'missing' }))
+  found.push(...ledgerProblems({ prd: read(prdPath(n)), ledger: exists(ledgerPath(n)) ? read(ledgerPath(n)) : null, intents: intentsOf(n), cases, required: chartState(n).state === 'missing' || Boolean(readRow(n)?.files.some(f => f.path.endsWith('/requirements.md'))) }))
   for (const i of intentsOf(n)) if (i.declared !== n) found.push({ rule: 'sprint-mismatch', severity: 'block', where: i.slug, message: `${i.slug} sits in sprint-${n}/intents/ but its frontmatter says sprint: ${i.declared ?? 'nothing'}` })
   for (const i of intentsOf(n)) {
     const same = allIntents().filter(t => t.slug === i.slug)

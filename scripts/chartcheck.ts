@@ -149,7 +149,9 @@ function prdBlocks(prd: string): { line: number; end: number; text: string }[] {
 function unquoted(block: string, quotes: string[]): string[] {
   let rest = block
   for (const q of [...quotes].sort((a, b) => b.length - a.length)) if (q) rest = rest.split(q).join('\u0000')
-  return rest.split('\u0000').map(p => p.trim().replace(/^[\s.,;:!?)\]-]+|[\s,;:(\[-]+$/g, '')).filter(p => p.split(/\s+/).filter(w => /[A-Za-z0-9]/.test(w)).length >= 2)
+  // A lone word counts when it is the rule itself: a number, a negation or a quantifier ("is 10", "must not", "never").
+  const load = (p: string): boolean => /\d/.test(p) || /^(?:not|no|never|only|every|all|unique|none|without|must|cannot)$/i.test(p)
+  return rest.split('\u0000').map(p => p.trim().replace(/^[\s.,;:!?)\]-]+|[\s.,;:!?(\[-]+$/g, '')).filter(p => { const words = p.split(/\s+/).filter(w => /[A-Za-z0-9]/.test(w)); return words.length >= 2 || (words.length === 1 && load(words[0]!)) })
 }
 
 // `required`: the sprint is not approved yet, so a missing ledger blocks; an approved sprint charted before the ledger is reported.
@@ -200,10 +202,10 @@ export type ReviewFinding = { n: number; text: string; sha: string; status: 'con
 export type ChartWaiver = { finding: number; text_sha: string; by: string; at: string; reason: string }
 const SUFFIX = /\s*→\s*(fixed \(confirmed\)|reopened:.*|fixed)\s*$/
 export function parseReview(text: string): ReviewFinding[] {
-  return section(text.replace(/\r\n/g, '\n'), 'Findings').split('\n').filter(l => /^\s*[-*]\s+\S/.test(l)).map((l, i) => {
+  return section(text.replace(/\r\n/g, '\n'), 'Findings').split('\n').filter(l => /^[-*]\s+\S|^\d+[.)]\s+\S/.test(l)).map((l, i) => {
     const m = SUFFIX.exec(l)
     const status = !m ? 'open' : m[1] === 'fixed' ? 'claimed' : m[1]!.startsWith('reopened') ? 'reopened' : 'confirmed'
-    const text = l.replace(SUFFIX, '').replace(/^\s*[-*]\s+/, '').trim()
+    const text = l.replace(SUFFIX, '').replace(/^\s*(?:[-*]|\d+[.)])\s+/, '').trim()
     return { n: i + 1, text, sha: sha(normalise(text)), status }
   })
 }

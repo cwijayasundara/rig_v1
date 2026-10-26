@@ -472,3 +472,15 @@ test('openFindings: everything not confirmed, minus waivers that match the numbe
   assert.deepEqual(openFindings(r, [w(2), w(3)]).map(f => f.n), [4])
   assert.deepEqual(openFindings(r, [w(4, 'deadbeef')]).map(f => f.n), [2, 3, 4], 'a waiver for different text does not cover a rewritten finding')
 })
+
+// 2026-10-26 final review: the two-word floor let a quote drop exactly the word that made the rule (a number, "not", "never").
+test('a one-word residue that is a number or a negation or quantifier is still unquoted', () => {
+  const prd = IDS_PRD.replace('- Each item has an integer id starting at 1.', '- Max quantity per line is 10.\n- Orders must not ship late.')
+  const l = LEDGER_OK.replace('- FR-4.1 (AC-4.1) [rule] prd.md:15 "Each item has an integer id starting at 1."', '- FR-4.1 [rule] prd.md:15 "Max quantity per line is"\n- FR-4.2 [rule] prd.md:16 "Orders must"\n- FR-4.3 [rule] prd.md:16 "ship late."')
+  const found = ledgerProblems({ prd, ledger: l, intents: idsIntent('- B1 (FR-4, FR-4.1, FR-4.2, FR-4.3, G-1): x\n'), cases: null, required: true })
+  assert.deepEqual(found.filter(f => f.rule === 'ledger-unquoted').map(f => /says "([^"]*)"/.exec(f.message)?.[1]), ['10', 'not'])
+})
+
+test('parseReview also reads numbered findings', () => {
+  assert.deepEqual(parseReview('verdict: changes-needed\n## Findings\n1. a → fix\n2) b → fixed (confirmed)\n').map(f => [f.n, f.status]), [[1, 'open'], [2, 'confirmed']])
+})
