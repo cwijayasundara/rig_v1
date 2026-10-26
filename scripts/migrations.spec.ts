@@ -51,3 +51,10 @@ test('an unknown stack gets a note and nothing is written', () => {
   assert.ok(notes.length === 1 && /no stack pack/.test(notes[0]!))
   assert.ok(!fs.existsSync(path.join(d, '.rig', 'sensors.json.rig-new')))
 })
+test('pre-registry-sensors applies only to an old-shape sensors.json', () => {
+  const m = MIGRATIONS[0]!
+  assert.equal(m.applies(tmpRepo(null)), false)
+  assert.equal(m.applies(tmpRepo('{}')), false)
+  assert.equal(m.applies(tmpRepo(JSON.stringify({ version: 1, sensors: [] }))), false)
+  assert.equal(m.applies(tmpRepo(OLD)), true)
+})

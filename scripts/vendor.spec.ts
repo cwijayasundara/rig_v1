@@ -435,3 +435,16 @@ test('init on a current install is unchanged', () => {
   assert.match(r.stdout, /initialised/)
   assert.doesNotMatch(r.stdout, /upgrade/)
 })
+
+test('a plain vendor after vendor --cloud keeps the standalone manifest entries, and a second --cloud is byte-identical', () => {
+  const repo = makeRepo()
+  assert.equal(sdlc(repo, ['vendor', '--cloud']).code, 0)
+  const file = path.join(repo, '.rig/bin/MANIFEST.json')
+  const first = fs.readFileSync(file, 'utf8')
+  const keys = Object.keys(JSON.parse(first).files)
+  assert.ok(keys.some(k => k.startsWith('.claude/skills/rig-')) && keys.some(k => k.startsWith('.claude/agents/rig-')))
+  assert.equal(sdlc(repo, ['vendor']).code, 0)
+  assert.equal(Object.keys(JSON.parse(fs.readFileSync(file, 'utf8')).files).length, keys.length)
+  assert.equal(sdlc(repo, ['vendor', '--cloud']).code, 0)
+  assert.equal(fs.readFileSync(file, 'utf8'), first)
+})

@@ -322,3 +322,91 @@ test('with a manifest an old VERSION is replace', () => {
   lag(repo, ver, '0.5.0\n')
   assert.equal(plan(repo).files[ver], 'replace')
 })
+
+// Final-review fixes.
+const pluginRepo = (sensors: string): string => {
+  const repo = makeRepo()
+  write(repo, '.rig/sensors.json', sensors)
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', 'sensors')
+  return repo
+}
+
+test('plugin mode with a registry-shaped sensors.json has no migration and bare --apply is already current', () => {
+  const repo = pluginRepo(SENSORS)
+  assert.deepEqual(plan(repo).migrations, [])
+  const r = sdlc(repo, ['upgrade', '--apply'])
+  assert.equal(r.code, 0, r.stderr)
+  assert.match(r.stdout, /already current/)
+  assert.equal(gitIn(repo, 'branch', '--list', 'chore/*'), '')
+  assert.equal(status(repo), '')
+})
+
+test('plugin mode: an empty {} sensors.json is absent, an old-shape one gets the migration', () => {
+  assert.deepEqual(plan(pluginRepo('{}')).migrations, [])
+  const repo = pluginRepo(JSON.stringify({ stack: 'node', lint: 'x' }))
+  assert.deepEqual(plan(repo).migrations, ['pre-registry-sensors'])
+  const r = sdlc(repo, ['upgrade', '--apply'])
+  assert.equal(r.code, 0, r.stderr)
+  assert.match(r.stdout, /pre-registry format/)
+  assert.match(gitIn(repo, 'branch', '--list', 'chore/*'), /chore\/rig-upgrade-/)
+})
+
+test('a manifest key outside the harness is ignored, reported, and never read, written or deleted', () => {
+  const repo = committed()
+  const outside = path.join(path.dirname(repo), `outside-${path.basename(repo)}.txt`)
+  fs.writeFileSync(outside, 'keep me\n')
+  write(repo, 'CLAUDE.md', 'mine\n')
+  gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'claude')
+  const bad = ['../outside.txt', `../${path.basename(outside)}`, outside, 'CLAUDE.md']
+  editManifest(repo, m => { for (const k of bad) m.files[k] = sha('x') })
+  gitIn(repo, 'commit', '-qam', 'bad manifest')
+  const p = plan(repo) as ReturnType<typeof plan> & { ignoredManifestKeys: string[] }
+  for (const k of bad) { assert.equal(p.files[k], undefined, k); assert.ok(p.ignoredManifestKeys.includes(k), k) }
+  assert.match(sdlc(repo, ['upgrade']).stdout, /ignored 4 manifest entries outside the harness/)
+  assert.equal(sdlc(repo, ['upgrade', '--diff', '../outside.txt']).code, 1)
+  assert.equal(sdlc(repo, ['upgrade', '--diff', 'CLAUDE.md']).code, 1)
+  lag(repo, SKILL, 'old\n')
+  assert.equal(sdlc(repo, ['upgrade', '--apply']).code, 0)
+  assert.equal(fs.readFileSync(outside, 'utf8'), 'keep me\n')
+  assert.ok(fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8').startsWith('mine\n')) // the merge may add the guides block, never replace or delete it
+})
+
+test('the dry run says already current when every file is noop or keep', () => {
+  const repo = committed()
+  const want = fs.readFileSync(path.join(repo, SKILL), 'utf8')
+  lag(repo, SKILL, 'old\n')
+  write(repo, SKILL, 'old\nteam note\n')
+  gitIn(repo, 'commit', '-qam', 'edit')
+  assert.equal(sdlc(repo, ['upgrade', '--apply', '--decide', JSON.stringify({ [SKILL]: 'mine' })]).code, 0)
+  gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'upgrade')
+  assert.equal(plan(repo).files[SKILL], 'keep')
+  assert.equal(manifestOf(repo).files[SKILL], sha(want))
+  const r = sdlc(repo, ['upgrade'])
+  assert.match(r.stdout, /already current/)
+})
+
+test('later overwrites an existing .rig-new and the dry run no longer promises a .rig-new', () => {
+  const repo = committed()
+  const want = fs.readFileSync(path.join(repo, CORE), 'utf8')
+  lag(repo, CORE, 'old\n')
+  write(repo, CORE, 'local\n')
+  write(repo, `${CORE}.rig-new`, 'stale\n')
+  gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'edit')
+  const dry = sdlc(repo, ['upgrade']).stdout
+  assert.match(dry, /you choose mine, new or later/)
+  assert.doesNotMatch(dry, /goes beside/)
+  assert.equal(sdlc(repo, ['upgrade', '--apply', '--decide', JSON.stringify({ [CORE]: 'later' })]).code, 0)
+  assert.equal(fs.readFileSync(path.join(repo, `${CORE}.rig-new`), 'utf8'), want)
+})
+
+test('on a detached HEAD the recovery line names the HEAD sha, and sync and baseline by name', () => {
+  const repo = committed()
+  lag(repo, SKILL, 'old\n')
+  const head = gitIn(repo, 'rev-parse', 'HEAD').trim()
+  gitIn(repo, 'checkout', '-q', '--detach')
+  const r = sdlc(repo, ['upgrade', '--apply'])
+  assert.equal(r.code, 0, r.stderr)
+  assert.ok(r.stdout.includes(`git checkout ${head} `), r.stdout)
+  assert.match(r.stdout, /sdlc\.ts sync and sdlc\.ts baseline/)
+})

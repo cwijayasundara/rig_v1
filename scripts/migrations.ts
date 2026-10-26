@@ -4,12 +4,18 @@ import path from 'node:path'
 import { isRegistryShape } from './registry.ts'
 import { detectedPackText } from './stackinit.ts'
 
-export type Migration = { id: string; since: string; run: (root: string) => string[] }
+export type Migration = { id: string; since: string; applies: (root: string) => boolean; run: (root: string) => string[] }
 
 // Writes the detected pack's registry beside an old-shape sensors.json, for review. Never touches sensors.json itself.
 const preRegistrySensors: Migration = {
   id: 'pre-registry-sensors',
   since: '0.6.0', // the plugin version this migration ships in (.claude-plugin/plugin.json)
+  applies(root) {
+    const file = path.join(root, '.rig', 'sensors.json')
+    if (!fs.existsSync(file)) return false
+    const text = fs.readFileSync(file, 'utf8')
+    return text.trim() !== '{}' && !isRegistryShape(text) // `{}` is absent, as declareStack reads it
+  },
   run(root) {
     const file = path.join(root, '.rig', 'sensors.json')
     if (!fs.existsSync(file) || isRegistryShape(fs.readFileSync(file, 'utf8'))) return []

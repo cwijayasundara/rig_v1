@@ -7,7 +7,7 @@ import { ROOT, SDLC, SENSORS_PATH, IS_VENDORED, skillRef, exists, read, out, fai
 import { isObject } from './model.ts'
 import { isRegistryShape } from './registry.ts'
 import { loadPacks, PACKS_DIR } from './stackpacks.ts'
-import { harnessFiles, readManifest, mergeProjectFiles, MANIFEST, pluginVersion, older, type Manifest } from './vendor.ts'
+import { harnessFiles, readManifest, isHarnessPath, mergeProjectFiles, MANIFEST, pluginVersion, older, type Manifest } from './vendor.ts'
 import { pendingMigrations, runMigrations, type Migration } from './migrations.ts'
 import { cmdSync } from './sync.ts'
 import { cmdBaseline } from './initbaseline.ts'
@@ -56,6 +56,7 @@ export type Plan = {
   manifest: Manifest | null
   migrations: Migration[]
   proposals: Proposals
+  ignoredManifestKeys: string[] // manifest entries outside the harness namespace, never acted on
 }
 
 // The refusals both the dry run and apply share, in order.
@@ -73,7 +74,9 @@ export function buildPlan(): Plan {
   const from = read(path.join(SDLC, 'bin', 'VERSION')).trim()
   const to = pluginVersion()
   const standalone = exists(path.join(ROOT, '.claude/skills/rig-start/SKILL.md'))
-  const manifest = readManifest()
+  const raw = readManifest()
+  const ignoredManifestKeys = Object.keys(raw?.files ?? {}).filter(rel => !isHarnessPath(rel))
+  const manifest = raw && { ...raw, files: Object.fromEntries(Object.entries(raw.files ?? {}).filter(([rel]) => isHarnessPath(rel))) }
   const next = standalone ? harnessFiles(true) : new Map<string, string>()
   const disk = new Map<string, string | null>()
   if (standalone) for (const rel of new Set([...Object.keys(manifest?.files ?? {}), ...next.keys()])) {
@@ -85,7 +88,7 @@ export function buildPlan(): Plan {
   const ver = '.rig/bin/VERSION'
   if (next.has(ver)) files.set(ver, disk.get(ver) === next.get(ver) ? 'noop' : 'replace')
   const sensors = read(SENSORS_PATH)
-  return { from, to, standalone, files, next, disk, manifest, migrations: pendingMigrations(from, to), proposals: sensors ? proposeSensors(sensors, loadPacks(PACKS_DIR).packs) : null }
+  return { from, to, standalone, files, next, disk, manifest, migrations: pendingMigrations(from, to).filter(m => m.applies(ROOT)), ignoredManifestKeys, proposals: sensors ? proposeSensors(sensors, loadPacks(PACKS_DIR).packs) : null }
 }
 
 const countsOf = (files: Map<string, Verdict>): Record<Verdict, number> => {
@@ -94,8 +97,11 @@ const countsOf = (files: Map<string, Verdict>): Record<Verdict, number> => {
   return c
 }
 
+// Nothing to write: every file is noop or kept, no migration applies, and the install already carries this version.
+const isCurrent = (plan: Plan): boolean => [...plan.files.values()].every(v => v === 'noop' || v === 'keep') && !plan.migrations.length && (!plan.standalone || plan.from === plan.to)
+
 function showDiff(plan: Plan, rel: string): void {
-  if (!plan.files.has(rel)) fail(`${rel} is not a harness file in this plan`)
+  if (!isHarnessPath(rel) || !plan.files.has(rel)) fail(`${rel} is not a harness file in this plan`)
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-upgrade-'))
   try {
     const want = plan.next.get(rel)
@@ -131,7 +137,7 @@ function applyUpgrade(args: Args): void {
   const unknown = wanted.filter(id => !plan.proposals?.sensors.some(s => s.id === id))
   if (unknown.length) fail(`--add-sensors: not a proposed sensor: ${unknown.join(', ')}`)
   // Proposals are work only when the person picked some: otherwise a bare --apply would leave an empty branch.
-  const current = [...plan.files.values()].every(v => v === 'noop' || v === 'keep') && !plan.migrations.length && !wanted.length && plan.from === plan.to
+  const current = isCurrent(plan) && !wanted.length
   if (current) {
     const ids = plan.proposals?.sensors.map(s => String(s.id)) ?? []
     return out(`already current: nothing to apply, no branch created${ids.length ? `\n${ids.length} sensors proposed (${ids.join(', ')}); re-run with --add-sensors <id,id> to add them` : ''}`)
@@ -143,17 +149,18 @@ function applyUpgrade(args: Args): void {
   const undecided = conflicts.filter(rel => !decisions.has(rel))
   if (undecided.length) fail(`decide each conflict with --decide '{"<path>": "mine" | "new" | "later"}'; undecided:\n${undecided.map(rel => `  ${rel}`).join('\n')}`)
   if (git(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`])) fail(`branch ${branch} already exists: merge or delete it first`)
-  const previous = git(['branch', '--show-current']) || 'main'
+  const previous = git(['branch', '--show-current']) || git(['rev-parse', 'HEAD']) || 'main'
   if (git(['checkout', '-q', '-b', branch]) === null) fail(`could not create branch ${branch}`)
 
   const written: string[] = []
   const put = (rel: string, text: string): void => {
+    if (!isHarnessPath(rel)) fail(`refusing to write ${rel}: outside the harness`)
     fs.mkdirSync(path.dirname(path.join(ROOT, rel)), { recursive: true })
     fs.writeFileSync(path.join(ROOT, rel), text)
     if (rel.startsWith('.rig/githooks/')) fs.chmodSync(path.join(ROOT, rel), 0o755)
     written.push(rel)
   }
-  const drop = (rel: string): void => { fs.rmSync(path.join(ROOT, rel), { force: true }); written.push(rel) }
+  const drop = (rel: string): void => { if (!isHarnessPath(rel)) fail(`refusing to delete ${rel}: outside the harness`); fs.rmSync(path.join(ROOT, rel), { force: true }); written.push(rel) }
   for (const [rel, v] of plan.files) {
     const text = plan.next.get(rel)
     const d = decisions.get(rel)
@@ -178,7 +185,7 @@ function applyUpgrade(args: Args): void {
   sanctionWrites(written)
   out(`upgrade ${plan.from || 'unversioned'} -> ${plan.to} applied on ${branch}\n${written.length} files written${notes.length ? '\n' + notes.join('\n') : ''}`)
   if (isRegistryShape(read(SENSORS_PATH))) {
-    out(`applied on branch ${branch}; running sync and baseline (if one fails: fix it and re-run it, or discard with: git checkout -- . && git clean -fd && git checkout ${previous} && git branch -D ${branch})`)
+    out(`applied on branch ${branch}; running sync and baseline (if one fails: fix it, then re-run sdlc.ts sync and sdlc.ts baseline by name, or discard with: git checkout -- . && git clean -fd && git checkout ${previous} && git branch -D ${branch})`)
     cmdSync({ pos: [], opt: {} }); cmdBaseline()
   }
   out(`branch ${branch}\nreview and merge; nothing was pushed`)
@@ -192,14 +199,15 @@ export function cmdUpgrade(args: Args): void {
   const counts = countsOf(plan.files)
   const todo = [...plan.files].filter(([, v]) => v !== 'noop')
   if (args.opt.json) {
-    return out(JSON.stringify({ from: plan.from, to: plan.to, standalone: plan.standalone, files: Object.fromEntries(todo), counts, migrations: plan.migrations.map(m => m.id), proposals: plan.proposals }, null, 2))
+    return out(JSON.stringify({ from: plan.from, to: plan.to, standalone: plan.standalone, files: Object.fromEntries(todo), counts, migrations: plan.migrations.map(m => m.id), proposals: plan.proposals, ignoredManifestKeys: plan.ignoredManifestKeys }, null, 2))
   }
   const lines = [`upgrade ${plan.from || 'unversioned'} -> ${plan.to}${plan.standalone ? ' (standalone)' : ' (plugin mode: no project copies to update)'}`]
   if (plan.standalone) lines.push(Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(', '))
   const conflicts = todo.filter(([, v]) => v === 'conflict').map(([rel]) => rel)
-  if (conflicts.length) lines.push('conflicts (edited here and changed upstream; the new copy goes beside as .rig-new on apply):', ...conflicts.map(rel => `  ${rel}`))
+  if (conflicts.length) lines.push('conflicts (edited here and changed upstream; when applying you choose mine, new or later for each):', ...conflicts.map(rel => `  ${rel}`))
   if (plan.migrations.length) lines.push('migrations:', ...plan.migrations.map(m => `  ${m.id}`))
   if (plan.proposals) lines.push(`proposed ${plan.proposals.stack} sensors (not applied):`, ...plan.proposals.sensors.map(s => `  ${String(s.id)}`))
-  if (!todo.length && !plan.migrations.length && !plan.proposals) lines.push('already current')
+  if (plan.ignoredManifestKeys.length) lines.push(`ignored ${plan.ignoredManifestKeys.length} manifest entries outside the harness`)
+  if (isCurrent(plan)) lines.push('already current')
   out(lines.join('\n'))
 }

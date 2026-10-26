@@ -92,6 +92,14 @@ export function readManifest(): Manifest | null {
   try { return JSON.parse(read(path.join(ROOT, MANIFEST))) as Manifest } catch { return null }
 }
 
+// Where the harness may write or delete: a manifest key outside this namespace (or outside the repo) is never trusted.
+const HARNESS_PREFIXES = ['.rig/bin/', '.rig/githooks/', '.rig/templates/', '.rig/mod/', '.claude/skills/rig-', '.claude/agents/rig-']
+export function isHarnessPath(rel: string): boolean {
+  if (!rel || path.isAbsolute(rel) || rel.split(/[\\/]/).includes('..')) return false
+  const abs = path.resolve(ROOT, rel)
+  return abs.startsWith(ROOT + path.sep) && HARNESS_PREFIXES.some(p => rel.startsWith(p))
+}
+
 export function harnessFiles(standalone: boolean): Map<string, string> {
   const files = new Map<string, string>()
   for (const name of VENDORED) files.set(`.rig/bin/${name}.ts`, read(path.join(PLUGIN_ROOT, 'scripts', `${name}.ts`)))
@@ -182,7 +190,9 @@ export function cmdVendor(args: Args): void {
     if (rel.startsWith('.rig/githooks/')) fs.chmodSync(path.join(ROOT, rel), 0o755)
   }
   if (standalone) mergeProjectFiles(written)
-  const hashes = Object.fromEntries([...files].map(([rel, text]) => [rel, sha(text)]).sort(([a], [b]) => (a as string).localeCompare(b as string, 'en')))
+  // A plain vendor owns only the .rig/bin files: it keeps the standalone entries an earlier `vendor --cloud` recorded.
+  const kept = standalone ? {} : readManifest()?.files ?? {}
+  const hashes = Object.fromEntries([...Object.entries(kept), ...[...files].map(([rel, text]): [string, string] => [rel, sha(text)])].sort(([a], [b]) => a.localeCompare(b, 'en')))
   writeFile(MANIFEST, JSON.stringify({ version: next, files: hashes }, null, 2) + '\n', written)
   sanctionWrites(written)
   out(standalone
