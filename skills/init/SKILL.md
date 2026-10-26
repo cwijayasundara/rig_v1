@@ -9,7 +9,7 @@ allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_R
 # Initialise this repo
 **Subagents:** run them in the foreground (never `run_in_background`) and wait; never end your turn while one is running. Every agent of one step goes in one message. Run each command as its own Bash call (no `cd`, pipes, redirects, `&&`, variables or heredocs); read files with Read and write them with Write (never a redirect, `printf` or heredoc); one-line commit messages — compound commands are denied in unattended runs and stall the install.
 
-Run `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts init` first.
+Run `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts init` first. When it prints that `.rig/bin` is older than this plugin and nothing was changed, stop: relay that line (the person runs the upgrade command it names) and do nothing else.
 ## `--defaults` mode
 When the arguments contain `--defaults`, the person has pre-approved every recommended answer below, so ask no AskUserQuestion at all. Use these answers:
 - Greenfield: stack, deployment target and test framework come from the quoted goal; anything it leaves out takes the recommended default (deployment: local only).

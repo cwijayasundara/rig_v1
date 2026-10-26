@@ -25,14 +25,16 @@ const script = (name: (typeof NAMES)[number]): string => [
   '',
 ].join('\n')
 
+export const HOOK_SCRIPTS = (): [rel: string, text: string][] => NAMES.map(name => [`${HOOKS_DIR}/${name}`, script(name)])
+
 export function writeHookScripts(written: string[] = []): void {
   fs.mkdirSync(path.join(ROOT, HOOKS_DIR), { recursive: true })
-  for (const name of NAMES) {
-    const file = path.join(ROOT, HOOKS_DIR, name)
+  for (const [rel, text] of HOOK_SCRIPTS()) {
+    const file = path.join(ROOT, rel)
     // Unchanged scripts are left alone, so a session start under the same plugin never dirties the tree.
-    if (!exists(file) || fs.readFileSync(file, 'utf8') !== script(name)) fs.writeFileSync(file, script(name))
+    if (!exists(file) || fs.readFileSync(file, 'utf8') !== text) fs.writeFileSync(file, text)
     if ((fs.statSync(file).mode & 0o777) !== 0o755) fs.chmodSync(file, 0o755)
-    written.push(`${HOOKS_DIR}/${name}`)
+    written.push(rel)
   }
 }
 

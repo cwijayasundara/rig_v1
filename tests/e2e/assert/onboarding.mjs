@@ -22,7 +22,7 @@ export async function assertOnboarding(c, sb, { lane, modules = [] }) {
   await c.check('status reads the registry with no config error', () => { const r = sb.sdlc(['status', '--json']); return (r.status === 0 && !/config/.test(r.stderr)) || r.stderr.trim() })
 
   await c.check('standalone skills: every plugin skill, approve and waive included', () => {
-    const want = names('skills').map(n => `rig-${n}`)
+    const want = names('skills').filter(n => n !== 'upgrade').map(n => `rig-${n}`) // upgrade runs only from the plugin
     const missing = want.filter(n => !sb.exists(`.claude/skills/${n}/SKILL.md`))
     return missing.length === 0 || `missing: ${missing.join(', ')}`
   })

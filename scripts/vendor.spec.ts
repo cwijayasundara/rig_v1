@@ -1,6 +1,7 @@
 // Standalone mode: `vendor --standalone` (alias --cloud) copies the whole harness into a project, so it needs no plugin.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -29,6 +30,7 @@ test('vendor --cloud writes project skills, agents and hooks with no plugin refe
   const agents = walk(path.join(repo, '.claude/agents'))
   assert.ok(skills.some(f => f.endsWith('rig-start/SKILL.md')) && skills.length === 16, `${skills.length} skills`)
   for (const s of ['start', 'plan', 'approve', 'waive', 'autonomy', 'chart', 'testplan']) assert.ok(skills.some(f => f.endsWith(`rig-${s}/SKILL.md`)), `rig-${s} is vendored`)
+  assert.ok(!fs.existsSync(path.join(repo, '.claude/skills/rig-upgrade')), 'the upgrade skill runs only from the plugin, so it is not vendored')
   assert.deepEqual(agents.map(f => path.basename(f)), ['rig-architect.md', 'rig-evaluator.md'], 'the architect and the evaluator are the agents')
   for (const f of [...skills, ...agents]) {
     const text = fs.readFileSync(f, 'utf8')
@@ -213,7 +215,7 @@ test('every script names a skill through skillRef, never a hard-coded /rig:<name
   for (const f of fs.readdirSync(dir).filter(f => f.endsWith('.ts') && !f.endsWith('.spec.ts') && f !== 'testkit.ts' && f !== 'vendor.ts')) {
     fs.readFileSync(path.join(dir, f), 'utf8').split('\n').forEach((line, i) => {
       const code = line.trimStart().startsWith('//') ? '' : line.replace(/\s\/\/\s.*$/, '')
-      if (/\/rig:[a-z]/.test(code) && !code.includes('export const skillRef')) hits.push(`${f}:${i + 1}: ${code.trim().slice(0, 100)}`)
+      if (/\/rig:[a-z]/.test(code) && !code.includes('export const skillRef') && !line.includes('// plugin-only:')) hits.push(`${f}:${i + 1}: ${code.trim().slice(0, 100)}`)
     })
   }
   assert.deepEqual(hits, [])
@@ -388,4 +390,61 @@ test('every module a script imports is vendored', () => {
   }
   assert.deepEqual(missing, [])
   assert.ok(vendoredNames.has('stamp') && vendoredNames.size > 20)
+})
+
+test('vendor --standalone writes a manifest of the harness files', () => {
+  const repo = makeRepo()
+  sdlc(repo, ['init'])
+  assert.equal(sdlc(repo, ['vendor', '--cloud']).code, 0)
+  const m = JSON.parse(fs.readFileSync(path.join(repo, '.rig/bin/MANIFEST.json'), 'utf8')) as { version: string; files: Record<string, string> }
+  assert.equal(m.version, fs.readFileSync(path.join(repo, '.rig/bin/VERSION'), 'utf8').trim())
+  const sha = (f: string): string => crypto.createHash('sha256').update(fs.readFileSync(path.join(repo, f), 'utf8')).digest('hex').slice(0, 16)
+  assert.equal(m.files['.rig/bin/sdlc.ts'], sha('.rig/bin/sdlc.ts'))
+  for (const f of ['.claude/skills/rig-start/SKILL.md', '.rig/mod/hooks/dashboard.tsx', '.rig/githooks/pre-commit']) assert.equal(m.files[f], sha(f), f)
+  for (const f of ['.claude/settings.json', 'CLAUDE.md', 'README.md', '.claude-plugin/marketplace.json', '.rig/bin/MANIFEST.json']) assert.ok(!(f in m.files), `${f} is not hashed`)
+  assert.equal(fs.statSync(path.join(repo, '.rig/githooks/pre-commit')).mode & 0o777, 0o755)
+})
+
+test('plain vendor (not standalone) manifest lists only .rig/bin and .rig/githooks files', () => {
+  const repo = makeRepo()
+  sdlc(repo, ['init'])
+  assert.equal(sdlc(repo, ['vendor']).code, 0)
+  const m = JSON.parse(fs.readFileSync(path.join(repo, '.rig/bin/MANIFEST.json'), 'utf8')) as { files: Record<string, string> }
+  const keys = Object.keys(m.files)
+  assert.ok(!keys.some(k => k.includes('rig-upgrade')), 'no rig-upgrade key in the manifest')
+  assert.ok(keys.length > 10 && keys.every(k => k.startsWith('.rig/bin/') || k.startsWith('.rig/githooks/')), keys.join(','))
+})
+
+test('init on an install older than the plugin points at the upgrade skill and re-initialises nothing', () => {
+  const repo = makeRepo()
+  assert.equal(sdlc(repo, ['init', '--full']).code, 0)
+  write(repo, '.rig/bin/VERSION', '0.0.1\n')
+  fs.rmSync(path.join(repo, '.rig/autonomy.json'), { force: true })
+  const r = sdlc(repo, ['init', '--full'])
+  assert.equal(r.code, 0)
+  assert.match(r.stdout, /older than this plugin[^\n]*\/rig:upgrade from the newer plugin/)
+  assert.equal(fs.readFileSync(path.join(repo, '.rig/bin/VERSION'), 'utf8'), '0.0.1\n', 'nothing was vendored')
+  assert.ok(!fs.existsSync(path.join(repo, '.rig/autonomy.json')), 'nothing was re-initialised')
+})
+
+test('init on a current install is unchanged', () => {
+  const repo = makeRepo()
+  assert.equal(sdlc(repo, ['init', '--full']).code, 0)
+  const r = sdlc(repo, ['init'])
+  assert.equal(r.code, 0)
+  assert.match(r.stdout, /initialised/)
+  assert.doesNotMatch(r.stdout, /upgrade/)
+})
+
+test('a plain vendor after vendor --cloud keeps the standalone manifest entries, and a second --cloud is byte-identical', () => {
+  const repo = makeRepo()
+  assert.equal(sdlc(repo, ['vendor', '--cloud']).code, 0)
+  const file = path.join(repo, '.rig/bin/MANIFEST.json')
+  const first = fs.readFileSync(file, 'utf8')
+  const keys = Object.keys(JSON.parse(first).files)
+  assert.ok(keys.some(k => k.startsWith('.claude/skills/rig-')) && keys.some(k => k.startsWith('.claude/agents/rig-')))
+  assert.equal(sdlc(repo, ['vendor']).code, 0)
+  assert.equal(Object.keys(JSON.parse(fs.readFileSync(file, 'utf8')).files).length, keys.length)
+  assert.equal(sdlc(repo, ['vendor', '--cloud']).code, 0)
+  assert.equal(fs.readFileSync(file, 'utf8'), first)
 })

@@ -8,7 +8,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { waiverLive, whoami, ownerOrFail,
   ROOT, SDLC, CHANGES, SLUG_RE, SOFT_HOOK_FAILURE, exists, read, now, defaultBase, toPosix, out, fail, git, parseArgs, optString, listChanges, scanSecrets, checkSlug,
-  WAIVERS, readJsonl, type Waiver, ensureGitignore, PLUGIN_ROOT, skillRef, sanctionWrites, readGate, type Args,
+  WAIVERS, readJsonl, type Waiver, ensureGitignore, PLUGIN_ROOT, IS_VENDORED, skillRef, sanctionWrites, readGate, type Args,
 } from './core.ts'
 import { formatFindings, SENSOR_NAMES, type Finding } from './model.ts'
 import { readBaseline, branchDiff, turnDiff, type Snapshot } from './diffs.ts'
@@ -16,7 +16,8 @@ import { cmdHook } from './hooks.ts'
 import { cmdCheck, cmdCheckFile, loadConfig } from './check.ts'
 import { inertSensors, type Inert } from './registry.ts'
 import { runCommand, recordRun } from './runs.ts'
-import { cmdVendor, installStandalone } from './vendor.ts'
+import { cmdVendor, installStandalone, older, pluginVersion } from './vendor.ts'
+import { cmdUpgrade } from './upgrade.ts'
 import { cmdBaseline } from './initbaseline.ts'
 import { cmdVerify } from './verify.ts'
 import { cmdHooks, cmdCheckPush } from './githooks.ts'
@@ -49,6 +50,12 @@ const ageDays = (at: string): number => { const n = Math.floor((Date.now() - Dat
 const STALE_WAIVER_DAYS = 30
 const MAX_WAIVER_DAYS = 180
 const expiryText = (w: Waiver): string => (!w.expires ? 'no expiry' : !waiverLive(w) ? 'expired' : `expires in ${Math.max(1, Math.ceil((Date.parse(w.expires) - Date.now()) / 86_400_000))}d`)
+
+// An install older than this plugin is upgraded, not re-initialised (design 2026-10-26-rig-upgrade); `--full` takes the same way out.
+function upgradePointer(): string | null {
+  const have = read(path.join(SDLC, 'bin', 'VERSION')).trim()
+  return have && !IS_VENDORED && older(have, pluginVersion()) ? `.rig/bin is ${have}, older than this plugin (${pluginVersion()}): nothing was changed. Run /rig:upgrade from the newer plugin to bring it up to date.` : null // plugin-only: the upgrade skill is not vendored, so no skillRef
+}
 
 function cmdInit(args: Args): void {
   // Ship and the PR gate read git, so a directory outside any repo gets one.
@@ -371,7 +378,7 @@ function scaffoldPolicy(): string {
 
 const COMMANDS: Record<string, (args: Args) => void> = {
   stamp: () => out(treeStamp() ?? 'none'),
-  init: args => { cmdInit(args); if (args.opt.full) { const note = scaffoldPolicy(); if (note) out(note) } },
+  init: args => { const up = upgradePointer(); if (up) return out(up); cmdInit(args); if (args.opt.full) { const note = scaffoldPolicy(); if (note) out(note) } },
   new: cmdNew,
   activate: cmdActivate,
   status: cmdStatus,
@@ -391,6 +398,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   'check-file': cmdCheckFile,
   sync: cmdSync,
   vendor: cmdVendor,
+  upgrade: cmdUpgrade,
   hooks: cmdHooks,
   waive: cmdWaive,
   sensors: () => cmdSensors(),
