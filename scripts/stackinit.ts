@@ -47,5 +47,15 @@ export function declareStack(opt: string | true): string {
   const brief = path.join(ROOT, BRIEF)
   if (!exists(brief)) { fs.mkdirSync(path.dirname(brief), { recursive: true }); fs.copyFileSync(path.join(PLUGIN_ROOT, 'templates', 'brief.md'), brief) }
   const synced = writeSync(packRegistry(pack))
-  return `wrote .rig/sensors.json from the ${pack.stack} pack (${pack.sensors.length} sensors); edit the commands to fit this repo. ${BRIEF} is ready to fill in. ${synced}${pc.note}`
+  return `wrote .rig/sensors.json from the ${pack.stack} pack (${pack.sensors.length} sensors); edit the commands to fit this repo. ${BRIEF} is ready to fill in. ${prdFolder()}${synced}${pc.note}`
+}
+
+// The suggested PRD folder, on disk so a person finds it (2026-10-26 tester feedback): a README and the template, never a sprint
+// PRD (that would read as one written) and never over a file the repo already has.
+function prdFolder(): string {
+  const dir = path.join(ROOT, 'docs', 'prd')
+  if (exists(dir) && !fs.statSync(dir).isDirectory()) return ''
+  fs.mkdirSync(dir, { recursive: true })
+  for (const [to, from] of [['README.md', 'prd-readme.md'], ['prd-template.md', 'prd-format.md']] as const) if (!exists(path.join(dir, to))) fs.copyFileSync(path.join(PLUGIN_ROOT, 'templates', from), path.join(dir, to))
+  return `Put each sprint's PRD in docs/prd/sprint-<n>/prd.md (docs/prd/sprint-0/prd.md first; docs/prd/prd-template.md is the format). `
 }

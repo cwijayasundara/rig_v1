@@ -101,6 +101,7 @@ function vendorStandalone(written: string[]): void {
   mergeHooks(written)
   routeClaudeMd(written)
   routeReadme(written)
+  routePrdDocs(written)
 }
 
 const README_TEMPLATE = 'readme-rig.md'
@@ -126,6 +127,15 @@ function routeReadme(written: string[]): void {
   const text = read(path.join(ROOT, file))
   const routed = text.replace(README_BLOCK, vendoredCommands)
   if (routed !== text) writeFile(file, routed, written)
+}
+
+// init --stack writes these two before init --full vendors, so they still name /rig:chart; a person's PRDs are never touched.
+function routePrdDocs(written: string[]): void {
+  for (const file of ['docs/prd/README.md', 'docs/prd/prd-template.md']) {
+    const text = read(path.join(ROOT, file))
+    const routed = vendoredCommands(text)
+    if (routed !== text) writeFile(file, routed, written)
+  }
 }
 
 const older = (a: string, b: string): boolean => {

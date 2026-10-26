@@ -74,11 +74,11 @@ test('init skill: --quick is the no-question fast lane that turns on workflows',
 
 test('init skill: greenfield and PRD repos are sent to /rig:chart 0 first, a one-off change to /rig:start', () => {
   const tpl = fs.readFileSync(path.resolve(import.meta.dirname, '../templates/readme-rig.md'), 'utf8')
-  assert.match(skill, /Greenfield, or any repo with a PRD[^\n]*`Next: \/rig:chart 0 @docs\/prd\/sprint-0\.md`/)
-  assert.match(skill, /docs\/prd\/sprint-0\.md/)
+  assert.match(skill, /Greenfield, or any repo with a PRD[^\n]*`Next: \/rig:chart 0 @docs\/prd\/sprint-0\/prd\.md`/)
+  assert.match(skill, /docs\/prd\/sprint-0\/prd\.md/)
   assert.match(skill, /One-off change with no PRD[^\n]*\/rig:start/)
   assert.match(tpl, /\/rig:chart 0/)
-  assert.match(tpl, /docs\/prd\/sprint-0\.md/)
+  assert.match(tpl, /docs\/prd\/sprint-0\/prd\.md/)
 })
 
 test('init skill: a greenfield CLAUDE.md maps only files that exist on disk, PRD design is marked planned', () => {
@@ -112,4 +112,12 @@ test('init skill: the 2026-10-25 shop_app --quick run gaps are closed in the tex
   assert.match(greenfield, /Skip the Brownfield \*\*Wiki\*\* step/)
   assert.match(skill, /Under `--defaults` and `--quick` do not commit[^\n]*`git branch -m main` first when the repo has no commits and is not on `main`/)
   assert.match(skill, /docs\/prd\/sprint-<n>-<title>\.md`[^\n]*`Next: \/rig:chart 1 @docs\/prd\/sprint-1-cart\.md`/)
+})
+
+test('init and the README block name docs/prd/sprint-0/prd.md, the folder per sprint', () => {
+  const tpl = fs.readFileSync(path.resolve(import.meta.dirname, '../templates/readme-rig.md'), 'utf8')
+  for (const t of [skill, tpl]) {
+    assert.match(t, /docs\/prd\/sprint-0\/prd\.md/)
+    assert.doesNotMatch(t, /docs\/prd\/sprint-0\.md/)
+  }
 })

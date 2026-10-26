@@ -45,14 +45,14 @@ Claude Code only discovers skills, agents and hooks under `.claude/`; everything
 
 | You want to | Run |
 |---|---|
-| Plan a whole sprint from a PRD (greenfield or brownfield) | write `docs/prd/sprint-0.md`, then `/rig:chart 0 @docs/prd/sprint-0.md` (gap questions, intents, architecture, test plan, review) |
+| Plan a whole sprint from a PRD (greenfield or brownfield) | write `docs/prd/sprint-0/prd.md` (one folder per sprint), then `/rig:chart 0 @docs/prd/sprint-0/prd.md` (gap questions, intents, architecture, test plan, review) |
 | Start a change | `/rig:start "<what you want>"` |
 | Continue a change | `/rig:start <slug>` (it picks up at the first missing step) |
 | Approve a change | `/rig:approve <slug>`; only a person can |
 | Waive a failing sensor with a reason | `/rig:waive <sensor> <file> <reason>` (a file or `*`, for the active change; only a person can) |
 | See where a change stands | `node .rig/bin/sdlc.ts status` |
 
-**New repo with a PRD?** Start the outer loop, not `/rig:start`. Put the product brief in `.rig/product/brief.md` and the PRD in `docs/prd/sprint-0.md` (formats in `.rig/templates/`; give every requirement an id like `FR-1`). Then `/rig:chart 0 @docs/prd/sprint-0.md` (gap questions, intents, architecture, ADRs, test plan and cases, an Opus review), review the branch, `/rig:approve chart-0` (a person), merge, and build each intent with `/rig:start .rig/product/sprints/sprint-<N>/intents/<slug>.md`. `node .rig/bin/sdlc.ts ready` lists what can start.
+**New repo with a PRD?** Start the outer loop, not `/rig:start`. Put the product brief in `.rig/product/brief.md` and the PRD in `docs/prd/sprint-0/prd.md`, one folder per sprint (`docs/prd/prd-template.md` is the format; others in `.rig/templates/`; give every requirement an id like `FR-1`). Then `/rig:chart 0 @docs/prd/sprint-0/prd.md` (gap questions, intents, architecture, ADRs, test plan and cases, an Opus review), review the branch, `/rig:approve chart-0` (a person), merge, and build each intent with `/rig:start .rig/product/sprints/sprint-<N>/intents/<slug>.md`. `node .rig/bin/sdlc.ts ready` lists what can start.
 
 Typical flow for one change (or start from a charted intent: `/rig:start .rig/product/sprints/sprint-<N>/intents/<slug>.md`; a team charts a sprint first with `/rig:chart <N>`, and a person approves it with `/rig:approve chart-<N>`):
 

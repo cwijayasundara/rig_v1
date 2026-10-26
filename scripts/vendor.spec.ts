@@ -72,6 +72,20 @@ test('vendor --cloud names the vendored /rig-x commands in the README rig block 
   assert.doesNotMatch(tpl, /\/rig:[a-z]/)
 })
 
+test('vendor --cloud names the /rig-x commands in the docs/prd README and template init wrote', () => {
+  // init --stack writes docs/prd/ before init --full vendors, so its copies still say /rig:chart until vendor routes them.
+  const repo = makeRepo()
+  sdlc(repo, ['init'])
+  write(repo, 'docs/prd/README.md', 'Run `/rig:chart <n> @docs/prd/sprint-<n>/prd.md`.\n')
+  write(repo, 'docs/prd/prd-template.md', 'converted by /rig:chart\n')
+  assert.equal(sdlc(repo, ['vendor', '--cloud']).code, 0)
+  for (const f of ['docs/prd/README.md', 'docs/prd/prd-template.md']) {
+    const text = fs.readFileSync(path.join(repo, f), 'utf8')
+    assert.match(text, /\/rig-chart/, f)
+    assert.doesNotMatch(text, /\/rig:[a-z]/, f)
+  }
+})
+
 test('the vendored copy points its skills at .rig/bin and the session start names the active change', () => {
   const repo = makeRepo()
   sdlc(repo, ['init'])
