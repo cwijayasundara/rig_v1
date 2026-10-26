@@ -158,8 +158,8 @@ read at approval time, not part of what was approved.
 
 ## After the chart
 
-- **The change's requirements file.** No script writes `spec.md` today: `newChange` (`scripts/lifecycle.ts:38`) writes
-  only `intent.md`, and the `/rig:start` model writes `spec.md` from the intent. So `S new <slug> --source <intent>` also
+- **The change's requirements file.** `S new --source` (`scripts/sdlc.ts:88`) seeds `spec.md` with the intent's
+  behaviours, but the `/rig:start` model then rewrites `spec.md`, so nothing there is safe from paraphrase. So `S new <slug> --source <intent>` also
   writes `.rig/changes/<slug>/requirements.md`: every ledger row the intent cites (in `prd:` or in a behaviour, a bare FR
   id pulling in all its `rule` and `answer` rows), copied word for word with its id. The script writes it and the model
   never edits it, so nothing can paraphrase it. It joins `spec.md` and `plan.md` in the change's approved files
