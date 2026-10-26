@@ -165,9 +165,10 @@ check stays and must pass trivially on a generated ledger.
 
 Behaviours already cite an FR plus a criterion, `- B2 (FR-4, AC-4.1): ...`; that stays the form. A data rule is cited the
 same way by the behaviour that enforces it, `- B3 (FR-4, DR-2): ...` (an FR is still required, so `intent-untraced` is
-unchanged), and an NFR row by its own id, as today. A generated ledger row carries its parent FR in the alias slot for AC
-rows (`- AC-4.1 (FR-4) [rule] prd.md:31 "..."`), so `changeRequirements` keeps selecting by the intent's `prd:` FR ids: an
-AC row comes with its FR, an NFR row with its NFR id, and a DR row only when a behaviour of the intent cites it.
+unchanged), and an NFR row by its own id, as today. The parent FR of a generated row is derived from its id (`AC-4.1` belongs to `FR-4`), not written in the alias slot: an
+alias would let a behaviour citing only `FR-4` cover every criterion of FR-4. `changeRequirements` selects by the intent's
+`prd:` FR ids: an AC row comes with its FR, an NFR row with its NFR id, and a DR row only when a behaviour of the intent
+cites it. A criterion marked `(out of scope: <when>, decided by <who> — <reason>)` becomes an out-of-scope ledger row.
 `RULE_ID` gains `DR-\d+`; `ledgerProblems` counts a row covered when a behaviour cites its id.
 
 ## Files, states and re-runs
