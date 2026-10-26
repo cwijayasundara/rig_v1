@@ -1,0 +1,8 @@
+{
+  "prd": "eval/fixtures/chart/sprint-b-prd.md",
+  "requirements": ["FR-1", "FR-2", "NFR-1"],
+  "rules": [
+    { "quote": "Ids start at 1.", "mustKeep": ["\\b1\\b"] },
+    { "quote": "Ids are never reused, even after an item is removed.", "mustKeep": ["never|not.*reuse|unique"] }
+  ]
+}
