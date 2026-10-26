@@ -3,12 +3,14 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { ROOT, SDLC, SENSORS_PATH, IS_VENDORED, skillRef, exists, read, out, fail, sha, type Args } from './core.ts'
+import { ROOT, SDLC, SENSORS_PATH, IS_VENDORED, skillRef, exists, read, out, fail, sha, git, sanctionWrites, type Args } from './core.ts'
 import { isObject } from './model.ts'
 import { isRegistryShape } from './registry.ts'
 import { loadPacks, PACKS_DIR } from './stackpacks.ts'
-import { harnessFiles, readManifest, pluginVersion, older, type Manifest } from './vendor.ts'
-import { pendingMigrations, type Migration } from './migrations.ts'
+import { harnessFiles, readManifest, mergeProjectFiles, MANIFEST, pluginVersion, older, type Manifest } from './vendor.ts'
+import { pendingMigrations, runMigrations, type Migration } from './migrations.ts'
+import { cmdSync } from './sync.ts'
+import { cmdBaseline } from './initbaseline.ts'
 
 export type Verdict = 'noop' | 'replace' | 'keep' | 'add' | 'delete' | 'conflict'
 
@@ -101,9 +103,77 @@ function showDiff(plan: Plan, rel: string): void {
   } finally { fs.rmSync(tmp, { recursive: true, force: true }) }
 }
 
+type Decision = 'mine' | 'new' | 'later'
+
+function parseDecisions(raw: unknown, conflicts: string[]): Map<string, Decision> {
+  const m = new Map<string, Decision>()
+  if (raw === undefined) return m
+  let j: unknown
+  try { j = typeof raw === 'string' ? JSON.parse(raw) : null } catch { j = null }
+  if (!isObject(j)) return fail('--decide needs a JSON object: {"<path>": "mine" | "new" | "later"}')
+  for (const [rel, v] of Object.entries(j)) {
+    if (v !== 'mine' && v !== 'new' && v !== 'later') fail(`--decide: "${String(v)}" for ${rel} is not mine, new or later`)
+    if (!conflicts.includes(rel)) fail(`--decide: ${rel} is not a conflict in this plan`)
+    m.set(rel, v as Decision)
+  }
+  return m
+}
+
+// Applies the plan on a new branch and stops: never commits to main, never pushes.
+function applyUpgrade(args: Args): void {
+  const plan = buildPlan()
+  const conflicts = [...plan.files].filter(([, v]) => v === 'conflict').map(([rel]) => rel)
+  const current = [...plan.files.values()].every(v => v === 'noop' || v === 'keep') && !plan.migrations.length && !plan.proposals && plan.from === plan.to
+  if (current) return out('already current: nothing to apply, no branch created')
+  const decisions = parseDecisions(args.opt.decide, conflicts)
+  const wanted = typeof args.opt['add-sensors'] === 'string' ? args.opt['add-sensors'].split(',').map(s => s.trim()).filter(Boolean) : []
+  const unknown = wanted.filter(id => !plan.proposals?.sensors.some(s => s.id === id))
+  if (unknown.length) fail(`--add-sensors: not a proposed sensor: ${unknown.join(', ')}`)
+  const branch = `chore/rig-upgrade-${plan.to}`
+  if (git(['status', '--porcelain'])) fail('the working tree is not clean: commit or stash first, so the upgrade branch holds only the upgrade')
+  const undecided = conflicts.filter(rel => !decisions.has(rel))
+  if (undecided.length) fail(`decide each conflict with --decide '{"<path>": "mine" | "new" | "later"}'; undecided:\n${undecided.map(rel => `  ${rel}`).join('\n')}`)
+  if (git(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`])) fail(`branch ${branch} already exists: merge or delete it first`)
+  if (git(['checkout', '-q', '-b', branch]) === null) fail(`could not create branch ${branch}`)
+
+  const written: string[] = []
+  const put = (rel: string, text: string): void => {
+    fs.mkdirSync(path.dirname(path.join(ROOT, rel)), { recursive: true })
+    fs.writeFileSync(path.join(ROOT, rel), text)
+    if (rel.startsWith('.rig/githooks/')) fs.chmodSync(path.join(ROOT, rel), 0o755)
+    written.push(rel)
+  }
+  const drop = (rel: string): void => { fs.rmSync(path.join(ROOT, rel), { force: true }); written.push(rel) }
+  for (const [rel, v] of plan.files) {
+    const text = plan.next.get(rel)
+    const d = decisions.get(rel)
+    if (v === 'replace' || v === 'add') put(rel, text as string)
+    else if (v === 'delete') drop(rel)
+    else if (v === 'conflict' && d === 'new') text === undefined ? drop(rel) : put(rel, text)
+    else if (v === 'conflict' && d === 'later' && text !== undefined) put(`${rel}.rig-new`, text)
+  }
+  if (plan.standalone) mergeProjectFiles(written)
+  const notes = runMigrations(plan.migrations, ROOT)
+  for (const rel of plan.migrations.length ? ['.rig/sensors.json.rig-new'] : []) if (exists(path.join(ROOT, rel))) written.push(rel)
+  if (wanted.length) {
+    const reg = JSON.parse(read(SENSORS_PATH)) as { sensors: unknown[] }
+    for (const id of wanted) reg.sensors.push(structuredClone(plan.proposals?.sensors.find(s => s.id === id)))
+    fs.writeFileSync(SENSORS_PATH, JSON.stringify(reg, null, 2) + '\n')
+    written.push('.rig/sensors.json')
+  }
+  if (plan.standalone) {
+    const files = Object.fromEntries([...plan.next].map(([rel, text]) => [rel, sha(text)]).sort(([a], [b]) => (a as string).localeCompare(b as string, 'en')))
+    put(MANIFEST, JSON.stringify({ version: plan.to, files }, null, 2) + '\n')
+  }
+  sanctionWrites(written)
+  out(`upgrade ${plan.from || 'unversioned'} -> ${plan.to} applied on ${branch}\n${written.length} files written${notes.length ? '\n' + notes.join('\n') : ''}`)
+  if (isRegistryShape(read(SENSORS_PATH))) { cmdSync({ pos: [], opt: {} }); cmdBaseline() }
+  out(`branch ${branch}\nreview and merge; nothing was pushed`)
+}
+
 export function cmdUpgrade(args: Args): void {
   upgradeGates(args)
-  if (args.opt.apply) fail('upgrade --apply is not implemented yet')
+  if (args.opt.apply) return applyUpgrade(args)
   const plan = buildPlan()
   if (typeof args.opt.diff === 'string') return showDiff(plan, args.opt.diff)
   const counts = countsOf(plan.files)

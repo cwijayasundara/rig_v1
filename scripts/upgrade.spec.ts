@@ -3,7 +3,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { makeRepo, gitIn, sdlc, write } from './testkit.ts'
+import { makeRepo, gitIn, sdlc, write, registry } from './testkit.ts'
+import { sha } from './core.ts'
 
 const status = (repo: string): string => gitIn(repo, 'status', '--porcelain', '-uall')
 const vendored = (): string => {
@@ -114,4 +115,155 @@ test('--diff prints the diff for one file', () => {
   assert.match(r.stdout, /^-\/\/ local$/m)
   assert.equal(status(repo), before)
   assert.equal(sdlc(repo, ['upgrade', '--diff', 'nope.txt']).code, 1)
+})
+
+// --apply: a vendored, committed project whose copies lag the plugin. Disk text + manifest hash = "installed an older version".
+const SKILL = '.claude/skills/rig-start/SKILL.md'
+const CORE = '.rig/bin/core.ts'
+const SENSORS = registry({ turn: { x: 'true' }, extra: { stack: 'node' } })
+const committed = (): string => {
+  const repo = vendored()
+  write(repo, '.rig/sensors.json', SENSORS)
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', 'vendor')
+  return repo
+}
+const lag = (repo: string, rel: string, old: string): void => {
+  write(repo, rel, old)
+  editManifest(repo, m => { m.files[rel] = sha(old) })
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', 'lag')
+}
+const manifestOf = (repo: string) => JSON.parse(fs.readFileSync(manifestPath(repo), 'utf8')) as { version: string; files: Record<string, string> }
+
+test('apply replaces an unchanged file and records the new hash', () => {
+  const repo = committed()
+  const want = fs.readFileSync(path.join(repo, SKILL), 'utf8')
+  lag(repo, SKILL, 'old\n')
+  const r = sdlc(repo, ['upgrade', '--apply'])
+  assert.equal(r.code, 0, r.stderr)
+  assert.equal(fs.readFileSync(path.join(repo, SKILL), 'utf8'), want)
+  assert.equal(manifestOf(repo).files[SKILL], sha(want))
+  assert.match(r.stdout, /review and merge; nothing was pushed/)
+  assert.equal(plan(repo).files[SKILL], undefined)
+})
+
+test('apply keeps a local edit and next dry run is noop for it', () => {
+  const repo = committed()
+  const want = fs.readFileSync(path.join(repo, SKILL), 'utf8')
+  lag(repo, SKILL, 'old\n')
+  write(repo, SKILL, 'old\nteam note\n')
+  gitIn(repo, 'commit', '-qam', 'edit')
+  assert.equal(plan(repo).files[SKILL], 'conflict')
+  assert.equal(sdlc(repo, ['upgrade', '--apply', '--decide', JSON.stringify({ [SKILL]: 'mine' })]).code, 0)
+  assert.equal(fs.readFileSync(path.join(repo, SKILL), 'utf8'), 'old\nteam note\n')
+  assert.equal(manifestOf(repo).files[SKILL], sha(want))
+  assert.equal(plan(repo).files[SKILL], 'keep')
+})
+
+test('conflict with decision new overwrites, mine keeps, later keeps and writes .rig-new', () => {
+  const repo = committed()
+  const rels = [SKILL, CORE, '.rig/bin/sdlc.ts']
+  const want = rels.map(rel => fs.readFileSync(path.join(repo, rel), 'utf8'))
+  for (const rel of rels) { lag(repo, rel, 'old\n'); write(repo, rel, 'local\n') }
+  gitIn(repo, 'commit', '-qam', 'edit')
+  const d = { [rels[0]!]: 'new', [rels[1]!]: 'mine', [rels[2]!]: 'later' }
+  const r = sdlc(repo, ['upgrade', '--apply', '--decide', JSON.stringify(d)])
+  assert.equal(r.code, 0, r.stderr)
+  assert.equal(fs.readFileSync(path.join(repo, rels[0]!), 'utf8'), want[0])
+  assert.equal(fs.readFileSync(path.join(repo, rels[1]!), 'utf8'), 'local\n')
+  assert.equal(fs.readFileSync(path.join(repo, rels[2]!), 'utf8'), 'local\n')
+  assert.equal(fs.readFileSync(path.join(repo, `${rels[2]!}.rig-new`), 'utf8'), want[2])
+  assert.equal(fs.existsSync(path.join(repo, `${rels[1]!}.rig-new`)), false)
+})
+
+test('apply without a decision for a conflict refuses and writes nothing', () => {
+  const repo = committed()
+  lag(repo, CORE, 'old\n')
+  write(repo, CORE, 'local\n')
+  gitIn(repo, 'commit', '-qam', 'edit')
+  const branch = gitIn(repo, 'branch', '--show-current')
+  const r = sdlc(repo, ['upgrade', '--apply'])
+  assert.equal(r.code, 1)
+  assert.match(r.stderr, /undecided[\s\S]*\.rig\/bin\/core\.ts/)
+  assert.equal(status(repo), '')
+  assert.equal(gitIn(repo, 'branch', '--show-current'), branch)
+  const bad = sdlc(repo, ['upgrade', '--apply', '--decide', JSON.stringify({ [CORE]: 'maybe' })])
+  assert.equal(bad.code, 1)
+  assert.equal(sdlc(repo, ['upgrade', '--apply', '--decide', JSON.stringify({ 'nope.txt': 'new' })]).code, 1)
+  assert.equal(status(repo), '')
+})
+
+test('apply refuses a dirty tree', () => {
+  const repo = committed()
+  lag(repo, SKILL, 'old\n')
+  write(repo, 'untracked.txt', 'x\n')
+  const r = sdlc(repo, ['upgrade', '--apply'])
+  assert.equal(r.code, 1)
+  assert.match(r.stderr, /not clean/)
+  assert.equal(fs.readFileSync(path.join(repo, SKILL), 'utf8'), 'old\n')
+  assert.equal(gitIn(repo, 'branch', '--list', 'chore/*'), '')
+})
+
+test('apply refuses when the branch exists', () => {
+  const repo = committed()
+  lag(repo, SKILL, 'old\n')
+  const to = plan(repo).to
+  gitIn(repo, 'branch', `chore/rig-upgrade-${to}`)
+  const r = sdlc(repo, ['upgrade', '--apply'])
+  assert.equal(r.code, 1)
+  assert.match(r.stderr, /already exists/)
+  assert.equal(fs.readFileSync(path.join(repo, SKILL), 'utf8'), 'old\n')
+})
+
+test('apply on a current install creates no branch', () => {
+  const repo = vendored()
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', 'vendor')
+  const r = sdlc(repo, ['upgrade', '--apply'])
+  assert.equal(r.code, 0, r.stderr)
+  assert.match(r.stdout, /already current/)
+  assert.equal(gitIn(repo, 'branch', '--list', 'chore/*'), '')
+  assert.equal(status(repo), '')
+})
+
+test('apply adds chosen sensors to sensors.json and leaves other sensors byte-identical', () => {
+  const repo = committed()
+  const p = plan(repo)
+  const prop = (p.proposals as { sensors: { id: string }[] }).sensors
+  assert.ok(prop.length > 1)
+  const pick = prop[0]!.id
+  const before = JSON.parse(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8')) as { sensors: object[] }
+  assert.equal(sdlc(repo, ['upgrade', '--apply', '--add-sensors', 'nope']).code, 1)
+  assert.equal(status(repo), '')
+  const r = sdlc(repo, ['upgrade', '--apply', '--add-sensors', pick])
+  assert.equal(r.code, 0, r.stderr)
+  const after = JSON.parse(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8')) as { sensors: { id: string }[] }
+  assert.equal(after.sensors.length, before.sensors.length + 1)
+  assert.deepEqual(after.sensors.slice(0, before.sensors.length), before.sensors)
+  assert.equal(after.sensors.at(-1)!.id, pick)
+})
+
+test('hook scripts stay mode 755', () => {
+  const repo = committed()
+  const hooks = Object.keys(manifestOf(repo).files).filter(f => f.startsWith('.rig/githooks/'))
+  assert.ok(hooks.length > 0)
+  lag(repo, hooks[0]!, '#!/bin/sh\nold\n')
+  fs.chmodSync(path.join(repo, hooks[0]!), 0o644)
+  gitIn(repo, 'update-index', '--chmod=-x', hooks[0]!)
+  gitIn(repo, 'commit', '-qam', 'mode')
+  assert.equal(sdlc(repo, ['upgrade', '--apply']).code, 0)
+  for (const h of hooks) assert.equal(fs.statSync(path.join(repo, h)).mode & 0o777, 0o755, h)
+})
+
+test('apply never pushes', () => {
+  const repo = committed()
+  lag(repo, SKILL, 'old\n')
+  const main = gitIn(repo, 'rev-parse', 'main')
+  const to = plan(repo).to
+  const r = sdlc(repo, ['upgrade', '--apply'])
+  assert.equal(r.code, 0, r.stderr)
+  assert.equal(gitIn(repo, 'branch', '--show-current'), `chore/rig-upgrade-${to}`)
+  assert.equal(gitIn(repo, 'rev-parse', 'main'), main)
+  assert.equal(gitIn(repo, 'remote'), '')
 })
