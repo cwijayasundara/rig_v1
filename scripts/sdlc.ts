@@ -213,9 +213,10 @@ function cmdChart(args: Args): void {
 // The PRD format for coding agents (spec 2026-10-26): `prd check <N>` says whether the sprint PRD is in rig's template.
 function cmdPrd(args: Args): void {
   const [sub, num] = args.pos
-  if ((sub !== 'check' && sub !== 'ledger' && sub !== 'map') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: prd (check [--json] | map [--json] | ledger) <sprint number>')
+  if (!['check', 'map', 'ledger', 'status'].includes(sub ?? '') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: prd (check [--json] | map [--json] | ledger | status) <sprint number>')
   const n = Number(num)
   needPrd(n)
+  if (sub === 'status') return out(isConverted(n) ? `${prdApprovalState(n)}: ${prdApprovalState(n) === 'approved' ? 'the chart may decompose prd.md' : `a person reads prd.md beside source.md, then runs ${skillRef('approve')} prd-${n}`}` : 'not converted: prd.md is the person\'s own, no PRD approval needed')
   if (sub === 'ledger') {
     const format = prdFormatProblems(read(prdPath(n)))
     if (format.length) fail(`prd.md is not in format, so no ledger can be generated: run \`prd check ${n}\``)

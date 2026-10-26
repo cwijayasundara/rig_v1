@@ -824,3 +824,12 @@ test('a bare approve names prd-N while a converted sprint waits for its PRD appr
   converted()
   assert.equal(sdlc(repo, ['approve', '--ask'], HUMAN).stdout.trim(), 'ASK prd-1')
 })
+
+test('prd status says whether the chart may decompose the PRD', () => {
+  converted()
+  assert.match(sdlc(repo, ['prd', 'status', '1']).stdout, /^missing/)
+  sdlc(repo, ['approve', 'prd-1'], HUMAN)
+  assert.match(sdlc(repo, ['prd', 'status', '1']).stdout, /^approved/)
+  write(repo, `${P}/sprints/sprint-1/source.md`, FORMAT_PRD)
+  assert.match(sdlc(repo, ['prd', 'status', '1']).stdout, /^not converted/)
+})

@@ -2,7 +2,9 @@
 // requirements ledger can be generated from it and nothing rides on prose. Pure over text; no repo, no model.
 import { normalise, prdBlocks, unquoted, prdIds, type ChartFinding } from './chartcheck.ts'
 
-export type Criterion = { id: string; parent: string | null; kind: 'rule' | 'answer'; line: number; text: string }
+export type Criterion = { id: string; parent: string | null; kind: 'rule' | 'answer' | 'out-of-scope'; line: number; text: string; when?: string; by?: string; reason?: string }
+// `(out of scope: <when>, decided by <who> — <reason>)` on a criterion: kept in the PRD and the ledger, owed no behaviour or test.
+const OUT_OF_SCOPE = /\s*\(out of scope:\s*(.*?),\s*decided by\s+(.*?)\s+[—–-]+\s*(.*?)\)\s*/i
 
 // The template's sections, in order; the strict ones must be present (Data rules, NFRs and Boundaries may hold `none`).
 export const PRD_SECTIONS = ['Context and problem', 'Goals and success metrics', 'Non-goals', 'Users and scenarios', 'Functional requirements', 'Data rules',
@@ -52,14 +54,16 @@ function criteria(ls: Line[]): (Criterion & { shaped: boolean; fr: string | null
     if (!m || (l.h2 !== 'Functional requirements' && l.h2 !== 'Data rules')) continue
     const parts = [m[3] ?? '']
     while (ls[i + 1] && ls[i + 1]!.n === ls[i]!.n + 1 && /^\s+\S/.test(ls[i + 1]!.text) && !/^\s*[-*]\s/.test(ls[i + 1]!.text)) parts.push(ls[++i]!.text.trim())
-    const text = normalise(parts.join(' ').replace(/^\*\*\s*/, ''))
+    const raw = parts.join(' ').replace(/^\*\*\s*/, '')
+    const oos = OUT_OF_SCOPE.exec(raw)
+    const text = normalise(raw.replace(OUT_OF_SCOPE, ''))
     const id = m[1]!
-    out.push({ id, parent: m[2] ? `FR-${m[2]}` : null, kind: /\(answered at chart\)/i.test(parts.join(' ')) ? 'answer' : 'rule', line: l.n, text, shaped: id.startsWith('DR-') || SHAPE(text), fr: l.fr, num: m[2] ?? null })
+    out.push({ id, parent: m[2] ? `FR-${m[2]}` : null, kind: oos ? 'out-of-scope' : /\(answered at chart\)/i.test(raw) ? 'answer' : 'rule', line: l.n, text, ...(oos ? { when: oos[1]!, by: oos[2]!, reason: oos[3]! } : {}), shaped: id.startsWith('DR-') || SHAPE(text), fr: l.fr, num: m[2] ?? null })
   }
   return out
 }
 
-export const prdCriteria = (prd: string): Criterion[] => criteria(lines(prd)).map(({ id, parent, kind, line, text }) => ({ id, parent, kind, line, text }))
+export const prdCriteria = (prd: string): Criterion[] => criteria(lines(prd)).map(({ shaped: _s, fr: _f, num: _n, ...c }) => c)
 
 export function prdFormatProblems(prd: string): ChartFinding[] {
   const out: ChartFinding[] = []
@@ -92,7 +96,7 @@ export function prdFormatProblems(prd: string): ChartFinding[] {
 
 // requirements.md generated from the criteria: the ledger line format chart check, the change copy and the PR review read.
 export const prdLedger = (prd: string): string => ['# Requirements (generated from prd.md by rig: never edit)', '',
-  ...prdCriteria(prd).map(c => `- ${c.id} [${c.kind}] prd.md:${c.line} "${c.text}"`), ''].join('\n')
+  ...prdCriteria(prd).map(c => c.kind === 'out-of-scope' ? `- ${c.id} [out-of-scope: ${c.when}, decided by ${c.by}] prd.md:${c.line} "${c.text}" — ${c.reason}` : `- ${c.id} [${c.kind}] prd.md:${c.line} "${c.text}"`), ''].join('\n')
 
 // ---------- the conversion map: every sentence of the person's original accounted for ----------
 // `- <id>[, <id>...] source.md:<line> "<quote>"` or `- context source.md:<line> "<quote>" — <reason>`.

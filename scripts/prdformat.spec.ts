@@ -137,3 +137,11 @@ test('map-misquote: a paraphrase, or a line far from the sentence', () => {
   assert.deepEqual(conv({ map: MAP.replace('"Ids are never reused."', '"Ids may be reused."') }), ['map-misquote', 'map-unquoted'])
   assert.deepEqual(conv({ map: MAP.replace('- DR-1 source.md:9', '- DR-1 source.md:30') }), ['map-misquote'])
 })
+
+test('a criterion marked out of scope becomes an out-of-scope ledger row with when, who and why', () => {
+  const prd = PRD({ data: '- DR-1: Each item id is an integer starting at 1.\n- DR-2: Ids are archived after a year (out of scope: sprint 2, decided by Ana — storage first).\n' })
+  assert.deepEqual(prdFormatProblems(prd), [])
+  const row = parseLedger(prdLedger(prd)).find(r => r.id === 'DR-2')
+  assert.deepEqual([row?.kind, row?.when, row?.by, row?.reason, row?.quote], ['out-of-scope', 'sprint 2', 'Ana', 'storage first', 'Ids are archived after a year.'])
+  assert.deepEqual(lp('- B1 (FR-4, AC-4.1): next id\n- B2 (FR-4, DR-1): starts at 1\n- B4 (NFR-1): fast\n', prd), [])
+})

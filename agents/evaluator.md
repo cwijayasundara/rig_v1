@@ -34,5 +34,12 @@ verdict: pass | changes-needed
 - ...
 ```
 
+## Conversion mode
+The brief says "check the conversion for sprint N". Read `sprints/sprint-N/source.md` (and the original `source.<ext>` when there is one, since `source.md` is then a plain-text rendering), the converted `prd.md` and `conversion.md`. Report only, one line each, as in chart mode:
+- **weakened**: a rule of the original whose number, limit, start value, "never", "only", "every" or "unique" did not survive into its `AC`, `DR` or `NFR` line
+- **invented**: a criterion no sentence of the original supports
+- **ledger**: a sentence of the original mapped to `context` that a test could assert
+Never edit; raise nothing else.
+
 ## Confirm mode
 The brief says "confirm the fixes for sprint N" and gives finding lines marked `→ fixed`. For each, reread only the files it cites, and the ledger rows it names, and answer one line per finding, in order: `<n>. confirmed` when the problem is gone, or `<n>. reopened: <why>` naming what still says it. Raise nothing new.

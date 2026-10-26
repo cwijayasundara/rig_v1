@@ -91,7 +91,7 @@ const LINE_SLACK = 3
 // Markup and spacing never decide whether a quote matches: emphasis, backticks, curly quotes, spaces around table pipes and the
 // "(answered at chart)" marker are dropped on both sides.
 export const normalise = (s: string): string => s.replace(/[\u201c\u201d]/g, '"').replace(/[\u2018\u2019]/g, "'").replace(/\*\*|__|[*`]/g, '')
-  .replace(/\(answered at chart\)/gi, '').replace(/\s*\|\s*/g, ' | ').replace(/\s+/g, ' ').trim()
+  .replace(/\(answered at chart\)/gi, '').replace(/\s*\(out of scope:[^)]*\)/gi, '').replace(/\s*\|\s*/g, ' | ').replace(/\s+/g, ' ').trim()
 
 function readLedgerLine(l: string): LedgerLine | null {
   if (!/^\s*[-*]\s+\S/.test(l)) return null
