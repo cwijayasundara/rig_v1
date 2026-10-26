@@ -29,15 +29,20 @@ export const reviewPath = (n: number): string => path.join(sprintDir(n), 'chart-
 // Repo-relative posix forms, for messages and for matching git paths.
 export const sprintRel = (n: number): string => `.rig/product/sprints/sprint-${n}`
 export const prdRel = (n: number): string => `${sprintRel(n)}/prd.md`
-// Where a person is told to put a PRD: a repo-owned folder, not rig's. /rig:chart copies it to prdRel(n).
-export const prdHint = (n: number): string => `docs/prd/sprint-${n}.md`
-// A PRD the person already wrote under docs/prd/ as sprint-<n>.md or sprint-<n>-<title>.md, lowest sprint first, so the journey names
-// it instead of asking for a sprint-0.md (2026-10-25 shop_app: the PRDs were sprint-1-cart-add-remove.md and sprint-2-cart-get-items.md).
+// Where a person puts a PRD: a repo-owned folder per sprint, mockups beside it; /rig:chart copies it to prdRel(n) (2026-10-26 tester).
+export const prdHint = (n: number): string => `docs/prd/sprint-${n}/prd.md`
+// A PRD the person already wrote under docs/prd/: sprint-<n>/prd.md, or the older flat sprint-<n>.md or sprint-<n>-<title>.md,
+// lowest sprint first and the folder before a flat file of the same sprint, so the journey names it instead of asking for one
+// (2026-10-25 shop_app: the PRDs were sprint-1-cart-add-remove.md and sprint-2-cart-get-items.md).
 export function prdsInDocs(): { n: number; rel: string }[] {
   const dir = path.join(ROOT, 'docs', 'prd')
   if (!exists(dir)) return []
-  return fs.readdirSync(dir).flatMap(f => { const m = /^sprint-(\d{1,4})(?:-[\w.-]+)?\.md$/.exec(f); return m?.[1] ? [{ n: Number(m[1]), rel: `docs/prd/${f}` }] : [] })
-    .sort((a, b) => a.n - b.n || a.rel.localeCompare(b.rel))
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => {
+    const m = /^sprint-(\d{1,4})(?:-[\w.-]+?)?(\.md)?$/.exec(e.name)
+    if (!m?.[1]) return []
+    if (e.isDirectory() && !m[2]) return exists(path.join(dir, e.name, 'prd.md')) ? [{ n: Number(m[1]), rel: `docs/prd/${e.name}/prd.md`, folder: 0 }] : []
+    return e.isFile() && m[2] ? [{ n: Number(m[1]), rel: `docs/prd/${e.name}`, folder: 1 }] : []
+  }).sort((a, b) => a.n - b.n || a.folder - b.folder || a.rel.localeCompare(b.rel)).map(({ n, rel }) => ({ n, rel }))
 }
 export const intentRel = (n: number, slug: string): string => `${sprintRel(n)}/intents/${slug}.md`
 

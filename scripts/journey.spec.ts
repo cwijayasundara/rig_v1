@@ -24,12 +24,12 @@ test('journey: an empty repo shows the outer loop at init', () => {
   assert.deepEqual(JSON.parse(r.stdout), { initialised: false })
 })
 
-test('journey: initialised, no PRD → the person writes sprint-0.md', () => {
+test('journey: initialised, no PRD → the person writes docs/prd/sprint-0/prd.md, one folder per sprint (2026-10-26 tester feedback)', () => {
   const j = view()
   assert.equal(j.kind, 'greenfield')
   assert.deepEqual(j.show, ['outer', 'inner'])
   assert.match(states(j), /^init:done prd:current chart:todo/)
-  assert.match(j.next.command, /^add the PRD at docs\/prd\/sprint-0\.md, then \/rig:chart 0 @docs\/prd\/sprint-0\.md$/)
+  assert.match(j.next.command, /^add the PRD at docs\/prd\/sprint-0\/prd\.md, then \/rig:chart 0 @docs\/prd\/sprint-0\/prd\.md$/)
   assert.equal(j.next.by, 'person')
 })
 
@@ -41,6 +41,24 @@ test('journey: a PRD already under docs/prd/ is named with its own sprint number
   assert.match(states(j), /^init:done prd:done chart:current/)
   assert.equal(j.next.command, '/rig:chart 1 @docs/prd/sprint-1-cart-add-remove.md')
   assert.equal(j.next.by, 'model')
+})
+
+test('journey: a sprint folder under docs/prd/ is named, and wins over a flat file of the same sprint', () => {
+  write(repo, 'docs/prd/sprint-1.md', PRD)
+  write(repo, 'docs/prd/sprint-1/prd.md', PRD)
+  write(repo, 'docs/prd/sprint-1/mockup.png', 'x')
+  const j = view()
+  assert.equal(j.sprint, 1)
+  assert.equal(j.next.command, '/rig:chart 1 @docs/prd/sprint-1/prd.md')
+})
+
+test('journey: the README and template init writes under docs/prd/ are not a PRD', () => {
+  write(repo, 'docs/prd/README.md', '# PRDs\n')
+  write(repo, 'docs/prd/prd-template.md', PRD)
+  write(repo, 'docs/prd/sprint-0/notes.txt', 'no prd.md yet')
+  const j = view()
+  assert.match(states(j), /^init:done prd:current/)
+  assert.equal(j.next.by, 'person')
 })
 
 test('journey: PRD but no intents → chart', () => {
@@ -103,10 +121,10 @@ test('journey: an active change takes over the next command and fills the inner 
 
 test('journey: every step carries the full command to run, and the text form shows them', () => {
   const j = view()
-  assert.deepEqual(j.outer.map(x => x.command), ['/rig:init', 'add PRD → docs/prd/sprint-0.md', '/rig:chart 0', '/rig:testplan 0', '/rig:approve chart-0', '/rig:start <intent>'])
+  assert.deepEqual(j.outer.map(x => x.command), ['/rig:init', 'add PRD → docs/prd/sprint-0/prd.md', '/rig:chart 0', '/rig:testplan 0', '/rig:approve chart-0', '/rig:start <intent>'])
   assert.equal(sdlc(repo, ['new', 'add-login', '--type', 'feature']).code, 0)
   assert.deepEqual(view().inner?.steps.map(x => x.command), ['/rig:start add-login', '/rig:plan add-login', '/rig:approve add-login', '/rig:build add-login', '/rig:test add-login', '/rig:pr add-login', 'review and its fixes (the /rig:pr reviewer)', 'review and merge the PR'])
-  assert.match(sdlc(repo, ['status', '--journey']).stdout, /✓ \/rig:init {2}● add PRD → docs\/prd\/sprint-0\.md {2}○ \/rig:chart 0/)
+  assert.match(sdlc(repo, ['status', '--journey']).stdout, /✓ \/rig:init {2}● add PRD → docs\/prd\/sprint-0\/prd\.md {2}○ \/rig:chart 0/)
 })
 
 test('journey: build, test, PR and the advisory review are one unattended run; only approve and merge are a person', () => {

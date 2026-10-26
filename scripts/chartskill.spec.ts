@@ -226,3 +226,12 @@ test('chart step 1 on a re-run of a converted sprint checks prd status first and
   assert.match(step1, /re-run[^\n]*`S prd status <N>` first[^\n]*`approved`[^\n]*ledger[^\n]*otherwise[^\n]*`S prd check <N>`[^\n]*`S prd map <N>`[^\n]*stop/i)
   assert.match(step1, /gap pass and the conversion review run on the first pass only/i)
 })
+
+// A tester asked for a suggested PRD directory, sprint by sprint (2026-10-26): chart finds docs/prd/sprint-<N>/prd.md first,
+// then the older flat docs/prd/sprint-<N>.md, and keeps the files beside a folder PRD (mockups, samples) with source.md.
+test('chart skill: looks for docs/prd/sprint-<N>/prd.md before docs/prd/sprint-<N>.md, and copies the folder\'s other files', () => {
+  const step = skill.split('\n').find(l => l.startsWith('1. **Which sprint, which PRD.**')) ?? ''
+  const folder = step.indexOf('docs/prd/sprint-<N>/prd.md'), flat = step.indexOf('docs/prd/sprint-<N>.md')
+  assert.ok(folder > 0 && flat > folder, 'folder form first, flat form as the fallback')
+  assert.match(skill, /other files in (that|the PRD's) folder[^\n]*attachments\//i)
+})

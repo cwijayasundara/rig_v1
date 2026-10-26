@@ -180,6 +180,20 @@ test('init --stack writes the detected stack pack when there is no sensors.json,
   assert.match(run(['init', '--stack', 'cobol']).stdout, /no stack pack for cobol \(known: .*node/)
 })
 
+// A tester could not find where a PRD goes (2026-10-26): init names docs/prd/ on disk, one folder per sprint, with the template beside it.
+test('init --stack writes docs/prd/README.md and the PRD template, never over a file that is there, and no sprint PRD', () => {
+  write('package.json', '{ "type": "module" }\n')
+  write('docs/prd/README.md', 'ours\n')
+  const r = run(['init', '--stack'])
+  assert.match(r.stdout, /docs\/prd\/sprint-0\/prd\.md/, r.stderr)
+  assert.equal(fs.readFileSync(path.join(repo, 'docs/prd/README.md'), 'utf8'), 'ours\n')
+  assert.equal(fs.readFileSync(path.join(repo, 'docs/prd/prd-template.md'), 'utf8'), fs.readFileSync(path.resolve(import.meta.dirname, '../templates/prd-format.md'), 'utf8'))
+  assert.ok(!fs.existsSync(path.join(repo, 'docs/prd/sprint-0/prd.md')))
+  fs.rmSync(path.join(repo, 'docs/prd/README.md')); fs.rmSync(path.join(repo, '.rig/sensors.json'))
+  run(['init', '--stack'])
+  assert.match(fs.readFileSync(path.join(repo, 'docs/prd/README.md'), 'utf8'), /sprint-<n>\/prd\.md/)
+})
+
 test('init --stack refuses once sensors.json is committed or a change exists', () => {
   write('package.json', '{ "type": "module" }\n')
   run(['init'])
