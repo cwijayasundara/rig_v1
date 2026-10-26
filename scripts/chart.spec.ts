@@ -69,6 +69,35 @@ test('an approval is missing, then approved, then stale after an edit that names
   assert.deepEqual(state(1).changed, [`${P}/sprints/sprint-1/intents/alpha.md`], 'another sprint does not change it')
 })
 
+// 2026-10-26 PRD fidelity: bug 1 was flagged by the chart review and still shipped, because "→ fixed" was never checked and
+// approval never read the review.
+test('approve chart-N refuses with no review, and with a finding not confirmed fixed, naming each and the waive command', () => {
+  cleanChart()
+  fs.rmSync(path.join(repo, `${P}/sprints/sprint-1/chart-review.md`))
+  const none = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  assert.equal(none.code, 1)
+  assert.match(none.stderr, /no chart-review\.md/)
+  write(repo, `${P}/sprints/sprint-1/chart-review.md`, 'verdict: pass\n## Findings\n- [severity: high] [category: coverage] a.md:1: nextId can repeat → fix (confidence 90) → fixed\n')
+  const open = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  assert.equal(open.code, 1)
+  assert.match(open.stderr, /1\. .*nextId can repeat/)
+  assert.match(open.stderr, /waive chart-1 <finding number> <reason>/)
+  assert.ok(!fs.existsSync(path.join(repo, `${P}/sprints/sprint-1/approval.json`)))
+})
+
+test('a person waives a chart finding, approval then succeeds; the model cannot waive, and a missing finding number is refused', () => {
+  cleanChart()
+  write(repo, `${P}/sprints/sprint-1/chart-review.md`, 'verdict: pass\n## Findings\n- [severity: high] [category: coverage] a.md:1: nextId can repeat → fix (confidence 90)\n')
+  assert.equal(sdlc(repo, ['waive', 'chart-1', '1', 'accepted', 'risk']).code, 3)
+  assert.equal(sdlc(repo, ['waive', 'chart-1', '7', 'x', '--by', 'Pat'], HUMAN).code, 1)
+  const w = sdlc(repo, ['waive', 'chart-1', '1', 'accepted', 'risk', '--by', 'Pat'], HUMAN)
+  assert.equal(w.code, 0, w.stderr)
+  const saved = JSON.parse(fs.readFileSync(path.join(repo, `${P}/sprints/sprint-1/waivers.json`), 'utf8')) as { finding: number; by: string; reason: string }[]
+  assert.deepEqual(saved.map(x => [x.finding, x.by, x.reason]), [[1, 'Pat', 'accepted risk']])
+  const ok = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
+  assert.equal(ok.code, 0, ok.stderr)
+})
+
 // 2026-10-26 PRD fidelity: the ledger is read by chart check, and it and the chart waivers are part of what a person approves.
 const RULE_PRD = prd(1, '').replace('### FR-1: thing\n', '### FR-1: thing\n\n- Ids are never reused.\n')
 test('chart check blocks on a missing ledger before approval and only reports it for a sprint approved without one', () => {
@@ -180,8 +209,10 @@ test('intentReady explains why not: unapproved, stale, blocked by an unshipped d
 
 // The CLI: chart check, approve chart-N, ready.
 const HUMAN = { env: { SDLC_HUMAN: '1' } }
+const REVIEW_PASS = 'verdict: pass\n## Findings\n## Deferred\n'
 const cleanChart = (): void => {
   chart1()
+  write(repo, `${P}/sprints/sprint-1/chart-review.md`, REVIEW_PASS)
   write(repo, `${P}/sprints/sprint-1/testplan/cases.md`, '| ID | Req | Intent | B | Level | Data | Expected |\n| TC-1 | FR-1 | alpha | B1 | unit | - | ok |\n')
 }
 

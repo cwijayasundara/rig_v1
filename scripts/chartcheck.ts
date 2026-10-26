@@ -1,7 +1,7 @@
 // The sprint chart's trace rules (outer-loop spec 2026-10-17 §7): parse the PRD, the intents and the test cases, and report
 // where the chain requirement → intent → behaviour → test case breaks. Pure over text; no repo, no model.
 import path from 'node:path'
-import { frontmatter, fmList } from './core.ts'
+import { frontmatter, fmList, sha } from './core.ts'
 import { openQuestions, section } from './model.ts'
 
 export type Behaviour = { id: string; reqs: string[]; rules: string[]; text: string } // rules: ledger ids (FR-4.2, G-1) or AC aliases
@@ -192,6 +192,23 @@ export function ledgerProblems(i: { prd: string; ledger: string | null; intents:
   }
   return out
 }
+
+// ---------- the chart review at approval (spec 2026-10-26 PRD fidelity) ----------
+// A `- ` bullet under `## Findings` of chart-review.md, numbered from 1. Only the confirm pass closes one (`→ fixed (confirmed)`);
+// a bare `→ fixed` is the coordinator's own claim, and a person's waiver pins the finding's text, so a rewritten finding is open again.
+export type ReviewFinding = { n: number; text: string; sha: string; status: 'confirmed' | 'reopened' | 'claimed' | 'open' }
+export type ChartWaiver = { finding: number; text_sha: string; by: string; at: string; reason: string }
+const SUFFIX = /\s*→\s*(fixed \(confirmed\)|reopened:.*|fixed)\s*$/
+export function parseReview(text: string): ReviewFinding[] {
+  return section(text.replace(/\r\n/g, '\n'), 'Findings').split('\n').filter(l => /^\s*[-*]\s+\S/.test(l)).map((l, i) => {
+    const m = SUFFIX.exec(l)
+    const status = !m ? 'open' : m[1] === 'fixed' ? 'claimed' : m[1]!.startsWith('reopened') ? 'reopened' : 'confirmed'
+    const text = l.replace(SUFFIX, '').replace(/^\s*[-*]\s+/, '').trim()
+    return { n: i + 1, text, sha: sha(normalise(text)), status }
+  })
+}
+export const openFindings = (review: ReviewFinding[], waivers: ChartWaiver[]): ReviewFinding[] =>
+  review.filter(f => f.status !== 'confirmed' && !waivers.some(w => w.finding === f.n && w.text_sha === f.sha))
 
 // Slugs on a dependency cycle (a self-dependency is one), found by asking whether each can reach itself.
 function cyclic(intents: Intent[]): Set<string> {

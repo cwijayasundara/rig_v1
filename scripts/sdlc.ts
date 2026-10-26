@@ -36,7 +36,7 @@ import { cmdMaintain } from './maintain.ts'
 import { cmdReadiness } from './readiness.ts'
 import { cmdAutonomy, initAutonomy } from './autonomy.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'
-import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, sprintsKnown, sprintIntents } from './chart.ts'
+import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, waiveChartFinding } from './chart.ts'
 import { journey, journeyText } from './journey.ts'
 import { TYPES, toType, changeDir, newChange, setActive, activeSlug, isShipped, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
 
@@ -165,6 +165,9 @@ function approveChart(n: number, args: Args): void {
   needPrd(n)
   const block = chartFindings(n, true).filter(f => f.severity === 'block')
   if (block.length) fail(`chart-${n} has ${block.length} blocking finding(s); fix them, then approve:\n${block.map(f => `  [${f.rule}] ${f.message}`).join('\n')}`)
+  const open = chartOpenFindings(n)
+  if (!open) fail(`chart-${n} has no chart-review.md: run ${skillRef('chart')} ${n} through its review step, then approve`)
+  if (open.length) fail(`chart-${n} has ${open.length} review finding(s) not confirmed fixed:\n${open.map(f => `  ${f.n}. ${f.text}${f.status === 'claimed' ? ' (marked fixed, never confirmed)' : ''}`).join('\n')}\nFix them and re-run the chart's confirm pass, or waive one with ${skillRef('waive')} chart-${n} <finding number> <reason>`)
   if (chartState(n).state === 'approved') return out(`chart-${n} is already approved`)
   const by = ownerOrFail(args, 'approvals')
   writeChartApproval(n, by)
@@ -249,6 +252,8 @@ function cmdDiff(args: Args): void {
 
 function cmdWaive(args: Args): void {
   if (process.env.SDLC_HUMAN !== '1') fail(`waivers are human-only: the person runs ${skillRef('waive')} <sensor> <file|*> <reason>. If that command is not listed, restart Claude Code, or the person types: ${humanFallback('waive', "<sensor> <file|*> '<reason>'")}`, 3)
+  const chart = CHART_RE.exec(words(args)[0] ?? '')?.[1]
+  if (chart) return waiveChart(Number(chart), args)
   const [sensor, file, ...reason] = words(args)
   const given = optString(args, 'slug')
   const slug = given ? checkSlug(given) : activeSlug()
@@ -261,6 +266,17 @@ function cmdWaive(args: Args): void {
   const row: Waiver = { slug, sensor, file, reason: reason.join(' '), by, at: now(), expires: new Date(Date.now() + days * 86_400_000).toISOString() }
   fs.appendFileSync(WAIVERS, JSON.stringify(row) + '\n')
   out(`waived ${sensor} for ${file} in ${slug}: ${row.reason} (by ${by}, expires in ${days} day${days === 1 ? '' : 's'})`)
+}
+
+// A person accepts a chart review finding as it stands: no active change and no expiry, since it is an approval decision.
+function waiveChart(n: number, args: Args): void {
+  const [, k, ...reason] = words(args)
+  if (!/^\d{1,3}$/.test(k ?? '') || !reason.length) fail(`usage: waive chart-${n} <finding number> <reason...>`)
+  const f = chartReview(n)?.find(x => x.n === Number(k))
+  if (!f) fail(`chart-${n} has no review finding ${k}${chartReview(n) ? '' : ' (no chart-review.md)'}`)
+  const by = ownerOrFail(args, 'waivers')
+  waiveChartFinding(n, f, by, reason.join(' '))
+  out(`waived chart-${n} finding ${f.n}: ${reason.join(' ')} (by ${by})`)
 }
 
 const unresolvedFindings = (): Finding[] => {

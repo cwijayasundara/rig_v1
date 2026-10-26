@@ -7,8 +7,8 @@ import { ROOT, exists, read, sha, now, toPosix, frontmatter, skillRef } from './
 import { openQuestions, section } from './model.ts'
 import { changeDir, isShipped } from './lifecycle.ts'
 import { planText, type PlanRow } from './plan.ts'
-import { PRODUCT, ARCH_REL, archPath, prdPath, intentsDir, testplanDir, approvalPath, sprintDir, sprintsOnDisk, intentRel, planPath, implPlanPath, sprintRel, ledgerPath, waiversPath } from './product.ts'
-import { designIntents, architectureProblems, implementationPlanProblems, accessProblems, parseAccess, parseIntent, parseCases, parkedDecisions, prdIds, traceReport, ledgerProblems, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
+import { PRODUCT, ARCH_REL, archPath, prdPath, intentsDir, testplanDir, approvalPath, sprintDir, sprintsOnDisk, intentRel, planPath, implPlanPath, sprintRel, ledgerPath, waiversPath, reviewPath } from './product.ts'
+import { designIntents, architectureProblems, implementationPlanProblems, accessProblems, parseAccess, parseIntent, parseCases, parkedDecisions, prdIds, traceReport, ledgerProblems, parseReview, openFindings, type ReviewFinding, type ChartWaiver, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
 
 const SHARED_DIRS = ['adr'].map(d => `${toPosix(path.relative(ROOT, path.join(PRODUCT, d)))}/`)
 export const CHART_RE = /^chart-(\d{1,4})$/
@@ -143,6 +143,19 @@ export function chartFindings(n: number, withCases: boolean): ChartFinding[] {
     : intentsOf(n).length ? [{ rule: 'impl-missing', severity: 'block' as const, where: 'sprint', message: `${sprintRel(n)}/implementation-plan.md is missing: write it as implementation-plan-format.md lays it out` }] : []))
   for (const [where, file] of [['architecture.md', archPath], ...intentsOf(n).map(i => [`${i.slug}.md`, i.file] as const)]) found.push(...parkedDecisions(where, read(file)))
   return found
+}
+
+// The review findings that still stop approval, or null when the sprint has no chart-review.md.
+const chartWaivers = (n: number): ChartWaiver[] => { try { const v = JSON.parse(read(waiversPath(n))) as unknown; return Array.isArray(v) ? (v as ChartWaiver[]) : [] } catch { return [] } }
+export const chartReview = (n: number): ReviewFinding[] | null => (exists(reviewPath(n)) ? parseReview(read(reviewPath(n))) : null)
+export function chartOpenFindings(n: number): ReviewFinding[] | null {
+  const review = chartReview(n)
+  return review && openFindings(review, chartWaivers(n))
+}
+// A person's waiver of finding `k`: kept with the text it covered, so editing the finding re-opens it.
+export function waiveChartFinding(n: number, f: ReviewFinding, by: string, reason: string): void {
+  const row: ChartWaiver = { finding: f.n, text_sha: f.sha, by, at: now(), reason }
+  fs.writeFileSync(waiversPath(n), JSON.stringify([...chartWaivers(n).filter(w => w.finding !== f.n), row], null, 2) + '\n')
 }
 
 // Whether an intent can be started now, and if not, why.

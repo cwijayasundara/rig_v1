@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import fs from 'node:fs'
 import path from 'node:path'
 import assert from 'node:assert/strict'
-import { designIntents, prdIds, parseIntent, parseCases, traceReport, intentSpecProblems, parkedDecisions, parseAccess, accessProblems, implementationPlanProblems, parseLedger, prdUnits, ledgerProblems, normalise, type Intent, type TestCase } from './chartcheck.ts'
+import { designIntents, prdIds, parseIntent, parseCases, traceReport, intentSpecProblems, parkedDecisions, parseAccess, accessProblems, implementationPlanProblems, parseLedger, prdUnits, ledgerProblems, normalise, parseReview, openFindings, type Intent, type TestCase } from './chartcheck.ts'
 
 const PRD = '---\nsprint: 1\nengineers: 1\n---\n# Sprint 1\n\n### FR-1: add\n### FR-2: remove\n| NFR-1 | fast |\n\nMentioned only in prose: FR-9.\n\n## Open questions\nnone\n'
 const intent = (slug: string, o: { prd?: string; depends?: string; days?: string; kind?: string; behaviours?: string; iface?: string; open?: string } = {}): string =>
@@ -449,4 +449,26 @@ test('a behaviour citing FR-4.2 keeps FR-4 for the FR-level rules and lists the 
   const [i] = idsIntent('- B1 (FR-4.2): starts at 1\n')
   assert.deepEqual([i!.behaviours[0]!.reqs, i!.behaviours[0]!.rules], [['FR-4'], ['FR-4.2']])
   assert.deepEqual(parseCases(caseRow('TC-1', 'NFR-1.1, G-2', 'a', 'B1'))[0]!.rules, ['NFR-1.1', 'G-2'])
+})
+
+// Chart approval reads the review (spec 2026-10-26): a finding is closed only when the confirm pass confirmed its fix, or a person waived it.
+const REVIEW = ['verdict: changes-needed', '## Findings',
+  '- [severity: high] [category: coverage] intents/store.md:12: nothing stops nextId at or below the largest id → fix (confidence 90) → fixed (confirmed)',
+  '- [severity: high] [category: weakened] intents/store.md:14: "starting at 1" dropped → fix (confidence 85) → reopened: B3 still says "an integer"',
+  '- [severity: medium] [category: cases] testplan/cases.md:4: vague → fix (confidence 80) → fixed',
+  '- [severity: medium] [category: scope] adr/0003.md:3: no source → fix (confidence 80)',
+  '## Deferred', '- not a finding', ''].join('\n')
+
+test('parseReview numbers the findings and reads confirmed, reopened, a bare fixed claim and no suffix; Deferred is not read', () => {
+  const r = parseReview(REVIEW)
+  assert.deepEqual(r.map(f => [f.n, f.status]), [[1, 'confirmed'], [2, 'reopened'], [3, 'claimed'], [4, 'open']])
+  assert.equal(r[1]!.sha, parseReview(REVIEW.replace('→ reopened: B3 still says "an integer"', ''))[1]!.sha, 'the status suffix is not part of the text a waiver pins')
+})
+
+test('openFindings: everything not confirmed, minus waivers that match the number and the text', () => {
+  const r = parseReview(REVIEW)
+  assert.deepEqual(openFindings(r, []).map(f => f.n), [2, 3, 4])
+  const w = (n: number, text_sha = r[n - 1]!.sha) => ({ finding: n, text_sha, by: 'Pat', at: '2026-10-26', reason: 'accepted' })
+  assert.deepEqual(openFindings(r, [w(2), w(3)]).map(f => f.n), [4])
+  assert.deepEqual(openFindings(r, [w(4, 'deadbeef')]).map(f => f.n), [2, 3, 4], 'a waiver for different text does not cover a rewritten finding')
 })
