@@ -1,8 +1,8 @@
 | ID | Requirement | Intent | Behaviour | Level | Data | Expected |
 |---|---|---|---|---|---|---|
-| TC-1 | FR-1, FR-1.1 | stock-model | B1 | unit | - | get and list report the stock |
-| TC-2 | NFR-1, NFR-1.1 | stock-model | B2 | unit | - | the message names the SKU |
-| TC-3 | FR-2, FR-2.1 | cart-stock-limit | B1 | unit | - | adding past the stock throws |
-| TC-4 | NFR-1, NFR-1.1 | cart-stock-limit | B2 | unit | - | the message names the SKU |
-| TC-5 | FR-3, FR-3.1 | stock-endpoint | B1 | contract | data/stock.json | 200 with the level |
-| TC-6 | FR-3, FR-3.1 | stock-endpoint | B2 | contract | data/stock.json | 404 for an unknown SKU |
+| TC-1 | FR-1, AC-1.1 | stock-model | B1 | unit | - | get and list report the stock |
+| TC-2 | NFR-1 | stock-model | B2 | unit | - | the message names the SKU |
+| TC-3 | FR-2, AC-2.1 | cart-stock-limit | B1 | unit | - | adding past the stock throws |
+| TC-4 | NFR-1 | cart-stock-limit | B2 | unit | - | the message names the SKU |
+| TC-5 | FR-3, AC-3.1 | stock-endpoint | B1 | contract | data/stock.json | 200 with the level |
+| TC-6 | FR-3, AC-3.1 | stock-endpoint | B2 | contract | data/stock.json | 404 for an unknown SKU |

@@ -12,6 +12,7 @@ import { setupRig } from './setup.mjs'
 import { MODELS } from './arms.mjs'
 import { EVAL_ALLOW, resultsAllowed, arg, mean } from './lib/cli.mjs'
 import { parseIntent, parseLedger, normalise } from '../scripts/chartcheck.ts'
+import { parseMap, prdCriteria } from '../scripts/prdformat.ts'
 
 const ROOT = path.resolve(import.meta.dirname, '..')
 // An answer key under fixtures/chart/: sprint-a (the default, with a known-good chart for --dry) or sprint-b (rules stated in prose).
@@ -24,13 +25,19 @@ export const CHART_ARMS = [
 
 const share = (n, of) => (of ? n / of : 0)
 // Scores one generated chart against the answer key: findings are `chart check --json`, intents the parsed intent files, ledger the
-// parsed requirements.md rows. A key with `rules` also scores whether each was quoted, cited, and kept by the behaviour citing it.
-export function scoreChart(key, findings, intents, ledger = []) {
+// parsed requirements.md rows. A key with `rules` also scores whether each was quoted, cited, and kept by the behaviour citing it;
+// with `conversion` ({ map, criteria } of a converted PRD) it follows each rule through the map into the criterion it became.
+export function scoreChart(key, findings, intents, ledger = [], conversion = null) {
   const defined = new Set(key.requirements)
   const cited = new Set(intents.flatMap(i => i.prd))
   const boundary = intents.filter(i => i.kind === 'boundary')
   const invented = i => !i.prd.length || i.prd.some(r => !defined.has(r)) || i.behaviours.some(b => !b.reqs.length || b.reqs.some(r => !defined.has(r)))
-  const rules = key.rules?.map(k => {
+  const rules = conversion ? key.rules?.map(k => {
+    const row = conversion.map.find(m => normalise(m.quote).includes(normalise(k.quote)) || normalise(k.quote).includes(normalise(m.quote)))
+    const became = conversion.criteria.filter(c => row?.ids.includes(c.id))
+    const cited = intents.flatMap(i => i.behaviours).some(b => (b.rules ?? []).some(id => row?.ids.includes(id)))
+    return { quoted: Boolean(row), cited, kept: became.length > 0 && k.mustKeep.every(re => became.some(c => new RegExp(re, 'i').test(c.text))) }
+  }) : key.rules?.map(k => {
     const row = ledger.find(l => normalise(l.quote).includes(normalise(k.quote)))
     const citing = row ? intents.flatMap(i => i.behaviours).filter(b => (b.rules ?? []).some(id => id === row.id || id === row.alias)) : []
     return { quoted: Boolean(row), cited: citing.length > 0, kept: k.mustKeep.every(re => citing.some(b => new RegExp(re, 'i').test(b.text))) }
@@ -65,23 +72,34 @@ export async function runChartOne(arm, n, { dry, out, capRunUsd, key = KEY }) {
   let intents = []
   let findings = []
   let ledger = []
+  let conversion = null
   try {
     await setupRig(sb, arm, { dry })
     sb.write('.rig/product/sprints/sprint-1/prd.md', fs.readFileSync(path.join(ROOT, key.prd), 'utf8'))
     sb.commitAll('docs: sprint 1 requirements')
     if (dry) writeFixture(sb)
-    else sessions.run('chart', '/rig-chart 1', { withPlugin: false })
+    else {
+      sessions.run('chart', '/rig-chart 1', { withPlugin: false })
+      // A converted PRD stops the chart for a person's approval; the eval plays the person, as S6 does for the chart.
+      if (/^(missing|stale)/.test(sb.sdlc(['prd', 'status', '1']).stdout)) {
+        sb.sdlc(['approve', 'prd-1', '--by', 'eval'], { human: true })
+        sessions.run('chart-after-prd', '/rig-chart 1', { withPlugin: false })
+      }
+    }
     findings = JSON.parse(sb.sdlc(['chart', 'check', '1', '--cases', '--json']).stdout || '[]')
     const dir = path.join(sb.dir, '.rig/product/sprints/sprint-1/intents')
     const ledgerFile = path.join(sb.dir, '.rig/product/sprints/sprint-1/requirements.md')
     ledger = fs.existsSync(ledgerFile) ? parseLedger(fs.readFileSync(ledgerFile, 'utf8')) : []
+    const sprint = path.join(sb.dir, '.rig/product/sprints/sprint-1')
+    const read = f => fs.readFileSync(path.join(sprint, f), 'utf8')
+    conversion = fs.existsSync(path.join(sprint, 'conversion.md')) ? { map: parseMap(read('conversion.md')), criteria: prdCriteria(read('prd.md')) } : null
     intents = fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => f.endsWith('.md')).map(f => parseIntent(f.slice(0, -3), fs.readFileSync(path.join(dir, f), 'utf8'))) : []
   } catch (err) {
     row.error = String(err?.message ?? err).split('\n')[0]
   }
   const t = sessions ? totals(sessions.sessions) : { costUsd: 0, inputTokens: 0, outputTokens: 0 }
   return {
-    ...row, ...scoreChart(key, findings, intents, ledger), intents: intents.length, blocking: findings.filter(f => f.severity === 'block').length,
+    ...row, ...scoreChart(key, findings, intents, ledger, conversion), intents: intents.length, blocking: findings.filter(f => f.severity === 'block').length,
     inputTokens: t.inputTokens, outputTokens: t.outputTokens, usd: Number(t.costUsd.toFixed(4)), minutes: Number(((Date.now() - t0) / 60_000).toFixed(2)),
   }
 }

@@ -18,7 +18,9 @@ export type ChartFinding = { rule: string; severity: 'block' | 'report'; where: 
 
 const REQ = /\bN?FR-\d+\b/g
 // A requirements-ledger id (FR-4.2, NFR-1.1, G-3) or a PRD acceptance-criterion alias (AC-4.1).
-export const RULE_ID = /\b(?:N?FR-\d+\.\d+|G-\d+|AC-\d+(?:\.\d+)*)\b/g
+export const RULE_ID = /\b(?:N?FR-\d+\.\d+|G-\d+|DR-\d+|AC-\d+(?:\.\d+)*)\b/g
+// The FR or NFR a ledger id belongs to: AC-4.1 and FR-4.2 to FR-4, NFR-2 (or NFR-2.1) to NFR-2; a data rule or G-n to none.
+export const parentOf = (id: string): string | null => /^AC-(\d+)\./.exec(id) ? `FR-${/^AC-(\d+)\./.exec(id)![1]}` : /^(N?FR-\d+)(?:\.\d+)?$/.exec(id)?.[1] ?? null
 const SPRINT_DAYS = 10
 const MAX_DAYS = 2
 
@@ -83,13 +85,13 @@ type LedgerLine = LedgerRow | { bad: string } | { unknownKind: string; row: Ledg
 
 // Sections that hold motivation, not requirements; every other section, including ones the person invented, is in scope.
 const OUT_OF_SCOPE_SECTIONS = ['context and problem', 'goals and success metrics', 'risks and assumptions', 'changes since last sprint', 'open questions']
-const LEDGER_LINE = /^\s*[-*]\s+((?:N?FR-\d+\.\d+)|G-\d+)(?:\s+\(([^)]+)\))?\s+\[([^\]]+)\]\s+prd\.md:(\d+)\s+"(.*)"(?:\s+[—–]+\s*(.*))?\s*$/
+const LEDGER_LINE = /^\s*[-*]\s+((?:N?FR-\d+\.\d+)|G-\d+|AC-\d+\.\d+|DR-\d+|NFR-\d+)(?:\s+\(([^)]+)\))?\s+\[([^\]]+)\]\s+prd\.md:(\d+)\s+"(.*)"(?:\s+[—–]+\s*(.*))?\s*$/
 const LINE_SLACK = 3
 
 // Markup and spacing never decide whether a quote matches: emphasis, backticks, curly quotes, spaces around table pipes and the
 // "(answered at chart)" marker are dropped on both sides.
 export const normalise = (s: string): string => s.replace(/[\u201c\u201d]/g, '"').replace(/[\u2018\u2019]/g, "'").replace(/\*\*|__|[*`]/g, '')
-  .replace(/\(answered at chart\)/gi, '').replace(/\s*\|\s*/g, ' | ').replace(/\s+/g, ' ').trim()
+  .replace(/\(answered at chart\)/gi, '').replace(/\s*\(out of scope:[^)]*\)/gi, '').replace(/\s*\|\s*/g, ' | ').replace(/\s+/g, ' ').trim()
 
 function readLedgerLine(l: string): LedgerLine | null {
   if (!/^\s*[-*]\s+\S/.test(l)) return null
@@ -108,7 +110,8 @@ export const parseLedger = (text: string): LedgerRow[] => ledgerLines(text).flat
 // row (cells joined by " | "). Headings, frontmatter, HTML comments, fenced blocks and table headers are never units; comments
 // are blanked line for line so the numbers stay those of prd.md.
 export const prdUnits = (prd: string): { line: number; text: string }[] => prdBlocks(prd).map(({ line, text }) => ({ line, text }))
-function prdBlocks(prd: string): { line: number; end: number; text: string }[] {
+// `allSections`: a person's original PRD, where every section counts (the conversion map accounts for all of it).
+export function prdBlocks(prd: string, o: { allSections?: boolean } = {}): { line: number; end: number; text: string }[] {
   const text = prd.replace(/\r\n/g, '\n').replace(/<!--[\s\S]*?-->/g, c => c.replace(/[^\n]/g, ''))
   const lines = text.split('\n')
   const fm = /^---\n[\s\S]*?\n---\n/.exec(text)
@@ -120,7 +123,7 @@ function prdBlocks(prd: string): { line: number; end: number; text: string }[] {
   while (i < lines.length) {
     const l = lines[i]!
     const h = /^(#{1,6})\s+(.*)$/.exec(l)
-    if (h) { if (h[1] === '##') excluded = OUT_OF_SCOPE_SECTIONS.includes(h[2]!.trim().toLowerCase()); i++; continue }
+    if (h) { if (h[1] === '##') excluded = !o.allSections && OUT_OF_SCOPE_SECTIONS.includes(h[2]!.trim().toLowerCase()); i++; continue }
     if (/^\s*(```|~~~)/.test(l)) { const fence = /^\s*(```|~~~)/.exec(l)![1]!; i++; while (i < lines.length && !lines[i]!.trim().startsWith(fence)) i++; i++; continue }
     if (!l.trim()) { i++; continue }
     const start = i
@@ -146,7 +149,7 @@ function prdBlocks(prd: string): { line: number; end: number; text: string }[] {
 }
 
 // What a block still says once every quote is cut out of it: pieces of two or more words are text no row quotes.
-function unquoted(block: string, quotes: string[]): string[] {
+export function unquoted(block: string, quotes: string[]): string[] {
   let rest = block
   for (const q of [...quotes].sort((a, b) => b.length - a.length)) if (q) rest = rest.split(q).join('\u0000')
   // A lone word counts when it is the rule itself: a number, a negation or a quantifier ("is 10", "must not", "never").
@@ -155,7 +158,8 @@ function unquoted(block: string, quotes: string[]): string[] {
 }
 
 // `required`: the sprint is not approved yet, so a missing ledger blocks; an approved sprint charted before the ledger is reported.
-export function ledgerProblems(i: { prd: string; ledger: string | null; intents: Intent[]; cases: TestCase[] | null; required: boolean }): ChartFinding[] {
+// `inFormat`: the PRD passed the format check, so every rule is a numbered criterion and the prose around them needs no quote.
+export function ledgerProblems(i: { prd: string; ledger: string | null; intents: Intent[]; cases: TestCase[] | null; required: boolean; inFormat?: boolean }): ChartFinding[] {
   const out: ChartFinding[] = []
   const add = (rule: string, where: string, message: string, severity: 'block' | 'report' = 'block'): number => out.push({ rule, severity, where, message })
   const units = prdBlocks(i.prd)
@@ -178,18 +182,17 @@ export function ledgerProblems(i: { prd: string; ledger: string | null; intents:
     if (r.kind === 'out-of-scope' && (!r.reason || !r.by)) add('ledger-reason', r.id, `${r.id} is out of scope: it needs "decided by <who>" in its kind and " — <reason>"`)
   }
   const quotes = rows.map(r => normalise(r.quote))
-  for (const u of units) for (const piece of unquoted(u.text, quotes)) add('ledger-unquoted', `prd.md:${u.line}`, `prd.md:${u.line} says "${piece}", which no requirements.md row quotes`)
+  if (!i.inFormat) for (const u of units) for (const piece of unquoted(u.text, quotes)) add('ledger-unquoted', `prd.md:${u.line}`, `prd.md:${u.line} says "${piece}", which no requirements.md row quotes`)
   const known = new Set(rows.flatMap(r => [r.id, ...(r.alias ? [r.alias] : [])]))
-  const ledgerId = (id: string): boolean => !id.startsWith('AC-')
-  const behaviours = i.intents.flatMap(t => t.behaviours.map(b => ({ where: `${t.slug}#${b.id}`, rules: b.rules })))
-  for (const b of behaviours) for (const id of b.rules) if (ledgerId(id) && !known.has(id)) add('unknown-id', b.where, `${b.where} cites ${id}, which requirements.md does not define`)
+  const behaviours = i.intents.flatMap(t => t.behaviours.map(b => ({ where: `${t.slug}#${b.id}`, rules: b.rules, reqs: b.reqs })))
+  for (const b of behaviours) for (const id of b.rules) if (!known.has(id)) add('unknown-id', b.where, `${b.where} cites ${id}, which requirements.md does not define`)
   const cites = (r: LedgerRow, ids: string[]): boolean => ids.includes(r.id) || (r.alias !== null && ids.includes(r.alias))
   const needed = rows.filter(r => r.kind === 'rule' || r.kind === 'answer')
-  const cited = behaviours.flatMap(b => b.rules)
+  const cited = behaviours.flatMap(b => [...b.rules, ...b.reqs])
   for (const r of needed) if (!cites(r, cited)) add('rule-uncovered', r.id, `${r.id} ("${r.quote}") has no behaviour: cite it in the intent that builds it, e.g. \`- B2 (FR-4, ${r.id}): ...\``)
   if (i.cases) {
-    for (const c of i.cases) for (const id of c.rules) if (ledgerId(id) && !known.has(id)) add('unknown-id', c.id, `${c.id} cites ${id}, which requirements.md does not define`)
-    const tested = i.cases.flatMap(c => c.rules)
+    for (const c of i.cases) for (const id of c.rules) if (!known.has(id)) add('unknown-id', c.id, `${c.id} cites ${id}, which requirements.md does not define`)
+    const tested = i.cases.flatMap(c => [...c.rules, ...c.reqs])
     for (const r of needed) if (!cites(r, tested)) add('rule-untested', r.id, `${r.id} ("${r.quote}") has no test case citing it`)
   }
   return out

@@ -2,6 +2,8 @@
 
 Date: 2026-10-26. Source: `docs/feedback/feedback_1.html` (a colleague's sprint 0–1 run of rig).
 
+> **Extended by** [`2026-10-26-prd-format-and-conversion-design.md`](2026-10-26-prd-format-and-conversion-design.md): any PRD is first converted into rig's template and approved by a person, and the ledger below is then generated from the PRD's numbered criteria (`AC-n.m`, `DR-n`, `NFR-n`) instead of written by the chart coordinator. Everything after the ledger stays as described here.
+
 ## Why
 
 Three bugs reached `src/store.js` in the colleague's repo: ids reused when `nextId` is not above every item id, duplicate

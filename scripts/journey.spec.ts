@@ -156,3 +156,11 @@ test('start-brief warns off main and lists ready intents; approve --ask names th
   assert.match(ask.stdout, /^ASK change add-login/)
   assert.doesNotMatch(sdlc(repo, ['status']).stdout, /approved/)
 })
+
+test('journey: a converted PRD waiting for approval → a person approves prd-0 before the chart goes on', () => {
+  write(repo, '.rig/product/sprints/sprint-0/prd.md', '---\nsprint: 0\n---\n# PRD\n\n## Functional requirements\n\n### FR-0: thing\n\n- AC-0.1: WHEN a THE SYSTEM SHALL b\n\n## Data rules\n\nnone\n\n## Non-functional requirements\n\nnone\n\n## Boundaries\n\nnone\n\n## Open questions\n\nnone\n')
+  write(repo, '.rig/product/sprints/sprint-0/source.md', '# Thing\n\nIt does b on a.\n')
+  const j = view()
+  assert.match(j.next.command, /approve prd-0$/)
+  assert.equal(j.next.by, 'person')
+})

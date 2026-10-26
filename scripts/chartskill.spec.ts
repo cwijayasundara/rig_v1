@@ -158,22 +158,40 @@ test('/rig:plan starts from the intent section of the sprint implementation plan
 
 // 2026-10-26 PRD fidelity (docs/feedback/feedback_1.html): "starting at 1, never reused" became "an integer id" and three id bugs shipped.
 const fidelity = (f: string): string => fs.readFileSync(path.resolve(import.meta.dirname, '..', f), 'utf8')
-test('chart step 1 writes the requirements ledger from the PRD copy, quoting every in-scope sentence, and never edits prd.md for it', () => {
+test('chart step 1 keeps the original as source.md, converts a PRD not in format, and generates the ledger', () => {
   const step1 = skill.slice(skill.indexOf('1. **Which sprint'), skill.indexOf('2. **Design.**'))
-  assert.match(step1, /\*\*Requirements ledger\.\*\*[^\n]*requirements\.md/)
+  assert.match(step1, /source\.md[^\n]*never edit/i)
+  assert.match(step1, /`S prd check <N>/)
+  assert.match(step1, /templates\/prd-format\.md/)
+  assert.match(step1, /\*\*Convert\.\*\*[^\n]*conversion\.md/)
   assert.match(step1, /word for word/)
-  assert.match(step1, /out-of-scope: <when>, decided by <who>/)
   assert.match(step1, /cells joined by " \| "/)
-  assert.match(step1, /never edit `prd\.md` for it/i)
+  assert.match(step1, /\(out of scope: <when>, decided by <who> — <reason>\)/)
+  assert.match(step1, /`S prd map <N>/)
+  assert.match(step1, /check the conversion for sprint <N>[^\n]*conversion-review\.md/)
+  assert.match(step1, /`S prd status <N>`[^\n]*\/rig:approve prd-<N>[^\n]*\/rig:chart <N>/)
+  assert.match(step1, /re-run[^\n]*never rewrite `prd\.md` or `source\.md`/i)
+  assert.match(step1, /\*\*Requirements ledger\.\*\*[^\n]*`S prd ledger <N>`[^\n]*never write or edit it yourself/)
+})
+
+test('the conversion reviewer: a conversion mode that reports weakened, invented and ledger, and reads the original', () => {
+  const evaluator = fidelity('agents/evaluator.md')
+  assert.match(evaluator, /## Conversion mode[\s\S]*\*\*weakened\*\*[\s\S]*\*\*invented\*\*[\s\S]*\*\*ledger\*\*/)
+  assert.match(evaluator, /## Conversion mode[\s\S]*source\.<ext>/)
+})
+
+test('init points the person to the PRD template', () => {
+  assert.match(fidelity('skills/init/SKILL.md'), /templates\/prd-format\.md/)
 })
 
 test('the architect cites ledger ids and keeps every constraint of the rows it cites', () => {
   const architect = fidelity('agents/architect.md')
   assert.match(architect, /requirements\.md/)
-  assert.match(architect, /\(FR-4, FR-4\.2\)/)
+  assert.match(architect, /\(FR-4, AC-4\.1\)/)
+  assert.match(architect, /\(FR-4, DR-2\)/)
   assert.match(architect, /never\b[^\n]*only\b[^\n]*unique/)
   assert.match(skill.slice(skill.indexOf('**Architect.**'), skill.indexOf('3. **Check.**')), /requirements\.md/)
-  assert.match(fidelity('templates/intent-format.md'), /\(FR-4, FR-4\.2\)/)
+  assert.match(fidelity('templates/intent-format.md'), /\(FR-4, AC-4\.1\)/)
 })
 
 test('QA cites ledger ids in the Requirement column and gives every rule and answer row a case', () => {
@@ -201,4 +219,10 @@ test('the chart reviewer reads the ledger, reports weakened rules and ledger mis
 
 test('start, plan and build read the change requirements.md and never edit it', () => {
   for (const f of ['skills/start/SKILL.md', 'skills/plan/SKILL.md', 'skills/build/SKILL.md']) assert.match(fidelity(f), /requirements\.md[^\n]*never edit/, f)
+})
+
+test('chart step 1 on a re-run of a converted sprint checks prd status first and never reviews the conversion twice', () => {
+  const step1 = skill.slice(skill.indexOf('1. **Which sprint'), skill.indexOf('2. **Design.**'))
+  assert.match(step1, /re-run[^\n]*`S prd status <N>` first[^\n]*`approved`[^\n]*ledger[^\n]*otherwise[^\n]*`S prd check <N>`[^\n]*`S prd map <N>`[^\n]*stop/i)
+  assert.match(step1, /gap pass and the conversion review run on the first pass only/i)
 })

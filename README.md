@@ -223,7 +223,7 @@ A change's status comes from which of its files exist: spec, plan, approve, buil
 | `/rig:approve chart-<N>` | A sprint's PRD, intents, architecture, ADRs, test plan and the contract files its intents name, as written. Refused while a blocking finding stands; goes stale when any of them changes. |
 | `/rig:waive <sensor> <file\|*> <reason>` | One sensor finding on the active change. |
 
-**The script underneath** (`node .rig/bin/sdlc.ts <cmd>`): `stamp`, `init`, `new`, `activate`, `status`, `approve`, `chart check|report <N>`, `ready`, `start-brief`, `pr`, `run`, `verify`, `secrets`, `hook <event>`, `diff`, `baseline`, `check`, `check-file`, `sync`, `vendor`, `hooks`, `waive`, `sensors`, `wiki`, `learn mine|replay|check|status`, `report`, `arch`, `queue`, `app`, `slice`, `maintain`, `readiness`, `autonomy`. Skills and CI call these, and so can you.
+**The script underneath** (`node .rig/bin/sdlc.ts <cmd>`): `stamp`, `init`, `new`, `activate`, `status`, `approve`, `chart check|report <N>`, `prd check|map|ledger|status <N>`, `ready`, `start-brief`, `pr`, `run`, `verify`, `secrets`, `hook <event>`, `diff`, `baseline`, `check`, `check-file`, `sync`, `vendor`, `hooks`, `waive`, `sensors`, `wiki`, `learn mine|replay|check|status`, `report`, `arch`, `queue`, `app`, `slice`, `maintain`, `readiness`, `autonomy`. Skills and CI call these, and so can you.
 
 ### Sensors, policy and guides
 

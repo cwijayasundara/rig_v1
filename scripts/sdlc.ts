@@ -30,13 +30,15 @@ import { cmdReport } from './report.ts'
 import { cmdArch, layerState, layerStateText } from './arch.ts'
 import { cmdQueue, conflictsFor } from './queue.ts'
 import { intentScope } from './scope.ts'
-import { intentRelOf, prdRel, sprintRel, prdPath, reviewPath } from './product.ts'
+import { prdFormatProblems, prdLedger, conversionProblems } from './prdformat.ts'
+import { parseLedger } from './chartcheck.ts'
+import { intentRelOf, prdRel, sprintRel, prdPath, reviewPath, ledgerPath, sourcePath, conversionPath } from './product.ts'
 import { cmdSlice } from './slice.ts'
 import { cmdMaintain } from './maintain.ts'
 import { cmdReadiness } from './readiness.ts'
 import { cmdAutonomy, initAutonomy } from './autonomy.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'
-import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, waiveChartFinding, changeRequirements } from './chart.ts'
+import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, waiveChartFinding, changeRequirements, PRD_RE, isConverted, prdApprovalState, prdApprovalRefusal, writePrdApproval } from './chart.ts'
 import { journey, journeyText } from './journey.ts'
 import { TYPES, toType, changeDir, newChange, setActive, activeSlug, isShipped, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
 
@@ -139,6 +141,8 @@ function cmdApprove(args: Args): void {
   if (!given && args.opt.ask) return out(approveTarget())
   const chart = CHART_RE.exec(given ?? '')?.[1]
   if (chart) return approveChart(Number(chart), args)
+  const prd = PRD_RE.exec(given ?? '')?.[1]
+  if (prd) return approvePrd(Number(prd), args)
   const slug = given ? checkSlug(given) : activeSlug()
   if (!slug || !exists(changeDir(slug))) fail('usage: approve <slug>')
   const refusal = approvalRefusal(slug)
@@ -157,14 +161,29 @@ function cmdApprove(args: Args): void {
 function approveTarget(): string {
   const active = activeSlug()
   if (active && exists(changeDir(active)) && !isShipped(active)) return `ASK change ${active}`
+  const prd = sprintsKnown().find(n => isConverted(n) && prdApprovalState(n) !== 'approved')
+  if (prd !== undefined) return `ASK prd-${prd}`
   const chart = sprintsKnown().find(n => exists(prdPath(n)) && sprintIntents(n).length > 0 && chartState(n).state !== 'approved')
   return chart === undefined ? 'ASK none: no change is in flight and no chart is waiting' : `ASK chart-${chart}`
 }
 
 const needPrd = (n: number): void => { if (!exists(prdPath(n))) fail(`no PRD for sprint ${n}: write ${prdRel(n)} first`) }
 
+// A person accepts the converted PRD (source.md → prd.md) before the chart decomposes it.
+function approvePrd(n: number, args: Args): void {
+  needPrd(n)
+  if (!isConverted(n)) return out(`prd-${n} was not converted (no source.md, or it is prd.md itself): nothing to approve. Next: ${skillRef('chart')} ${n}`)
+  const refusal = prdApprovalRefusal(n)
+  if (refusal) fail(refusal)
+  if (prdApprovalState(n) === 'approved') return out(`prd-${n} is already approved. Next: ${skillRef('chart')} ${n}`)
+  const by = ownerOrFail(args, 'approvals')
+  writePrdApproval(n, by)
+  out(`approved prd-${n} by ${by}: prd.md, source.md and conversion.md. Next: ${skillRef('chart')} ${n} decomposes it`)
+}
+
 function approveChart(n: number, args: Args): void {
   needPrd(n)
+  if (isConverted(n) && prdApprovalState(n) !== 'approved') fail(`chart-${n} decomposes a converted PRD that is ${prdApprovalState(n) === 'stale' ? 'changed since its approval' : 'not approved'}: a person reads prd.md beside source.md and runs ${skillRef('approve')} prd-${n} first`)
   const block = chartFindings(n, true).filter(f => f.severity === 'block')
   if (block.length) fail(`chart-${n} has ${block.length} blocking finding(s); fix them, then approve:\n${block.map(f => `  [${f.rule}] ${f.message}`).join('\n')}`)
   if (chartState(n).state === 'approved') return out(`chart-${n} is already approved`)
@@ -189,6 +208,25 @@ function cmdChart(args: Args): void {
   if (args.opt.json) return out(JSON.stringify(found))
   const block = found.filter(f => f.severity === 'block')
   out([...found.map(f => `[${f.rule}] ${f.severity === 'report' ? '(report) ' : ''}${f.message}`), `chart-${n}: ${block.length ? `${block.length} blocking finding(s)` : 'no blocking findings'}`].join('\n'))
+}
+
+// The PRD format for coding agents (spec 2026-10-26): `prd check <N>` says whether the sprint PRD is in rig's template.
+function cmdPrd(args: Args): void {
+  const [sub, num] = args.pos
+  if (!['check', 'map', 'ledger', 'status'].includes(sub ?? '') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: prd (check [--json] | map [--json] | ledger | status) <sprint number>')
+  const n = Number(num)
+  needPrd(n)
+  if (sub === 'status') return out(isConverted(n) ? `${prdApprovalState(n)}: ${prdApprovalState(n) === 'approved' ? 'the chart may decompose prd.md' : `a person reads prd.md beside source.md, then runs ${skillRef('approve')} prd-${n}`}` : 'not converted: prd.md is the person\'s own, no PRD approval needed')
+  if (sub === 'ledger') {
+    const format = prdFormatProblems(read(prdPath(n)))
+    if (format.length) fail(`prd.md is not in format, so no ledger can be generated: run \`prd check ${n}\``)
+    fs.writeFileSync(ledgerPath(n), prdLedger(read(prdPath(n))))
+    return out(`wrote ${sprintRel(n)}/requirements.md: ${parseLedger(read(ledgerPath(n))).length} row(s) from prd.md`)
+  }
+  if (sub === 'map' && !exists(sourcePath(n))) fail(`sprint ${n} has no source.md: nothing was converted`)
+  const found = sub === 'map' ? conversionProblems({ source: read(sourcePath(n)), prd: read(prdPath(n)), map: exists(conversionPath(n)) ? read(conversionPath(n)) : null }) : prdFormatProblems(read(prdPath(n)))
+  if (args.opt.json) return out(JSON.stringify(found))
+  out([...found.map(f => `[${f.rule}] ${f.where}: ${f.message}`), `prd-${n}: ${found.length ? `${found.length} finding(s)${sub === 'check' ? '; convert it into templates/prd-format.md' : ''}` : sub === 'check' ? 'in format' : 'every sentence of source.md is mapped'}`].join('\n'))
 }
 
 const readyRow = (i: ReturnType<typeof readyIntents>[number]): string => `${i.slug.padEnd(28)} sprint ${i.sprint}  ${i.estimateDays ?? '?'} day(s)`
@@ -339,6 +377,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   status: cmdStatus,
   approve: cmdApprove,
   chart: cmdChart,
+  prd: cmdPrd,
   ready: cmdReady,
   'start-brief': () => cmdStartBrief(),
   pr: cmdPr,

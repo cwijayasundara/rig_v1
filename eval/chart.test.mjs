@@ -78,3 +78,19 @@ test('the sprint-b key states its rules in the PRD prose, word for word', () => 
   for (const r of k.rules) assert.ok(prd.includes(r.quote), r.quote)
   assert.match(prd, /## Data model\n\n[^\n]*Ids are never reused/)
 })
+
+// 2026-10-26 PRD format: a sprint-b PRD is converted; the score follows each prose rule through the map into a DR line.
+const conversion = (dr2 = 'Ids are never reused, even after an item is removed.') => ({
+  map: [{ ids: ['DR-1'], context: false, line: 9, quote: 'Ids start at 1.', reason: '' }, { ids: ['DR-2'], context: false, line: 9, quote: 'Ids are never reused, even after an item is removed.', reason: '' }],
+  criteria: [{ id: 'DR-1', parent: null, kind: 'rule', line: 30, text: 'Each item id is an integer starting at 1.' }, { id: 'DR-2', parent: null, kind: 'rule', line: 31, text: dr2 }],
+})
+const drIntents = [{ ...intent('a', ['FR-1']), behaviours: [{ id: 'B1', reqs: ['FR-1'], rules: ['DR-1'], text: 'x' }, { id: 'B2', reqs: ['FR-1'], rules: ['DR-2'], text: 'y' }] }]
+
+test('a conversion that maps both prose rules to DR lines that keep their constraints, cited by behaviours, scores full marks', () => {
+  const s = scoreChart(rulesKey, [], drIntents, [], conversion())
+  assert.deepEqual([s.rulesQuoted, s.rulesCited, s.constraintsKept], [1, 1, 1])
+})
+
+test('a DR line that lost "never" halves constraints kept', () => {
+  assert.equal(scoreChart(rulesKey, [], drIntents, [], conversion('Ids are integers.')).constraintsKept, 0.5)
+})

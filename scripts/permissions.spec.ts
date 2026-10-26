@@ -55,3 +55,9 @@ test('a chart waiver file is as protected from the model as a chart approval', (
   assert.ok(deny.includes('Edit(/.rig/product/sprints/**/waivers.json)'), 'settings.json denies edits to chart waivers')
   assert.match(fs.readFileSync(path.join(ROOT, 'templates/managed-settings.json'), 'utf8'), /"Edit\(\.\/\.rig\/product\/sprints\/\*\*\/waivers\.json\)"/)
 })
+
+test('a PRD approval is as protected from the model as a chart approval', () => {
+  const deny = JSON.parse(fs.readFileSync(path.join(ROOT, 'templates/settings.json'), 'utf8')).permissions.deny as string[]
+  assert.ok(deny.includes('Edit(/.rig/product/sprints/**/prd-approval.json)'))
+  assert.match(fs.readFileSync(path.join(ROOT, 'templates/managed-settings.json'), 'utf8'), /"Edit\(\.\/\.rig\/product\/sprints\/\*\*\/prd-approval\.json\)"/)
+})
