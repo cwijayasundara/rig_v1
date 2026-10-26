@@ -227,6 +227,32 @@ test('apply on a current install creates no branch', () => {
   assert.equal(status(repo), '')
 })
 
+test('apply with only unapplied sensor proposals creates no branch and names them', () => {
+  const repo = committed()
+  const ids = (plan(repo).proposals as { sensors: { id: string }[] }).sensors.map(x => x.id)
+  assert.ok(ids.length > 1)
+  for (let i = 0; i < 2; i++) {
+    const r = sdlc(repo, ['upgrade', '--apply'])
+    assert.equal(r.code, 0, r.stderr)
+    assert.match(r.stdout, /already current/)
+    assert.match(r.stdout, /--add-sensors/)
+    for (const id of ids) assert.ok(r.stdout.includes(id), id)
+    assert.equal(gitIn(repo, 'branch', '--list', 'chore/*'), '')
+    assert.equal(status(repo), '')
+  }
+})
+
+test('apply prints how to recover before it runs sync and baseline', () => {
+  const repo = committed()
+  lag(repo, SKILL, 'old\n')
+  const r = sdlc(repo, ['upgrade', '--apply'])
+  assert.equal(r.code, 0, r.stderr)
+  const at = r.stdout.indexOf('running sync and baseline')
+  assert.ok(at > 0)
+  assert.match(r.stdout.slice(at), /^running sync and baseline \(if one fails: .*git checkout main .*git branch -D chore\/rig-upgrade-/)
+  assert.ok(r.stdout.indexOf('review and merge') > at)
+})
+
 test('apply adds chosen sensors to sensors.json and leaves other sensors byte-identical', () => {
   const repo = committed()
   const p = plan(repo)

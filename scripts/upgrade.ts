@@ -123,17 +123,24 @@ function parseDecisions(raw: unknown, conflicts: string[]): Map<string, Decision
 function applyUpgrade(args: Args): void {
   const plan = buildPlan()
   const conflicts = [...plan.files].filter(([, v]) => v === 'conflict').map(([rel]) => rel)
-  const current = [...plan.files.values()].every(v => v === 'noop' || v === 'keep') && !plan.migrations.length && !plan.proposals && plan.from === plan.to
-  if (current) return out('already current: nothing to apply, no branch created')
   const decisions = parseDecisions(args.opt.decide, conflicts)
   const wanted = typeof args.opt['add-sensors'] === 'string' ? args.opt['add-sensors'].split(',').map(s => s.trim()).filter(Boolean) : []
   const unknown = wanted.filter(id => !plan.proposals?.sensors.some(s => s.id === id))
   if (unknown.length) fail(`--add-sensors: not a proposed sensor: ${unknown.join(', ')}`)
+  // Proposals are work only when the person picked some: otherwise a bare --apply would leave an empty branch.
+  const current = [...plan.files.values()].every(v => v === 'noop' || v === 'keep') && !plan.migrations.length && !wanted.length && plan.from === plan.to
+  if (current) {
+    const ids = plan.proposals?.sensors.map(s => String(s.id)) ?? []
+    return out(`already current: nothing to apply, no branch created${ids.length ? `\n${ids.length} sensors proposed (${ids.join(', ')}); re-run with --add-sensors <id,id> to add them` : ''}`)
+  }
   const branch = `chore/rig-upgrade-${plan.to}`
-  if (git(['status', '--porcelain'])) fail('the working tree is not clean: commit or stash first, so the upgrade branch holds only the upgrade')
+  const dirty = git(['status', '--porcelain'])
+  if (dirty === null) fail('could not read git status: is this a git repository?')
+  if (dirty) fail('the working tree is not clean: commit or stash first, so the upgrade branch holds only the upgrade')
   const undecided = conflicts.filter(rel => !decisions.has(rel))
   if (undecided.length) fail(`decide each conflict with --decide '{"<path>": "mine" | "new" | "later"}'; undecided:\n${undecided.map(rel => `  ${rel}`).join('\n')}`)
   if (git(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`])) fail(`branch ${branch} already exists: merge or delete it first`)
+  const previous = git(['branch', '--show-current']) || 'main'
   if (git(['checkout', '-q', '-b', branch]) === null) fail(`could not create branch ${branch}`)
 
   const written: string[] = []
@@ -167,7 +174,10 @@ function applyUpgrade(args: Args): void {
   }
   sanctionWrites(written)
   out(`upgrade ${plan.from || 'unversioned'} -> ${plan.to} applied on ${branch}\n${written.length} files written${notes.length ? '\n' + notes.join('\n') : ''}`)
-  if (isRegistryShape(read(SENSORS_PATH))) { cmdSync({ pos: [], opt: {} }); cmdBaseline() }
+  if (isRegistryShape(read(SENSORS_PATH))) {
+    out(`applied on branch ${branch}; running sync and baseline (if one fails: fix it and re-run it, or discard with: git checkout -- . && git clean -fd && git checkout ${previous} && git branch -D ${branch})`)
+    cmdSync({ pos: [], opt: {} }); cmdBaseline()
+  }
   out(`branch ${branch}\nreview and merge; nothing was pushed`)
 }
 
