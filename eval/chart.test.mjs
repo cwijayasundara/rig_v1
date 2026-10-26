@@ -52,3 +52,29 @@ test('a dry run replays the known-good chart at $0 and scores it perfectly', asy
   const row = await runChartOne(CHART_ARMS[0], 1, { dry: true, out, capRunUsd: 3 })
   assert.deepEqual([row.arm, row.recall, row.inventedIntentRate, row.sizeCompliance, row.dependenciesValid, row.designCoverage, row.failureCoverage, row.usd, row.error], [CHART_ARMS[0].id, 1, 0, 1, true, 1, 1, 0, undefined], JSON.stringify(row))
 })
+
+// 2026-10-26 PRD fidelity: the id rules sat in prose, the chart weakened them, and three id bugs shipped.
+const rulesKey = { requirements: ['FR-1'], rules: [{ quote: 'Ids start at 1.', mustKeep: ['\\b1\\b'] }, { quote: 'Ids are never reused, even after an item is removed.', mustKeep: ['never|not.*reuse|unique'] }] }
+const rows = [{ id: 'G-1', alias: null, kind: 'rule', quote: 'Ids start at 1.' }, { id: 'G-2', alias: null, kind: 'rule', quote: 'Ids are never reused, even after an item is removed.' }]
+const withRules = (b2 = 'a removed id is never handed out again') => [{ ...intent('a', ['FR-1']), behaviours: [{ id: 'B1', reqs: ['FR-1'], rules: ['G-1'], text: 'the first id is 1' }, { id: 'B2', reqs: ['FR-1'], rules: ['G-2'], text: b2 }] }]
+
+test('prose rules quoted in the ledger, cited by a behaviour that keeps their constraints, score full marks', () => {
+  const s = scoreChart(rulesKey, [], withRules(), rows)
+  assert.deepEqual([s.rulesQuoted, s.rulesCited, s.constraintsKept], [1, 1, 1])
+})
+
+test('a behaviour that drops "never reused" halves constraints kept; an unquoted rule lowers rules quoted', () => {
+  assert.equal(scoreChart(rulesKey, [], withRules('ids are integers'), rows).constraintsKept, 0.5)
+  assert.deepEqual([scoreChart(rulesKey, [], withRules(), rows.slice(0, 1)).rulesQuoted, scoreChart(rulesKey, [], withRules(), rows.slice(0, 1)).rulesCited], [0.5, 0.5])
+})
+
+test('a key with no rules leaves the three rule scores out', () => {
+  assert.deepEqual(Object.keys(scoreChart(key, [], perfect)).filter(k => k.startsWith('rules') || k === 'constraintsKept'), [])
+})
+
+test('the sprint-b key states its rules in the PRD prose, word for word', () => {
+  const k = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, 'fixtures/chart/sprint-b.json'), 'utf8'))
+  const prd = fs.readFileSync(path.join(import.meta.dirname, '..', k.prd), 'utf8')
+  for (const r of k.rules) assert.ok(prd.includes(r.quote), r.quote)
+  assert.match(prd, /## Data model\n\n[^\n]*Ids are never reused/)
+})

@@ -10,7 +10,7 @@ allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_R
 
 1. Run `S status --json`. The change (`$0` or the active one) must be at `build`. At `approve`, stop: a person approves first.
 2. If HEAD is the trunk, run `git checkout -b sdlc/<slug>`.
-3. For each behaviour in spec.md, in order:
+3. Read `.rig/changes/<slug>/requirements.md` when it exists: the PRD's own words for this change; never edit it, and a test asserts each row's numbers and limits as written. For each behaviour in spec.md, in order:
    - Write the test that names its B-number.
    - Run it with `S run --expect-fail -- "<test command>"` and see it fail.
    - Write the code.

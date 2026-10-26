@@ -69,6 +69,61 @@ test('an approval is missing, then approved, then stale after an edit that names
   assert.deepEqual(state(1).changed, [`${P}/sprints/sprint-1/intents/alpha.md`], 'another sprint does not change it')
 })
 
+// 2026-10-26 PRD fidelity: bug 1 was flagged by the chart review and still shipped, because "→ fixed" was never checked and
+// approval never read the review.
+test('approve chart-N refuses with no review, and with a finding not confirmed fixed, naming each and the waive command', () => {
+  cleanChart()
+  fs.rmSync(path.join(repo, `${P}/sprints/sprint-1/chart-review.md`))
+  const none = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  assert.equal(none.code, 1)
+  assert.match(none.stderr, /no chart-review\.md/)
+  write(repo, `${P}/sprints/sprint-1/chart-review.md`, 'verdict: pass\n## Findings\n- [severity: high] [category: coverage] a.md:1: nextId can repeat → fix (confidence 90) → fixed\n')
+  const open = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  assert.equal(open.code, 1)
+  assert.match(open.stderr, /1\. .*nextId can repeat/)
+  assert.match(open.stderr, /waive chart-1 <finding number> <reason>/)
+  assert.ok(!fs.existsSync(path.join(repo, `${P}/sprints/sprint-1/approval.json`)))
+})
+
+test('a person waives a chart finding, approval then succeeds; the model cannot waive, and a missing finding number is refused', () => {
+  cleanChart()
+  write(repo, `${P}/sprints/sprint-1/chart-review.md`, 'verdict: pass\n## Findings\n- [severity: high] [category: coverage] a.md:1: nextId can repeat → fix (confidence 90)\n')
+  assert.equal(sdlc(repo, ['waive', 'chart-1', '1', 'accepted', 'risk']).code, 3)
+  assert.equal(sdlc(repo, ['waive', 'chart-1', '7', 'x', '--by', 'Pat'], HUMAN).code, 1)
+  const w = sdlc(repo, ['waive', 'chart-1', '1', 'accepted', 'risk', '--by', 'Pat'], HUMAN)
+  assert.equal(w.code, 0, w.stderr)
+  const saved = JSON.parse(fs.readFileSync(path.join(repo, `${P}/sprints/sprint-1/waivers.json`), 'utf8')) as { finding: number; by: string; reason: string }[]
+  assert.deepEqual(saved.map(x => [x.finding, x.by, x.reason]), [[1, 'Pat', 'accepted risk']])
+  const ok = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
+  assert.equal(ok.code, 0, ok.stderr)
+})
+
+// 2026-10-26 PRD fidelity: the ledger is read by chart check, and it and the chart waivers are part of what a person approves.
+const RULE_PRD = prd(1, '').replace('### FR-1: thing\n', '### FR-1: thing\n\n- Ids are never reused.\n')
+test('chart check blocks on a missing ledger before approval and only reports it for a sprint approved without one', () => {
+  chart1()
+  write(repo, `${P}/sprints/sprint-1/prd.md`, RULE_PRD)
+  const ledger = (): { rule: string; severity: string }[] => (call('return C.chartFindings(1, false)') as { rule: string; severity: string }[]).filter(f => f.rule.startsWith('ledger'))
+  assert.deepEqual(ledger().map(f => [f.rule, f.severity]), [['ledger-missing', 'block']])
+  call(`C.writeChartApproval(1, 'Pat')`)
+  assert.deepEqual(ledger().map(f => [f.rule, f.severity]), [['ledger-missing', 'report']])
+})
+
+test('the ledger and the chart waivers are approved files; chart-review.md is not', () => {
+  chart1()
+  write(repo, `${P}/sprints/sprint-1/requirements.md`, '- G-1 [rule] prd.md:7 "Ids are never reused."\n')
+  write(repo, `${P}/sprints/sprint-1/waivers.json`, '[]\n')
+  write(repo, `${P}/sprints/sprint-1/chart-review.md`, 'verdict: pass\n## Findings\n')
+  call(`C.writeChartApproval(1, 'Pat')`)
+  write(repo, `${P}/sprints/sprint-1/chart-review.md`, 'verdict: pass\n## Findings\n\nedited\n')
+  assert.equal(state(1).state, 'approved')
+  write(repo, `${P}/sprints/sprint-1/requirements.md`, '- G-1 [rule] prd.md:7 "Ids are never reused." \n')
+  assert.deepEqual(state(1), { state: 'stale', changed: [`${P}/sprints/sprint-1/requirements.md`] })
+  write(repo, `${P}/sprints/sprint-1/requirements.md`, '- G-1 [rule] prd.md:7 "Ids are never reused."\n')
+  write(repo, `${P}/sprints/sprint-1/waivers.json`, '[{"finding":1}]\n')
+  assert.deepEqual(state(1), { state: 'stale', changed: [`${P}/sprints/sprint-1/waivers.json`] })
+})
+
 // 2026-10-25 shop_app: ADRs stayed `proposed` after approval, so the architect's "never edit an accepted ADR" never applied.
 test('approval accepts that sprint\'s proposed ADRs and their Decisions rows, and the chart stays approved', () => {
   chart1()
@@ -154,8 +209,10 @@ test('intentReady explains why not: unapproved, stale, blocked by an unshipped d
 
 // The CLI: chart check, approve chart-N, ready.
 const HUMAN = { env: { SDLC_HUMAN: '1' } }
+const REVIEW_PASS = 'verdict: pass\n## Findings\n## Deferred\n'
 const cleanChart = (): void => {
   chart1()
+  write(repo, `${P}/sprints/sprint-1/chart-review.md`, REVIEW_PASS)
   write(repo, `${P}/sprints/sprint-1/testplan/cases.md`, '| ID | Req | Intent | B | Level | Data | Expected |\n| TC-1 | FR-1 | alpha | B1 | unit | - | ok |\n')
 }
 
@@ -598,4 +655,62 @@ test('the architecture diagram and each key flow need an ASCII twin beside the m
   assert.deepEqual(allRules(1, false).filter(r => r.startsWith('arch-')), ['arch-diagram-text'])
   write(repo, `${P}/architecture.md`, ARCH_DOC().replace(/```text\ncli ---run[\s\S]*?```/, '```text\n```'))
   assert.deepEqual(allRules(1, false).filter(r => r.startsWith('arch-')), ['arch-flow-text'], 'an empty block draws nothing')
+})
+
+// 2026-10-26 PRD fidelity: the PRD's own words travel with a charted change, copied by the script, never retyped by a model.
+test('new --source writes the ledger rows its intent cites into the change, word for word; no ledger, no file', () => {
+  const PRD_RULES = '---\nsprint: 1\nengineers: 1\n---\n# Sprint 1\n\n### FR-1: thing\n\n- Ids start at 1.\n- Ids are stored.\n\n### FR-2: other\n\n- Export works.\n\n## Open questions\nnone\n'
+  const LEDGER = '# Requirements\n\n- FR-1.1 [rule] prd.md:9 "Ids start at 1."\n- FR-1.2 [context] prd.md:10 "Ids are stored." — how, not what\n- FR-2.1 [rule] prd.md:14 "Export works."\n'
+  cleanChart()
+  write(repo, `${P}/sprints/sprint-1/prd.md`, PRD_RULES)
+  write(repo, `${P}/sprints/sprint-1/requirements.md`, LEDGER)
+  write(repo, `${P}/sprints/sprint-1/intents/alpha.md`, intent(1).replace('- B1 (FR-1): works', '- B1 (FR-1, FR-1.1): the first id is 1'))
+  write(repo, `${P}/sprints/sprint-1/intents/beta.md`, intent(1, { req: 'FR-2' }).replace('- B1 (FR-2): works', '- B1 (FR-2, FR-2.1): exports'))
+  write(repo, `${P}/sprints/sprint-1/implementation-plan.md`, IMPL_OK(['alpha', 'beta']))
+  write(repo, `${P}/sprints/sprint-1/testplan/cases.md`, '| ID | Req | Intent | B | Level | Data | Expected |\n| TC-1 | FR-1, FR-1.1 | alpha | B1 | unit | - | ok |\n| TC-2 | FR-2, FR-2.1 | beta | B1 | unit | - | ok |\n')
+  const approved = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  assert.equal(approved.code, 0, approved.stderr)
+  const r = sdlc(repo, ['new', 'alpha', '--source', SRC])
+  assert.equal(r.code, 0, r.stderr)
+  const req = fs.readFileSync(path.join(repo, '.rig/changes/alpha/requirements.md'), 'utf8')
+  assert.ok(req.includes('- FR-1.1 [rule] prd.md:9 "Ids start at 1."\n'))
+  assert.ok(!req.includes('FR-1.2') && !req.includes('FR-2.1'), req)
+  assert.match(r.stdout, /requirements\.md/)
+})
+
+test('new --source with no sprint ledger writes no requirements.md', () => {
+  startable()
+  assert.equal(sdlc(repo, ['new', 'alpha', '--source', SRC]).code, 0)
+  assert.ok(!fs.existsSync(path.join(repo, '.rig/changes/alpha/requirements.md')))
+})
+
+// 2026-10-26 final review: approval failed open on a review it could not read, and a deleted ledger stopped blocking.
+test('a changes-needed review with no finding rig can read refuses approval', () => {
+  cleanChart()
+  write(repo, `${P}/sprints/sprint-1/chart-review.md`, 'verdict: changes-needed\n## Findings (2)\n- nextId can repeat\n')
+  const r = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  assert.equal(r.code, 1)
+  assert.match(r.stderr, /changes-needed/)
+})
+
+test('a ledger approved once and then deleted blocks again', () => {
+  cleanChart()
+  write(repo, `${P}/sprints/sprint-1/prd.md`, RULE_PRD)
+  write(repo, `${P}/sprints/sprint-1/requirements.md`, '- G-1 [rule] prd.md:9 "Ids are never reused."\n')
+  write(repo, `${P}/sprints/sprint-1/intents/alpha.md`, intent(1).replace('- B1 (FR-1): works', '- B1 (FR-1, G-1): never reused'))
+  write(repo, `${P}/sprints/sprint-1/testplan/cases.md`, '| ID | Req | Intent | B | Level | Data | Expected |\n| TC-1 | FR-1, G-1 | alpha | B1 | unit | - | ok |\n')
+  const ok = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  assert.equal(ok.code, 0, ok.stderr)
+  fs.rmSync(path.join(repo, `${P}/sprints/sprint-1/requirements.md`))
+  const missing = (call('return C.chartFindings(1, false)') as { rule: string; severity: string }[]).filter(f => f.rule === 'ledger-missing')
+  assert.deepEqual(missing.map(f => f.severity), ['block'])
+})
+
+test('approve on a chart already approved before reviews were read still says already approved', () => {
+  cleanChart()
+  call(`C.writeChartApproval(1, 'Pat')`)
+  fs.rmSync(path.join(repo, `${P}/sprints/sprint-1/chart-review.md`))
+  const r = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  assert.equal(r.code, 0, r.stderr)
+  assert.match(r.stdout, /already approved/)
 })

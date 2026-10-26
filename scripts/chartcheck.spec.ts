@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import fs from 'node:fs'
 import path from 'node:path'
 import assert from 'node:assert/strict'
-import { designIntents, prdIds, parseIntent, parseCases, traceReport, intentSpecProblems, parkedDecisions, parseAccess, accessProblems, implementationPlanProblems, type Intent, type TestCase } from './chartcheck.ts'
+import { designIntents, prdIds, parseIntent, parseCases, traceReport, intentSpecProblems, parkedDecisions, parseAccess, accessProblems, implementationPlanProblems, parseLedger, prdUnits, ledgerProblems, normalise, parseReview, openFindings, type Intent, type TestCase } from './chartcheck.ts'
 
 const PRD = '---\nsprint: 1\nengineers: 1\n---\n# Sprint 1\n\n### FR-1: add\n### FR-2: remove\n| NFR-1 | fast |\n\nMentioned only in prose: FR-9.\n\n## Open questions\nnone\n'
 const intent = (slug: string, o: { prd?: string; depends?: string; days?: string; kind?: string; behaviours?: string; iface?: string; open?: string } = {}): string =>
@@ -44,7 +44,7 @@ test('parseIntent reads the canonical and the loose forms alike (CRLF, no bracke
   assert.deepEqual(block, canon, 'a block list is a list, not an empty field')
   assert.deepEqual(canon.prd, ['FR-3'])
   assert.deepEqual(canon.depends, ['a'])
-  assert.deepEqual(canon.behaviours, [{ id: 'B1', reqs: ['FR-3'], text: 'x' }])
+  assert.deepEqual(canon.behaviours, [{ id: 'B1', reqs: ['FR-3'], rules: [], text: 'x' }])
   assert.equal(canon.estimateDays, 1)
   assert.equal(canon.kind, 'internal')
 })
@@ -332,4 +332,155 @@ test('an owner: line holding only a comment is no owner, and the intent template
 
 test('a section heading may end its slug with a colon', () => {
   assert.deepEqual(impl(IMPL.replace('### model\n', '### model: the rules\n')), [])
+})
+
+// The requirements ledger (spec 2026-10-26 PRD fidelity): every in-scope PRD sentence quoted, every rule cited and tested.
+// The fixture is the colleague's bug: "starting at 1" under FR-4 and "never reused" in a prose Data model section.
+const IDS_PRD = ['---', 'sprint: 1', 'engineers: 1', '---', '# Sprint 1', '', '## Context and problem', '', 'Carts lose items today.', '',
+  '## Functional requirements', '', '### FR-4: Items', '', '- Each item has an integer id starting at 1.', '', '## Data model', '',
+  'Ids are never reused. They survive a restart.', '', '## Open questions', '', 'none', ''].join('\n')
+const LEDGER_OK = ['# Requirements', '',
+  '- FR-4.1 (AC-4.1) [rule] prd.md:15 "Each item has an integer id starting at 1."',
+  '- G-1 [rule] prd.md:19 "Ids are never reused."',
+  '- G-2 [context] prd.md:19 "They survive a restart." — restates persistence, covered by G-1', ''].join('\n')
+const idsIntent = (behaviours: string): Intent[] => parse({ store: intent('store', { prd: '[FR-4]', behaviours }) })
+const OK_BEHAVIOURS = '- B1 (FR-4, FR-4.1): the first id is 1\n- B2 (FR-4, G-1): a removed id is never handed out again\n'
+const ledger = (o: { prd?: string; ledger?: string | null; behaviours?: string; cases?: TestCase[] | null; required?: boolean } = {}) =>
+  ledgerProblems({ prd: o.prd ?? IDS_PRD, ledger: o.ledger === undefined ? LEDGER_OK : o.ledger, intents: idsIntent(o.behaviours ?? OK_BEHAVIOURS), cases: o.cases ?? null, required: o.required ?? true })
+
+test('prdUnits: bullets and paragraphs of in-scope sections with their line, never the excluded sections or headings', () => {
+  assert.deepEqual(prdUnits(IDS_PRD), [{ line: 15, text: 'Each item has an integer id starting at 1.' }, { line: 19, text: 'Ids are never reused. They survive a restart.' }])
+})
+
+test('parseLedger reads id, alias, kind, line, quote and reason; out-of-scope carries when and who', () => {
+  const rows = parseLedger(LEDGER_OK + '- FR-6.1 [out-of-scope: sprint 2, decided by Ana] prd.md:30 "Export to CSV." — export is sprint 2\n')
+  assert.deepEqual(rows[0], { id: 'FR-4.1', alias: 'AC-4.1', kind: 'rule', when: '', by: '', line: 15, quote: 'Each item has an integer id starting at 1.', reason: '' })
+  assert.equal(rows[2]?.reason, 'restates persistence, covered by G-1')
+  assert.deepEqual([rows[3]?.kind, rows[3]?.when, rows[3]?.by, rows[3]?.reason], ['out-of-scope', 'sprint 2', 'Ana', 'export is sprint 2'])
+})
+
+test('a complete ledger cited by behaviours has no finding', () => {
+  assert.deepEqual(ledger(), [])
+})
+
+test('ledger-missing blocks while the chart is unapproved, and is only reported once it is approved', () => {
+  assert.deepEqual(rules(ledger({ ledger: null })), ['ledger-missing'])
+  assert.deepEqual(rules(ledger({ ledger: null, required: false })), [])
+  assert.deepEqual(rules(ledger({ ledger: null, required: false }), 'report'), ['ledger-missing'])
+})
+
+test('a PRD with nothing in scope needs no ledger', () => {
+  assert.deepEqual(ledger({ prd: '---\nsprint: 1\n---\n# Sprint 1\n\n### FR-1: add\n\n## Open questions\nnone\n', ledger: null, behaviours: '- B1 (FR-1): adds\n' }), [])
+})
+
+test('ledger-unquoted names the PRD text no row quotes: the dropped "never reused" sentence blocks', () => {
+  const found = ledger({ ledger: LEDGER_OK.replace(/^- G-1 .*\n/m, ''), behaviours: '- B1 (FR-4, FR-4.1): the first id is 1\n' })
+  assert.deepEqual(rules(found), ['ledger-unquoted'])
+  assert.match(found[0]!.message, /Ids are never reused/)
+})
+
+test('ledger-misquote: a paraphrase, or a line far from where the quote sits', () => {
+  assert.deepEqual(rules(ledger({ ledger: LEDGER_OK.replace('"Ids are never reused."', '"Ids may be reused."') })), ['ledger-misquote', 'ledger-unquoted'])
+  assert.deepEqual(rules(ledger({ ledger: LEDGER_OK.replace('prd.md:15', 'prd.md:35') })), ['ledger-misquote'])
+  assert.deepEqual(rules(ledger({ ledger: LEDGER_OK.replace('prd.md:15', 'prd.md:17') })), [])
+})
+
+test('ledger-reason: context without a reason, out-of-scope without who decided; an unknown kind; ledger-line for an unreadable row', () => {
+  assert.deepEqual(rules(ledger({ ledger: LEDGER_OK.replace(' — restates persistence, covered by G-1', '') })), ['ledger-reason'])
+  const oos = LEDGER_OK.replace('- G-1 [rule]', '- G-1 [out-of-scope: sprint 2]')
+  assert.deepEqual(rules(ledger({ ledger: oos, behaviours: '- B1 (FR-4, FR-4.1): the first id is 1\n' })), ['ledger-reason'])
+  assert.deepEqual(rules(ledger({ ledger: LEDGER_OK.replace('- G-1 [rule]', '- G-1 [maybe]') })), ['ledger-reason'])
+  assert.deepEqual(rules(ledger({ ledger: LEDGER_OK + '- G-3 garbled row\n' })), ['ledger-line'])
+})
+
+test('rule-uncovered: a rule no behaviour cites blocks; an out-of-scope row with a reason does not', () => {
+  const found = ledger({ behaviours: '- B1 (FR-4, FR-4.1): the first id is 1\n' })
+  assert.deepEqual(rules(found), ['rule-uncovered'])
+  assert.match(found[0]!.message, /G-1/)
+  const oos = LEDGER_OK.replace('- G-1 [rule] prd.md:19 "Ids are never reused."', '- G-1 [out-of-scope: sprint 2, decided by Ana] prd.md:19 "Ids are never reused." — later')
+  assert.deepEqual(ledger({ ledger: oos, behaviours: '- B1 (FR-4, FR-4.1): the first id is 1\n' }), [])
+})
+
+test('a behaviour citing the AC alias covers the row', () => {
+  assert.deepEqual(ledger({ behaviours: '- B1 (FR-4, AC-4.1): the first id is 1\n- B2 (FR-4, G-1): never reused\n' }), [])
+})
+
+test('rule-untested: with cases, a rule no case cites blocks', () => {
+  const cs = cases(caseRow('TC-1', 'FR-4, FR-4.1', 'store', 'B1'))
+  const found = ledger({ cases: cs })
+  assert.deepEqual(rules(found), ['rule-untested'])
+  assert.match(found[0]!.message, /G-1/)
+  assert.deepEqual(ledger({ cases: cases(caseRow('TC-1', 'FR-4, FR-4.1', 'store', 'B1'), caseRow('TC-2', 'FR-4, G-1', 'store', 'B2')) }), [])
+})
+
+test('unknown-id: a behaviour or case citing a ledger id the ledger lacks', () => {
+  assert.deepEqual(rules(ledger({ behaviours: OK_BEHAVIOURS + '- B3 (FR-4, FR-4.9): ghost\n' })), ['unknown-id'])
+  assert.deepEqual(rules(ledger({ cases: cases(caseRow('TC-1', 'FR-4.1', 'store', 'B1'), caseRow('TC-2', 'G-1, G-7', 'store', 'B2')) })), ['unknown-id'])
+})
+
+test('markup, curly quotes and CRLF in the PRD still match a plain quote', () => {
+  const prd = IDS_PRD.replace('- Each item has an integer id starting at 1.', '- Each `item` has a **unique** id \u201cstarting\u201d at 1.').replace(/\n/g, '\r\n')
+  const l = LEDGER_OK.replace('"Each item has an integer id starting at 1."', '"Each item has a unique id "starting" at 1."')
+  assert.deepEqual(ledger({ prd, ledger: l }), [])
+  assert.equal(normalise('  a **b**  `c` (answered at chart)'), 'a b c')
+})
+
+test('a wrapped bullet is one unit: quoting only its first line leaves the rest unquoted', () => {
+  const prd = IDS_PRD.replace('- Each item has an integer id starting at 1.', '- Each item has an integer id\n  starting at 1.')
+  assert.deepEqual(prdUnits(prd)[0], { line: 15, text: 'Each item has an integer id starting at 1.' })
+  const found = ledger({ prd, ledger: LEDGER_OK.replace('"Each item has an integer id starting at 1."', '"Each item has an integer id"') })
+  assert.deepEqual(rules(found), ['ledger-unquoted'])
+  assert.match(found[0]!.message, /starting at 1/)
+})
+
+test('a fenced block and an HTML comment in scope yield no unit, and do not shift line numbers', () => {
+  const prd = IDS_PRD.replace('## Data model\n', '## Data model\n<!-- a\nb -->\n```json\n{"id": 1}\n```\n')
+  assert.deepEqual(prdUnits(prd).map(u => u.text), ['Each item has an integer id starting at 1.', 'Ids are never reused. They survive a restart.'])
+  assert.equal(prdUnits(prd)[1]!.line, 24)
+})
+
+test('a table row is one unit, its cells joined by " | "; the header and separator are not units', () => {
+  const prd = IDS_PRD.replace('## Data model', '## Non-functional requirements\n\n| ID | Category | Requirement |\n|---|---|---|\n| NFR-1 | performance | add takes under 50 ms |\n\n## Data model')
+  assert.ok(prdUnits(prd).some(u => u.text === 'NFR-1 | performance | add takes under 50 ms'))
+  assert.equal(prdUnits(prd).filter(u => /Category/.test(u.text)).length, 0)
+})
+
+test('a behaviour citing FR-4.2 keeps FR-4 for the FR-level rules and lists the ledger id', () => {
+  const [i] = idsIntent('- B1 (FR-4.2): starts at 1\n')
+  assert.deepEqual([i!.behaviours[0]!.reqs, i!.behaviours[0]!.rules], [['FR-4'], ['FR-4.2']])
+  assert.deepEqual(parseCases(caseRow('TC-1', 'NFR-1.1, G-2', 'a', 'B1'))[0]!.rules, ['NFR-1.1', 'G-2'])
+})
+
+// Chart approval reads the review (spec 2026-10-26): a finding is closed only when the confirm pass confirmed its fix, or a person waived it.
+const REVIEW = ['verdict: changes-needed', '## Findings',
+  '- [severity: high] [category: coverage] intents/store.md:12: nothing stops nextId at or below the largest id → fix (confidence 90) → fixed (confirmed)',
+  '- [severity: high] [category: weakened] intents/store.md:14: "starting at 1" dropped → fix (confidence 85) → reopened: B3 still says "an integer"',
+  '- [severity: medium] [category: cases] testplan/cases.md:4: vague → fix (confidence 80) → fixed',
+  '- [severity: medium] [category: scope] adr/0003.md:3: no source → fix (confidence 80)',
+  '## Deferred', '- not a finding', ''].join('\n')
+
+test('parseReview numbers the findings and reads confirmed, reopened, a bare fixed claim and no suffix; Deferred is not read', () => {
+  const r = parseReview(REVIEW)
+  assert.deepEqual(r.map(f => [f.n, f.status]), [[1, 'confirmed'], [2, 'reopened'], [3, 'claimed'], [4, 'open']])
+  assert.equal(r[1]!.sha, parseReview(REVIEW.replace('→ reopened: B3 still says "an integer"', ''))[1]!.sha, 'the status suffix is not part of the text a waiver pins')
+})
+
+test('openFindings: everything not confirmed, minus waivers that match the number and the text', () => {
+  const r = parseReview(REVIEW)
+  assert.deepEqual(openFindings(r, []).map(f => f.n), [2, 3, 4])
+  const w = (n: number, text_sha = r[n - 1]!.sha) => ({ finding: n, text_sha, by: 'Pat', at: '2026-10-26', reason: 'accepted' })
+  assert.deepEqual(openFindings(r, [w(2), w(3)]).map(f => f.n), [4])
+  assert.deepEqual(openFindings(r, [w(4, 'deadbeef')]).map(f => f.n), [2, 3, 4], 'a waiver for different text does not cover a rewritten finding')
+})
+
+// 2026-10-26 final review: the two-word floor let a quote drop exactly the word that made the rule (a number, "not", "never").
+test('a one-word residue that is a number or a negation or quantifier is still unquoted', () => {
+  const prd = IDS_PRD.replace('- Each item has an integer id starting at 1.', '- Max quantity per line is 10.\n- Orders must not ship late.')
+  const l = LEDGER_OK.replace('- FR-4.1 (AC-4.1) [rule] prd.md:15 "Each item has an integer id starting at 1."', '- FR-4.1 [rule] prd.md:15 "Max quantity per line is"\n- FR-4.2 [rule] prd.md:16 "Orders must"\n- FR-4.3 [rule] prd.md:16 "ship late."')
+  const found = ledgerProblems({ prd, ledger: l, intents: idsIntent('- B1 (FR-4, FR-4.1, FR-4.2, FR-4.3, G-1): x\n'), cases: null, required: true })
+  assert.deepEqual(found.filter(f => f.rule === 'ledger-unquoted').map(f => /says "([^"]*)"/.exec(f.message)?.[1]), ['10', 'not'])
+})
+
+test('parseReview also reads numbered findings', () => {
+  assert.deepEqual(parseReview('verdict: changes-needed\n## Findings\n1. a → fix\n2) b → fixed (confirmed)\n').map(f => [f.n, f.status]), [[1, 'open'], [2, 'confirmed']])
 })

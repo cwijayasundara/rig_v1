@@ -65,3 +65,8 @@ test('the brief names unmapped behaviour and an Unverifiable section that never 
   assert.match(brief, /never change the verdict/i)
   assert.ok(brief.trimEnd().split('\n').length <= 60)
 })
+
+test('the reviewer reads the change requirements.md and a broken PRD row is correctness, citing its ledger id', () => {
+  assert.match(brief, /\.rig\/changes\/<slug>\/requirements\.md/)
+  assert.match(brief, /breaks a quoted requirements\.md row is `correctness`[^\n]*ledger id/)
+})

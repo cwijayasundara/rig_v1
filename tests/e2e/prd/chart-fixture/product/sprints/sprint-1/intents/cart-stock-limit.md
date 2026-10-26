@@ -31,8 +31,8 @@ none
 
 ### Failure behaviour
 
-- B1 (FR-2): adding more than the stock throws.
-- B2 (NFR-1): the message names the SKU.
+- B1 (FR-2, FR-2.1): adding more than the stock throws.
+- B2 (NFR-1, NFR-1.1): the message names the SKU.
 
 ## Tests required
 

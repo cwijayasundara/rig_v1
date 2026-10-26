@@ -228,6 +228,7 @@ test('SessionStart names the queue pick at rung 1 with no active change, and say
   write('.rig/product/sprints/sprint-0/testplan/cases.md', '| ID | Req | Intent | B | Level | Data | Expected |\n| TC-1 | FR-0 | add-item | B1 | unit | - | ok |\n')
   write('.rig/product/architecture.md', ARCH_OK())
   write('.rig/product/sprints/sprint-0/implementation-plan.md', IMPL_OK(['add-item']))
+  write('.rig/product/sprints/sprint-0/chart-review.md', 'verdict: pass\n## Findings\n')
   assert.equal(run(['approve', 'chart-0'], { env: { SDLC_HUMAN: '1' } }).code, 0)
   const ctx = (): string => JSON.parse(hook('session-start', { session_id: 's1', source: 'startup' }).stdout).hookSpecificOutput.additionalContext
   assert.match(ctx(), /No active change/)

@@ -133,8 +133,7 @@ test('testplan format: import checks forbid modules instead of listing "only", a
 // finding the reviewer gave to QA alone left the architect's intent line contradicting the fixed case.
 test('chart skill: the fix round marks findings fixed and rewrites the verdict, and routes a finding by the files it cites', () => {
   assert.match(skill, /append ` → fixed` to each finding line/)
-  assert.match(skill, /set line 1 to `verdict: pass` when every item under `## Findings` is marked fixed/)
-  assert.match(skill, /leave `changes-needed` when any is still open/)
+  assert.match(skill, /Set line 1 to `verdict: pass` only when every item under `## Findings` is confirmed; leave `changes-needed` otherwise/)
   assert.match(skill, /a finding citing files of both goes to both/)
 })
 
@@ -155,4 +154,51 @@ test('chart has the architect write implementation-plan.md and ends by naming bo
 
 test('/rig:plan starts from the intent section of the sprint implementation plan', () => {
   assert.match(text('skills/plan/SKILL.md'), /`### <slug>` section of `implementation-plan\.md`[^.]*first/)
+})
+
+// 2026-10-26 PRD fidelity (docs/feedback/feedback_1.html): "starting at 1, never reused" became "an integer id" and three id bugs shipped.
+const fidelity = (f: string): string => fs.readFileSync(path.resolve(import.meta.dirname, '..', f), 'utf8')
+test('chart step 1 writes the requirements ledger from the PRD copy, quoting every in-scope sentence, and never edits prd.md for it', () => {
+  const step1 = skill.slice(skill.indexOf('1. **Which sprint'), skill.indexOf('2. **Design.**'))
+  assert.match(step1, /\*\*Requirements ledger\.\*\*[^\n]*requirements\.md/)
+  assert.match(step1, /word for word/)
+  assert.match(step1, /out-of-scope: <when>, decided by <who>/)
+  assert.match(step1, /cells joined by " \| "/)
+  assert.match(step1, /never edit `prd\.md` for it/i)
+})
+
+test('the architect cites ledger ids and keeps every constraint of the rows it cites', () => {
+  const architect = fidelity('agents/architect.md')
+  assert.match(architect, /requirements\.md/)
+  assert.match(architect, /\(FR-4, FR-4\.2\)/)
+  assert.match(architect, /never\b[^\n]*only\b[^\n]*unique/)
+  assert.match(skill.slice(skill.indexOf('**Architect.**'), skill.indexOf('3. **Check.**')), /requirements\.md/)
+  assert.match(fidelity('templates/intent-format.md'), /\(FR-4, FR-4\.2\)/)
+})
+
+test('QA cites ledger ids in the Requirement column and gives every rule and answer row a case', () => {
+  assert.match(skill.slice(skill.indexOf('4. **QA.**'), skill.indexOf('5. **Review.**')), /every `rule` and `answer` row of `requirements\.md`/)
+  assert.match(fidelity('templates/testplan-format.md'), /Requirement: one or more FR\/NFR ids and the requirements\.md ids/)
+})
+
+test('chart step 5 confirms the fixes once, and only a confirmed fix or a person\'s waiver closes a finding', () => {
+  const step5 = skill.slice(skill.indexOf('5. **Review.**'), skill.indexOf('6. **Plan view.**'))
+  assert.match(step5, /confirm the fixes for sprint <N>/)
+  assert.match(step5, /→ fixed \(confirmed\)/)
+  assert.match(step5, /→ reopened: <why>/)
+  assert.match(step5, /waive chart-<N> <finding number> <reason>/)
+  assert.match(skill.slice(skill.indexOf('8. ')), /waive chart-<N>/)
+})
+
+test('the chart reviewer reads the ledger, reports weakened rules and ledger misuse, and has a confirm mode', () => {
+  const evaluator = fidelity('agents/evaluator.md')
+  assert.match(evaluator, /requirements\.md/)
+  assert.match(evaluator, /\*\*weakened:\*\*[^\n]*starting at 1/)
+  assert.match(evaluator, /\*\*ledger:\*\*/)
+  assert.match(evaluator, /## Confirm mode[\s\S]*confirmed[\s\S]*reopened: <why>/)
+  assert.match(evaluator, /one of the nine above/)
+})
+
+test('start, plan and build read the change requirements.md and never edit it', () => {
+  for (const f of ['skills/start/SKILL.md', 'skills/plan/SKILL.md', 'skills/build/SKILL.md']) assert.match(fidelity(f), /requirements\.md[^\n]*never edit/, f)
 })

@@ -21,6 +21,7 @@ function chartedRepo(): string {
   write(repo, '.rig/product/design/sprint-0.md', '# Design\n\n## Intents\n- c-three: third (FR-0)\n- a-one: first (FR-0)\n- b-two: second (FR-0)\n')
   write(repo, '.rig/product/architecture.md', ARCH_OK(0, 'design: .rig/product/design/sprint-0.md'))
   write(repo, '.rig/product/sprints/sprint-0/implementation-plan.md', IMPL_OK(['a-one', 'b-two', 'c-three']))
+  write(repo, '.rig/product/sprints/sprint-0/chart-review.md', 'verdict: pass\n## Findings\n')
   const r = sdlc(repo, ['approve', 'chart-0'], { env: HUMAN })
   assert.equal(r.code, 0, r.stderr + r.stdout)
   return repo

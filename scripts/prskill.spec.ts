@@ -104,3 +104,7 @@ test('the security pass checks every touched action against its ## Access row on
   assert.match(pr(), /for security: [^\n]*every action in `\.rig\/product\/architecture\.md` `## Access`[^\n]*on each interface/)
   assert.match(repoText('templates/REVIEW.md'), /## Access/)
 })
+
+test('pr triage never defers or dismisses a finding that cites a ledger id', () => {
+  assert.match(pr(), /cites a ledger id[^\n]*never moved to `## Deferred`[^\n]*never dismissed/)
+})

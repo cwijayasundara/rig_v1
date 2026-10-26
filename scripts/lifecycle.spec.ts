@@ -66,6 +66,18 @@ test('an approval goes stale when spec.md or plan.md changes, trailing whitespac
   assert.equal(call(`return L.approvalState('demo')`), 'stale')
 })
 
+test('a charted change\'s requirements.md is approved with it when present and never required', () => {
+  call(`L.newChange('demo', 'feature', 'Demo')`)
+  write(repo, '.rig/changes/demo/spec.md', SPEC)
+  write(repo, '.rig/changes/demo/plan.md', PLAN)
+  assert.equal(call(`return L.approvalRefusal('demo')`), null)
+  write(repo, '.rig/changes/demo/requirements.md', '- G-1 [rule] prd.md:9 "Ids start at 1."\n')
+  call(`L.writeApproval('demo', 'Ana')`)
+  assert.equal(call(`return L.approvalState('demo')`), 'approved')
+  write(repo, '.rig/changes/demo/requirements.md', '- G-1 [rule] prd.md:9 "Ids start at 2."\n')
+  assert.equal(call(`return L.approvalState('demo')`), 'stale')
+})
+
 test('approvalRefusal names missing files and open questions', () => {
   call(`L.newChange('demo', 'feature', 'Demo')`)
   assert.match(String(call(`return L.approvalRefusal('demo')`)), /no spec\.md or plan\.md/)

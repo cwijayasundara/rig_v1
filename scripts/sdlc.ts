@@ -30,13 +30,13 @@ import { cmdReport } from './report.ts'
 import { cmdArch, layerState, layerStateText } from './arch.ts'
 import { cmdQueue, conflictsFor } from './queue.ts'
 import { intentScope } from './scope.ts'
-import { intentRelOf, prdRel, sprintRel, prdPath } from './product.ts'
+import { intentRelOf, prdRel, sprintRel, prdPath, reviewPath } from './product.ts'
 import { cmdSlice } from './slice.ts'
 import { cmdMaintain } from './maintain.ts'
 import { cmdReadiness } from './readiness.ts'
 import { cmdAutonomy, initAutonomy } from './autonomy.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'
-import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, sprintsKnown, sprintIntents } from './chart.ts'
+import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, waiveChartFinding, changeRequirements } from './chart.ts'
 import { journey, journeyText } from './journey.ts'
 import { TYPES, toType, changeDir, newChange, setActive, activeSlug, isShipped, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
 
@@ -86,8 +86,10 @@ function cmdNew(args: Args): void {
   const intent = source ? intentOf(slug) : null
   const title = optString(args, 'title') ?? (source ? /^#\s+(.+)$/m.exec(read(path.resolve(ROOT, source)))?.[1] : undefined) ?? slug
   newChange(slug, toType(raw), title, source && toPosix(path.relative(ROOT, path.resolve(ROOT, source))))
-  if (intent) fs.writeFileSync(path.join(changeDir(slug), 'spec.md'), `# Spec: ${title}\n\n## Behaviours\n${intent.behaviours.map(b => `- ${b.id}${b.reqs.length ? ` (${b.reqs.join(', ')})` : ''}: ${b.text}`).join('\n')}\n\n## Out of scope\n\n## Open questions\nnone\n`)
-  out(`created .rig/changes/${slug}/intent.md (type ${toType(raw)}); ${slug} is the active change${intent ? `; spec.md starts with the ${intent.behaviours.length} behaviour(s) of the intent` : ''}`)
+  if (intent) fs.writeFileSync(path.join(changeDir(slug), 'spec.md'), `# Spec: ${title}\n\n## Behaviours\n${intent.behaviours.map(b => { const ids = [...new Set([...b.reqs, ...b.rules])]; return `- ${b.id}${ids.length ? ` (${ids.join(', ')})` : ''}: ${b.text}` }).join('\n')}\n\n## Out of scope\n\n## Open questions\nnone\n`)
+  const reqs = intent ? changeRequirements(slug) : null
+  if (reqs) fs.writeFileSync(path.join(changeDir(slug), 'requirements.md'), reqs)
+  out(`created .rig/changes/${slug}/intent.md (type ${toType(raw)}); ${slug} is the active change${intent ? `; spec.md starts with the ${intent.behaviours.length} behaviour(s) of the intent` : ''}${reqs ? `; requirements.md holds the PRD rows it cites` : ''}`)
 }
 
 // After a refusal because of dependencies: where the whole order is, and what can start instead.
@@ -166,6 +168,10 @@ function approveChart(n: number, args: Args): void {
   const block = chartFindings(n, true).filter(f => f.severity === 'block')
   if (block.length) fail(`chart-${n} has ${block.length} blocking finding(s); fix them, then approve:\n${block.map(f => `  [${f.rule}] ${f.message}`).join('\n')}`)
   if (chartState(n).state === 'approved') return out(`chart-${n} is already approved`)
+  const open = chartOpenFindings(n)
+  if (!open) fail(`chart-${n} has no chart-review.md: run ${skillRef('chart')} ${n} through its review step, then approve`)
+  if (!open.length && !/^verdict:\s*pass\s*$/m.test(read(reviewPath(n)).split('\n')[0] ?? '') && !chartReview(n)?.length) fail(`chart-${n}'s chart-review.md says changes-needed but lists no finding rig can read: write each as a \`- \` line under \`## Findings\``)
+  if (open.length) fail(`chart-${n} has ${open.length} review finding(s) not confirmed fixed:\n${open.map(f => `  ${f.n}. ${f.text}${f.status === 'claimed' ? ' (marked fixed, never confirmed)' : ''}`).join('\n')}\nFix them and re-run the chart's confirm pass, or waive one with ${skillRef('waive')} chart-${n} <finding number> <reason>`)
   const by = ownerOrFail(args, 'approvals')
   writeChartApproval(n, by)
   writePlan(n)
@@ -249,6 +255,8 @@ function cmdDiff(args: Args): void {
 
 function cmdWaive(args: Args): void {
   if (process.env.SDLC_HUMAN !== '1') fail(`waivers are human-only: the person runs ${skillRef('waive')} <sensor> <file|*> <reason>. If that command is not listed, restart Claude Code, or the person types: ${humanFallback('waive', "<sensor> <file|*> '<reason>'")}`, 3)
+  const chart = CHART_RE.exec(words(args)[0] ?? '')?.[1]
+  if (chart) return waiveChart(Number(chart), args)
   const [sensor, file, ...reason] = words(args)
   const given = optString(args, 'slug')
   const slug = given ? checkSlug(given) : activeSlug()
@@ -261,6 +269,17 @@ function cmdWaive(args: Args): void {
   const row: Waiver = { slug, sensor, file, reason: reason.join(' '), by, at: now(), expires: new Date(Date.now() + days * 86_400_000).toISOString() }
   fs.appendFileSync(WAIVERS, JSON.stringify(row) + '\n')
   out(`waived ${sensor} for ${file} in ${slug}: ${row.reason} (by ${by}, expires in ${days} day${days === 1 ? '' : 's'})`)
+}
+
+// A person accepts a chart review finding as it stands: no active change and no expiry, since it is an approval decision.
+function waiveChart(n: number, args: Args): void {
+  const [, k, ...reason] = words(args)
+  if (!/^\d{1,3}$/.test(k ?? '') || !reason.length) fail(`usage: waive chart-${n} <finding number> <reason...>`)
+  const f = chartReview(n)?.find(x => x.n === Number(k))
+  if (!f) fail(`chart-${n} has no review finding ${k}${chartReview(n) ? '' : ' (no chart-review.md)'}`)
+  const by = ownerOrFail(args, 'waivers')
+  waiveChartFinding(n, f, by, reason.join(' '))
+  out(`waived chart-${n} finding ${f.n}: ${reason.join(' ')} (by ${by})`)
 }
 
 const unresolvedFindings = (): Finding[] => {

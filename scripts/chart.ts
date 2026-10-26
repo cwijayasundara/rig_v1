@@ -7,8 +7,8 @@ import { ROOT, exists, read, sha, now, toPosix, frontmatter, skillRef } from './
 import { openQuestions, section } from './model.ts'
 import { changeDir, isShipped } from './lifecycle.ts'
 import { planText, type PlanRow } from './plan.ts'
-import { PRODUCT, ARCH_REL, archPath, prdPath, intentsDir, testplanDir, approvalPath, sprintDir, sprintsOnDisk, intentRel, planPath, implPlanPath, sprintRel } from './product.ts'
-import { designIntents, architectureProblems, implementationPlanProblems, accessProblems, parseAccess, parseIntent, parseCases, parkedDecisions, prdIds, traceReport, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
+import { PRODUCT, ARCH_REL, archPath, prdPath, intentsDir, testplanDir, approvalPath, sprintDir, sprintsOnDisk, intentRel, planPath, implPlanPath, sprintRel, ledgerPath, waiversPath, reviewPath } from './product.ts'
+import { designIntents, architectureProblems, implementationPlanProblems, accessProblems, parseAccess, parseIntent, parseCases, parkedDecisions, prdIds, traceReport, ledgerProblems, parseLedger, parseReview, openFindings, type ReviewFinding, type ChartWaiver, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
 
 const SHARED_DIRS = ['adr'].map(d => `${toPosix(path.relative(ROOT, path.join(PRODUCT, d)))}/`)
 export const CHART_RE = /^chart-(\d{1,4})$/
@@ -53,7 +53,7 @@ const designFile = (n: number): string[] => { const d = designDocOf(n); return d
 
 function ownFiles(n: number): string[] {
   const own = intentsOf(n)
-  return rel([prdPath(n), ...designFile(n), implPlanPath(n), ...walk(testplanDir(n)), ...own.map(i => i.file), ...own.flatMap(i => [...i.contractFiles, ...i.exampleFiles]).filter(f => !escapes(f)).map(f => path.join(ROOT, f))])
+  return rel([prdPath(n), ledgerPath(n), waiversPath(n), ...designFile(n), implPlanPath(n), ...walk(testplanDir(n)), ...own.map(i => i.file), ...own.flatMap(i => [...i.contractFiles, ...i.exampleFiles]).filter(f => !escapes(f)).map(f => path.join(ROOT, f))])
 }
 const sharedFiles = (): string[] => rel([archPath, ...walk(path.join(PRODUCT, 'adr')).filter(f => f.endsWith('.md'))])
 export const chartFiles = (n: number): string[] => [...new Set([...ownFiles(n), ...sharedFiles()])].sort()
@@ -119,6 +119,8 @@ export function chartFindings(n: number, withCases: boolean): ChartFinding[] {
     prd: read(prdPath(n)), intents: intentsOf(n), others: allIntents().filter(i => i.sprint !== n), repoExists: p => exists(path.join(ROOT, p)), cases,
     exists: p => exists(path.join(testplan, p)),
   })
+  // A sprint approved before the ledger existed is not made to grow one; any sprint never approved is.
+  found.push(...ledgerProblems({ prd: read(prdPath(n)), ledger: exists(ledgerPath(n)) ? read(ledgerPath(n)) : null, intents: intentsOf(n), cases, required: chartState(n).state === 'missing' || Boolean(readRow(n)?.files.some(f => f.path.endsWith('/requirements.md'))) }))
   for (const i of intentsOf(n)) if (i.declared !== n) found.push({ rule: 'sprint-mismatch', severity: 'block', where: i.slug, message: `${i.slug} sits in sprint-${n}/intents/ but its frontmatter says sprint: ${i.declared ?? 'nothing'}` })
   for (const i of intentsOf(n)) {
     const same = allIntents().filter(t => t.slug === i.slug)
@@ -141,6 +143,32 @@ export function chartFindings(n: number, withCases: boolean): ChartFinding[] {
     : intentsOf(n).length ? [{ rule: 'impl-missing', severity: 'block' as const, where: 'sprint', message: `${sprintRel(n)}/implementation-plan.md is missing: write it as implementation-plan-format.md lays it out` }] : []))
   for (const [where, file] of [['architecture.md', archPath], ...intentsOf(n).map(i => [`${i.slug}.md`, i.file] as const)]) found.push(...parkedDecisions(where, read(file)))
   return found
+}
+
+// The review findings that still stop approval, or null when the sprint has no chart-review.md.
+const chartWaivers = (n: number): ChartWaiver[] => { try { const v = JSON.parse(read(waiversPath(n))) as unknown; return Array.isArray(v) ? (v as ChartWaiver[]) : [] } catch { return [] } }
+export const chartReview = (n: number): ReviewFinding[] | null => (exists(reviewPath(n)) ? parseReview(read(reviewPath(n))) : null)
+export function chartOpenFindings(n: number): ReviewFinding[] | null {
+  const review = chartReview(n)
+  return review && openFindings(review, chartWaivers(n))
+}
+// A person's waiver of finding `k`: kept with the text it covered, so editing the finding re-opens it.
+export function waiveChartFinding(n: number, f: ReviewFinding, by: string, reason: string): void {
+  const row: ChartWaiver = { finding: f.n, text_sha: f.sha, by, at: now(), reason }
+  fs.writeFileSync(waiversPath(n), JSON.stringify([...chartWaivers(n).filter(w => w.finding !== f.n), row], null, 2) + '\n')
+}
+
+// The ledger rows an intent cites, as the lines of a change's requirements.md: a `prd:` id brings every rule and answer row under
+// it, a behaviour's ledger id or AC alias brings that row. Lines are copied from the ledger as they are; null with no ledger.
+export function changeRequirements(slug: string): string | null {
+  const i = intentOf(slug)
+  const n = i?.sprint ?? null
+  if (!i || n === null || !exists(ledgerPath(n))) return null
+  const text = read(ledgerPath(n)).replace(/\r\n/g, '\n')
+  const ids = new Set(i.behaviours.flatMap(b => b.rules))
+  const rows = new Set(parseLedger(text).filter(r => ((r.kind === 'rule' || r.kind === 'answer') && i.prd.includes(r.id.replace(/\.\d+$/, ''))) || ids.has(r.id) || (r.alias !== null && ids.has(r.alias))).map(r => r.id))
+  const lines = text.split('\n').filter(l => { const id = /^\s*[-*]\s+(\S+)/.exec(l)?.[1]; return id !== undefined && rows.has(id) })
+  return `# Requirements: ${slug}\n\n<!-- Copied by rig from ${sprintRel(n)}/requirements.md, the PRD's own words: never edit it; a behaviour must not contradict it. -->\n\n${lines.join('\n')}\n`
 }
 
 // Whether an intent can be started now, and if not, why.

@@ -287,6 +287,15 @@ function humanRowsAdded(base: string): string[] {
     const by = String(readJson<{ by?: unknown } | null>(path.join(ROOT, f), null)?.by ?? '?') // deleted or unreadable: still a row
     rows.push(`approval ${name} by ${clean(by)}`)
   }
+  // sprint-N/waivers.json: each chart waiver row the PR adds is a person accepting a review finding as it stands.
+  for (const f of (git(['diff', '--name-only', base, 'HEAD', '--', '.rig/product/sprints']) ?? '').split('\n')) {
+    const n = /^\.rig\/product\/sprints\/sprint-(\d+)\/waivers\.json$/.exec(f)?.[1]
+    if (!n) continue
+    const list = (p: string | null): Record<string, unknown>[] => { try { const v = JSON.parse(p ?? '[]') as unknown; return Array.isArray(v) ? v as Record<string, unknown>[] : [] } catch { return [] } }
+    const before = new Set(list(git(['show', `${base}:${f}`])).map(w => JSON.stringify(w)))
+    const added = list(exists(path.join(ROOT, f)) ? read(path.join(ROOT, f)) : null).filter(w => !before.has(JSON.stringify(w)))
+    for (const w of added.length ? added : [{}]) rows.push(Object.keys(w).length ? `chart waiver chart-${n} finding ${clean(w.finding ?? '?')}: "${clean(w.reason ?? '?')}" by ${clean(w.by ?? '?')}` : `chart waiver chart-${n} (removed or unreadable)`)
+  }
   // autonomy.json: the rung is a person's decision; every PR that adds or edits it is a row, naming the newest history row's author.
   if ((git(['diff', '--name-only', base, 'HEAD', '--', '.rig/autonomy.json']) ?? '').trim()) {
     let by = '?'
