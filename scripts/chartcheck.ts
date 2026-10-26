@@ -4,19 +4,21 @@ import path from 'node:path'
 import { frontmatter, fmList } from './core.ts'
 import { openQuestions, section } from './model.ts'
 
-export type Behaviour = { id: string; reqs: string[]; text: string }
+export type Behaviour = { id: string; reqs: string[]; rules: string[]; text: string } // rules: ledger ids (FR-4.2, G-1) or AC aliases
 export type Intent = {
   slug: string; sprint: number | null; prd: string[]; depends: string[]; estimateDays: number | null; kind: 'boundary' | 'internal' | null
   behaviours: Behaviour[]; contractFiles: string[]; exampleFiles: string[]; openQuestions: string[]
   failures: string[]; design: number // B-numbers under `### Failure behaviour`; `## Design` table rows
   owner: string // who builds it: a person fills it in when the sprint is allocated; empty until then
 }
-export type TestCase = { id: string; reqs: string[]; intent: string; behaviour: string; level: string; data: string; access: string }
+export type TestCase = { id: string; reqs: string[]; rules: string[]; intent: string; behaviour: string; level: string; data: string; access: string }
 // A row of architecture.md `## Access`: who may take an action, on which interfaces. `nobody`: the cell says no role may.
 export type AccessRule = { action: string; allowed: string[]; nobody: boolean; interfaces: string[]; intent: string }
 export type ChartFinding = { rule: string; severity: 'block' | 'report'; where: string; message: string }
 
 const REQ = /\bN?FR-\d+\b/g
+// A requirements-ledger id (FR-4.2, NFR-1.1, G-3) or a PRD acceptance-criterion alias (AC-4.1).
+export const RULE_ID = /\b(?:N?FR-\d+\.\d+|G-\d+|AC-\d+(?:\.\d+)*)\b/g
 const SPRINT_DAYS = 10
 const MAX_DAYS = 2
 
@@ -42,7 +44,7 @@ export function prdIds(text: string): string[] {
 function parseBehaviours(text: string): Behaviour[] {
   return section(text.replace(/\r\n/g, '\n'), 'Behaviours').split('\n').flatMap((l): Behaviour[] => {
     const m = /^\s*[-*]\s+(B\d+)\s*(?:\(([^)]*)\))?\s*:?\s*(.*)$/.exec(l)
-    return m?.[1] ? [{ id: m[1], reqs: (m[2] ?? '').match(REQ) ?? [], text: (m[3] ?? '').trim() }] : []
+    return m?.[1] ? [{ id: m[1], reqs: (m[2] ?? '').match(REQ) ?? [], rules: (m[2] ?? '').match(RULE_ID) ?? [], text: (m[3] ?? '').trim() }] : []
   })
 }
 
@@ -68,8 +70,127 @@ export const designIntents = (designDoc: string): string[] =>
 // cases.md rows: | ID | Requirement | Intent | Behaviour | Level | Data | Expected | Access | (Access optional: a seven-column table still reads)
 export function parseCases(text: string): TestCase[] {
   return text.replace(/\r\n/g, '\n').split('\n').map(l => l.split('|').map(c => c.trim())).filter(c => /^TC-\d+$/.test(c[1] ?? '')).map(c => ({
-    id: c[1] ?? '', reqs: (c[2] ?? '').match(REQ) ?? [], intent: (c[3] ?? '').replace(/\.md$/, ''), behaviour: c[4] ?? '', level: c[5] ?? '', data: c[6] || '-', access: c[8] || '-',
+    id: c[1] ?? '', reqs: (c[2] ?? '').match(REQ) ?? [], rules: (c[2] ?? '').match(RULE_ID) ?? [], intent: (c[3] ?? '').replace(/\.md$/, ''), behaviour: c[4] ?? '', level: c[5] ?? '', data: c[6] || '-', access: c[8] || '-',
   }))
+}
+
+// ---------- the requirements ledger (spec 2026-10-26 PRD fidelity) ----------
+// sprint-N/requirements.md quotes every in-scope sentence of the PRD copy word for word, so a dropped rule is a blocking finding
+// rather than a judgement call: `- <id>[ (<alias>)] [<kind>] prd.md:<line> "<quote>"[ — <reason>]`.
+export type LedgerKind = 'rule' | 'context' | 'answer' | 'out-of-scope'
+export type LedgerRow = { id: string; alias: string | null; kind: LedgerKind; when: string; by: string; line: number; quote: string; reason: string }
+type LedgerLine = LedgerRow | { bad: string } | { unknownKind: string; row: LedgerRow }
+
+// Sections that hold motivation, not requirements; every other section, including ones the person invented, is in scope.
+const OUT_OF_SCOPE_SECTIONS = ['context and problem', 'goals and success metrics', 'risks and assumptions', 'changes since last sprint', 'open questions']
+const LEDGER_LINE = /^\s*[-*]\s+((?:N?FR-\d+\.\d+)|G-\d+)(?:\s+\(([^)]+)\))?\s+\[([^\]]+)\]\s+prd\.md:(\d+)\s+"(.*)"(?:\s+[—–]+\s*(.*))?\s*$/
+const LINE_SLACK = 3
+
+// Markup and spacing never decide whether a quote matches: emphasis, backticks, curly quotes, spaces around table pipes and the
+// "(answered at chart)" marker are dropped on both sides.
+export const normalise = (s: string): string => s.replace(/[\u201c\u201d]/g, '"').replace(/[\u2018\u2019]/g, "'").replace(/\*\*|__|[*`]/g, '')
+  .replace(/\(answered at chart\)/gi, '').replace(/\s*\|\s*/g, ' | ').replace(/\s+/g, ' ').trim()
+
+function readLedgerLine(l: string): LedgerLine | null {
+  if (!/^\s*[-*]\s+\S/.test(l)) return null
+  const m = LEDGER_LINE.exec(l)
+  if (!m) return { bad: l.trim() }
+  const kind = (m[3] ?? '').trim()
+  const row: LedgerRow = { id: m[1]!, alias: m[2]?.trim() || null, kind: 'rule', when: '', by: '', line: Number(m[4]), quote: m[5] ?? '', reason: (m[6] ?? '').trim() }
+  if (kind === 'rule' || kind === 'context' || kind === 'answer') return { ...row, kind }
+  const oos = /^out-of-scope(?::\s*(.*?))?(?:,\s*decided by\s+(.+))?$/.exec(kind)
+  return oos ? { ...row, kind: 'out-of-scope', when: (oos[1] ?? '').trim(), by: (oos[2] ?? '').trim() } : { unknownKind: kind, row }
+}
+const ledgerLines = (text: string): LedgerLine[] => uncomment(text.replace(/\r\n/g, '\n')).split('\n').flatMap(l => { const r = readLedgerLine(l); return r ? [r] : [] })
+export const parseLedger = (text: string): LedgerRow[] => ledgerLines(text).flatMap(r => ('id' in r ? [r] : 'row' in r ? [r.row] : []))
+
+// The PRD's in-scope blocks with their first line: a bullet (with its indented continuation lines), a paragraph, or a table body
+// row (cells joined by " | "). Headings, frontmatter, HTML comments, fenced blocks and table headers are never units; comments
+// are blanked line for line so the numbers stay those of prd.md.
+export const prdUnits = (prd: string): { line: number; text: string }[] => prdBlocks(prd).map(({ line, text }) => ({ line, text }))
+function prdBlocks(prd: string): { line: number; end: number; text: string }[] {
+  const text = prd.replace(/\r\n/g, '\n').replace(/<!--[\s\S]*?-->/g, c => c.replace(/[^\n]/g, ''))
+  const lines = text.split('\n')
+  const fm = /^---\n[\s\S]*?\n---\n/.exec(text)
+  const out: { line: number; text: string; end: number }[] = []
+  let i = fm ? fm[0].split('\n').length - 1 : 0
+  let excluded = false
+  const isSep = (l: string | undefined): boolean => /^\s*\|[\s|:-]+\|?\s*$/.test(l ?? '') && /-/.test(l ?? '')
+  const bullet = /^\s*(?:[-*+]|\d+[.)])\s+/
+  while (i < lines.length) {
+    const l = lines[i]!
+    const h = /^(#{1,6})\s+(.*)$/.exec(l)
+    if (h) { if (h[1] === '##') excluded = OUT_OF_SCOPE_SECTIONS.includes(h[2]!.trim().toLowerCase()); i++; continue }
+    if (/^\s*(```|~~~)/.test(l)) { const fence = /^\s*(```|~~~)/.exec(l)![1]!; i++; while (i < lines.length && !lines[i]!.trim().startsWith(fence)) i++; i++; continue }
+    if (!l.trim()) { i++; continue }
+    const start = i
+    let body: string
+    if (/^\s*\|/.test(l)) {
+      i++
+      if (isSep(l) || isSep(lines[i])) continue
+      body = l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim()).join(' | ')
+    } else if (bullet.test(l)) {
+      const parts = [l.replace(bullet, '')]
+      i++
+      while (i < lines.length && lines[i]!.trim() && /^\s+/.test(lines[i]!) && !bullet.test(lines[i]!)) parts.push(lines[i++]!.trim())
+      body = parts.join(' ')
+    } else {
+      const parts = [l]
+      i++
+      while (i < lines.length && lines[i]!.trim() && !/^#{1,6}\s/.test(lines[i]!) && !bullet.test(lines[i]!) && !/^\s*(\||```|~~~)/.test(lines[i]!)) parts.push(lines[i++]!.trim())
+      body = parts.join(' ')
+    }
+    if (!excluded && normalise(body)) out.push({ line: start + 1, text: normalise(body), end: i })
+  }
+  return out
+}
+
+// What a block still says once every quote is cut out of it: pieces of two or more words are text no row quotes.
+function unquoted(block: string, quotes: string[]): string[] {
+  let rest = block
+  for (const q of [...quotes].sort((a, b) => b.length - a.length)) if (q) rest = rest.split(q).join('\u0000')
+  return rest.split('\u0000').map(p => p.trim().replace(/^[\s.,;:!?)\]-]+|[\s,;:(\[-]+$/g, '')).filter(p => p.split(/\s+/).filter(w => /[A-Za-z0-9]/.test(w)).length >= 2)
+}
+
+// `required`: the sprint is not approved yet, so a missing ledger blocks; an approved sprint charted before the ledger is reported.
+export function ledgerProblems(i: { prd: string; ledger: string | null; intents: Intent[]; cases: TestCase[] | null; required: boolean }): ChartFinding[] {
+  const out: ChartFinding[] = []
+  const add = (rule: string, where: string, message: string, severity: 'block' | 'report' = 'block'): number => out.push({ rule, severity, where, message })
+  const units = prdBlocks(i.prd)
+  if (i.ledger === null) {
+    if (units.length) add('ledger-missing', 'ledger', 'requirements.md is missing: quote every in-scope PRD sentence in it, one row each, before the intents cite them', i.required ? 'block' : 'report')
+    return out
+  }
+  const lines = ledgerLines(i.ledger)
+  const rows = parseLedger(i.ledger)
+  for (const l of lines) {
+    if ('bad' in l) add('ledger-line', 'ledger', `requirements.md has a row that does not read as \`- <id> [<kind>] prd.md:<line> "<quote>"\`: ${l.bad}`)
+    if ('unknownKind' in l) add('ledger-reason', l.row.id, `${l.row.id} has the kind "${l.unknownKind}"; use rule, context, answer or out-of-scope: <when>, decided by <who>`)
+  }
+  for (const r of rows) {
+    const q = normalise(r.quote)
+    const near = units.filter(u => u.text.includes(q))
+    if (!q || !near.length) add('ledger-misquote', r.id, `${r.id} quotes "${r.quote}", which is not in prd.md word for word`)
+    else if (!near.some(u => Math.abs(u.line - r.line) <= LINE_SLACK || (r.line >= u.line && r.line <= u.end))) add('ledger-misquote', r.id, `${r.id} says prd.md:${r.line}, but the quote is at line ${near.map(u => u.line).join(', ')}`)
+    if (r.kind === 'context' && !r.reason) add('ledger-reason', r.id, `${r.id} is context: add " — <why a test could not assert it>"`)
+    if (r.kind === 'out-of-scope' && (!r.reason || !r.by)) add('ledger-reason', r.id, `${r.id} is out of scope: it needs "decided by <who>" in its kind and " — <reason>"`)
+  }
+  const quotes = rows.map(r => normalise(r.quote))
+  for (const u of units) for (const piece of unquoted(u.text, quotes)) add('ledger-unquoted', `prd.md:${u.line}`, `prd.md:${u.line} says "${piece}", which no requirements.md row quotes`)
+  const known = new Set(rows.flatMap(r => [r.id, ...(r.alias ? [r.alias] : [])]))
+  const ledgerId = (id: string): boolean => !id.startsWith('AC-')
+  const behaviours = i.intents.flatMap(t => t.behaviours.map(b => ({ where: `${t.slug}#${b.id}`, rules: b.rules })))
+  for (const b of behaviours) for (const id of b.rules) if (ledgerId(id) && !known.has(id)) add('unknown-id', b.where, `${b.where} cites ${id}, which requirements.md does not define`)
+  const cites = (r: LedgerRow, ids: string[]): boolean => ids.includes(r.id) || (r.alias !== null && ids.includes(r.alias))
+  const needed = rows.filter(r => r.kind === 'rule' || r.kind === 'answer')
+  const cited = behaviours.flatMap(b => b.rules)
+  for (const r of needed) if (!cites(r, cited)) add('rule-uncovered', r.id, `${r.id} ("${r.quote}") has no behaviour: cite it in the intent that builds it, e.g. \`- B2 (FR-4, ${r.id}): ...\``)
+  if (i.cases) {
+    for (const c of i.cases) for (const id of c.rules) if (ledgerId(id) && !known.has(id)) add('unknown-id', c.id, `${c.id} cites ${id}, which requirements.md does not define`)
+    const tested = i.cases.flatMap(c => c.rules)
+    for (const r of needed) if (!cites(r, tested)) add('rule-untested', r.id, `${r.id} ("${r.quote}") has no test case citing it`)
+  }
+  return out
 }
 
 // Slugs on a dependency cycle (a self-dependency is one), found by asking whether each can reach itself.
