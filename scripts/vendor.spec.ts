@@ -1,6 +1,7 @@
 // Standalone mode: `vendor --standalone` (alias --cloud) copies the whole harness into a project, so it needs no plugin.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -388,4 +389,26 @@ test('every module a script imports is vendored', () => {
   }
   assert.deepEqual(missing, [])
   assert.ok(vendoredNames.has('stamp') && vendoredNames.size > 20)
+})
+
+test('vendor --standalone writes a manifest of the harness files', () => {
+  const repo = makeRepo()
+  sdlc(repo, ['init'])
+  assert.equal(sdlc(repo, ['vendor', '--cloud']).code, 0)
+  const m = JSON.parse(fs.readFileSync(path.join(repo, '.rig/bin/MANIFEST.json'), 'utf8')) as { version: string; files: Record<string, string> }
+  assert.equal(m.version, fs.readFileSync(path.join(repo, '.rig/bin/VERSION'), 'utf8').trim())
+  const sha = (f: string): string => crypto.createHash('sha256').update(fs.readFileSync(path.join(repo, f), 'utf8')).digest('hex').slice(0, 16)
+  assert.equal(m.files['.rig/bin/sdlc.ts'], sha('.rig/bin/sdlc.ts'))
+  for (const f of ['.claude/skills/rig-start/SKILL.md', '.rig/mod/hooks/dashboard.tsx', '.rig/githooks/pre-commit']) assert.equal(m.files[f], sha(f), f)
+  for (const f of ['.claude/settings.json', 'CLAUDE.md', 'README.md', '.claude-plugin/marketplace.json', '.rig/bin/MANIFEST.json']) assert.ok(!(f in m.files), `${f} is not hashed`)
+  assert.equal(fs.statSync(path.join(repo, '.rig/githooks/pre-commit')).mode & 0o777, 0o755)
+})
+
+test('plain vendor (not standalone) manifest lists only .rig/bin and .rig/githooks files', () => {
+  const repo = makeRepo()
+  sdlc(repo, ['init'])
+  assert.equal(sdlc(repo, ['vendor']).code, 0)
+  const m = JSON.parse(fs.readFileSync(path.join(repo, '.rig/bin/MANIFEST.json'), 'utf8')) as { files: Record<string, string> }
+  const keys = Object.keys(m.files)
+  assert.ok(keys.length > 10 && keys.every(k => k.startsWith('.rig/bin/') || k.startsWith('.rig/githooks/')), keys.join(','))
 })

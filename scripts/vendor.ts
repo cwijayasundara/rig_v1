@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { ROOT, SDLC, PLUGIN_ROOT, IS_VENDORED, read, out, fail, sanctionWrites, sha, type Args } from './core.ts'
 import { findBlock, withBlock } from './sync.ts'
-import { writeHookScripts, installHooks } from './githooks.ts'
+import { HOOK_SCRIPTS, installHooks } from './githooks.ts'
 
 // Every script the checker imports; testkit and specs stay behind. CI runs this copy, so it never needs the plugin.
 export const VENDORED = ['core', 'model', 'sensors', 'diffs', 'runs', 'check', 'stamp', 'basetree', 'verify', 'hooks', 'pr', 'prbody', 'sdlc', 'githooks', 'vendor', 'initbaseline', 'registry', 'stackpacks', 'modelstate', 'stackinit', 'contracts', 'sync', 'lifecycle', 'chart', 'chartcheck', 'prdformat', 'plan', 'product', 'journey', 'wiki', 'wikicite', 'wikigen', 'wikistate', 'wikivalidate', 'learn', 'learnfile', 'learnmine', 'learnreplay', 'learntranscripts', 'report', 'arch', 'counts', 'queue', 'app', 'scope', 'slice', 'maintain', 'readiness', 'autonomy']
@@ -68,40 +68,61 @@ function mergeHooks(written: string[]): void {
 const pluginVersion = (): string => (JSON.parse(read(path.join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json'))) as { version?: string }).version ?? 'unknown'
 
 // The journey dashboard (GOAL Scope 7) as a local plugin named 'rig': its state atoms are owned by plugin 'rig', so the copy must
-// carry that name or the host refuses its writes. Its marketplace file is rewritten only when it is rig's own.
-function vendorDashboard(written: string[]): void {
+// carry that name or the host refuses its writes.
+function dashboardFiles(files: Map<string, string>): void {
   const version = pluginVersion()
-  fs.rmSync(path.join(ROOT, '.rig', 'mod'), { recursive: true, force: true })
   const json = (v: object): string => JSON.stringify(v, null, 2) + '\n'
-  writeFile('.rig/mod/hooks/dashboard.tsx', vendoredCommands(read(path.join(PLUGIN_ROOT, 'hooks', 'dashboard.tsx'))), written)
-  writeFile('.rig/mod/hooks/hooks.json', json({ modules: ['./dashboard.tsx'] }), written)
-  writeFile('.rig/mod/.claude-plugin/plugin.json', json({ name: 'rig', version, types: './types/index.d.ts' }), written)
-  writeFile('.rig/mod/types/index.d.ts', read(path.join(PLUGIN_ROOT, 'types', 'index.d.ts')), written)
-  const market = path.join(ROOT, '.claude-plugin', 'marketplace.json')
-  const mine = ((): boolean => { try { return !read(market) || (JSON.parse(read(market)) as { name?: string }).name === 'rig-local' } catch { return false } })()
-  if (mine) writeFile('.claude-plugin/marketplace.json', json({ name: 'rig-local', owner: { name: 'rig' }, plugins: [{ name: 'rig', source: './.rig/mod' }] }), written)
+  files.set('.rig/mod/hooks/dashboard.tsx', vendoredCommands(read(path.join(PLUGIN_ROOT, 'hooks', 'dashboard.tsx'))))
+  files.set('.rig/mod/hooks/hooks.json', json({ modules: ['./dashboard.tsx'] }))
+  files.set('.rig/mod/.claude-plugin/plugin.json', json({ name: 'rig', version, types: './types/index.d.ts' }))
+  files.set('.rig/mod/types/index.d.ts', read(path.join(PLUGIN_ROOT, 'types', 'index.d.ts')))
 }
 
-function vendorStandalone(written: string[]): void {
+// The mod's marketplace file is rewritten only when it is rig's own.
+function writeMarketplace(written: string[]): void {
+  const market = path.join(ROOT, '.claude-plugin', 'marketplace.json')
+  const mine = ((): boolean => { try { return !read(market) || (JSON.parse(read(market)) as { name?: string }).name === 'rig-local' } catch { return false } })()
+  if (mine) writeFile('.claude-plugin/marketplace.json', JSON.stringify({ name: 'rig-local', owner: { name: 'rig' }, plugins: [{ name: 'rig', source: './.rig/mod' }] }, null, 2) + '\n', written)
+}
+
+// Every file the harness owns outright, as repo-relative posix path to final text. The manifest hashes exactly these.
+export const MANIFEST = '.rig/bin/MANIFEST.json'
+export type Manifest = { version: string; files: Record<string, string> }
+export function readManifest(): Manifest | null {
+  try { return JSON.parse(read(path.join(ROOT, MANIFEST))) as Manifest } catch { return null }
+}
+
+export function harnessFiles(standalone: boolean): Map<string, string> {
+  const files = new Map<string, string>()
+  for (const name of VENDORED) files.set(`.rig/bin/${name}.ts`, read(path.join(PLUGIN_ROOT, 'scripts', `${name}.ts`)))
+  for (const [rel, text] of HOOK_SCRIPTS()) files.set(rel, text)
+  files.set('.rig/bin/VERSION', `${pluginVersion()}\n`)
+  if (!standalone) return files
   // The human-only skills (approve, waive, autonomy) come through here too: disable-model-invocation keeps them the person's, and
   // CI refuses approval rows a PR adds unless an independent reviewer approves.
   for (const name of fs.readdirSync(path.join(PLUGIN_ROOT, 'skills'))) {
     const src = path.join(PLUGIN_ROOT, 'skills', name, 'SKILL.md')
-    if (fs.existsSync(src)) writeFile(`.claude/skills/rig-${name}/SKILL.md`, forProject(read(src)), written)
+    if (fs.existsSync(src)) files.set(`.claude/skills/rig-${name}/SKILL.md`, forProject(read(src)))
   }
   for (const file of fs.readdirSync(path.join(PLUGIN_ROOT, 'agents')).filter(f => f.endsWith('.md'))) {
-    writeFile(`.claude/agents/rig-${file}`, forProject(read(path.join(PLUGIN_ROOT, 'agents', file)), 'agent'), written)
+    files.set(`.claude/agents/rig-${file}`, forProject(read(path.join(PLUGIN_ROOT, 'agents', file)), 'agent'))
   }
   const templates = path.join(PLUGIN_ROOT, 'templates')
   for (const file of (fs.readdirSync(templates, { recursive: true }) as string[]).filter(f => fs.statSync(path.join(templates, f)).isFile()).sort()) {
     const text = read(path.join(templates, file))
-    writeFile(`.rig/templates/${file}`, file === README_TEMPLATE ? vendoredCommands(text) : text, written)
+    files.set(`.rig/templates/${file}`, file === README_TEMPLATE ? vendoredCommands(text) : text)
   }
-  vendorDashboard(written)
+  dashboardFiles(files)
+  return files
+}
+
+// The files a project owns a share of, merged in place and never hashed: settings, CLAUDE.md, the README, the PRD docs, the marketplace.
+export function mergeProjectFiles(written: string[]): void {
   mergeHooks(written)
   routeClaudeMd(written)
   routeReadme(written)
   routePrdDocs(written)
+  writeMarketplace(written)
 }
 
 const README_TEMPLATE = 'readme-rig.md'
@@ -152,11 +173,16 @@ export function cmdVendor(args: Args): void {
   if (have && older(next, have) && !args.opt.force) fail(`.rig/bin is ${have}, newer than this plugin (${next}); upgrade the plugin first, or pass --force to downgrade`)
   try { if (read(path.join(ROOT, '.claude', 'settings.json'))) JSON.parse(read(path.join(ROOT, '.claude', 'settings.json'))) } catch { fail('.claude/settings.json is not plain JSON (comments or trailing commas?); fix it first so vendoring does not leave a half-written tree') }
   const written: string[] = []
-  for (const name of VENDORED) writeFile(`.rig/bin/${name}.ts`, read(path.join(PLUGIN_ROOT, 'scripts', `${name}.ts`)), written)
-  writeHookScripts(written)
-  writeFile('.rig/bin/VERSION', `${next}\n`, written)
   const standalone = Boolean(args.opt.standalone || args.opt.cloud)
-  if (standalone) vendorStandalone(written)
+  const files = harnessFiles(standalone)
+  if (standalone) fs.rmSync(path.join(ROOT, '.rig', 'mod'), { recursive: true, force: true })
+  for (const [rel, text] of files) {
+    writeFile(rel, text, written)
+    if (rel.startsWith('.rig/githooks/')) fs.chmodSync(path.join(ROOT, rel), 0o755)
+  }
+  if (standalone) mergeProjectFiles(written)
+  const hashes = Object.fromEntries([...files].map(([rel, text]) => [rel, sha(text)]).sort(([a], [b]) => (a as string).localeCompare(b as string, 'en')))
+  writeFile(MANIFEST, JSON.stringify({ version: next, files: hashes }, null, 2) + '\n', written)
   sanctionWrites(written)
   out(standalone
     ? `vendored sdlc ${next} standalone: .rig/bin, .claude/skills/rig-*, .claude/agents/rig-*, hooks in .claude/settings.json. Commit .rig/ and .claude/; re-run from the plugin to upgrade.`
