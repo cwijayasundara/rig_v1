@@ -17,6 +17,7 @@ import { cmdCheck, cmdCheckFile, loadConfig } from './check.ts'
 import { inertSensors, type Inert } from './registry.ts'
 import { runCommand, recordRun } from './runs.ts'
 import { cmdVendor, installStandalone } from './vendor.ts'
+import { cmdUpgrade } from './upgrade.ts'
 import { cmdBaseline } from './initbaseline.ts'
 import { cmdVerify } from './verify.ts'
 import { cmdHooks, cmdCheckPush } from './githooks.ts'
@@ -391,6 +392,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   'check-file': cmdCheckFile,
   sync: cmdSync,
   vendor: cmdVendor,
+  upgrade: cmdUpgrade,
   hooks: cmdHooks,
   waive: cmdWaive,
   sensors: () => cmdSensors(),

@@ -7,7 +7,7 @@ import { findBlock, withBlock } from './sync.ts'
 import { HOOK_SCRIPTS, installHooks } from './githooks.ts'
 
 // Every script the checker imports; testkit and specs stay behind. CI runs this copy, so it never needs the plugin.
-export const VENDORED = ['core', 'model', 'sensors', 'diffs', 'runs', 'check', 'stamp', 'basetree', 'verify', 'hooks', 'pr', 'prbody', 'sdlc', 'githooks', 'vendor', 'initbaseline', 'registry', 'stackpacks', 'modelstate', 'stackinit', 'contracts', 'sync', 'lifecycle', 'chart', 'chartcheck', 'prdformat', 'plan', 'product', 'journey', 'wiki', 'wikicite', 'wikigen', 'wikistate', 'wikivalidate', 'learn', 'learnfile', 'learnmine', 'learnreplay', 'learntranscripts', 'report', 'arch', 'counts', 'queue', 'app', 'scope', 'slice', 'maintain', 'readiness', 'autonomy']
+export const VENDORED = ['core', 'model', 'sensors', 'diffs', 'runs', 'check', 'stamp', 'basetree', 'verify', 'hooks', 'pr', 'prbody', 'sdlc', 'githooks', 'vendor', 'initbaseline', 'registry', 'stackpacks', 'modelstate', 'stackinit', 'contracts', 'sync', 'lifecycle', 'chart', 'chartcheck', 'prdformat', 'plan', 'product', 'journey', 'wiki', 'wikicite', 'wikigen', 'wikistate', 'wikivalidate', 'learn', 'learnfile', 'learnmine', 'learnreplay', 'learntranscripts', 'report', 'arch', 'counts', 'queue', 'app', 'scope', 'slice', 'maintain', 'readiness', 'autonomy', 'upgrade', 'migrations']
 const SDLC_HOOK = '.rig/bin/sdlc.ts'
 type HookGroup = { matcher?: string; hooks: { type: string; command: string; timeout?: number; async?: boolean }[] }
 
@@ -65,7 +65,7 @@ function mergeHooks(written: string[]): void {
   writeFile('.claude/settings.json', JSON.stringify(merged, null, 2) + '\n', written)
 }
 
-const pluginVersion = (): string => (JSON.parse(read(path.join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json'))) as { version?: string }).version ?? 'unknown'
+export const pluginVersion = (): string => (JSON.parse(read(path.join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json'))) as { version?: string }).version ?? 'unknown'
 
 // The journey dashboard (GOAL Scope 7) as a local plugin named 'rig': its state atoms are owned by plugin 'rig', so the copy must
 // carry that name or the host refuses its writes.
@@ -159,7 +159,7 @@ function routePrdDocs(written: string[]): void {
   }
 }
 
-const older = (a: string, b: string): boolean => {
+export const older = (a: string, b: string): boolean => {
   const [x, y] = [a, b].map(v => v.split('.').map(n => Number.parseInt(n, 10) || 0))
   for (let i = 0; i < 3; i++) if ((x?.[i] ?? 0) !== (y?.[i] ?? 0)) return (x?.[i] ?? 0) < (y?.[i] ?? 0)
   return false

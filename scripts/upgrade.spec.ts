@@ -1,105 +1,117 @@
-// rig:upgrade: three-way classification of harness files (base = manifest at install, disk = now, next = this plugin).
+// `sdlc upgrade` dry run: prints the plan, changes nothing.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { sha } from './core.ts'
-import { classify, proposeSensors } from './upgrade.ts'
-import { loadPacks, PACKS_DIR } from './stackpacks.ts'
-
-const one = (base: Record<string, string> | null, disk: string | null | undefined, next: string | undefined, baseText?: string) => {
-  const b = base === null ? null : { ...base, ...(baseText === undefined ? {} : { f: sha(baseText) }) }
-  const d = new Map<string, string | null>(disk === undefined ? [] : [['f', disk]])
-  const n = new Map<string, string>(next === undefined ? [] : [['f', next]])
-  return classify(b, d, n).get('f')
-}
-
-test('classify: unchanged since install is replaced', () => assert.equal(one({}, 'v1', 'v2', 'v1'), 'replace'))
-test('classify: local edit with unchanged upstream is kept', () => assert.equal(one({}, 'mine', 'v1', 'v1'), 'keep'))
-test('classify: both changed is a conflict', () => assert.equal(one({}, 'mine', 'v2', 'v1'), 'conflict'))
-test('classify: no manifest: any difference is a conflict', () => assert.equal(one(null, 'a', 'b'), 'conflict'))
-test('classify: no manifest: identical is noop', () => assert.equal(one(null, 'a', 'a'), 'noop'))
-test('classify: missing file is added', () => {
-  assert.equal(one({}, null, 'v2', 'v1'), 'add')
-  assert.equal(one(null, null, 'v2'), 'add')
-  assert.equal(one(null, undefined, 'v2'), 'add')
-})
-test('classify: removed upstream and untouched is deleted', () => assert.equal(one({}, 'v1', undefined, 'v1'), 'delete'))
-test('classify: removed upstream and edited is a conflict', () => {
-  assert.equal(one({}, 'mine', undefined, 'v1'), 'conflict')
-  assert.equal(one(null, 'mine', undefined), 'conflict')
-})
-
-const packs = loadPacks(PACKS_DIR).packs
-const team = (sensors: unknown[], stack = 'node') => JSON.stringify({ stack, sensors })
-
-test('proposeSensors: proposes a pack sensor the team lacks', () => {
-  const ids = packs.find(p => p.stack === 'node')!.sensors.map(s => (s as { id: string }).id)
-  assert.ok(ids.includes('types'))
-  const got = proposeSensors(team(ids.filter(i => i !== 'types').map(id => ({ id, cmd: 'x' }))), packs)
-  assert.equal(got?.stack, 'node')
-  assert.deepEqual(got?.sensors.map(s => (s as { id: string }).id), ['types'])
-})
-test("proposeSensors: a team's changed lint command is not proposed or touched", () => {
-  const ids = packs.find(p => p.stack === 'node')!.sensors.map(s => (s as { id: string }).id)
-  const text = team(ids.map(id => ({ id, cmd: id === 'lint' ? 'my own lint' : 'x' })))
-  assert.equal(proposeSensors(text, packs), null)
-  const text2 = team(ids.filter(i => i !== 'types').map(id => ({ id, cmd: 'my own ' + id })))
-  assert.ok(!proposeSensors(text2, packs)!.sensors.some(s => (s as { id: string }).id === 'lint'))
-})
-test('proposeSensors: old shape, unparseable, unknown stack and a covered registry are null', () => {
-  assert.equal(proposeSensors('{"stack":"node","lint":"x"}', packs), null)
-  assert.equal(proposeSensors('not json', packs), null)
-  assert.equal(proposeSensors(team([], 'nope'), packs), null)
-  const ids = packs.find(p => p.stack === 'node')!.sensors.map(s => (s as { id: string }).id)
-  assert.equal(proposeSensors(team(ids.map(id => ({ id }))), packs), null)
-})
-
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
-import { MIGRATIONS, pendingMigrations, runMigrations } from './migrations.ts'
+import { makeRepo, gitIn, sdlc, write } from './testkit.ts'
 
-const tmpRepo = (sensors: string | null, marker = 'package.json'): string => {
-  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-mig-'))
-  fs.writeFileSync(path.join(d, marker), '{}')
-  fs.mkdirSync(path.join(d, '.rig'))
-  if (sensors !== null) fs.writeFileSync(path.join(d, '.rig', 'sensors.json'), sensors)
-  return d
+const status = (repo: string): string => gitIn(repo, 'status', '--porcelain', '-uall')
+const vendored = (): string => {
+  const repo = makeRepo()
+  assert.equal(sdlc(repo, ['vendor', '--cloud']).code, 0)
+  return repo
 }
-const OLD = '{"stack":"node","lint":"x"}\n'
-const since = MIGRATIONS[0]!.since
+const manifestPath = (repo: string): string => path.join(repo, '.rig/bin/MANIFEST.json')
+const editManifest = (repo: string, f: (m: { version: string; files: Record<string, string> }) => void): void => {
+  const m = JSON.parse(fs.readFileSync(manifestPath(repo), 'utf8')) as { version: string; files: Record<string, string> }
+  f(m)
+  fs.writeFileSync(manifestPath(repo), JSON.stringify(m, null, 2) + '\n')
+}
+const plan = (repo: string, extra: string[] = []) => {
+  const before = status(repo)
+  const r = sdlc(repo, ['upgrade', '--json', ...extra])
+  assert.equal(r.code, 0, r.stderr)
+  assert.equal(status(repo), before, 'the dry run changes nothing')
+  return JSON.parse(r.stdout) as { from: string; to: string; standalone: boolean; files: Record<string, string>; counts: Record<string, number>; migrations: string[]; proposals: unknown }
+}
 
-test('pendingMigrations returns only versions after installed and up to next', () => {
-  assert.deepEqual(pendingMigrations(since, since), [])
-  assert.deepEqual(pendingMigrations('0.0.1', '0.0.2'), [])
-  assert.deepEqual(pendingMigrations('0.0.1', since).map(m => m.id), ['pre-registry-sensors'])
+test('dry run on a fresh vendor reports everything noop and no branch', () => {
+  const repo = vendored()
+  const before = status(repo)
+  const p = plan(repo)
+  assert.equal(p.standalone, true)
+  assert.deepEqual(p.files, {})
+  assert.equal((p.counts.noop ?? 0) > 10 && p.counts.conflict === 0 && p.counts.replace === 0, true)
+  const text = sdlc(repo, ['upgrade'])
+  assert.match(text.stdout, /already current/)
+  assert.equal(status(repo), before)
+  assert.equal(gitIn(repo, 'branch', '--list').includes('upgrade'), false)
 })
-test('an unknown installed version runs everything', () => assert.deepEqual(pendingMigrations('', '99.0.0'), MIGRATIONS))
-test('pre-registry-sensors writes sensors.json.rig-new and leaves sensors.json byte-identical', () => {
-  const d = tmpRepo(OLD)
-  const notes = runMigrations(pendingMigrations('', '99.0.0'), d)
-  assert.ok(notes.some(n => n.includes('sensors.json.rig-new')))
-  assert.equal(fs.readFileSync(path.join(d, '.rig', 'sensors.json'), 'utf8'), OLD)
-  const proposed = fs.readFileSync(path.join(d, '.rig', 'sensors.json.rig-new'), 'utf8')
-  assert.ok(Array.isArray(JSON.parse(proposed).sensors))
+
+test('a locally edited skill with unchanged upstream is keep', () => {
+  const repo = vendored()
+  const rel = '.claude/skills/rig-start/SKILL.md'
+  fs.appendFileSync(path.join(repo, rel), '\nteam note\n')
+  const p = plan(repo)
+  assert.equal(p.files[rel], 'keep')
 })
-test('running it twice changes nothing more', () => {
-  const d = tmpRepo(OLD)
-  runMigrations(MIGRATIONS, d)
-  const first = fs.readFileSync(path.join(d, '.rig', 'sensors.json.rig-new'), 'utf8')
-  runMigrations(MIGRATIONS, d)
-  assert.equal(fs.readFileSync(path.join(d, '.rig', 'sensors.json.rig-new'), 'utf8'), first)
-  assert.equal(fs.readFileSync(path.join(d, '.rig', 'sensors.json'), 'utf8'), OLD)
+
+test('an edited .rig/bin script after the plugin changed it is conflict', () => {
+  const repo = vendored()
+  const rel = '.rig/bin/core.ts'
+  fs.appendFileSync(path.join(repo, rel), '\n// local\n')
+  editManifest(repo, m => { m.files[rel] = 'deadbeefdeadbeef' })
+  const p = plan(repo)
+  assert.equal(p.files[rel], 'conflict')
+  const text = sdlc(repo, ['upgrade'])
+  assert.match(text.stdout, /conflicts[\s\S]*\.rig\/bin\/core\.ts/)
 })
-test('a registry-shape sensors.json is untouched and no .rig-new appears', () => {
-  const reg = JSON.stringify({ stack: 'node', sensors: [] })
-  const d = tmpRepo(reg)
-  assert.deepEqual(runMigrations(MIGRATIONS, d), [])
-  assert.equal(fs.readFileSync(path.join(d, '.rig', 'sensors.json'), 'utf8'), reg)
-  assert.ok(!fs.existsSync(path.join(d, '.rig', 'sensors.json.rig-new')))
+
+test('no manifest: edited files are conflicts, untouched ones noop', () => {
+  const repo = vendored()
+  fs.appendFileSync(path.join(repo, '.rig/bin/core.ts'), '\n// local\n')
+  fs.rmSync(manifestPath(repo))
+  const p = plan(repo)
+  assert.deepEqual(p.files, { '.rig/bin/core.ts': 'conflict' })
 })
-test('an unknown stack gets a note and nothing is written', () => {
-  const d = tmpRepo(OLD, 'README.md')
-  const notes = runMigrations(MIGRATIONS, d)
-  assert.ok(notes.length === 1 && /no stack pack/.test(notes[0]!))
-  assert.ok(!fs.existsSync(path.join(d, '.rig', 'sensors.json.rig-new')))
+
+test('plugin mode lists no files, only migrations and proposals', () => {
+  const repo = makeRepo()
+  write(repo, '.rig/bin/VERSION', '0.5.0\n')
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: {} }))
+  const p = plan(repo)
+  assert.equal(p.standalone, false)
+  assert.deepEqual(p.files, {})
+  assert.deepEqual(p.migrations, ['pre-registry-sensors'])
+})
+
+test('refuses a downgrade without --force', () => {
+  const repo = vendored()
+  fs.writeFileSync(path.join(repo, '.rig/bin/VERSION'), '99.0.0\n')
+  const before = status(repo)
+  const r = sdlc(repo, ['upgrade'])
+  assert.equal(r.code, 1)
+  assert.match(r.stderr, /newer than this plugin/)
+  assert.equal(sdlc(repo, ['upgrade', '--force']).code, 0)
+  assert.equal(status(repo), before)
+})
+
+test('refuses invalid settings.json', () => {
+  const repo = vendored()
+  write(repo, '.claude/settings.json', '{ // comment\n}')
+  const before = status(repo)
+  const r = sdlc(repo, ['upgrade'])
+  assert.equal(r.code, 1)
+  assert.match(r.stderr, /not plain JSON/)
+  assert.equal(status(repo), before)
+})
+
+test('ignores *.rig-new files', () => {
+  const repo = vendored()
+  write(repo, '.rig/bin/core.ts.rig-new', 'proposal\n')
+  write(repo, '.rig/sensors.json.rig-new', '{}\n')
+  const p = plan(repo)
+  assert.deepEqual(p.files, {})
+})
+
+test('--diff prints the diff for one file', () => {
+  const repo = vendored()
+  const rel = '.rig/bin/core.ts'
+  fs.appendFileSync(path.join(repo, rel), '\n// local\n')
+  const before = status(repo)
+  const r = sdlc(repo, ['upgrade', '--diff', rel])
+  assert.equal(r.code, 0, r.stderr)
+  assert.match(r.stdout, /^-\/\/ local$/m)
+  assert.equal(status(repo), before)
+  assert.equal(sdlc(repo, ['upgrade', '--diff', 'nope.txt']).code, 1)
 })
