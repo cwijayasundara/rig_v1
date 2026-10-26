@@ -30,9 +30,9 @@ import { cmdReport } from './report.ts'
 import { cmdArch, layerState, layerStateText } from './arch.ts'
 import { cmdQueue, conflictsFor } from './queue.ts'
 import { intentScope } from './scope.ts'
-import { prdFormatProblems, prdLedger } from './prdformat.ts'
+import { prdFormatProblems, prdLedger, conversionProblems } from './prdformat.ts'
 import { parseLedger } from './chartcheck.ts'
-import { intentRelOf, prdRel, sprintRel, prdPath, reviewPath, ledgerPath } from './product.ts'
+import { intentRelOf, prdRel, sprintRel, prdPath, reviewPath, ledgerPath, sourcePath, conversionPath } from './product.ts'
 import { cmdSlice } from './slice.ts'
 import { cmdMaintain } from './maintain.ts'
 import { cmdReadiness } from './readiness.ts'
@@ -196,7 +196,7 @@ function cmdChart(args: Args): void {
 // The PRD format for coding agents (spec 2026-10-26): `prd check <N>` says whether the sprint PRD is in rig's template.
 function cmdPrd(args: Args): void {
   const [sub, num] = args.pos
-  if ((sub !== 'check' && sub !== 'ledger') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: prd (check [--json] | ledger) <sprint number>')
+  if ((sub !== 'check' && sub !== 'ledger' && sub !== 'map') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: prd (check [--json] | map [--json] | ledger) <sprint number>')
   const n = Number(num)
   needPrd(n)
   if (sub === 'ledger') {
@@ -205,9 +205,10 @@ function cmdPrd(args: Args): void {
     fs.writeFileSync(ledgerPath(n), prdLedger(read(prdPath(n))))
     return out(`wrote ${sprintRel(n)}/requirements.md: ${parseLedger(read(ledgerPath(n))).length} row(s) from prd.md`)
   }
-  const found = prdFormatProblems(read(prdPath(n)))
+  if (sub === 'map' && !exists(sourcePath(n))) fail(`sprint ${n} has no source.md: nothing was converted`)
+  const found = sub === 'map' ? conversionProblems({ source: read(sourcePath(n)), prd: read(prdPath(n)), map: exists(conversionPath(n)) ? read(conversionPath(n)) : null }) : prdFormatProblems(read(prdPath(n)))
   if (args.opt.json) return out(JSON.stringify(found))
-  out([...found.map(f => `[${f.rule}] ${f.where}: ${f.message}`), `prd-${n}: ${found.length ? `${found.length} format finding(s); convert it into templates/prd-format.md` : 'in format'}`].join('\n'))
+  out([...found.map(f => `[${f.rule}] ${f.where}: ${f.message}`), `prd-${n}: ${found.length ? `${found.length} finding(s)${sub === 'check' ? '; convert it into templates/prd-format.md' : ''}` : sub === 'check' ? 'in format' : 'every sentence of source.md is mapped'}`].join('\n'))
 }
 
 const readyRow = (i: ReturnType<typeof readyIntents>[number]): string => `${i.slug.padEnd(28)} sprint ${i.sprint}  ${i.estimateDays ?? '?'} day(s)`

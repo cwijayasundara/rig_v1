@@ -1,6 +1,6 @@
 // The PRD format for coding agents (spec 2026-10-26 PRD format and conversion): every rule a numbered, testable line, so the
 // requirements ledger can be generated from it and nothing rides on prose. Pure over text; no repo, no model.
-import { normalise, type ChartFinding } from './chartcheck.ts'
+import { normalise, prdBlocks, unquoted, prdIds, type ChartFinding } from './chartcheck.ts'
 
 export type Criterion = { id: string; parent: string | null; kind: 'rule' | 'answer'; line: number; text: string }
 
@@ -93,3 +93,39 @@ export function prdFormatProblems(prd: string): ChartFinding[] {
 // requirements.md generated from the criteria: the ledger line format chart check, the change copy and the PR review read.
 export const prdLedger = (prd: string): string => ['# Requirements (generated from prd.md by rig: never edit)', '',
   ...prdCriteria(prd).map(c => `- ${c.id} [${c.kind}] prd.md:${c.line} "${c.text}"`), ''].join('\n')
+
+// ---------- the conversion map: every sentence of the person's original accounted for ----------
+// `- <id>[, <id>...] source.md:<line> "<quote>"` or `- context source.md:<line> "<quote>" — <reason>`.
+export type MapRow = { ids: string[]; context: boolean; line: number; quote: string; reason: string }
+const MAP_LINE = /^\s*[-*]\s+(context|[A-Z]+-[\d.]+(?:\s*,\s*[A-Z]+-[\d.]+)*)\s+source\.md:(\d+)\s+"(.*)"(?:\s+[—–]+\s*(.*))?\s*$/
+const SLACK = 3
+export const parseMap = (text: string): MapRow[] => text.replace(/\r\n/g, '\n').split('\n').flatMap(l => {
+  const m = MAP_LINE.exec(l)
+  return m ? [{ ids: m[1] === 'context' ? [] : m[1]!.split(/\s*,\s*/), context: m[1] === 'context', line: Number(m[2]), quote: m[3] ?? '', reason: (m[4] ?? '').trim() }] : []
+})
+// The inner text of each fenced block: examples are copied into prd.md, never retyped.
+const fences = (text: string): { line: number; body: string }[] => [...text.replace(/\r\n/g, '\n').matchAll(/^(\s*)(```|~~~)[^\n]*\n([\s\S]*?)^\s*\2\s*$/gm)]
+  .map(m => ({ line: text.slice(0, m.index).split('\n').length, body: normalise(m[3] ?? '') })).filter(f => f.body)
+
+export function conversionProblems(i: { source: string; prd: string; map: string | null }): ChartFinding[] {
+  const out: ChartFinding[] = []
+  const add = (rule: string, where: string, message: string): number => out.push({ rule, severity: 'block', where, message })
+  if (i.map === null) { add('map-missing', 'conversion', 'conversion.md is missing: map every sentence of source.md to the prd.md id it became, or to context with a reason'); return out }
+  const blocks = prdBlocks(i.source, { allSections: true })
+  const rows = parseMap(i.map)
+  for (const l of i.map.replace(/\r\n/g, '\n').split('\n')) if (/^\s*[-*]\s+\S/.test(l) && !MAP_LINE.test(l)) add('map-line', 'conversion', `conversion.md has a row that does not read as \`- <ids> source.md:<line> "<quote>"\`: ${l.trim()}`)
+  const defined = new Set([...prdCriteria(i.prd).map(c => c.id), ...prdIds(i.prd)])
+  for (const r of rows) {
+    const q = normalise(r.quote)
+    const near = blocks.filter(b => b.text.includes(q))
+    if (!q || !near.length) add('map-misquote', `source.md:${r.line}`, `"${r.quote}" is not in source.md word for word`)
+    else if (!near.some(b => Math.abs(b.line - r.line) <= SLACK || (r.line >= b.line && r.line <= b.end))) add('map-misquote', `source.md:${r.line}`, `"${r.quote}" is at source.md:${near.map(b => b.line).join(', ')}, not ${r.line}`)
+    for (const id of r.ids) if (!defined.has(id)) add('map-id', id, `conversion.md maps "${r.quote}" to ${id}, which prd.md does not define`)
+    if (r.context && !r.reason) add('map-reason', `source.md:${r.line}`, `"${r.quote}" is mapped to context: add " — <why it is not a rule>"`)
+  }
+  const quotes = rows.map(r => normalise(r.quote))
+  for (const b of blocks) for (const piece of unquoted(b.text, quotes)) add('map-unquoted', `source.md:${b.line}`, `source.md:${b.line} says "${piece}", which conversion.md does not map`)
+  const target = normalise(i.prd)
+  for (const f of fences(i.source)) if (!target.includes(f.body)) add('map-fence', `source.md:${f.line}`, `the fenced block at source.md:${f.line} is not in prd.md word for word: copy it under ## Examples`)
+  return out
+}

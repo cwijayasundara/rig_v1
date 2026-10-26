@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { prdFormatProblems, prdCriteria, prdLedger } from './prdformat.ts'
+import { prdFormatProblems, prdCriteria, prdLedger, conversionProblems, parseMap } from './prdformat.ts'
 import { parseLedger, ledgerProblems, parseIntent, parentOf } from './chartcheck.ts'
 
 const ROOT = path.resolve(import.meta.dirname, '..')
@@ -104,4 +104,36 @@ test('an AC or DR the ledger lacks is an unknown id', () => {
 
 test('parentOf: an AC belongs to its FR, an NFR row to itself, a DR to no FR', () => {
   assert.deepEqual(['AC-4.1', 'NFR-2', 'DR-1', 'FR-4.2', 'G-1'].map(parentOf), ['FR-4', 'NFR-2', null, 'FR-4', null])
+})
+
+// The conversion map (spec 2026-10-26 PRD format): every sentence of the person's original is accounted for, by script.
+const SOURCE = ['# Cart PRD', '', '## Context', '', 'Shoppers lose carts today.', '', '## Items', '', 'Ids start at 1. Ids are never reused.', '',
+  'Example:', '', '```json', '{"id": 1, "sku": "coffee"}', '```', ''].join('\n')
+const CONVERTED = PRD().replace('## Open questions', '## Examples\n\n```json\n{"id": 1, "sku": "coffee"}\n```\n\n## Open questions')
+const MAP = ['- context source.md:5 "Shoppers lose carts today." — motivation, kept in Context',
+  '- DR-1 source.md:9 "Ids start at 1."', '- DR-2 source.md:9 "Ids are never reused."', '- context source.md:11 "Example:" — caption of the example, copied to Examples', ''].join('\n')
+const conv = (o: { source?: string; prd?: string; map?: string | null } = {}) =>
+  conversionProblems({ source: o.source ?? SOURCE, prd: o.prd ?? CONVERTED, map: o.map === undefined ? MAP : o.map }).map(f => f.rule).sort()
+
+test('a map that accounts for every sentence, with the example copied, has no finding', () => {
+  assert.deepEqual(conv(), [])
+  assert.deepEqual(parseMap(MAP)[1], { ids: ['DR-1'], context: false, line: 9, quote: 'Ids start at 1.', reason: '' })
+})
+
+test('map-unquoted: dropping "never reused" blocks, and so does a lone number left out', () => {
+  assert.deepEqual(conv({ map: MAP.replace(/^- DR-2 .*\n/m, '') }), ['map-unquoted'])
+  assert.deepEqual(conv({ map: MAP.replace('"Ids start at 1."', '"Ids start at"') }), ['map-unquoted'])
+})
+
+test('map-reason, map-id, map-fence, map-missing and map-line', () => {
+  assert.deepEqual(conv({ map: MAP.replace(' — motivation, kept in Context', '') }), ['map-reason'])
+  assert.deepEqual(conv({ map: MAP.replace('- DR-2 source.md:9', '- DR-7 source.md:9') }), ['map-id'])
+  assert.deepEqual(conv({ prd: PRD() }), ['map-fence'])
+  assert.deepEqual(conv({ map: null }), ['map-missing'])
+  assert.deepEqual(conv({ map: MAP + '- garbled\n' }), ['map-line'])
+})
+
+test('map-misquote: a paraphrase, or a line far from the sentence', () => {
+  assert.deepEqual(conv({ map: MAP.replace('"Ids are never reused."', '"Ids may be reused."') }), ['map-misquote', 'map-unquoted'])
+  assert.deepEqual(conv({ map: MAP.replace('- DR-1 source.md:9', '- DR-1 source.md:30') }), ['map-misquote'])
 })

@@ -110,7 +110,8 @@ export const parseLedger = (text: string): LedgerRow[] => ledgerLines(text).flat
 // row (cells joined by " | "). Headings, frontmatter, HTML comments, fenced blocks and table headers are never units; comments
 // are blanked line for line so the numbers stay those of prd.md.
 export const prdUnits = (prd: string): { line: number; text: string }[] => prdBlocks(prd).map(({ line, text }) => ({ line, text }))
-function prdBlocks(prd: string): { line: number; end: number; text: string }[] {
+// `allSections`: a person's original PRD, where every section counts (the conversion map accounts for all of it).
+export function prdBlocks(prd: string, o: { allSections?: boolean } = {}): { line: number; end: number; text: string }[] {
   const text = prd.replace(/\r\n/g, '\n').replace(/<!--[\s\S]*?-->/g, c => c.replace(/[^\n]/g, ''))
   const lines = text.split('\n')
   const fm = /^---\n[\s\S]*?\n---\n/.exec(text)
@@ -122,7 +123,7 @@ function prdBlocks(prd: string): { line: number; end: number; text: string }[] {
   while (i < lines.length) {
     const l = lines[i]!
     const h = /^(#{1,6})\s+(.*)$/.exec(l)
-    if (h) { if (h[1] === '##') excluded = OUT_OF_SCOPE_SECTIONS.includes(h[2]!.trim().toLowerCase()); i++; continue }
+    if (h) { if (h[1] === '##') excluded = !o.allSections && OUT_OF_SCOPE_SECTIONS.includes(h[2]!.trim().toLowerCase()); i++; continue }
     if (/^\s*(```|~~~)/.test(l)) { const fence = /^\s*(```|~~~)/.exec(l)![1]!; i++; while (i < lines.length && !lines[i]!.trim().startsWith(fence)) i++; i++; continue }
     if (!l.trim()) { i++; continue }
     const start = i
@@ -148,7 +149,7 @@ function prdBlocks(prd: string): { line: number; end: number; text: string }[] {
 }
 
 // What a block still says once every quote is cut out of it: pieces of two or more words are text no row quotes.
-function unquoted(block: string, quotes: string[]): string[] {
+export function unquoted(block: string, quotes: string[]): string[] {
   let rest = block
   for (const q of [...quotes].sort((a, b) => b.length - a.length)) if (q) rest = rest.split(q).join('\u0000')
   // A lone word counts when it is the rule itself: a number, a negation or a quantifier ("is 10", "must not", "never").

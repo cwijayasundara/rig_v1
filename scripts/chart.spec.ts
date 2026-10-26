@@ -743,3 +743,14 @@ test('a change from an intent citing FR-1 gets its AC rows, and a DR row only wh
   write(repo, `${P}/sprints/sprint-1/intents/alpha.md`, intent(1).replace('- B1 (FR-1): works', '- B1 (FR-1, AC-1.1, AC-1.2, DR-1): works'))
   assert.match(call(`return C.changeRequirements('alpha')`) as string, /DR-1/)
 })
+
+test('prd map checks source.md against conversion.md, and refuses a sprint with nothing converted', () => {
+  cleanChart()
+  write(repo, `${P}/sprints/sprint-1/prd.md`, FORMAT_PRD)
+  assert.equal(sdlc(repo, ['prd', 'map', '1']).code, 1)
+  write(repo, `${P}/sprints/sprint-1/source.md`, '# Cart\n\nIds start at 1.\n')
+  const missing = sdlc(repo, ['prd', 'map', '1', '--json'])
+  assert.deepEqual((JSON.parse(missing.stdout) as { rule: string }[]).map(f => f.rule), ['map-missing'])
+  write(repo, `${P}/sprints/sprint-1/conversion.md`, '- DR-1 source.md:3 "Ids start at 1."\n')
+  assert.match(sdlc(repo, ['prd', 'map', '1']).stdout, /every sentence of source\.md is mapped/)
+})
