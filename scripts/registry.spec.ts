@@ -192,3 +192,13 @@ test('raising a sensor timeoutMs counts as weakening; lowering does not; a retir
   assert.ok(weakensRegistry(mk(undefined), mk(5000)).some(w => /timeoutMs raised/.test(w)))
   assert.deepEqual(parseRegistry(mk(1000)).errors, [])
 })
+
+test('humanApproval.selfApprovers parses, rejects other shapes, and adding a login is a weakening', () => {
+  const reg = (h: unknown) => JSON.stringify({ sensors: [], humanApproval: h })
+  assert.deepEqual(parseRegistry(reg({ selfApprovers: ['Lead', 'lead'] })).registry.humanApproval.selfApprovers, ['lead'])
+  assert.match(parseRegistry(reg({ selfApprovers: 'lead' })).errors.join(), /humanApproval.selfApprovers must be/)
+  assert.match(parseRegistry(reg(5)).errors.join(), /humanApproval must be/)
+  assert.deepEqual(parseRegistry('{}').registry.humanApproval.selfApprovers, [])
+  assert.match(weakensRegistry(reg({}), reg({ selfApprovers: ['lead'] })).join(), /humanApproval.selfApprovers added lead/)
+  assert.deepEqual(weakensRegistry(reg({ selfApprovers: ['lead'] }), reg({})), [])
+})

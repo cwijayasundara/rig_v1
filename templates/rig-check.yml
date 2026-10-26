@@ -2,13 +2,55 @@
 # sensors.json `fixtures` lists files that intentionally contain detector patterns (skipped by pattern sensors only); adding to it needs human approval.
 # The workflow file itself is judged from the PR's copy (pull_request), so protect it with CODEOWNERS plus "Require review from Code Owners".
 # The checker and its config come from the BASE branch, so a PR cannot loosen the rules it is judged by.
+# Lead override (off unless .rig/sensors.json on the base branch lists you under humanApproval.selfApprovers): label the PR rig-lead-override. The ai-review job
+# reviews the diff and fails on a critical or high finding; the lead-override job then waits for the required reviewer of the rig-lead-override Environment
+# (Settings > Environments: add the lead as required reviewer and leave "prevent self-review" off; rig-check reads GitHub's record of that approval, so an Environment without a reviewer never passes). rig-check accepts the PR's approval rows only when both jobs succeeded on the head commit.
 name: rig-check
-on: pull_request
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
 permissions:
   contents: read
   pull-requests: read # lets CI verify an independent approving review when a PR adds approval or waiver rows
+  actions: read # lets CI read this run's ai-review and lead-override jobs
 jobs:
+  ai-review:
+    if: contains(github.event.pull_request.labels.*.name, 'rig-lead-override') && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18'
+      - run: npm install -g @anthropic-ai/claude-code
+      - name: Review the diff with a clean context
+        env:
+          BASE: ${{ github.base_ref }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          # the brief comes from the base branch, so the PR cannot soften what it is reviewed against
+          git show "origin/$BASE:.rig/review-brief.md" > "$RUNNER_TEMP/brief.md" 2>/dev/null || git show "origin/$BASE:REVIEW.md" > "$RUNNER_TEMP/brief.md" 2>/dev/null || echo "Review this diff for correctness bugs, broken contracts, security problems and missing tests." > "$RUNNER_TEMP/brief.md"
+          git diff "origin/$BASE...HEAD" > "$RUNNER_TEMP/change.diff"
+          claude -p --model sonnet --allowedTools "Read,Grep,Glob" "$(cat "$RUNNER_TEMP/brief.md")
+
+          The change to review is the diff in $RUNNER_TEMP/change.diff (read it, and the files it touches). Answer in the verdict / Findings shape." | tee "$RUNNER_TEMP/review.md"
+          verdict=$(grep -m1 -E '^verdict: ' "$RUNNER_TEMP/review.md" || true)
+          if [ "$verdict" != "verdict: pass" ]; then echo "::error::the AI review did not pass ($verdict)"; exit 1; fi
+          if grep -qE '\[severity: (critical|high)\]' "$RUNNER_TEMP/review.md"; then echo "::error::the AI review reported critical or high findings"; exit 1; fi
+  lead-override:
+    needs: ai-review
+    runs-on: ubuntu-latest
+    environment: rig-lead-override # the required reviewer's click in the GitHub web UI is the human decision
+    steps:
+      - run: echo "lead override approved for ${{ github.event.pull_request.head.sha }}" >> "$GITHUB_STEP_SUMMARY"
   rig-check:
+    needs: lead-override
+    if: ${{ !cancelled() }} # runs whether or not the override jobs ran (skipped without the label)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -17,7 +17,7 @@ export type RegistrySensor = { id: string; cmd?: string; builtin?: true; cadence
 export type Paths = { tests: string[]; testSupport: string[]; fixtures: string[]; ignore: string[] }
 export type Contracts = { files: string[]; covers: string[]; validate: string; run: string }
 type Policy = Record<string, Mode> & { default: Mode }
-export type Registry = { ratchets?: Record<string, number>; stack: string | null; gates: { plan: boolean }; contracts: Contracts; models: { build: string; evaluate: string; design: string }; paths: Paths; sensors: RegistrySensor[]; knownRed: string[]; policy: Policy }
+export type Registry = { ratchets?: Record<string, number>; stack: string | null; gates: { plan: boolean }; humanApproval: { selfApprovers: string[] }; contracts: Contracts; models: { build: string; evaluate: string; design: string }; paths: Paths; sensors: RegistrySensor[]; knownRed: string[]; policy: Policy }
 
 type Base = { cadence: Cadence; blocks: boolean; guide: string }
 const BUILTIN_DEFAULTS: Record<BuiltinId, Base> = {
@@ -35,7 +35,7 @@ const BUILTIN_DEFAULTS: Record<BuiltinId, Base> = {
 const GENERIC_TESTS = ['**/test/**', '**/tests/**', '**/__tests__/**']
 const DEFAULT_POLICY: Policy = { haiku: 'continuous', sonnet: 'continuous', opus: 'final', default: 'continuous' }
 const SENSOR_KEYS = ['id', 'cmd', 'builtin', 'cadence', 'blocks', 'count', 'guide', 'timeoutMs', 'enabled', 'options', 'ratchet']
-const TOP_KEYS = ['stack', 'gates', 'contracts', 'models', 'paths', 'sensors', 'policy', 'knownRed']
+const TOP_KEYS = ['stack', 'gates', 'humanApproval', 'contracts', 'models', 'paths', 'sensors', 'policy', 'knownRed']
 const KEBAB = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
 const isBuiltinId = (v: string): v is BuiltinId => (BUILTIN_IDS as readonly string[]).includes(v)
@@ -50,6 +50,7 @@ export function defaultRegistry(): Registry {
   return {
     stack: null,
     gates: { plan: true },
+    humanApproval: { selfApprovers: [] },
     contracts: { files: [], covers: [], validate: '', run: '' },
     models: { build: 'sonnet', evaluate: 'opus', design: 'sonnet' },
     paths: { tests: [...GENERIC_TESTS], testSupport: [], fixtures: [], ignore: ['**/*.md', '**/*.lock'] },
@@ -129,6 +130,14 @@ function parseSections(value: Record<string, unknown>, r: Registry, errors: stri
       if (k === 'plan' && typeof v === 'boolean') r.gates.plan = v
       else if (k === 'merge') continue // retired, accepted and ignored
       else errors.push(`gates.${k} must be plan, true or false`)
+    }
+  }
+  if ('humanApproval' in value) {
+    const h = value.humanApproval
+    if (!isObject(h)) errors.push('humanApproval must be { selfApprovers?: [GitHub logins] }')
+    else for (const [k, v] of Object.entries(h)) {
+      if (k === 'selfApprovers' && isStringList(v)) r.humanApproval.selfApprovers = [...new Set(v.map(x => x.trim().toLowerCase()).filter(Boolean))]
+      else errors.push(`humanApproval.${k} must be selfApprovers, a list of GitHub logins`)
     }
   }
   if ('contracts' in value) {
@@ -281,6 +290,7 @@ export function weakensRegistry(beforeText: string, afterText: string): string[]
   for (const g of b.contracts.covers) if (!a.contracts.covers.includes(g)) out.push(`contracts.covers lost ${g}`)
   for (const k of ['validate', 'run'] as const) if (b.contracts[k] && a.contracts[k] !== b.contracts[k]) out.push(`contracts.${k} changed`)
   if (b.gates.plan && !a.gates.plan) out.push('gates.plan turned off')
+  for (const u of a.humanApproval.selfApprovers) if (!b.humanApproval.selfApprovers.includes(u)) out.push(`humanApproval.selfApprovers added ${u}`)
   return out
 }
 

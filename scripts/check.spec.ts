@@ -593,6 +593,47 @@ test('CI rejects an approval when the event names a commit that is not the one c
   assert.equal(r.code, 1)
 })
 
+// The lead override: the base config names the PR author a self-approver; a fake gh answers the reviews route with none and the run's jobs route with `jobs`.
+const overrideRun = (jobs: { name: string; conclusion: string; head_sha?: string }[], selfApprovers = ['dev'], approvals: unknown[] = [{ state: 'approved', user: { login: 'Dev' }, environments: [{ name: 'rig-lead-override' }] }], editWorkflow = false) => {
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-gh-'))
+  gitIn(repo, 'checkout', '-q', 'main')
+  write(repo, '.rig/sensors.json', JSON.stringify({ ...JSON.parse(fromOld({})), humanApproval: { selfApprovers } }) + '\n')
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-q', '--allow-empty', '-m', `approvers ${++prN}`)
+  gitIn(repo, 'checkout', '-qb', `pr${++prN}`)
+  sdlc(repo, ['new', 'tiny', '--type', 'chore'])
+  write(repo, '.rig/waivers.jsonl', JSON.stringify({ slug: 'tiny', sensor: 'red-proof', file: '*', reason: 'forged', by: 'dev', at: '2026-10-03T00:00:00Z' }) + '\n')
+  if (editWorkflow) write(repo, '.github/workflows/rig-check.yml', 'name: rig-check\n')
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', 'pr')
+  const sha = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).stdout.trim()
+  const body = JSON.stringify([{ jobs: jobs.map(j => ({ head_sha: sha, ...j })) }])
+  fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\ncase "$*" in *approvals*) echo '${JSON.stringify([approvals])}' ;; *actions/runs*) echo '${body}' ;; *) echo '[[]]' ;; esac\n`, { mode: 0o755 })
+  const ev = path.join(bin, 'event.json')
+  fs.writeFileSync(ev, JSON.stringify({ repository: { full_name: 'o/r' }, pull_request: { number: 5, user: { login: 'dev' }, head: { sha } } }))
+  return sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main'], { env: { PATH: `${bin}:${process.env.PATH}`, GITHUB_EVENT_PATH: ev, GITHUB_RUN_ID: '77' } })
+}
+const ok = (name: string) => ({ name, conclusion: 'success' })
+
+test('the lead override passes when a named self-approver\'s run has ai-review and lead-override succeeded on the head commit', { skip: !posix }, () => {
+  const r = overrideRun([ok('ai-review'), ok('lead-override')])
+  assert.doesNotMatch(r.stdout, /\[human-approval\]/, r.stdout)
+})
+
+test('the lead override needs both jobs on the head commit, a recorded Environment approval, an unedited workflow, and an author named in the base config', { skip: !posix }, () => {
+  assert.match(overrideRun([ok('ai-review')]).stdout, /needs the "lead-override" job to succeed/)
+  assert.match(overrideRun([ok('lead-override')]).stdout, /needs the "ai-review" job to succeed/)
+  assert.match(overrideRun([ok('ai-review'), { name: 'lead-override', conclusion: 'failure' }]).stdout, /human-approval/, 'a failed environment approval does not count')
+  assert.match(overrideRun([ok('ai-review'), { ...ok('lead-override'), head_sha: 'old0000' }]).stdout, /human-approval/, 'a job on another commit does not count')
+  assert.match(overrideRun([ok('ai-review'), ok('lead-override')], ['dev'], []).stdout, /no approval by a listed self-approver/, 'a job that ran with no recorded click (unprotected Environment) does not count')
+  assert.match(overrideRun([ok('ai-review'), ok('lead-override')], ['dev'], [{ state: 'approved', user: { login: 'bot' }, environments: [{ name: 'rig-lead-override' }] }]).stdout, /no approval by a listed self-approver/)
+  assert.match(overrideRun([ok('ai-review'), ok('lead-override')], ['dev'], [{ state: 'approved', user: { login: 'dev' }, environments: [{ name: 'other' }] }]).stdout, /no approval by a listed self-approver/)
+  assert.match(overrideRun([ok('ai-review'), ok('lead-override')], ['dev'], undefined, true).stdout, /edits \.github\/workflows/, 'a PR that edits the workflow gets no override')
+  const stranger = overrideRun([ok('ai-review'), ok('lead-override')], ['someone-else'])
+  assert.match(stranger.stdout, /human-approval/, 'an author not in selfApprovers gets no override')
+  assert.doesNotMatch(stranger.stdout, /lead override/)
+})
+
 test('a timed-out command at commit warns under its own id', () => {
   sensors({ fast: { test: `node -e "setTimeout(() => {}, 20000)"` } })
   hook(repo, 'prompt-submit', {})
