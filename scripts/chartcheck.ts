@@ -57,7 +57,7 @@ export function parseIntent(slug: string, raw: string): Intent {
     behaviours: parseBehaviours(text), contractFiles: files('Contract'), exampleFiles: files('Example'), openQuestions: openQuestions(text),
     failures: [...(section(text, 'Behaviours').split(/^###\s+Failure behaviour\s*$/m)[1] ?? '').matchAll(/^\s*[-*]\s+(B\d+)/gm)].map(m => m[1]!),
     design: Math.max(0, section(text, 'Design').split('\n').filter(l => /^\s*\|/.test(l) && !/^\s*\|[\s|:-]*$/.test(l)).length - 1),
-    owner: (data.owner ?? '').trim().replace(/^["']|["']$/g, ''),
+    owner: (data.owner ?? '').replace(/(^|\s)#.*$/, '').trim().replace(/^["']|["']$/g, ''), // a `# ...` comment is not a name
   }
 }
 
@@ -218,7 +218,7 @@ export function implementationPlanProblems(plan: string, intents: Intent[]): Cha
   const by = new Map(intents.map(t => [t.slug, t]))
   const sections = new Map<string, string>()
   // `### <slug>` under `## Intents`; a heading may say more after the slug (`### cart-model (wave 2)`).
-  for (const m of section(text, 'Intents').matchAll(/^###\s+`?([a-z0-9]+(?:-[a-z0-9]+)*)`?(?:\s[^\n]*)?$([\s\S]*?)(?=^###\s|(?![\s\S]))/gm)) sections.set(m[1]!, m[2] ?? '')
+  for (const m of section(text, 'Intents').matchAll(/^###\s+`?([a-z0-9]+(?:-[a-z0-9]+)*)`?:?(?:\s[^\n]*)?$([\s\S]*?)(?=^###\s|(?![\s\S]))/gm)) sections.set(m[1]!, m[2] ?? '')
   for (const s of sections.keys()) if (!by.has(s)) add('impl-intent', s, `has a section for ${s}, which is not an intent of this sprint`)
   for (const t of intents) {
     const body = sections.get(t.slug)

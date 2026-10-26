@@ -4,13 +4,14 @@ prd: [FR-1]
 depends: []
 estimate_days: 1
 kind: internal
-owner:   # who builds it; a person fills it in when allocating the sprint (implementation-plan.md suggests lanes)
+owner:
 status: draft
 scope: []
 touches: []
 ---
 # <Intent title>
 
+<!-- owner: who builds it; left empty by the architect, a person fills it in when allocating the sprint (implementation-plan.md suggests lanes). -->
 <!-- One intent is a small piece of work an engineer finishes in 1 to 2 days: code, tests, regression, PR. Bigger? Split it. Every behaviour cites the PRD requirement it serves; an intent no requirement asks for is not written. -->
 
 ## Intent

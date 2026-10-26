@@ -322,3 +322,14 @@ test('the unfilled implementation-plan template is all findings, never a pass', 
   const tpl = fs.readFileSync(path.resolve(import.meta.dirname, '../templates/implementation-plan-format.md'), 'utf8')
   assert.deepEqual(impl(tpl).sort(), ['impl-allocation sprint', 'impl-intent cli', 'impl-intent model', 'impl-intent store'])
 })
+
+test('an owner: line holding only a comment is no owner, and the intent template leaves owner empty', () => {
+  assert.equal(parseIntent('a', '---\nowner:   # who builds it\n---\n# a\n').owner, '')
+  assert.equal(parseIntent('a', '---\nowner: Sam # lead\n---\n# a\n').owner, 'Sam')
+  const tpl = fs.readFileSync(path.resolve(import.meta.dirname, '../templates/intent-format.md'), 'utf8')
+  assert.equal(parseIntent('a', tpl).owner, '')
+})
+
+test('a section heading may end its slug with a colon', () => {
+  assert.deepEqual(impl(IMPL.replace('### model\n', '### model: the rules\n')), [])
+})
