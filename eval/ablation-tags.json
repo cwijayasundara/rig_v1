@@ -182,6 +182,12 @@
     "ablatable": true
   },
   {
+    "id": "skill:upgrade",
+    "kind": "skill",
+    "weakness": "an onboarded repo keeps stale rig files after the plugin updates",
+    "ablatable": true
+  },
+  {
     "id": "skill:learn",
     "kind": "skill",
     "weakness": "the same mistake recurs across changes and nobody consolidates it",
