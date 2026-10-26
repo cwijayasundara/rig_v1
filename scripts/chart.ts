@@ -9,7 +9,7 @@ import { changeDir, isShipped } from './lifecycle.ts'
 import { planText, type PlanRow } from './plan.ts'
 import { prdFormatProblems, prdLedger, conversionProblems } from './prdformat.ts'
 import { PRODUCT, ARCH_REL, archPath, prdPath, intentsDir, testplanDir, approvalPath, sprintDir, sprintsOnDisk, intentRel, planPath, implPlanPath, sprintRel, ledgerPath, waiversPath, reviewPath, sourcePath, conversionPath, conversionReviewPath, prdApprovalPath } from './product.ts'
-import { designIntents, architectureProblems, implementationPlanProblems, accessProblems, parseAccess, parseIntent, parseCases, parkedDecisions, prdIds, traceReport, ledgerProblems, parseLedger, parentOf, normalise, parseReview, openFindings, type ReviewFinding, type ChartWaiver, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
+import { designIntents, architectureProblems, implementationPlanProblems, accessProblems, parseAccess, parseIntent, parseCases, parkedDecisions, prdIds, traceReport, ledgerProblems, parseLedger, parentOf, parseReview, openFindings, type ReviewFinding, type ChartWaiver, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
 
 const SHARED_DIRS = ['adr'].map(d => `${toPosix(path.relative(ROOT, path.join(PRODUCT, d)))}/`)
 export const CHART_RE = /^chart-(\d{1,4})$/
@@ -182,7 +182,9 @@ export function changeRequirements(slug: string): string | null {
 export const PRD_RE = /^prd-(\d{1,4})$/
 // Converted: the person's original (source.md) is not the PRD rig decomposes, so a person approves the conversion first.
 // Judged on the text, so deleting conversion.md cannot skip the approval.
-export const isConverted = (n: number): boolean => exists(sourcePath(n)) && exists(prdPath(n)) && normalise(read(sourcePath(n))) !== normalise(read(prdPath(n)))
+// A sprint stays converted once a conversion or a PRD approval exists, so deleting or overwriting source.md cannot skip the gate;
+// an original that was already in format (answers added at chart aside) is the person's own PRD.
+export const isConverted = (n: number): boolean => exists(conversionPath(n)) || exists(prdApprovalPath(n)) || (exists(sourcePath(n)) && prdFormatProblems(read(sourcePath(n))).length > 0)
 const prdManifest = (n: number): ChartFile[] => manifest(rel([prdPath(n), sourcePath(n), conversionPath(n)]))
 export function prdApprovalState(n: number): 'approved' | 'stale' | 'missing' {
   try {
@@ -192,6 +194,7 @@ export function prdApprovalState(n: number): 'approved' | 'stale' | 'missing' {
 }
 // Why a person cannot approve the converted PRD yet, or null.
 export function prdApprovalRefusal(n: number): string | null {
+  if (!exists(sourcePath(n))) return `prd-${n} was converted but source.md, the person's original, is missing: restore it from git`
   const prd = read(prdPath(n))
   const found = [...prdFormatProblems(prd), ...conversionProblems({ source: read(sourcePath(n)), prd, map: exists(conversionPath(n)) ? read(conversionPath(n)) : null })]
   if (found.length) return `prd-${n} has ${found.length} finding(s):\n${found.map(f => `  [${f.rule}] ${f.where}: ${f.message}`).join('\n')}`

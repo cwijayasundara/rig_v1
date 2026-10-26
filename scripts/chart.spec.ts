@@ -830,6 +830,36 @@ test('prd status says whether the chart may decompose the PRD', () => {
   assert.match(sdlc(repo, ['prd', 'status', '1']).stdout, /^missing/)
   sdlc(repo, ['approve', 'prd-1'], HUMAN)
   assert.match(sdlc(repo, ['prd', 'status', '1']).stdout, /^approved/)
+  for (const f of ['conversion.md', 'prd-approval.json']) fs.rmSync(path.join(repo, `${P}/sprints/sprint-1/${f}`))
   write(repo, `${P}/sprints/sprint-1/source.md`, FORMAT_PRD)
   assert.match(sdlc(repo, ['prd', 'status', '1']).stdout, /^not converted/)
+})
+
+// 2026-10-26 final review: an in-format PRD with a gap-pass answer could not be approved; deleting or overwriting source.md skipped the gate.
+test('an in-format original with an answer added at chart is not converted and needs no PRD approval', () => {
+  converted()
+  write(repo, `${P}/sprints/sprint-1/source.md`, FORMAT_PRD)
+  fs.rmSync(path.join(repo, `${P}/sprints/sprint-1/conversion.md`))
+  write(repo, `${P}/sprints/sprint-1/prd.md`, FORMAT_PRD.replace('## Boundaries', '## Integrations and constraints\n\n- Python 3.11 (answered at chart)\n\n## Boundaries'))
+  assert.equal(call('return C.isConverted(1)'), false)
+  assert.match(sdlc(repo, ['prd', 'status', '1']).stdout, /^not converted/)
+})
+
+test('a sprint that was converted stays converted when source.md is deleted or overwritten with prd.md', () => {
+  converted()
+  fs.rmSync(path.join(repo, `${P}/sprints/sprint-1/source.md`))
+  assert.equal(call('return C.isConverted(1)'), true)
+  assert.equal(sdlc(repo, ['approve', 'chart-1'], HUMAN).code, 1)
+  write(repo, `${P}/sprints/sprint-1/source.md`, FORMAT_PRD)
+  assert.equal(call('return C.isConverted(1)'), true)
+  assert.equal(sdlc(repo, ['approve', 'chart-1'], HUMAN).code, 1)
+})
+
+test('a generated ledger checked out with CRLF line endings is not stale', () => {
+  cleanChart()
+  write(repo, `${P}/sprints/sprint-1/prd.md`, FORMAT_PRD)
+  sdlc(repo, ['prd', 'ledger', '1'])
+  const f = path.join(repo, `${P}/sprints/sprint-1/requirements.md`)
+  fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/\n/g, '\r\n'))
+  assert.ok(!(call('return C.chartFindings(1, false)') as { rule: string }[]).some(x => x.rule === 'ledger-stale'))
 })

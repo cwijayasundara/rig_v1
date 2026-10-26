@@ -154,3 +154,26 @@ test('the e2e chart fixture ledger is what its PRD generates', () => {
   const dir = path.join(ROOT, 'tests/e2e/prd/chart-fixture/product/sprints/sprint-1')
   assert.equal(fs.readFileSync(path.join(dir, 'requirements.md'), 'utf8'), prdLedger(fs.readFileSync(path.join(dir, 'prd.md'), 'utf8')))
 })
+
+// 2026-10-26 final review: rules that still hid outside the strict sections, and EARS forms the shape check refused.
+test('prose under Functional requirements before the first FR, or below a non-FR ### heading, is prose', () => {
+  const before = PRD({ fr: 'All prices shall be in USD and never negative.\n\n### FR-4: Items\n\n- AC-4.1: WHEN a THE SYSTEM SHALL b\n' })
+  assert.ok(prdFormatProblems(before).some(f => f.rule === 'prd-prose' && f.message.includes('USD')))
+  const notes = PRD({ fr: '### FR-4: Items\n\n- AC-4.1: WHEN a THE SYSTEM SHALL b\n\n### Notes\n\nIds start at 1.\n' })
+  assert.ok(prdFormatProblems(notes).some(f => f.rule === 'prd-prose' && f.message.includes('Ids start at 1.')))
+})
+
+test('a section the template does not have, an NFR written as a bullet, and a criterion outside its section are findings', () => {
+  assert.ok(prdFormatProblems(PRD().replace('## Boundaries', '## API\n\n- POST /cart returns 201\n\n## Boundaries')).some(f => f.rule === 'prd-section' && f.message.includes('API')))
+  assert.ok(prdFormatProblems(PRD({ nfr: '- NFR-1: p95 under 200 ms\n' })).some(f => f.rule === 'prd-prose'))
+  assert.ok(prdFormatProblems(PRD().replace('## Boundaries\n\n', '## Boundaries\n\n- AC-1.2: WHEN x THE SYSTEM SHALL y\n')).some(f => f.rule === 'prd-criterion'))
+})
+
+test('a required section inside a comment or a fence does not count', () => {
+  const hidden = PRD({ drop: 'Data rules' }).replace('## Boundaries', '<!--\n## Data rules\n-->\n## Boundaries')
+  assert.ok(prdFormatProblems(hidden).some(f => f.rule === 'prd-section'))
+})
+
+test('EARS IF ... THEN THE SYSTEM SHALL is a testable shape', () => {
+  assert.deepEqual(prdFormatProblems(PRD({ fr: '### FR-4: Items\n\n- AC-4.1: IF the file is corrupt THEN THE SYSTEM SHALL raise StorageError\n' })), [])
+})

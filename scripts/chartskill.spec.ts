@@ -220,3 +220,9 @@ test('the chart reviewer reads the ledger, reports weakened rules and ledger mis
 test('start, plan and build read the change requirements.md and never edit it', () => {
   for (const f of ['skills/start/SKILL.md', 'skills/plan/SKILL.md', 'skills/build/SKILL.md']) assert.match(fidelity(f), /requirements\.md[^\n]*never edit/, f)
 })
+
+test('chart step 1 on a re-run of a converted sprint checks prd status first and never reviews the conversion twice', () => {
+  const step1 = skill.slice(skill.indexOf('1. **Which sprint'), skill.indexOf('2. **Design.**'))
+  assert.match(step1, /re-run[^\n]*`S prd status <N>` first[^\n]*`approved`[^\n]*ledger[^\n]*otherwise[^\n]*`S prd check <N>`[^\n]*`S prd map <N>`[^\n]*stop/i)
+  assert.match(step1, /gap pass and the conversion review run on the first pass only/i)
+})

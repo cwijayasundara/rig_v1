@@ -12,14 +12,15 @@ export const PRD_SECTIONS = ['Context and problem', 'Goals and success metrics',
 const REQUIRED = ['Functional requirements', 'Data rules', 'Non-functional requirements', 'Boundaries', 'Open questions']
 const FR_LINE = /^\s*(?:[-*]\s+)?(?:\*\*)?(?:Need|Priority|Depends on)(?:\*\*)?\s*:/i
 const CRITERION = /^\s*[-*]\s+(?:\*\*)?(AC-(\d+)\.\d+|DR-\d+)(?:\*\*)?\s*:\s*(?:\*\*)?\s*(.*)$/
-const SHAPE = (t: string): boolean => /\bwhen\b[\s\S]*\bshall\b/i.test(t) || /\bgiven\b[\s\S]*\bwhen\b[\s\S]*\bthen\b/i.test(t)
+const SHAPE = (t: string): boolean => /\b(?:when|if)\b[\s\S]*\bshall\b/i.test(t) || /\bgiven\b[\s\S]*\bwhen\b[\s\S]*\bthen\b/i.test(t)
 const NFR_ROW = /^\s*\|\s*(NFR-\d+)\s*\|/
 const cells = (l: string): string[] => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim())
 
 type Line = { n: number; text: string; h2: string; fr: string | null }
+// The `##` headings outside comments and fences: a section hidden in either does not count.
 // Lines of the PRD body with their 1-based number, the `##` section and the `### FR-n` they sit under. Comments are blanked
 // line for line and fenced blocks dropped, so numbers stay those of prd.md.
-function lines(prd: string): Line[] {
+function lines(prd: string, heads: string[] = []): Line[] {
   const text = prd.replace(/\r\n/g, '\n').replace(/<!--[\s\S]*?-->/g, c => c.replace(/[^\n]/g, ''))
   const all = text.split('\n')
   const fm = /^---\n[\s\S]*?\n---\n/.exec(text)
@@ -33,7 +34,7 @@ function lines(prd: string): Line[] {
     if (fence) { if (f === fence) fence = ''; continue }
     if (f) { fence = f; continue }
     const h = /^(#{1,6})\s+(.*?)\s*$/.exec(l)
-    if (h && h[1]!.length <= 2) { h2 = h[1] === '##' ? h[2]! : ''; fr = null; continue }
+    if (h && h[1]!.length <= 2) { h2 = h[1] === '##' ? h[2]! : ''; if (h[1] === '##') heads.push(h2); fr = null; continue }
     if (h && h[1] === '###') { fr = /^(FR-\d+)\b/.exec(h[2]!)?.[1] ?? null; if (fr) continue }
     out.push({ n: i + 1, text: l, h2, fr })
   }
@@ -68,8 +69,11 @@ export const prdCriteria = (prd: string): Criterion[] => criteria(lines(prd)).ma
 export function prdFormatProblems(prd: string): ChartFinding[] {
   const out: ChartFinding[] = []
   const add = (rule: string, where: string, message: string): number => out.push({ rule, severity: 'block', where, message })
-  const ls = lines(prd)
-  const heads = new Set(prd.replace(/\r\n/g, '\n').split('\n').flatMap(l => { const m = /^##\s+(.*?)\s*$/.exec(l); return m?.[1] ? [m[1].toLowerCase()] : [] }))
+  const found: string[] = []
+  const ls = lines(prd, found)
+  const heads = new Set(found.map(h => h.toLowerCase()))
+  const known = new Set(PRD_SECTIONS.map(s => s.toLowerCase()))
+  for (const h of found) if (!known.has(h.toLowerCase())) add('prd-section', 'prd', `"## ${h}" is not a section of the template: move its rules into Functional requirements, Data rules or Non-functional requirements, and its prose into Context`)
   for (const s of REQUIRED) if (!heads.has(s.toLowerCase())) add('prd-section', 'prd', `the PRD has no "## ${s}" section${s === 'Functional requirements' || s === 'Open questions' ? '' : ' (write "none" under it when there is nothing)'}`)
   const cs = criteria(ls)
   const owned = new Set(cs.map(c => c.line))
@@ -87,7 +91,8 @@ export function prdFormatProblems(prd: string): ChartFinding[] {
   for (const [id, n] of seen) if (n > 1) add('prd-id', id, `${id} is defined ${n} times`)
   for (const l of ls) {
     if (!l.text.trim() || owned.has(l.n) || continued.has(l.n)) continue
-    const strict = (l.h2 === 'Functional requirements' && (l.fr || /^#{3,6}\s/.test(l.text))) || l.h2 === 'Data rules'
+    if (CRITERION.test(l.text) && l.h2 !== 'Functional requirements' && l.h2 !== 'Data rules') { add('prd-criterion', `prd.md:${l.n}`, `"${l.text.trim()}" sits under "## ${l.h2}": an AC belongs under its FR, a DR under Data rules`); continue }
+    const strict = l.h2 === 'Functional requirements' || l.h2 === 'Data rules' || (l.h2 === 'Non-functional requirements' && !/^\s*\|/.test(l.text))
     if (!strict || FR_LINE.test(l.text) || /^none\.?$/i.test(l.text.trim())) continue
     add('prd-prose', `prd.md:${l.n}`, `a rule written as prose ("${l.text.trim()}"): make it an AC under its FR or a DR under Data rules`)
   }
