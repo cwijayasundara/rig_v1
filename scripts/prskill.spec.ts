@@ -55,7 +55,7 @@ test('evaluator is chart-only', () => {
   assert.match(ev, /## Chart mode|^You review a sprint chart/m)
   assert.doesNotMatch(ev, /git diff <base>/)
   assert.doesNotMatch(ev, /\*\*Security:\*\*|\*\*Correctness:\*\*|\*\*Design:\*\*|\*\*Contracts:\*\*/)
-  assert.doesNotMatch(ev, /`?spec\.md`?|plan\.md/, 'it reads a chart, not a change')
+  assert.doesNotMatch(ev, /`?spec\.md`?|(?<!implementation-)plan\.md/, 'it reads a chart, not a change (the sprint implementation-plan.md is a chart file)')
 })
 
 test('init writes a Review block into CLAUDE.md, and REVIEW.md defers to it', () => {

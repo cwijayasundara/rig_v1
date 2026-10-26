@@ -11,6 +11,7 @@ touches: []
 ---
 # <Intent title>
 
+<!-- owner: who builds it; left empty by the architect, a person fills it in when allocating the sprint (implementation-plan.md suggests lanes). -->
 <!-- One intent is a small piece of work an engineer finishes in 1 to 2 days: code, tests, regression, PR. Bigger? Split it. Every behaviour cites the PRD requirement it serves; an intent no requirement asks for is not written. -->
 
 ## Intent

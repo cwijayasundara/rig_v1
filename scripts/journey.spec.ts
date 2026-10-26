@@ -2,7 +2,7 @@
 import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
-import { makeRepo, write, sdlc, ARCH_OK } from './testkit.ts'
+import { makeRepo, write, sdlc, ARCH_OK, IMPL_OK } from './testkit.ts'
 
 type J = { agents: { agent: string; model: string; at: string }[]; initialised: boolean; kind: string; show: string[]; sprint: number | null; outer: { id: string; state: string; command: string; by: string; detail?: string }[]; inner: { slug: string; steps: { id: string; state: string; command: string; by: string; auto?: true }[] } | null; next: { command: string; by: string }; ready: string[]; rung: number; queue: string | null; sensors?: unknown }
 let repo: string
@@ -65,6 +65,7 @@ test('journey: test plan present, chart unapproved → a person approves chart-0
   write(repo, '.rig/product/sprints/sprint-0/intents/walking-skeleton.md', INTENT())
   write(repo, '.rig/product/sprints/sprint-0/testplan/cases.md', CASES)
   write(repo, '.rig/product/architecture.md', ARCH)
+  write(repo, '.rig/product/sprints/sprint-0/implementation-plan.md', IMPL_OK(['walking-skeleton']))
   const j = view()
   assert.match(states(j), /testplan:done approve:gate build:todo/)
   assert.match(j.next.command, /approve chart-0$/)
@@ -77,6 +78,7 @@ test('journey: approved chart → the first ready intent, and brownfield shows t
   write(repo, '.rig/product/sprints/sprint-0/intents/walking-skeleton.md', INTENT())
   write(repo, '.rig/product/sprints/sprint-0/testplan/cases.md', CASES)
   write(repo, '.rig/product/architecture.md', ARCH)
+  write(repo, '.rig/product/sprints/sprint-0/implementation-plan.md', IMPL_OK(['walking-skeleton']))
   assert.equal(sdlc(repo, ['approve', 'chart-0'], { env: { SDLC_HUMAN: '1' } }).code, 0)
   let j = view()
   assert.match(states(j), /approve:done build:current/)
@@ -132,6 +134,7 @@ test('journey carries the rung and the queue pick', () => {
   write(repo, '.rig/product/sprints/sprint-0/intents/walking-skeleton.md', INTENT())
   write(repo, '.rig/product/sprints/sprint-0/testplan/cases.md', CASES)
   write(repo, '.rig/product/architecture.md', ARCH)
+  write(repo, '.rig/product/sprints/sprint-0/implementation-plan.md', IMPL_OK(['walking-skeleton']))
   assert.equal(sdlc(repo, ['approve', 'chart-0'], { env: { SDLC_HUMAN: '1' } }).code, 0)
   let j = view()
   assert.deepEqual([j.rung, j.queue], [0, null])

@@ -1,7 +1,7 @@
 ---
 product: shop-app
 sprint: 1
-engineers: 1
+engineers: 2
 owner: product owner
 ---
 # PRD: shop-app, sprint 1

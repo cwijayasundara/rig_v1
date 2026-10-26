@@ -118,5 +118,8 @@ export function workflowFindings(text: string, strict = false): string[] {
 // An architecture.md that passes the chart's architecture rules for a PRD with no NFR, for fixtures that need a chart to approve.
 export const ARCH_OK = (sprint = 0, front = ''): string =>
   `${front ? `---\n${front}\n---\n` : ''}# Architecture\n\n## Technology stack\n\n| Concern | Choice | Version | Source |\n|---|---|---|---|\n| Language | Python | 3.12 | PRD |\n| Framework | none (standard library) | | PRD |\n\n` +
-  '## Architecture diagram\n\n```mermaid\nflowchart LR\n  cli --> core\n```\n\n## Code structure\n\n```\nsrc/app/\n  cli.py   # entry\n  core.py  # rules\ntests/\n```\n\n' +
-  `## Key flows\n\n\`\`\`mermaid\nsequenceDiagram\n  cli->>core: run\n\`\`\`\n\n## Sprint history\n\n| Sprint | Adds | Intents | ADRs |\n|---|---|---|---|\n| ${sprint} | all | all | none |\n\n## Concerns\nnone\n\n## Open questions\nnone\n`
+  '## Architecture diagram\n\n```mermaid\nflowchart LR\n  cli --> core\n```\n\n```text\ncli\n -> core\n```\n\n## Code structure\n\n```\nsrc/app/\n  cli.py   # entry\n  core.py  # rules\ntests/\n```\n\n' +
+  `## Key flows\n\n\`\`\`mermaid\nsequenceDiagram\n  cli->>core: run\n\`\`\`\n\n\`\`\`text\n1. cli\n   --run--> core\n\`\`\`\n\n## Sprint history\n\n| Sprint | Adds | Intents | ADRs |\n|---|---|---|---|\n| ${sprint} | all | all | none |\n\n## Concerns\nnone\n\n## Open questions\nnone\n`
+// An implementation-plan.md that passes the chart's plan rules for intents whose only behaviour is B1: one lane per intent.
+export const IMPL_OK = (slugs: string[]): string =>
+  `# Plan\n\n## Allocation\n\n| Lane | Intents | Days | Suits | Why |\n|---|---|---|---|---|\n${slugs.map((s, i) => `| ${i + 1} | ${s} | 1 | any | - |`).join('\n')}\n\n## Intents\n\n${slugs.map(s => `### ${s}\n\n- [ ] B1: failing test, then the code\n`).join('\n')}`

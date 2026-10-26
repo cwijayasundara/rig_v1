@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync, execFileSync } from 'node:child_process'
 
-import { ARCH_OK } from './testkit.ts'
+import { ARCH_OK, IMPL_OK } from './testkit.ts'
 const SCRIPT = path.resolve(import.meta.dirname, 'sdlc.ts')
 let repo: string
 
@@ -227,6 +227,7 @@ test('SessionStart names the queue pick at rung 1 with no active change, and say
   write('.rig/product/sprints/sprint-0/intents/add-item.md', '---\nsprint: 0\nprd: [FR-0]\ndepends: []\nestimate_days: 1\nkind: internal\n---\n# i\n\n## Interfaces\nnone\n\n## Behaviours\n- B1 (FR-0): works\n\n## Open questions\nnone\n')
   write('.rig/product/sprints/sprint-0/testplan/cases.md', '| ID | Req | Intent | B | Level | Data | Expected |\n| TC-1 | FR-0 | add-item | B1 | unit | - | ok |\n')
   write('.rig/product/architecture.md', ARCH_OK())
+  write('.rig/product/sprints/sprint-0/implementation-plan.md', IMPL_OK(['add-item']))
   assert.equal(run(['approve', 'chart-0'], { env: { SDLC_HUMAN: '1' } }).code, 0)
   const ctx = (): string => JSON.parse(hook('session-start', { session_id: 's1', source: 'startup' }).stdout).hookSpecificOutput.additionalContext
   assert.match(ctx(), /No active change/)

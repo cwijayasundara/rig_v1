@@ -2,7 +2,7 @@
 // `depends:` lines so it cannot disagree with them. Waves, an ASCII tree for the terminal, a Mermaid graph for GitHub, and what can start now.
 import { skillRef } from './core.ts'
 type PlanStatus = 'done' | 'active' | 'ready' | 'blocked'
-export type PlanRow = { slug: string; depends: string[]; estimateDays: number | null; status: PlanStatus }
+export type PlanRow = { slug: string; depends: string[]; estimateDays: number | null; status: PlanStatus; owner?: string }
 
 const ICON: Record<PlanStatus, string> = { done: '✔', active: '▶', ready: '○', blocked: '✖' }
 
@@ -73,6 +73,7 @@ export function planText(n: number, rows: PlanRow[], opts: { chart: string; star
   const days = rows.reduce((s, r) => s + (r.estimateDays ?? 0), 0)
   const ready = sorted(rows.filter(r => r.status === 'ready'), wave)
   const blockers = (r: PlanRow): string => r.depends.join(', ') || '-'
+  const open = rows.filter(r => !r.owner && r.status !== 'done').map(r => r.slug)
   return [
     `# Sprint ${n} plan`,
     '',
@@ -80,11 +81,13 @@ export function planText(n: number, rows: PlanRow[], opts: { chart: string; star
     '',
     `${rows.length} intents, ${days} engineer-day(s), ${Math.max(...wave.values())} wave(s). Chart: ${opts.chart}. Intents in the same wave can be built in parallel.`,
     '',
+    `Tasks and the suggested lanes per engineer: [implementation-plan.md](implementation-plan.md). ${open.length ? `Unassigned: ${open.join(', ')} (set \`owner:\` in each intent).` : 'Every open intent has an owner.'}`,
+    '',
     '## Waves',
     '',
-    '| Wave | Intent | Depends on | Days | Status |',
-    '|---|---|---|---|---|',
-    ...sorted(rows, wave).map(r => `| ${wave.get(r.slug)} | ${r.slug} | ${blockers(r)} | ${r.estimateDays ?? '?'} | ${r.status} |`),
+    '| Wave | Intent | Depends on | Days | Owner | Status |',
+    '|---|---|---|---|---|---|',
+    ...sorted(rows, wave).map(r => `| ${wave.get(r.slug)} | ${r.slug} | ${blockers(r)} | ${r.estimateDays ?? '?'} | ${r.owner || '-'} | ${r.status} |`),
     '',
     '## Graph (text)',
     '',

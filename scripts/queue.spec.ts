@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { overlaps, queueText } from './queue.ts'
 import { planFiles } from './model.ts'
-import { makeRepo, sdlc, write, gitIn, ARCH_OK } from './testkit.ts'
+import { makeRepo, sdlc, write, gitIn, ARCH_OK, IMPL_OK } from './testkit.ts'
 
 const PRD = '---\nsprint: 0\nengineers: 1\n---\n# Sprint 0\n\n### FR-0: thing\n\n## Open questions\nnone\n'
 const INTENT = '---\nsprint: 0\nprd: [FR-0]\ndepends: []\nestimate_days: 1\nkind: internal\n---\n# i\n\n## Interfaces\nnone\n\n## Behaviours\n- B1 (FR-0): works\n\n## Open questions\nnone\n'
@@ -20,6 +20,7 @@ function chartedRepo(): string {
   write(repo, '.rig/product/sprints/sprint-0/testplan/cases.md', CASES)
   write(repo, '.rig/product/design/sprint-0.md', '# Design\n\n## Intents\n- c-three: third (FR-0)\n- a-one: first (FR-0)\n- b-two: second (FR-0)\n')
   write(repo, '.rig/product/architecture.md', ARCH_OK(0, 'design: .rig/product/design/sprint-0.md'))
+  write(repo, '.rig/product/sprints/sprint-0/implementation-plan.md', IMPL_OK(['a-one', 'b-two', 'c-three']))
   const r = sdlc(repo, ['approve', 'chart-0'], { env: HUMAN })
   assert.equal(r.code, 0, r.stderr + r.stdout)
   return repo
