@@ -287,6 +287,11 @@ function humanRowsAdded(base: string): string[] {
     const by = String(readJson<{ by?: unknown } | null>(path.join(ROOT, f), null)?.by ?? '?') // deleted or unreadable: still a row
     rows.push(`approval ${name} by ${clean(by)}`)
   }
+  // sprint-N/prd-approval.json: a person accepting a converted PRD.
+  for (const f of (git(['diff', '--name-only', base, 'HEAD', '--', '.rig/product/sprints']) ?? '').split('\n')) {
+    const n = /^\.rig\/product\/sprints\/sprint-(\d+)\/prd-approval\.json$/.exec(f)?.[1]
+    if (n) rows.push(`prd approval prd-${n} by ${clean(String(readJson<{ by?: unknown } | null>(path.join(ROOT, f), null)?.by ?? '?'))}`)
+  }
   // sprint-N/waivers.json: each chart waiver row the PR adds is a person accepting a review finding as it stands.
   for (const f of (git(['diff', '--name-only', base, 'HEAD', '--', '.rig/product/sprints']) ?? '').split('\n')) {
     const n = /^\.rig\/product\/sprints\/sprint-(\d+)\/waivers\.json$/.exec(f)?.[1]

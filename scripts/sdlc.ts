@@ -38,7 +38,7 @@ import { cmdMaintain } from './maintain.ts'
 import { cmdReadiness } from './readiness.ts'
 import { cmdAutonomy, initAutonomy } from './autonomy.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'
-import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, waiveChartFinding, changeRequirements } from './chart.ts'
+import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, waiveChartFinding, changeRequirements, PRD_RE, isConverted, prdApprovalState, prdApprovalRefusal, writePrdApproval } from './chart.ts'
 import { journey, journeyText } from './journey.ts'
 import { TYPES, toType, changeDir, newChange, setActive, activeSlug, isShipped, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
 
@@ -141,6 +141,8 @@ function cmdApprove(args: Args): void {
   if (!given && args.opt.ask) return out(approveTarget())
   const chart = CHART_RE.exec(given ?? '')?.[1]
   if (chart) return approveChart(Number(chart), args)
+  const prd = PRD_RE.exec(given ?? '')?.[1]
+  if (prd) return approvePrd(Number(prd), args)
   const slug = given ? checkSlug(given) : activeSlug()
   if (!slug || !exists(changeDir(slug))) fail('usage: approve <slug>')
   const refusal = approvalRefusal(slug)
@@ -159,14 +161,29 @@ function cmdApprove(args: Args): void {
 function approveTarget(): string {
   const active = activeSlug()
   if (active && exists(changeDir(active)) && !isShipped(active)) return `ASK change ${active}`
+  const prd = sprintsKnown().find(n => isConverted(n) && prdApprovalState(n) !== 'approved')
+  if (prd !== undefined) return `ASK prd-${prd}`
   const chart = sprintsKnown().find(n => exists(prdPath(n)) && sprintIntents(n).length > 0 && chartState(n).state !== 'approved')
   return chart === undefined ? 'ASK none: no change is in flight and no chart is waiting' : `ASK chart-${chart}`
 }
 
 const needPrd = (n: number): void => { if (!exists(prdPath(n))) fail(`no PRD for sprint ${n}: write ${prdRel(n)} first`) }
 
+// A person accepts the converted PRD (source.md → prd.md) before the chart decomposes it.
+function approvePrd(n: number, args: Args): void {
+  needPrd(n)
+  if (!isConverted(n)) return out(`prd-${n} was not converted (no source.md, or it is prd.md itself): nothing to approve. Next: ${skillRef('chart')} ${n}`)
+  const refusal = prdApprovalRefusal(n)
+  if (refusal) fail(refusal)
+  if (prdApprovalState(n) === 'approved') return out(`prd-${n} is already approved. Next: ${skillRef('chart')} ${n}`)
+  const by = ownerOrFail(args, 'approvals')
+  writePrdApproval(n, by)
+  out(`approved prd-${n} by ${by}: prd.md, source.md and conversion.md. Next: ${skillRef('chart')} ${n} decomposes it`)
+}
+
 function approveChart(n: number, args: Args): void {
   needPrd(n)
+  if (isConverted(n) && prdApprovalState(n) !== 'approved') fail(`chart-${n} decomposes a converted PRD that is ${prdApprovalState(n) === 'stale' ? 'changed since its approval' : 'not approved'}: a person reads prd.md beside source.md and runs ${skillRef('approve')} prd-${n} first`)
   const block = chartFindings(n, true).filter(f => f.severity === 'block')
   if (block.length) fail(`chart-${n} has ${block.length} blocking finding(s); fix them, then approve:\n${block.map(f => `  [${f.rule}] ${f.message}`).join('\n')}`)
   if (chartState(n).state === 'approved') return out(`chart-${n} is already approved`)

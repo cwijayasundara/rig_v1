@@ -754,3 +754,73 @@ test('prd map checks source.md against conversion.md, and refuses a sprint with 
   write(repo, `${P}/sprints/sprint-1/conversion.md`, '- DR-1 source.md:3 "Ids start at 1."\n')
   assert.match(sdlc(repo, ['prd', 'map', '1']).stdout, /every sentence of source\.md is mapped/)
 })
+
+// 2026-10-26 PRD format: a person approves a converted PRD before the chart decomposes it.
+const SOURCE_1 = '# Cart\n\nAdding works. Ids start at 1.\n'
+const CONV_1 = '- AC-1.1, AC-1.2 source.md:3 "Adding works."\n- DR-1 source.md:3 "Ids start at 1."\n'
+const converted = (): void => {
+  cleanChart()
+  write(repo, `${P}/sprints/sprint-1/prd.md`, FORMAT_PRD)
+  write(repo, `${P}/sprints/sprint-1/source.md`, SOURCE_1)
+  write(repo, `${P}/sprints/sprint-1/conversion.md`, CONV_1)
+  write(repo, `${P}/sprints/sprint-1/intents/alpha.md`, intent(1).replace('- B1 (FR-1): works', '- B1 (FR-1, AC-1.1, AC-1.2, DR-1): works'))
+  write(repo, `${P}/sprints/sprint-1/testplan/cases.md`, '| ID | Req | Intent | B | Level | Data | Expected |\n| TC-1 | FR-1, AC-1.1, AC-1.2, DR-1 | alpha | B1 | unit | - | ok |\n')
+  assert.equal(sdlc(repo, ['prd', 'ledger', '1']).code, 0)
+}
+
+test('approve prd-N is human-only, refuses an out-of-format PRD, and records the approval with the next step', () => {
+  converted()
+  assert.equal(sdlc(repo, ['approve', 'prd-1']).code, 3)
+  write(repo, `${P}/sprints/sprint-1/prd.md`, FORMAT_PRD.replace('- DR-1: Ids start at 1.\n', '- DR-1: Ids start at 1.\nIds are never reused.\n'))
+  const bad = sdlc(repo, ['approve', 'prd-1'], HUMAN)
+  assert.equal(bad.code, 1)
+  assert.match(bad.stderr, /prd-prose/)
+  write(repo, `${P}/sprints/sprint-1/prd.md`, FORMAT_PRD)
+  const ok = sdlc(repo, ['approve', 'prd-1', '--by', 'Pat'], HUMAN)
+  assert.equal(ok.code, 0, ok.stderr)
+  assert.match(ok.stdout, /approved prd-1 by Pat[\s\S]*chart 1/)
+  assert.equal(call('return C.prdApprovalState(1)'), 'approved')
+})
+
+test('approve prd-N refuses a converted sprint with no conversion.md, or an open conversion-review finding', () => {
+  converted()
+  fs.rmSync(path.join(repo, `${P}/sprints/sprint-1/conversion.md`))
+  const r = sdlc(repo, ['approve', 'prd-1'], HUMAN)
+  assert.equal(r.code, 1)
+  assert.match(r.stderr, /map-missing/)
+  write(repo, `${P}/sprints/sprint-1/conversion.md`, CONV_1)
+  write(repo, `${P}/sprints/sprint-1/conversion-review.md`, 'verdict: changes-needed\n## Findings\n- [category: weakened] DR-1 lost "never" → fix (confidence 90)\n')
+  assert.match(sdlc(repo, ['approve', 'prd-1'], HUMAN).stderr, /DR-1 lost "never"/)
+  write(repo, `${P}/sprints/sprint-1/conversion-review.md`, 'verdict: pass\n## Findings\n- [category: weakened] DR-1 lost "never" → fix (confidence 90) → fixed\n')
+  assert.equal(sdlc(repo, ['approve', 'prd-1'], HUMAN).code, 0)
+})
+
+test('a PRD edited after its approval is stale, and approve chart-N then refuses until prd-N is approved again', () => {
+  converted()
+  assert.equal(sdlc(repo, ['approve', 'chart-1'], HUMAN).code, 1, 'no PRD approval yet')
+  assert.equal(sdlc(repo, ['approve', 'prd-1'], HUMAN).code, 0)
+  write(repo, `${P}/sprints/sprint-1/prd.md`, FORMAT_PRD + '\n')
+  sdlc(repo, ['prd', 'ledger', '1'])
+  assert.equal(call('return C.prdApprovalState(1)'), 'stale')
+  const r = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  assert.equal(r.code, 1)
+  assert.match(r.stderr, /approve prd-1/)
+  assert.equal(sdlc(repo, ['approve', 'prd-1'], HUMAN).code, 0)
+  assert.equal(sdlc(repo, ['approve', 'chart-1'], HUMAN).code, 0)
+})
+
+test('a sprint whose source.md is its prd.md needs no PRD approval; source.md and conversion.md are chart files', () => {
+  converted()
+  write(repo, `${P}/sprints/sprint-1/source.md`, FORMAT_PRD)
+  fs.rmSync(path.join(repo, `${P}/sprints/sprint-1/conversion.md`))
+  assert.equal(call('return C.isConverted(1)'), false)
+  const ok = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  assert.equal(ok.code, 0, ok.stderr)
+  write(repo, `${P}/sprints/sprint-1/source.md`, FORMAT_PRD + 'x\n')
+  assert.deepEqual(state(1).changed, [`${P}/sprints/sprint-1/source.md`])
+})
+
+test('a bare approve names prd-N while a converted sprint waits for its PRD approval', () => {
+  converted()
+  assert.equal(sdlc(repo, ['approve', '--ask'], HUMAN).stdout.trim(), 'ASK prd-1')
+})

@@ -7,9 +7,9 @@ import { ROOT, exists, read, sha, now, toPosix, frontmatter, skillRef } from './
 import { openQuestions, section } from './model.ts'
 import { changeDir, isShipped } from './lifecycle.ts'
 import { planText, type PlanRow } from './plan.ts'
-import { prdFormatProblems, prdLedger } from './prdformat.ts'
-import { PRODUCT, ARCH_REL, archPath, prdPath, intentsDir, testplanDir, approvalPath, sprintDir, sprintsOnDisk, intentRel, planPath, implPlanPath, sprintRel, ledgerPath, waiversPath, reviewPath, sourcePath } from './product.ts'
-import { designIntents, architectureProblems, implementationPlanProblems, accessProblems, parseAccess, parseIntent, parseCases, parkedDecisions, prdIds, traceReport, ledgerProblems, parseLedger, parentOf, parseReview, openFindings, type ReviewFinding, type ChartWaiver, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
+import { prdFormatProblems, prdLedger, conversionProblems } from './prdformat.ts'
+import { PRODUCT, ARCH_REL, archPath, prdPath, intentsDir, testplanDir, approvalPath, sprintDir, sprintsOnDisk, intentRel, planPath, implPlanPath, sprintRel, ledgerPath, waiversPath, reviewPath, sourcePath, conversionPath, conversionReviewPath, prdApprovalPath } from './product.ts'
+import { designIntents, architectureProblems, implementationPlanProblems, accessProblems, parseAccess, parseIntent, parseCases, parkedDecisions, prdIds, traceReport, ledgerProblems, parseLedger, parentOf, normalise, parseReview, openFindings, type ReviewFinding, type ChartWaiver, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
 
 const SHARED_DIRS = ['adr'].map(d => `${toPosix(path.relative(ROOT, path.join(PRODUCT, d)))}/`)
 export const CHART_RE = /^chart-(\d{1,4})$/
@@ -54,7 +54,7 @@ const designFile = (n: number): string[] => { const d = designDocOf(n); return d
 
 function ownFiles(n: number): string[] {
   const own = intentsOf(n)
-  return rel([prdPath(n), ledgerPath(n), waiversPath(n), ...designFile(n), implPlanPath(n), ...walk(testplanDir(n)), ...own.map(i => i.file), ...own.flatMap(i => [...i.contractFiles, ...i.exampleFiles]).filter(f => !escapes(f)).map(f => path.join(ROOT, f))])
+  return rel([prdPath(n), sourcePath(n), conversionPath(n), ledgerPath(n), waiversPath(n), ...designFile(n), implPlanPath(n), ...walk(testplanDir(n)), ...own.map(i => i.file), ...own.flatMap(i => [...i.contractFiles, ...i.exampleFiles]).filter(f => !escapes(f)).map(f => path.join(ROOT, f))])
 }
 const sharedFiles = (): string[] => rel([archPath, ...walk(path.join(PRODUCT, 'adr')).filter(f => f.endsWith('.md'))])
 export const chartFiles = (n: number): string[] => [...new Set([...ownFiles(n), ...sharedFiles()])].sort()
@@ -176,6 +176,32 @@ export function changeRequirements(slug: string): string | null {
   const rows = new Set(parseLedger(text).filter(r => ((r.kind === 'rule' || r.kind === 'answer') && i.prd.includes(parentOf(r.id) ?? '')) || ids.has(r.id) || (r.alias !== null && ids.has(r.alias))).map(r => r.id))
   const lines = text.split('\n').filter(l => { const id = /^\s*[-*]\s+(\S+)/.exec(l)?.[1]; return id !== undefined && rows.has(id) })
   return `# Requirements: ${slug}\n\n<!-- Copied by rig from ${sprintRel(n)}/requirements.md, the PRD's own words: never edit it; a behaviour must not contradict it. -->\n\n${lines.join('\n')}\n`
+}
+
+// ---------- the converted PRD (spec 2026-10-26 PRD format) ----------
+export const PRD_RE = /^prd-(\d{1,4})$/
+// Converted: the person's original (source.md) is not the PRD rig decomposes, so a person approves the conversion first.
+// Judged on the text, so deleting conversion.md cannot skip the approval.
+export const isConverted = (n: number): boolean => exists(sourcePath(n)) && exists(prdPath(n)) && normalise(read(sourcePath(n))) !== normalise(read(prdPath(n)))
+const prdManifest = (n: number): ChartFile[] => manifest(rel([prdPath(n), sourcePath(n), conversionPath(n)]))
+export function prdApprovalState(n: number): 'approved' | 'stale' | 'missing' {
+  try {
+    const v = JSON.parse(read(prdApprovalPath(n))) as { files?: ChartFile[] }
+    return Array.isArray(v.files) ? (JSON.stringify(v.files) === JSON.stringify(prdManifest(n)) ? 'approved' : 'stale') : 'missing'
+  } catch { return 'missing' }
+}
+// Why a person cannot approve the converted PRD yet, or null.
+export function prdApprovalRefusal(n: number): string | null {
+  const prd = read(prdPath(n))
+  const found = [...prdFormatProblems(prd), ...conversionProblems({ source: read(sourcePath(n)), prd, map: exists(conversionPath(n)) ? read(conversionPath(n)) : null })]
+  if (found.length) return `prd-${n} has ${found.length} finding(s):\n${found.map(f => `  [${f.rule}] ${f.where}: ${f.message}`).join('\n')}`
+  const open = openQuestions(prd)
+  if (open.length) return `prd.md has open question(s); answer each in prd.md first:\n${open.map(q => `  - ${q}`).join('\n')}`
+  const review = exists(conversionReviewPath(n)) ? parseReview(read(conversionReviewPath(n))).filter(f => f.status === 'open' || f.status === 'reopened') : []
+  return review.length ? `conversion-review.md has ${review.length} finding(s) not fixed:\n${review.map(f => `  ${f.n}. ${f.text}`).join('\n')}` : null
+}
+export function writePrdApproval(n: number, by: string): void {
+  fs.writeFileSync(prdApprovalPath(n), JSON.stringify({ by, at: now(), files: prdManifest(n) }, null, 2) + '\n')
 }
 
 // Whether an intent can be started now, and if not, why.

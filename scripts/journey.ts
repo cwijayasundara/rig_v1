@@ -7,7 +7,7 @@ import { activeSlug, changeType, isShipped, nextStep, status, type Status } from
 import { latestAgents } from './modelstate.ts'
 import { readAutonomy } from './autonomy.ts'
 import { queueNext } from './queue.ts'
-import { chartState, readyIntents, sprintIntents, sprintsKnown } from './chart.ts'
+import { chartState, readyIntents, sprintIntents, sprintsKnown, isConverted, prdApprovalState } from './chart.ts'
 import { testplanDir, prdHint, prdsInDocs, intentRel, prdPath } from './product.ts'
 
 // The command a person types: /rig:<name> from the plugin, /rig-<name> (the skill's folder, never /rig:<name>) from a standalone copy.
@@ -79,6 +79,7 @@ export function journey(i: { gates: { plan: boolean }; tree: string | null }): J
   const outerNext = ((): Journey['next'] => {
     if (!initialised) return { command: k('init'), by: 'model', why: 'set this repo up for rig' }
     if (!exists(prdPath(n)) && !exists(path.join(ROOT, hint(n)))) return { command: `add the PRD at ${hint(n)}, then ${k('chart')} ${n} @${hint(n)}`, by: 'person', why: 'the sprint starts from your PRD, in any format and from any path' }
+    if (isConverted(n) && prdApprovalState(n) !== 'approved') return { command: `${k('approve')} prd-${n}`, by: 'person', why: 'read the converted prd.md beside source.md, then approve it; the chart decomposes it after' }
     if (!slugs.length) return { command: exists(prdPath(n)) ? `${k('chart')} ${n}` : `${k('chart')} ${n} @${hint(n)}`, by: 'model', why: 'turn the PRD into traced intents, architecture and ADRs' }
     if (!cases) return { command: `${k('testplan')} ${n}`, by: 'model', why: 'write the test plan and cases for the sprint' }
     if (!approved) return { command: `${k('approve')} chart-${n}`, by: 'person', why: 'review the chart branch, then approve the sprint once' }
