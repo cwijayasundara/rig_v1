@@ -2,6 +2,22 @@
 
 Date: 2026-10-26. Follows `2026-10-26-prd-fidelity-design.md` (the requirements ledger, merged in 2d1dd84).
 
+## Relation to the PRD fidelity design
+
+This design builds on [`2026-10-26-prd-fidelity-design.md`](2026-10-26-prd-fidelity-design.md) (merged in 2d1dd84) and
+changes one part of it.
+
+| Part of the fidelity design | Here |
+|---|---|
+| The requirements ledger, `sprint-<N>/requirements.md`, and its line format | kept; now **generated** by `S prd ledger` from the PRD's numbered criteria instead of written by the chart coordinator |
+| Ledger ids `FR-4.2` / `G-n` | replaced for new charts by the PRD's own `AC-n.m`, `DR-n`, `NFR-n` |
+| The "nothing left unquoted" check (`prdBlocks`, `unquoted`, `normalise`) | reused for the conversion map, over `source.md` |
+| `rule-uncovered`, `rule-untested`, `unknown-id` | kept, over the generated ledger |
+| The evaluator's `weakened` category | reused in its new conversion mode |
+| The confirm pass, `approve chart-<N>` refusing open findings, `waive chart-<N>` | unchanged; `approve chart-<N>` also requires a current PRD approval for a converted sprint |
+| The change's `requirements.md`, the PR reviewer reading it, ledger findings never deferred | unchanged |
+| The PRD copy kept verbatim | the person's words are kept verbatim in `source.md`; `prd.md` is the converted, approved PRD |
+
 ## Why
 
 The ledger stops a rule from being dropped between the PRD and the code, but it starts from whatever the person wrote. The
