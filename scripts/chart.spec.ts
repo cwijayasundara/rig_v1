@@ -656,3 +656,30 @@ test('the architecture diagram and each key flow need an ASCII twin beside the m
   write(repo, `${P}/architecture.md`, ARCH_DOC().replace(/```text\ncli ---run[\s\S]*?```/, '```text\n```'))
   assert.deepEqual(allRules(1, false).filter(r => r.startsWith('arch-')), ['arch-flow-text'], 'an empty block draws nothing')
 })
+
+// 2026-10-26 PRD fidelity: the PRD's own words travel with a charted change, copied by the script, never retyped by a model.
+test('new --source writes the ledger rows its intent cites into the change, word for word; no ledger, no file', () => {
+  const PRD_RULES = '---\nsprint: 1\nengineers: 1\n---\n# Sprint 1\n\n### FR-1: thing\n\n- Ids start at 1.\n- Ids are stored.\n\n### FR-2: other\n\n- Export works.\n\n## Open questions\nnone\n'
+  const LEDGER = '# Requirements\n\n- FR-1.1 [rule] prd.md:9 "Ids start at 1."\n- FR-1.2 [context] prd.md:10 "Ids are stored." — how, not what\n- FR-2.1 [rule] prd.md:14 "Export works."\n'
+  cleanChart()
+  write(repo, `${P}/sprints/sprint-1/prd.md`, PRD_RULES)
+  write(repo, `${P}/sprints/sprint-1/requirements.md`, LEDGER)
+  write(repo, `${P}/sprints/sprint-1/intents/alpha.md`, intent(1).replace('- B1 (FR-1): works', '- B1 (FR-1, FR-1.1): the first id is 1'))
+  write(repo, `${P}/sprints/sprint-1/intents/beta.md`, intent(1, { req: 'FR-2' }).replace('- B1 (FR-2): works', '- B1 (FR-2, FR-2.1): exports'))
+  write(repo, `${P}/sprints/sprint-1/implementation-plan.md`, IMPL_OK(['alpha', 'beta']))
+  write(repo, `${P}/sprints/sprint-1/testplan/cases.md`, '| ID | Req | Intent | B | Level | Data | Expected |\n| TC-1 | FR-1, FR-1.1 | alpha | B1 | unit | - | ok |\n| TC-2 | FR-2, FR-2.1 | beta | B1 | unit | - | ok |\n')
+  const approved = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  assert.equal(approved.code, 0, approved.stderr)
+  const r = sdlc(repo, ['new', 'alpha', '--source', SRC])
+  assert.equal(r.code, 0, r.stderr)
+  const req = fs.readFileSync(path.join(repo, '.rig/changes/alpha/requirements.md'), 'utf8')
+  assert.ok(req.includes('- FR-1.1 [rule] prd.md:9 "Ids start at 1."\n'))
+  assert.ok(!req.includes('FR-1.2') && !req.includes('FR-2.1'), req)
+  assert.match(r.stdout, /requirements\.md/)
+})
+
+test('new --source with no sprint ledger writes no requirements.md', () => {
+  startable()
+  assert.equal(sdlc(repo, ['new', 'alpha', '--source', SRC]).code, 0)
+  assert.ok(!fs.existsSync(path.join(repo, '.rig/changes/alpha/requirements.md')))
+})

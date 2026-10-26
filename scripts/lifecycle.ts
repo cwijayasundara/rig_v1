@@ -14,6 +14,8 @@ type Verify = { at: string; tree: string | null; base: string | null; pass: bool
 
 const ACTIVE = path.join(SDLC, 'state', 'active')
 const APPROVED = ['spec.md', 'plan.md']
+// A charted change's copy of the PRD rows its intent cites: approved with it when present, never required (an ad-hoc change has none).
+const OPTIONAL = ['requirements.md']
 // Types earlier rig versions wrote, folded into the four the proof rules need.
 const LEGACY: Record<string, ChangeType> = { greenfield: 'feature', incident: 'bugfix', migration: 'chore', spike: 'chore' }
 
@@ -49,7 +51,7 @@ export function contractFiles(): string[] {
   return (git(['ls-files', '--cached', '--others', '--exclude-standard']) ?? '').split('\n').filter(f => f && globs.some(g => globToRegex(g).test(f))).sort()
 }
 export const freezeRecord = (): Record<string, string> => Object.fromEntries(contractFiles().filter(f => exists(path.join(ROOT, f))).map(f => [f, digest(read(path.join(ROOT, f)))]))
-const hashes = (slug: string): Record<string, string> => Object.fromEntries(APPROVED.filter(n => exists(file(slug, n))).map(n => [n, digest(read(file(slug, n)))]))
+const hashes = (slug: string): Record<string, string> => Object.fromEntries([...APPROVED, ...OPTIONAL].filter(n => exists(file(slug, n))).map(n => [n, digest(read(file(slug, n)))]))
 export const readApproval = (slug: string): Approval | null => readJson<Approval | null>(file(slug, 'approval.json'), null)
 export function approvalState(slug: string): 'missing' | 'stale' | 'approved' {
   const a = readApproval(slug)

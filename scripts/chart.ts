@@ -8,7 +8,7 @@ import { openQuestions, section } from './model.ts'
 import { changeDir, isShipped } from './lifecycle.ts'
 import { planText, type PlanRow } from './plan.ts'
 import { PRODUCT, ARCH_REL, archPath, prdPath, intentsDir, testplanDir, approvalPath, sprintDir, sprintsOnDisk, intentRel, planPath, implPlanPath, sprintRel, ledgerPath, waiversPath, reviewPath } from './product.ts'
-import { designIntents, architectureProblems, implementationPlanProblems, accessProblems, parseAccess, parseIntent, parseCases, parkedDecisions, prdIds, traceReport, ledgerProblems, parseReview, openFindings, type ReviewFinding, type ChartWaiver, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
+import { designIntents, architectureProblems, implementationPlanProblems, accessProblems, parseAccess, parseIntent, parseCases, parkedDecisions, prdIds, traceReport, ledgerProblems, parseLedger, parseReview, openFindings, type ReviewFinding, type ChartWaiver, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
 
 const SHARED_DIRS = ['adr'].map(d => `${toPosix(path.relative(ROOT, path.join(PRODUCT, d)))}/`)
 export const CHART_RE = /^chart-(\d{1,4})$/
@@ -156,6 +156,19 @@ export function chartOpenFindings(n: number): ReviewFinding[] | null {
 export function waiveChartFinding(n: number, f: ReviewFinding, by: string, reason: string): void {
   const row: ChartWaiver = { finding: f.n, text_sha: f.sha, by, at: now(), reason }
   fs.writeFileSync(waiversPath(n), JSON.stringify([...chartWaivers(n).filter(w => w.finding !== f.n), row], null, 2) + '\n')
+}
+
+// The ledger rows an intent cites, as the lines of a change's requirements.md: a `prd:` id brings every rule and answer row under
+// it, a behaviour's ledger id or AC alias brings that row. Lines are copied from the ledger as they are; null with no ledger.
+export function changeRequirements(slug: string): string | null {
+  const i = intentOf(slug)
+  const n = i?.sprint ?? null
+  if (!i || n === null || !exists(ledgerPath(n))) return null
+  const text = read(ledgerPath(n)).replace(/\r\n/g, '\n')
+  const ids = new Set(i.behaviours.flatMap(b => b.rules))
+  const rows = new Set(parseLedger(text).filter(r => ((r.kind === 'rule' || r.kind === 'answer') && i.prd.includes(r.id.replace(/\.\d+$/, ''))) || ids.has(r.id) || (r.alias !== null && ids.has(r.alias))).map(r => r.id))
+  const lines = text.split('\n').filter(l => { const id = /^\s*[-*]\s+(\S+)/.exec(l)?.[1]; return id !== undefined && rows.has(id) })
+  return `# Requirements: ${slug}\n\n<!-- Copied by rig from ${sprintRel(n)}/requirements.md, the PRD's own words: never edit it; a behaviour must not contradict it. -->\n\n${lines.join('\n')}\n`
 }
 
 // Whether an intent can be started now, and if not, why.
