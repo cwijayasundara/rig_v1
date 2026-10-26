@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import fs from 'node:fs'
 import path from 'node:path'
 import assert from 'node:assert/strict'
-import { designIntents, prdIds, parseIntent, parseCases, traceReport, intentSpecProblems, parkedDecisions, parseAccess, accessProblems, type Intent, type TestCase } from './chartcheck.ts'
+import { designIntents, prdIds, parseIntent, parseCases, traceReport, intentSpecProblems, parkedDecisions, parseAccess, accessProblems, implementationPlanProblems, type Intent, type TestCase } from './chartcheck.ts'
 
 const PRD = '---\nsprint: 1\nengineers: 1\n---\n# Sprint 1\n\n### FR-1: add\n### FR-2: remove\n| NFR-1 | fast |\n\nMentioned only in prose: FR-9.\n\n## Open questions\nnone\n'
 const intent = (slug: string, o: { prd?: string; depends?: string; days?: string; kind?: string; behaviours?: string; iface?: string; open?: string } = {}): string =>
@@ -291,3 +291,34 @@ test('backticks are stripped and an interface with a space is matched whole, ext
   assert.deepEqual(accessProblems(rows, ['a'], cs), [])
 })
 
+
+// The sprint implementation plan (owner, 2026-10-26): lanes to hand intents to engineers, then tasks per intent.
+const SPRINT = parse({ store: intent('store', { behaviours: '- B1 (FR-1): saves\n- B2 (FR-1): loads\n' }), model: intent('model', { depends: '[store]' }), cli: intent('cli', { depends: '[model]' }) })
+const lanes = (...rows: string[]): string => `## Allocation\n\n| Lane | Intents | Days | Suits | Why |\n|---|---|---|---|---|\n${rows.map(r => `| ${r} | 1 | any | - |`).join('\n')}\n`
+const IMPL = `# Sprint 1 implementation plan\n\n${lanes('1 | store → model → cli')}\n## Intents\n\n### store (wave 1)\n\n- [ ] B1: failing test, then save\n- [ ] B2: failing test, then load\n\n### model\n\n\`\`\`text\n### not a heading\n\`\`\`\n\n- [ ] B1: rules\n\n### \`cli\`\n\n- [x] B1: parse\n`
+const impl = (text: string): string[] => implementationPlanProblems(text, SPRINT).map(f => `${f.rule} ${f.where}`)
+
+test('a complete implementation plan has no finding', () => {
+  assert.deepEqual(impl(IMPL), [])
+})
+
+test('every intent has one section with tasks citing all its behaviours and no others', () => {
+  assert.deepEqual(impl(IMPL.replace(/### model[\s\S]*?(?=### `cli`)/, '')), ['impl-intent model'])
+  assert.deepEqual(impl(IMPL + '\n### ghost\n\n- [ ] B1: x\n'), ['impl-intent ghost'])
+  assert.deepEqual(impl(IMPL.replace('- [x] B1: parse', 'B1 is covered by prose only')), ['impl-tasks cli'])
+  assert.deepEqual(impl(IMPL.replace('- [ ] B2: failing test, then load', '- [ ] B3: failing test, then load')), ['impl-behaviour store', 'impl-behaviour store'])
+})
+
+test('allocation puts every intent in exactly one lane, after its dependencies in that lane', () => {
+  assert.deepEqual(impl(IMPL.replace(lanes('1 | store → model → cli'), lanes('1 | store → model'))), ['impl-allocation cli'])
+  assert.deepEqual(impl(IMPL.replace(lanes('1 | store → model → cli'), lanes('1 | store → model → cli', '2 | cli'))), ['impl-allocation cli'])
+  assert.deepEqual(impl(IMPL.replace(lanes('1 | store → model → cli'), lanes('1 | store, cli', '2 | model'))), [])
+  assert.deepEqual(impl(IMPL.replace(lanes('1 | store → model → cli'), lanes('1 | model → store', '2 | cli'))), ['impl-allocation model'])
+  assert.deepEqual(impl(IMPL.replace(lanes('1 | store → model → cli'), lanes('1 | store → model → cli → ghost'))), ['impl-allocation ghost'])
+  assert.deepEqual(impl(IMPL.replace(lanes('1 | store → model → cli'), '')), ['impl-allocation sprint'])
+})
+
+test('the unfilled implementation-plan template is all findings, never a pass', () => {
+  const tpl = fs.readFileSync(path.resolve(import.meta.dirname, '../templates/implementation-plan-format.md'), 'utf8')
+  assert.deepEqual(impl(tpl).sort(), ['impl-allocation sprint', 'impl-intent cli', 'impl-intent model', 'impl-intent store'])
+})

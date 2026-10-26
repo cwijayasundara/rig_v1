@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { makeRepo, sdlc, write, gitIn } from './testkit.ts'
+import { makeRepo, sdlc, write, gitIn, IMPL_OK } from './testkit.ts'
 
 let repo: string
 beforeEach(() => { repo = makeRepo(); sdlc(repo, ['init']) })
@@ -26,6 +26,7 @@ const chart1 = (): void => {
   write(repo, `${P}/sprints/sprint-1/prd.md`, prd(1))
   write(repo, `${P}/sprints/sprint-1/intents/alpha.md`, intent(1))
   write(repo, `${P}/architecture.md`, ARCH_DOC())
+  write(repo, `${P}/sprints/sprint-1/implementation-plan.md`, IMPL_OK(['alpha']))
 }
 const files = (n: number): unknown => call(`return C.chartFiles(${n})`)
 const state = (n: number): { state: string; changed: string[] } => call(`return C.chartState(${n})`) as { state: string; changed: string[] }
@@ -45,7 +46,7 @@ test('the digest changes when a sprint file is edited, added or removed, and not
   assert.notEqual(added, edited)
   fs.rmSync(path.join(repo, `${P}/sprints/sprint-1/intents/beta.md`))
   assert.equal(d(), edited)
-  assert.deepEqual(files(1), [`${P}/architecture.md`, `${P}/sprints/sprint-1/intents/alpha.md`, `${P}/sprints/sprint-1/prd.md`])
+  assert.deepEqual(files(1), [`${P}/architecture.md`, `${P}/sprints/sprint-1/implementation-plan.md`, `${P}/sprints/sprint-1/intents/alpha.md`, `${P}/sprints/sprint-1/prd.md`])
 })
 
 test('contract and example files an intent names are part of its sprint', () => {
@@ -53,7 +54,7 @@ test('contract and example files an intent names are part of its sprint', () => 
   write(repo, 'api/x.yaml', 'openapi: 3\n')
   write(repo, 'api/ex.json', '{}\n')
   write(repo, `${P}/sprints/sprint-1/intents/alpha.md`, intent(1, { iface: 'Contract: api/x.yaml\nExample: api/ex.json\n' }))
-  assert.deepEqual(files(1), [`${P}/architecture.md`, `${P}/sprints/sprint-1/intents/alpha.md`, `${P}/sprints/sprint-1/prd.md`, 'api/ex.json', 'api/x.yaml'])
+  assert.deepEqual(files(1), [`${P}/architecture.md`, `${P}/sprints/sprint-1/implementation-plan.md`, `${P}/sprints/sprint-1/intents/alpha.md`, `${P}/sprints/sprint-1/prd.md`, 'api/ex.json', 'api/x.yaml'])
 })
 
 test('an approval is missing, then approved, then stale after an edit that names the file', () => {
@@ -187,6 +188,7 @@ test('ready lists the intents that can start and leaves out the blocked ones', (
   cleanChart()
   write(repo, `${P}/sprints/sprint-1/intents/beta.md`, intent(1, { depends: '[alpha]' }))
   write(repo, `${P}/sprints/sprint-1/testplan/cases.md`, '| ID | Req | Intent | B | Level | Data | Expected |\n| TC-1 | FR-1 | alpha | B1 | unit | - | ok |\n| TC-2 | FR-1 | beta | B1 | unit | - | ok |\n')
+  write(repo, `${P}/sprints/sprint-1/implementation-plan.md`, IMPL_OK(['alpha', 'beta']))
   assert.equal(sdlc(repo, ['approve', 'chart-1'], HUMAN).code, 0)
   const r = sdlc(repo, ['ready', '--json'])
   assert.deepEqual((JSON.parse(r.stdout) as { slug: string }[]).map(i => i.slug), ['alpha'])
@@ -226,6 +228,7 @@ test('new --source starts the change: source recorded, behaviours copied into sp
 test('a started change keeps going after its chart goes stale; a new start is refused', () => {
   cleanChart()
   write(repo, `${P}/sprints/sprint-1/intents/beta.md`, intent(1, { req: 'FR-1' }))
+  write(repo, `${P}/sprints/sprint-1/implementation-plan.md`, IMPL_OK(['alpha', 'beta']))
   assert.equal(sdlc(repo, ['approve', 'chart-1'], HUMAN).code, 0)
   assert.equal(sdlc(repo, ['new', 'alpha', '--source', SRC]).code, 0)
   write(repo, `${P}/sprints/sprint-1/intents/beta.md`, intent(1, { req: 'FR-1' }) + '\nedit\n')
@@ -251,7 +254,7 @@ test('sync --check blocks a change whose spec.md dropped a behaviour of its inte
 const tpl = (f: string): string => fs.readFileSync(path.resolve(import.meta.dirname, '../templates', f), 'utf8')
 const allRules = (n: number, cases: boolean): string[] => (call(`return C.chartFindings(${n}, ${cases})`) as { rule: string }[]).map(f => f.rule)
 // The architecture-document rules have their own tests below; the rest of this file keeps its one-line architecture stubs.
-const rulesOf = (n: number, cases: boolean): string[] => allRules(n, cases).filter(r => !r.startsWith('arch-'))
+const rulesOf = (n: number, cases: boolean): string[] => allRules(n, cases).filter(r => !r.startsWith('arch-') && !r.startsWith('impl-'))
 
 test('an architecture document that keeps the template prompts has no concern and no open question', () => {
   chart1()
@@ -352,7 +355,7 @@ test('design-missing blocks when design: names a file that is not there, and a p
   write(repo, `${P}/architecture.md`, archWith('../x.md'))
   assert.equal(call('return C.designDocOf(1)'), '../x.md')
   assert.equal(findings(1).filter(f => f.rule === 'design-missing').length, 1)
-  assert.deepEqual(files(1), [`${P}/architecture.md`, `${P}/sprints/sprint-1/intents/alpha.md`, `${P}/sprints/sprint-1/prd.md`])
+  assert.deepEqual(files(1), [`${P}/architecture.md`, `${P}/sprints/sprint-1/implementation-plan.md`, `${P}/sprints/sprint-1/intents/alpha.md`, `${P}/sprints/sprint-1/prd.md`])
 })
 
 test('a sprint whose architecture.md has no design: line has no design findings and no extra chart file', () => {
@@ -360,7 +363,7 @@ test('a sprint whose architecture.md has no design: line has no design findings 
   write(repo, `${P}/architecture.md`, archWith(null))
   assert.equal(call('return C.designDocOf(1)'), null)
   assert.deepEqual(findings(1).filter(f => f.rule.startsWith('design')), [])
-  assert.deepEqual(files(1), [`${P}/architecture.md`, `${P}/sprints/sprint-1/intents/alpha.md`, `${P}/sprints/sprint-1/prd.md`])
+  assert.deepEqual(files(1), [`${P}/architecture.md`, `${P}/sprints/sprint-1/implementation-plan.md`, `${P}/sprints/sprint-1/intents/alpha.md`, `${P}/sprints/sprint-1/prd.md`])
 })
 
 const ARCH_BODY = `# Architecture
@@ -379,6 +382,10 @@ flowchart LR
   cli --> chains
 \`\`\`
 
+\`\`\`text
+[cli] ---> [chains]
+\`\`\`
+
 ## Code structure
 
 \`\`\`
@@ -393,6 +400,11 @@ tests/
 \`\`\`mermaid
 sequenceDiagram
   cli->>chains: run
+\`\`\`
+
+\`\`\`text
+cli ---run---> chains
+            <--- result
 \`\`\`
 
 ## Quality tactics
@@ -421,7 +433,7 @@ test('a full architecture document has no architecture finding; the unfilled tem
   write(repo, `${P}/architecture.md`, ARCH_DOC())
   assert.deepEqual(allRules(1, false).filter(r => r.startsWith('arch-')), [])
   write(repo, `${P}/architecture.md`, tpl('architecture-format.md'))
-  assert.deepEqual(allRules(1, false).filter(r => r.startsWith('arch-')).sort(), ['arch-diagram', 'arch-flow', 'arch-history', 'arch-nfr', 'arch-stack', 'arch-stack', 'arch-structure'])
+  assert.deepEqual(allRules(1, false).filter(r => r.startsWith('arch-')).sort(), ['arch-diagram', 'arch-diagram-text', 'arch-flow', 'arch-flow-text', 'arch-history', 'arch-nfr', 'arch-stack', 'arch-stack', 'arch-structure'])
 })
 
 test('the architecture document must name a language and a framework, draw a diagram, show the tree and cover every NFR', () => {
@@ -499,9 +511,10 @@ test('chart plan writes plan.md with waves, a text graph, a Mermaid graph and wh
   const r = sdlc(repo, ['chart', 'plan', '1'])
   assert.equal(r.code, 0, r.stderr)
   const text = fs.readFileSync(path.join(repo, P, 'sprints/sprint-1/plan.md'), 'utf8')
-  assert.match(text, /\| 1 \| alpha \| - \| 1 \| ready \|/)
-  assert.match(text, /\| 2 \| beta \| alpha \| 1 \| blocked \|/)
-  assert.match(text, /\| 3 \| gamma \| alpha, beta \| 1 \| blocked \|/)
+  assert.match(text, /\| 1 \| alpha \| - \| 1 \| - \| ready \|/)
+  assert.match(text, /\| 2 \| beta \| alpha \| 1 \| - \| blocked \|/)
+  assert.match(text, /\| 3 \| gamma \| alpha, beta \| 1 \| - \| blocked \|/)
+  assert.match(text, /\[implementation-plan\.md\]\(implementation-plan\.md\)\. Unassigned: alpha, beta, gamma/)
   assert.match(text, /alpha ○ ready\n└─ beta ✖ blocked\n   └─ gamma ✖ blocked  \(also after: alpha\)/)
   assert.match(text, /graph LR[\s\S]*n_alpha --> n_beta[\s\S]*n_beta --> n_gamma/)
   assert.match(text, /## Next up\n\n[\s\S]*- `\/rig:start \.rig\/product\/sprints\/sprint-1\/intents\/alpha\.md`/)
@@ -551,4 +564,38 @@ test('the plugin copy names /rig-x commands in a repo with the standalone skills
   const text = sdlc(repo, ['chart', 'plan', '1', '--print']).stdout
   assert.match(text, /a person runs `\/rig-approve chart-1`/)
   assert.doesNotMatch(text, /\/rig:[a-z]/)
+})
+
+// The sprint implementation plan (owner, 2026-10-26): engineers are allocated by filling `owner:` in each intent after the chart is approved.
+test('filling in an intent owner keeps an approved chart approved, and plan.md shows the owner', () => {
+  planRepo()
+  call(`C.writeChartApproval(1, 'Pat')`)
+  const file = path.join(repo, P, 'sprints/sprint-1/intents/alpha.md')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('estimate_days: 1\n', 'estimate_days: 1\nowner: Sam\n'))
+  assert.equal(state(1).state, 'approved')
+  assert.equal(sdlc(repo, ['chart', 'plan', '1']).code, 0)
+  const text = fs.readFileSync(path.join(repo, P, 'sprints/sprint-1/plan.md'), 'utf8')
+  assert.match(text, /\| 1 \| alpha \| - \| 1 \| Sam \| ready \|/)
+  assert.match(text, /Unassigned: beta, gamma/)
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8') + '\nedit\n')
+  assert.equal(state(1).state, 'stale', 'any other edit still makes it stale')
+})
+
+test('a sprint with intents and no implementation-plan.md is blocked; the plan is a chart file', () => {
+  chart1()
+  assert.deepEqual(allRules(1, false).filter(r => r.startsWith('impl-')), [])
+  fs.rmSync(path.join(repo, P, 'sprints/sprint-1/implementation-plan.md'))
+  assert.deepEqual(allRules(1, false).filter(r => r.startsWith('impl-')), ['impl-missing'])
+  write(repo, `${P}/sprints/sprint-1/implementation-plan.md`, IMPL_OK(['alpha']))
+  call(`C.writeChartApproval(1, 'Pat')`)
+  write(repo, `${P}/sprints/sprint-1/implementation-plan.md`, IMPL_OK(['alpha']) + '\nedit\n')
+  assert.deepEqual(state(1), { state: 'stale', changed: [`${P}/sprints/sprint-1/implementation-plan.md`] })
+})
+
+test('the architecture diagram and each key flow need an ASCII twin beside the mermaid one', () => {
+  chart1()
+  write(repo, `${P}/architecture.md`, ARCH_DOC().replace('```text\n[cli] ---> [chains]\n```', ''))
+  assert.deepEqual(allRules(1, false).filter(r => r.startsWith('arch-')), ['arch-diagram-text'])
+  write(repo, `${P}/architecture.md`, ARCH_DOC().replace(/```text\ncli ---run[\s\S]*?```/, '```text\n```'))
+  assert.deepEqual(allRules(1, false).filter(r => r.startsWith('arch-')), ['arch-flow-text'], 'an empty block draws nothing')
 })

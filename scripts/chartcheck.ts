@@ -9,6 +9,7 @@ export type Intent = {
   slug: string; sprint: number | null; prd: string[]; depends: string[]; estimateDays: number | null; kind: 'boundary' | 'internal' | null
   behaviours: Behaviour[]; contractFiles: string[]; exampleFiles: string[]; openQuestions: string[]
   failures: string[]; design: number // B-numbers under `### Failure behaviour`; `## Design` table rows
+  owner: string // who builds it: a person fills it in when the sprint is allocated; empty until then
 }
 export type TestCase = { id: string; reqs: string[]; intent: string; behaviour: string; level: string; data: string; access: string }
 // A row of architecture.md `## Access`: who may take an action, on which interfaces. `nobody`: the cell says no role may.
@@ -56,6 +57,7 @@ export function parseIntent(slug: string, raw: string): Intent {
     behaviours: parseBehaviours(text), contractFiles: files('Contract'), exampleFiles: files('Example'), openQuestions: openQuestions(text),
     failures: [...(section(text, 'Behaviours').split(/^###\s+Failure behaviour\s*$/m)[1] ?? '').matchAll(/^\s*[-*]\s+(B\d+)/gm)].map(m => m[1]!),
     design: Math.max(0, section(text, 'Design').split('\n').filter(l => /^\s*\|/.test(l) && !/^\s*\|[\s|:-]*$/.test(l)).length - 1),
+    owner: (data.owner ?? '').trim().replace(/^["']|["']$/g, ''),
   }
 }
 
@@ -147,6 +149,10 @@ export function intentSpecProblems(intent: Intent, spec: string): string[] {
   ]
 }
 
+// A fenced block, not mermaid, with a drawing in it: the ASCII twin of a mermaid diagram (owner, 2026-10-26: mermaid does not render in a terminal).
+const asciiDiagram = (body: string): boolean =>
+  [...body.matchAll(/^(```|~~~)([^\n]*)\n([\s\S]*?)^\1/gm)].some(m => !/mermaid/i.test(m[2] ?? '') && Boolean(m[3]?.trim()))
+
 // What architecture.md must hold to be an architecture document and not a summary: the stack by name, a diagram, the code structure,
 // a key flow, a tactic for every NFR the PRD defines, and this sprint's row in the history. Pure over text.
 export function architectureProblems(arch: string, prd: string, sprint: number): ChartFinding[] {
@@ -158,9 +164,11 @@ export function architectureProblems(arch: string, prd: string, sprint: number):
   const stack = rows('Technology stack')
   for (const need of ['Language', 'Framework']) if (!stack.some(r => r[0]?.toLowerCase() === need.toLowerCase() && r[1])) add('arch-stack', `## Technology stack has no ${need} row with a Choice: name the real ${need.toLowerCase()} from the PRD ("none (standard library)" when there is no framework)`)
   if (!/^```mermaid/m.test(section(text, 'Architecture diagram'))) add('arch-diagram', 'has no mermaid diagram under ## Architecture diagram: draw the modules, the external systems and the dependency direction')
+  if (!asciiDiagram(section(text, 'Architecture diagram'))) add('arch-diagram-text', 'has no ASCII diagram under ## Architecture diagram: draw the same modules and arrows in a ```text block beside the mermaid one, for terminals and plain-text readers')
   const tree = (/^```[^\n]*\n([\s\S]*?)^```/m.exec(section(text, 'Code structure'))?.[1] ?? '').split('\n').filter(l => l.trim())
   if (tree.length < 3) add('arch-structure', 'has no source tree under ## Code structure: show the directories and files this architecture implies, one comment each')
   if (!/^```mermaid/m.test(section(text, 'Key flows'))) add('arch-flow', 'has no mermaid sequence diagram under ## Key flows: draw the main use case through the modules')
+  if (!asciiDiagram(section(text, 'Key flows'))) add('arch-flow-text', 'has no ASCII diagram under ## Key flows: draw the main flow in a ```text block beside the mermaid sequence diagram')
   const tactics = section(text, 'Quality tactics')
   for (const id of prdIds(prd).filter(x => x.startsWith('NFR-'))) if (!new RegExp(`\\b${id}\\b`).test(tactics)) add('arch-nfr', `## Quality tactics has no row for ${id}, which the PRD defines`)
   if (!rows('Sprint history').some(r => Number(/^(?:sprint[\s-]*)?(\d+)\.?$/i.exec(r[0] ?? '')?.[1]) === sprint)) add('arch-history', `## Sprint history has no row for sprint ${sprint}`)
@@ -199,3 +207,46 @@ export function accessProblems(rules: AccessRule[], slugs: string[], cases: Test
   return out
 }
 
+
+// The sprint implementation plan (implementation-plan.md, owner 2026-10-26): how the sprint's intents are handed to engineers and built.
+// `## Allocation` lanes cover every intent once and keep each lane in dependency order; a `### <slug>` section per intent has checkbox tasks
+// and cites every behaviour of that intent, and no behaviour it does not have. Pure over text.
+export function implementationPlanProblems(plan: string, intents: Intent[]): ChartFinding[] {
+  const out: ChartFinding[] = []
+  const add = (rule: string, where: string, message: string, severity: 'block' | 'report' = 'block'): number => out.push({ rule, severity, where, message: `implementation-plan.md ${message}` })
+  const text = uncomment(plan.replace(/\r\n/g, '\n')).replace(/^(```|~~~)[^\n]*\n[\s\S]*?^\1/gm, b => b.replace(/^#/gm, '\u200b#'))
+  const by = new Map(intents.map(t => [t.slug, t]))
+  const sections = new Map<string, string>()
+  // `### <slug>` under `## Intents`; a heading may say more after the slug (`### cart-model (wave 2)`).
+  for (const m of section(text, 'Intents').matchAll(/^###\s+`?([a-z0-9]+(?:-[a-z0-9]+)*)`?(?:\s[^\n]*)?$([\s\S]*?)(?=^###\s|(?![\s\S]))/gm)) sections.set(m[1]!, m[2] ?? '')
+  for (const s of sections.keys()) if (!by.has(s)) add('impl-intent', s, `has a section for ${s}, which is not an intent of this sprint`)
+  for (const t of intents) {
+    const body = sections.get(t.slug)
+    if (body === undefined) { add('impl-intent', t.slug, `has no \`### ${t.slug}\` section: plan every intent`); continue }
+    if (!/^\s*[-*]\s+\[[ xX]\]\s+\S/m.test(body)) add('impl-tasks', t.slug, `### ${t.slug} has no \`- [ ]\` tasks`)
+    const cited = new Set(body.match(/\bB\d+\b/g) ?? [])
+    const known = new Set(t.behaviours.map(b => b.id))
+    const unknown = [...cited].filter(b => !known.has(b))
+    if (unknown.length) add('impl-behaviour', t.slug, `### ${t.slug} cites ${unknown.join(', ')}, which ${t.slug} does not have`)
+    const missing = [...known].filter(b => !cited.has(b))
+    if (missing.length) add('impl-behaviour', t.slug, `### ${t.slug} has no task for ${missing.join(', ')}: every behaviour gets a failing test first`)
+  }
+  const lanes = section(text, 'Allocation').split('\n').filter(l => /^\s*\|/.test(l) && !/^\s*\|[\s|:-]*$/.test(l)).slice(1)
+    .map(l => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim()))
+  if (!lanes.length) { add('impl-allocation', 'sprint', 'has no `## Allocation` table: one row per lane, its intents in build order'); return out }
+  const placed = new Map<string, number>()
+  for (const [i, row] of lanes.entries()) {
+    const slugs = (row[1] ?? '').replace(/`/g, '').split(/\s*(?:,|→|->)\s*/).map(s => s.trim()).filter(Boolean)
+    for (const [k, s] of slugs.entries()) {
+      if (!by.has(s)) { add('impl-allocation', s, `lane ${row[0] || i + 1} names ${s}, which is not an intent of this sprint`); continue }
+      placed.set(s, (placed.get(s) ?? 0) + 1)
+      const later = by.get(s)!.depends.filter(d => slugs.indexOf(d) > k)
+      if (later.length) add('impl-allocation', s, `lane ${row[0] || i + 1} puts ${s} before ${later.join(', ')}, which it depends on`)
+    }
+  }
+  for (const t of intents) {
+    const n = placed.get(t.slug) ?? 0
+    if (n !== 1) add('impl-allocation', t.slug, n ? `allocates ${t.slug} to ${n} lanes: one lane per intent` : `allocates ${t.slug} to no lane`)
+  }
+  return out
+}

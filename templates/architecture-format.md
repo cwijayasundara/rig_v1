@@ -23,7 +23,7 @@ design: <path or none>
 
 ## Architecture diagram
 
-<!-- A mermaid diagram (```mermaid fenced block) of the containers or modules, the external systems and which way dependencies point. Name the real modules, as in Code structure. -->
+<!-- A mermaid diagram (```mermaid fenced block) of the containers or modules, the external systems and which way dependencies point, then the same picture as an ASCII diagram in a ```text block (boxes and arrows, for terminals and plain-text readers). Name the real modules, as in Code structure; the two diagrams never disagree. -->
 
 ## Code structure
 
@@ -35,7 +35,7 @@ design: <path or none>
 
 ## Key flows
 
-<!-- A mermaid sequenceDiagram for each main use case or request path, naming the modules from the diagram. At least one. -->
+<!-- A mermaid sequenceDiagram for each main use case or request path, naming the modules from the diagram, each followed by the same flow as an ASCII diagram in a ```text block (numbered steps with arrows between the modules). At least one. -->
 
 ## Data
 

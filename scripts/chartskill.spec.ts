@@ -137,3 +137,22 @@ test('chart skill: the fix round marks findings fixed and rewrites the verdict, 
   assert.match(skill, /leave `changes-needed` when any is still open/)
   assert.match(skill, /a finding citing files of both goes to both/)
 })
+
+const text = (f: string): string => fs.readFileSync(path.resolve(import.meta.dirname, '..', f), 'utf8')
+
+// 2026-10-26 owner: a sprint implementation plan to allocate intents to engineers, and ASCII twins of the architecture's mermaid diagrams.
+test('chart has the architect write implementation-plan.md and ends by naming both sprint plan files', () => {
+  const skill = text('skills/chart/SKILL.md'), architect = text('agents/architect.md')
+  assert.match(skill, /implementation-plan-format\.md/)
+  assert.match(skill, /the architect owns intents, `implementation-plan\.md`/)
+  assert.match(skill, /`\.rig\/product\/sprints\/sprint-<N>\/plan\.md` \(build order\) and `\.rig\/product\/sprints\/sprint-<N>\/implementation-plan\.md` \(tasks and lanes\)/)
+  assert.match(architect, /one lane per engineer the PRD's `engineers:` gives/)
+  assert.match(architect, /Leave `owner:` in the intents empty/)
+  assert.match(architect, /mermaid architecture diagram and its ASCII twin/)
+  assert.match(text('templates/architecture-format.md'), /ASCII diagram in a ```text block/)
+  assert.match(text('agents/evaluator.md'), /`implementation-plan\.md`/)
+})
+
+test('/rig:plan starts from the intent section of the sprint implementation plan', () => {
+  assert.match(text('skills/plan/SKILL.md'), /`### <slug>` section of `implementation-plan\.md`[^.]*first/)
+})

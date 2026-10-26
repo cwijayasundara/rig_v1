@@ -4,7 +4,7 @@ prd: [FR-1]
 depends: []
 estimate_days: 1
 kind: internal
-owner:
+owner:   # who builds it; a person fills it in when allocating the sprint (implementation-plan.md suggests lanes)
 status: draft
 scope: []
 touches: []

@@ -7,8 +7,8 @@ import { ROOT, exists, read, sha, now, toPosix, frontmatter, skillRef } from './
 import { openQuestions, section } from './model.ts'
 import { changeDir, isShipped } from './lifecycle.ts'
 import { planText, type PlanRow } from './plan.ts'
-import { PRODUCT, ARCH_REL, archPath, prdPath, intentsDir, testplanDir, approvalPath, sprintDir, sprintsOnDisk, intentRel, planPath, sprintRel } from './product.ts'
-import { designIntents, architectureProblems, accessProblems, parseAccess, parseIntent, parseCases, parkedDecisions, prdIds, traceReport, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
+import { PRODUCT, ARCH_REL, archPath, prdPath, intentsDir, testplanDir, approvalPath, sprintDir, sprintsOnDisk, intentRel, planPath, implPlanPath, sprintRel } from './product.ts'
+import { designIntents, architectureProblems, implementationPlanProblems, accessProblems, parseAccess, parseIntent, parseCases, parkedDecisions, prdIds, traceReport, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
 
 const SHARED_DIRS = ['adr'].map(d => `${toPosix(path.relative(ROOT, path.join(PRODUCT, d)))}/`)
 export const CHART_RE = /^chart-(\d{1,4})$/
@@ -53,11 +53,15 @@ const designFile = (n: number): string[] => { const d = designDocOf(n); return d
 
 function ownFiles(n: number): string[] {
   const own = intentsOf(n)
-  return rel([prdPath(n), ...designFile(n), ...walk(testplanDir(n)), ...own.map(i => i.file), ...own.flatMap(i => [...i.contractFiles, ...i.exampleFiles]).filter(f => !escapes(f)).map(f => path.join(ROOT, f))])
+  return rel([prdPath(n), ...designFile(n), implPlanPath(n), ...walk(testplanDir(n)), ...own.map(i => i.file), ...own.flatMap(i => [...i.contractFiles, ...i.exampleFiles]).filter(f => !escapes(f)).map(f => path.join(ROOT, f))])
 }
 const sharedFiles = (): string[] => rel([archPath, ...walk(path.join(PRODUCT, 'adr')).filter(f => f.endsWith('.md'))])
 export const chartFiles = (n: number): string[] => [...new Set([...ownFiles(n), ...sharedFiles()])].sort()
-const manifest = (paths: string[]): ChartFile[] => paths.map(p => ({ path: p, sha: sha(read(path.join(ROOT, p))) }))
+// An intent's `owner:` line is left out of its hash: who builds an intent is decided after the chart is approved, and changing it
+// is not a change to what was approved.
+const INTENT_FILE = /^\.rig\/product\/sprints\/sprint-\d{1,4}\/intents\/[^/]+\.md$/
+const hashed = (p: string): string => { const t = read(path.join(ROOT, p)); return INTENT_FILE.test(p) ? t.replace(/^owner:[^\n]*\n/m, '') : t }
+const manifest = (paths: string[]): ChartFile[] => paths.map(p => ({ path: p, sha: sha(hashed(p)) }))
 export const chartDigest = (n: number): string => sha(manifest(chartFiles(n)).map(f => `${f.path}\n${f.sha}\n`).join(''))
 
 function readRow(n: number): Row | null {
@@ -133,6 +137,8 @@ export function chartFindings(n: number, withCases: boolean): ChartFinding[] {
   found.push(...accessProblems(parseAccess(arch), allIntents().map(i => i.slug), cases, intentsOf(n).map(i => i.slug)))
   for (const q of openQuestions(arch)) found.push({ rule: 'open-question', severity: 'block', where: 'architecture', message: `architecture.md has an open question: ${q}` })
   for (const l of section(arch, 'Concerns').split('\n').map(x => x.replace(/^\s*[-*]\s*/, '').trim()).filter(x => x && !/^none\.?$/i.test(x) && !/^\[x\]/i.test(x) && !/\(resolved\)/i.test(x))) found.push({ rule: 'concern', severity: 'block', where: 'architecture', message: `unresolved concern: ${l}` })
+  found.push(...(exists(implPlanPath(n)) ? implementationPlanProblems(read(implPlanPath(n)), intentsOf(n))
+    : intentsOf(n).length ? [{ rule: 'impl-missing', severity: 'block' as const, where: 'sprint', message: `${sprintRel(n)}/implementation-plan.md is missing: write it as implementation-plan-format.md lays it out` }] : []))
   for (const [where, file] of [['architecture.md', archPath], ...intentsOf(n).map(i => [`${i.slug}.md`, i.file] as const)]) found.push(...parkedDecisions(where, read(file)))
   return found
 }
@@ -184,7 +190,7 @@ export function chartReport(n: number): string {
 // file, so regenerating it never makes an approved chart stale.
 export function planRows(n: number): PlanRow[] {
   return intentsOf(n).map(i => ({
-    slug: i.slug, depends: i.depends, estimateDays: i.estimateDays,
+    slug: i.slug, depends: i.depends, estimateDays: i.estimateDays, owner: i.owner,
     status: isShipped(i.slug) ? 'done' : exists(changeDir(i.slug)) ? 'active' : i.depends.every(isShipped) ? 'ready' : 'blocked',
   }))
 }

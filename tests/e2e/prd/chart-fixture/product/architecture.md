@@ -25,6 +25,17 @@ flowchart LR
   http --> catalog
 ```
 
+```text
++-----------+      +-----------+
+| src/http  |----->| src/cart  |
++-----------+      +-----------+
+      |                  |
+      |                  v
+      |            +-------------+
+      +----------->| src/catalog |
+                   +-------------+
+```
+
 ## Code structure
 
 ```
@@ -47,6 +58,16 @@ sequenceDiagram
   http->>catalog: stock(sku)
   catalog-->>http: count
   http-->>Client: 200 {count}
+```
+
+```text
+Client          src/http              src/catalog
+  |  GET /stock/{sku} |                     |
+  |------------------>|    stock(sku)       |
+  |                   |-------------------->|
+  |                   |<--------------------|
+  |  200 {count}      |       count         |
+  |<------------------|                     |
 ```
 
 ## Quality tactics
