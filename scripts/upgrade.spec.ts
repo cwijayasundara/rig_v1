@@ -293,3 +293,32 @@ test('apply never pushes', () => {
   assert.equal(gitIn(repo, 'rev-parse', 'main'), main)
   assert.equal(gitIn(repo, 'remote'), '')
 })
+
+test('VERSION is bookkeeping: never a conflict, and apply brings it current even when an edit is kept', () => {
+  const repo = committed()
+  const ver = '.rig/bin/VERSION'
+  const to = fs.readFileSync(path.join(repo, ver), 'utf8')
+  write(repo, ver, '0.5.0\n')
+  write(repo, CORE, 'local\n')
+  fs.rmSync(manifestPath(repo))
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', 'no manifest')
+  const p = plan(repo)
+  assert.equal(p.files[ver], 'replace')
+  assert.equal(p.files[CORE], 'conflict')
+  assert.equal(sdlc(repo, ['upgrade', '--apply', '--decide', JSON.stringify({ [ver]: 'mine' })]).code === 0, false)
+  const r = sdlc(repo, ['upgrade', '--apply', '--decide', JSON.stringify({ [CORE]: 'mine' })])
+  assert.equal(r.code, 0, r.stderr)
+  assert.equal(fs.readFileSync(path.join(repo, ver), 'utf8'), to)
+  assert.equal(manifestOf(repo).files[ver], sha(to))
+  const after = plan(repo)
+  assert.equal(after.from, after.to)
+  assert.deepEqual(after.migrations, [])
+})
+
+test('with a manifest an old VERSION is replace', () => {
+  const repo = committed()
+  const ver = '.rig/bin/VERSION'
+  lag(repo, ver, '0.5.0\n')
+  assert.equal(plan(repo).files[ver], 'replace')
+})

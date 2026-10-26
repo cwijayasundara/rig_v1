@@ -81,6 +81,9 @@ export function buildPlan(): Plan {
     disk.set(rel, exists(path.join(ROOT, rel)) ? read(path.join(ROOT, rel)) : null)
   }
   const files = classify(manifest?.files ?? null, disk, next)
+  // VERSION is rig's bookkeeping, not the project's file: it is never a conflict or a keep, it always follows the plugin.
+  const ver = '.rig/bin/VERSION'
+  if (next.has(ver)) files.set(ver, disk.get(ver) === next.get(ver) ? 'noop' : 'replace')
   const sensors = read(SENSORS_PATH)
   return { from, to, standalone, files, next, disk, manifest, migrations: pendingMigrations(from, to), proposals: sensors ? proposeSensors(sensors, loadPacks(PACKS_DIR).packs) : null }
 }
