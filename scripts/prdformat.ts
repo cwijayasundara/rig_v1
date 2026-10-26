@@ -89,3 +89,7 @@ export function prdFormatProblems(prd: string): ChartFinding[] {
   }
   return out
 }
+
+// requirements.md generated from the criteria: the ledger line format chart check, the change copy and the PR review read.
+export const prdLedger = (prd: string): string => ['# Requirements (generated from prd.md by rig: never edit)', '',
+  ...prdCriteria(prd).map(c => `- ${c.id} [${c.kind}] prd.md:${c.line} "${c.text}"`), ''].join('\n')

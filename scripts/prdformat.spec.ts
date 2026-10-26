@@ -3,7 +3,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { prdFormatProblems, prdCriteria } from './prdformat.ts'
+import { prdFormatProblems, prdCriteria, prdLedger } from './prdformat.ts'
+import { parseLedger, ledgerProblems, parseIntent, parentOf } from './chartcheck.ts'
 
 const ROOT = path.resolve(import.meta.dirname, '..')
 const rules = (f: { rule: string }[]): string[] => f.map(x => x.rule).sort()
@@ -73,4 +74,34 @@ test('prdCriteria: ACs with their FR, DRs with no parent, NFR rows, and answers 
   assert.equal(c[2]!.text, 'Each item id is an integer starting at 1.')
   assert.equal(c[4]!.text, 'NFR-1 | performance | add on a 1 000-item cart | under 200 ms | unit')
   assert.equal(prd.split('\n')[c[0]!.line - 1], '- AC-4.1: WHEN a THE SYSTEM SHALL b')
+})
+
+// The generated ledger (spec 2026-10-26 PRD format): one row per criterion, so no model writes requirements.md.
+const intentOf = (behaviours: string, prd = '[FR-4, NFR-1]') => parseIntent('store', `---\nsprint: 1\nprd: ${prd}\ndepends: []\nestimate_days: 1\nkind: internal\n---\n# s\n\n## Behaviours\n${behaviours}\n## Open questions\nnone\n`)
+const ALL = '- B1 (FR-4, AC-4.1): next id\n- B2 (FR-4, DR-1): starts at 1\n- B3 (FR-4, DR-2): never reused\n- B4 (NFR-1): fast\n'
+const lp = (behaviours: string, prd = PRD()) => ledgerProblems({ prd, ledger: prdLedger(prd), intents: [intentOf(behaviours)], cases: null, required: true, inFormat: true }).map(f => `${f.rule} ${f.where}`).sort()
+
+test('prdLedger writes one row per criterion with its prd.md line, and parseLedger reads it back', () => {
+  const prd = PRD()
+  const at = (s: string): number => prd.split('\n').findIndex(l => l.includes(s)) + 1
+  assert.equal(prdLedger(prd), ['# Requirements (generated from prd.md by rig: never edit)', '',
+    `- AC-4.1 [rule] prd.md:${at('AC-4.1')} "WHEN an item is added THE SYSTEM SHALL give it the next id"`,
+    `- DR-1 [rule] prd.md:${at('DR-1')} "Each item id is an integer starting at 1."`,
+    `- DR-2 [rule] prd.md:${at('DR-2')} "Ids are never reused, even after an item is removed."`,
+    `- NFR-1 [rule] prd.md:${at('| NFR-1')} "NFR-1 | performance | add on a 1 000-item cart | under 200 ms | unit"`, ''].join('\n'))
+  assert.deepEqual(parseLedger(prdLedger(prd)).map(r => [r.id, r.kind]), [['AC-4.1', 'rule'], ['DR-1', 'rule'], ['DR-2', 'rule'], ['NFR-1', 'rule']])
+  assert.deepEqual(lp(ALL), [])
+})
+
+test('citing only the FR covers none of its criteria; a DR is covered by the behaviour that cites it; NFR rows by their id', () => {
+  assert.deepEqual(lp('- B1 (FR-4): next id\n- B2 (FR-4, DR-1): x\n- B3 (FR-4, DR-2): y\n- B4 (NFR-1): fast\n'), ['rule-uncovered AC-4.1'])
+  assert.deepEqual(lp('- B1 (FR-4, AC-4.1): next id\n- B4 (NFR-1): fast\n'), ['rule-uncovered DR-1', 'rule-uncovered DR-2'])
+})
+
+test('an AC or DR the ledger lacks is an unknown id', () => {
+  assert.deepEqual(lp(ALL + '- B5 (FR-4, AC-9.9): ghost\n- B6 (FR-4, DR-9): ghost\n'), ['unknown-id store#B5', 'unknown-id store#B6'])
+})
+
+test('parentOf: an AC belongs to its FR, an NFR row to itself, a DR to no FR', () => {
+  assert.deepEqual(['AC-4.1', 'NFR-2', 'DR-1', 'FR-4.2', 'G-1'].map(parentOf), ['FR-4', 'NFR-2', null, 'FR-4', null])
 })

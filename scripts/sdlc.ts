@@ -30,8 +30,9 @@ import { cmdReport } from './report.ts'
 import { cmdArch, layerState, layerStateText } from './arch.ts'
 import { cmdQueue, conflictsFor } from './queue.ts'
 import { intentScope } from './scope.ts'
-import { prdFormatProblems } from './prdformat.ts'
-import { intentRelOf, prdRel, sprintRel, prdPath, reviewPath } from './product.ts'
+import { prdFormatProblems, prdLedger } from './prdformat.ts'
+import { parseLedger } from './chartcheck.ts'
+import { intentRelOf, prdRel, sprintRel, prdPath, reviewPath, ledgerPath } from './product.ts'
 import { cmdSlice } from './slice.ts'
 import { cmdMaintain } from './maintain.ts'
 import { cmdReadiness } from './readiness.ts'
@@ -195,9 +196,15 @@ function cmdChart(args: Args): void {
 // The PRD format for coding agents (spec 2026-10-26): `prd check <N>` says whether the sprint PRD is in rig's template.
 function cmdPrd(args: Args): void {
   const [sub, num] = args.pos
-  if (sub !== 'check' || !/^\d{1,4}$/.test(num ?? '')) fail('usage: prd check [--json] <sprint number>')
+  if ((sub !== 'check' && sub !== 'ledger') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: prd (check [--json] | ledger) <sprint number>')
   const n = Number(num)
   needPrd(n)
+  if (sub === 'ledger') {
+    const format = prdFormatProblems(read(prdPath(n)))
+    if (format.length) fail(`prd.md is not in format, so no ledger can be generated: run \`prd check ${n}\``)
+    fs.writeFileSync(ledgerPath(n), prdLedger(read(prdPath(n))))
+    return out(`wrote ${sprintRel(n)}/requirements.md: ${parseLedger(read(ledgerPath(n))).length} row(s) from prd.md`)
+  }
   const found = prdFormatProblems(read(prdPath(n)))
   if (args.opt.json) return out(JSON.stringify(found))
   out([...found.map(f => `[${f.rule}] ${f.where}: ${f.message}`), `prd-${n}: ${found.length ? `${found.length} format finding(s); convert it into templates/prd-format.md` : 'in format'}`].join('\n'))

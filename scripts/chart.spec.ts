@@ -714,3 +714,32 @@ test('approve on a chart already approved before reviews were read still says al
   assert.equal(r.code, 0, r.stderr)
   assert.match(r.stdout, /already approved/)
 })
+
+// 2026-10-26 PRD format: the ledger is generated from an in-format prd.md, and chart check blocks when it is out of date.
+const FORMAT_PRD = '---\nsprint: 1\nengineers: 1\n---\n# PRD\n\n## Functional requirements\n\n### FR-1: thing\n\n- AC-1.1: WHEN a THE SYSTEM SHALL b\n- AC-1.2: WHEN c THE SYSTEM SHALL d\n\n## Data rules\n\n- DR-1: Ids start at 1.\n\n## Non-functional requirements\n\nnone\n\n## Boundaries\n\nnone\n\n## Open questions\n\nnone\n'
+test('prd ledger writes requirements.md; chart check blocks ledger-stale after prd.md gains a criterion', () => {
+  cleanChart()
+  write(repo, `${P}/sprints/sprint-1/prd.md`, FORMAT_PRD)
+  const r = sdlc(repo, ['prd', 'ledger', '1'])
+  assert.equal(r.code, 0, r.stderr)
+  assert.match(fs.readFileSync(path.join(repo, `${P}/sprints/sprint-1/requirements.md`), 'utf8'), /^- AC-1\.2 \[rule\] prd\.md:\d+ "WHEN c THE SYSTEM SHALL d"$/m)
+  const stale = (): string[] => (call('return C.chartFindings(1, false)') as { rule: string }[]).map(f => f.rule).filter(x => x === 'ledger-stale')
+  assert.deepEqual(stale(), [])
+  write(repo, `${P}/sprints/sprint-1/prd.md`, FORMAT_PRD.replace('- AC-1.2: WHEN c THE SYSTEM SHALL d\n', '- AC-1.2: WHEN c THE SYSTEM SHALL d\n- AC-1.3: WHEN e THE SYSTEM SHALL f\n'))
+  assert.deepEqual(stale(), ['ledger-stale'])
+  sdlc(repo, ['prd', 'ledger', '1'])
+  assert.deepEqual(stale(), [])
+})
+
+test('a change from an intent citing FR-1 gets its AC rows, and a DR row only when a behaviour cites it', () => {
+  cleanChart()
+  write(repo, `${P}/sprints/sprint-1/prd.md`, FORMAT_PRD)
+  sdlc(repo, ['prd', 'ledger', '1'])
+  write(repo, `${P}/sprints/sprint-1/intents/alpha.md`, intent(1).replace('- B1 (FR-1): works', '- B1 (FR-1, AC-1.1, AC-1.2): works'))
+  const without = call(`return C.changeRequirements('alpha')`) as string
+  assert.match(without, /AC-1\.1/)
+  assert.match(without, /AC-1\.2/)
+  assert.doesNotMatch(without, /DR-1/)
+  write(repo, `${P}/sprints/sprint-1/intents/alpha.md`, intent(1).replace('- B1 (FR-1): works', '- B1 (FR-1, AC-1.1, AC-1.2, DR-1): works'))
+  assert.match(call(`return C.changeRequirements('alpha')`) as string, /DR-1/)
+})

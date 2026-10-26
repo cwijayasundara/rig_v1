@@ -18,7 +18,9 @@ export type ChartFinding = { rule: string; severity: 'block' | 'report'; where: 
 
 const REQ = /\bN?FR-\d+\b/g
 // A requirements-ledger id (FR-4.2, NFR-1.1, G-3) or a PRD acceptance-criterion alias (AC-4.1).
-export const RULE_ID = /\b(?:N?FR-\d+\.\d+|G-\d+|AC-\d+(?:\.\d+)*)\b/g
+export const RULE_ID = /\b(?:N?FR-\d+\.\d+|G-\d+|DR-\d+|AC-\d+(?:\.\d+)*)\b/g
+// The FR or NFR a ledger id belongs to: AC-4.1 and FR-4.2 to FR-4, NFR-2 (or NFR-2.1) to NFR-2; a data rule or G-n to none.
+export const parentOf = (id: string): string | null => /^AC-(\d+)\./.exec(id) ? `FR-${/^AC-(\d+)\./.exec(id)![1]}` : /^(N?FR-\d+)(?:\.\d+)?$/.exec(id)?.[1] ?? null
 const SPRINT_DAYS = 10
 const MAX_DAYS = 2
 
@@ -83,7 +85,7 @@ type LedgerLine = LedgerRow | { bad: string } | { unknownKind: string; row: Ledg
 
 // Sections that hold motivation, not requirements; every other section, including ones the person invented, is in scope.
 const OUT_OF_SCOPE_SECTIONS = ['context and problem', 'goals and success metrics', 'risks and assumptions', 'changes since last sprint', 'open questions']
-const LEDGER_LINE = /^\s*[-*]\s+((?:N?FR-\d+\.\d+)|G-\d+)(?:\s+\(([^)]+)\))?\s+\[([^\]]+)\]\s+prd\.md:(\d+)\s+"(.*)"(?:\s+[—–]+\s*(.*))?\s*$/
+const LEDGER_LINE = /^\s*[-*]\s+((?:N?FR-\d+\.\d+)|G-\d+|AC-\d+\.\d+|DR-\d+|NFR-\d+)(?:\s+\(([^)]+)\))?\s+\[([^\]]+)\]\s+prd\.md:(\d+)\s+"(.*)"(?:\s+[—–]+\s*(.*))?\s*$/
 const LINE_SLACK = 3
 
 // Markup and spacing never decide whether a quote matches: emphasis, backticks, curly quotes, spaces around table pipes and the
@@ -155,7 +157,8 @@ function unquoted(block: string, quotes: string[]): string[] {
 }
 
 // `required`: the sprint is not approved yet, so a missing ledger blocks; an approved sprint charted before the ledger is reported.
-export function ledgerProblems(i: { prd: string; ledger: string | null; intents: Intent[]; cases: TestCase[] | null; required: boolean }): ChartFinding[] {
+// `inFormat`: the PRD passed the format check, so every rule is a numbered criterion and the prose around them needs no quote.
+export function ledgerProblems(i: { prd: string; ledger: string | null; intents: Intent[]; cases: TestCase[] | null; required: boolean; inFormat?: boolean }): ChartFinding[] {
   const out: ChartFinding[] = []
   const add = (rule: string, where: string, message: string, severity: 'block' | 'report' = 'block'): number => out.push({ rule, severity, where, message })
   const units = prdBlocks(i.prd)
@@ -178,18 +181,17 @@ export function ledgerProblems(i: { prd: string; ledger: string | null; intents:
     if (r.kind === 'out-of-scope' && (!r.reason || !r.by)) add('ledger-reason', r.id, `${r.id} is out of scope: it needs "decided by <who>" in its kind and " — <reason>"`)
   }
   const quotes = rows.map(r => normalise(r.quote))
-  for (const u of units) for (const piece of unquoted(u.text, quotes)) add('ledger-unquoted', `prd.md:${u.line}`, `prd.md:${u.line} says "${piece}", which no requirements.md row quotes`)
+  if (!i.inFormat) for (const u of units) for (const piece of unquoted(u.text, quotes)) add('ledger-unquoted', `prd.md:${u.line}`, `prd.md:${u.line} says "${piece}", which no requirements.md row quotes`)
   const known = new Set(rows.flatMap(r => [r.id, ...(r.alias ? [r.alias] : [])]))
-  const ledgerId = (id: string): boolean => !id.startsWith('AC-')
-  const behaviours = i.intents.flatMap(t => t.behaviours.map(b => ({ where: `${t.slug}#${b.id}`, rules: b.rules })))
-  for (const b of behaviours) for (const id of b.rules) if (ledgerId(id) && !known.has(id)) add('unknown-id', b.where, `${b.where} cites ${id}, which requirements.md does not define`)
+  const behaviours = i.intents.flatMap(t => t.behaviours.map(b => ({ where: `${t.slug}#${b.id}`, rules: b.rules, reqs: b.reqs })))
+  for (const b of behaviours) for (const id of b.rules) if (!known.has(id)) add('unknown-id', b.where, `${b.where} cites ${id}, which requirements.md does not define`)
   const cites = (r: LedgerRow, ids: string[]): boolean => ids.includes(r.id) || (r.alias !== null && ids.includes(r.alias))
   const needed = rows.filter(r => r.kind === 'rule' || r.kind === 'answer')
-  const cited = behaviours.flatMap(b => b.rules)
+  const cited = behaviours.flatMap(b => [...b.rules, ...b.reqs])
   for (const r of needed) if (!cites(r, cited)) add('rule-uncovered', r.id, `${r.id} ("${r.quote}") has no behaviour: cite it in the intent that builds it, e.g. \`- B2 (FR-4, ${r.id}): ...\``)
   if (i.cases) {
-    for (const c of i.cases) for (const id of c.rules) if (ledgerId(id) && !known.has(id)) add('unknown-id', c.id, `${c.id} cites ${id}, which requirements.md does not define`)
-    const tested = i.cases.flatMap(c => c.rules)
+    for (const c of i.cases) for (const id of c.rules) if (!known.has(id)) add('unknown-id', c.id, `${c.id} cites ${id}, which requirements.md does not define`)
+    const tested = i.cases.flatMap(c => [...c.rules, ...c.reqs])
     for (const r of needed) if (!cites(r, tested)) add('rule-untested', r.id, `${r.id} ("${r.quote}") has no test case citing it`)
   }
   return out

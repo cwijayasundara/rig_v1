@@ -18,6 +18,7 @@ export const testplanDir = (n: number): string => path.join(sprintDir(n), 'testp
 export const planPath = (n: number): string => path.join(sprintDir(n), 'plan.md')
 export const implPlanPath = (n: number): string => path.join(sprintDir(n), 'implementation-plan.md')
 export const approvalPath = (n: number): string => path.join(sprintDir(n), 'approval.json')
+export const sourcePath = (n: number): string => path.join(sprintDir(n), 'source.md')
 export const ledgerPath = (n: number): string => path.join(sprintDir(n), 'requirements.md')
 export const waiversPath = (n: number): string => path.join(sprintDir(n), 'waivers.json')
 export const reviewPath = (n: number): string => path.join(sprintDir(n), 'chart-review.md')
