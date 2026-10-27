@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { ROOT, SDLC, SENSORS_PATH, IS_VENDORED, skillRef, exists, read, out, fail, sha, git, sanctionWrites, type Args } from './core.ts'
+import { ROOT, SDLC, SENSORS_PATH, IS_VENDORED, PLUGIN_ROOT, skillRef, exists, read, out, fail, sha, git, sanctionWrites, type Args } from './core.ts'
 import { isObject } from './model.ts'
 import { isRegistryShape } from './registry.ts'
 import { loadPacks, PACKS_DIR } from './stackpacks.ts'
@@ -56,6 +56,7 @@ export type Plan = {
   manifest: Manifest | null
   migrations: Migration[]
   proposals: Proposals
+  workflow: 'absent' | 'same' | 'differs' // .github/workflows/rig-check.yml against this plugin's template; never overwritten, only offered as .rig-new
   ignoredManifestKeys: string[] // manifest entries outside the harness namespace, never acted on
 }
 
@@ -70,6 +71,8 @@ export function upgradeGates(args: Args): void {
 }
 
 // Reads disk and the plugin; writes nothing.
+const WORKFLOW = '.github/workflows/rig-check.yml'
+
 export function buildPlan(): Plan {
   const from = read(path.join(SDLC, 'bin', 'VERSION')).trim()
   const to = pluginVersion()
@@ -88,7 +91,9 @@ export function buildPlan(): Plan {
   const ver = '.rig/bin/VERSION'
   if (next.has(ver)) files.set(ver, disk.get(ver) === next.get(ver) ? 'noop' : 'replace')
   const sensors = read(SENSORS_PATH)
-  return { from, to, standalone, files, next, disk, manifest, migrations: pendingMigrations(from, to).filter(m => m.applies(ROOT)), ignoredManifestKeys, proposals: sensors ? proposeSensors(sensors, loadPacks(PACKS_DIR).packs) : null }
+  const wf = read(path.join(ROOT, WORKFLOW))
+  const workflow: Plan['workflow'] = !wf ? 'absent' : wf === read(path.join(PLUGIN_ROOT, 'templates', 'rig-check.yml')) ? 'same' : 'differs'
+  return { workflow, from, to, standalone, files, next, disk, manifest, migrations: pendingMigrations(from, to).filter(m => m.applies(ROOT)), ignoredManifestKeys, proposals: sensors ? proposeSensors(sensors, loadPacks(PACKS_DIR).packs) : null }
 }
 
 const countsOf = (files: Map<string, Verdict>): Record<Verdict, number> => {
@@ -98,7 +103,7 @@ const countsOf = (files: Map<string, Verdict>): Record<Verdict, number> => {
 }
 
 // Nothing to write: every file is noop or kept, no migration applies, and the install already carries this version.
-const isCurrent = (plan: Plan): boolean => [...plan.files.values()].every(v => v === 'noop' || v === 'keep') && !plan.migrations.length && (!plan.standalone || plan.from === plan.to)
+const isCurrent = (plan: Plan): boolean => plan.workflow !== 'differs' && [...plan.files.values()].every(v => v === 'noop' || v === 'keep') && !plan.migrations.length && (!plan.standalone || plan.from === plan.to)
 
 function showDiff(plan: Plan, rel: string): void {
   if (!isHarnessPath(rel) || !plan.files.has(rel)) fail(`${rel} is not a harness file in this plan`)
@@ -170,6 +175,7 @@ function applyUpgrade(args: Args): void {
     else if (v === 'conflict' && d === 'later' && text !== undefined) put(`${rel}.rig-new`, text)
   }
   if (plan.standalone) mergeProjectFiles(written)
+  if (plan.workflow === 'differs') { fs.writeFileSync(path.join(ROOT, `${WORKFLOW}.rig-new`), read(path.join(PLUGIN_ROOT, 'templates', 'rig-check.yml'))); written.push(`${WORKFLOW}.rig-new`) }
   const notes = runMigrations(plan.migrations, ROOT)
   for (const rel of plan.migrations.length ? ['.rig/sensors.json.rig-new'] : []) if (exists(path.join(ROOT, rel))) written.push(rel)
   if (wanted.length) {
@@ -199,7 +205,7 @@ export function cmdUpgrade(args: Args): void {
   const counts = countsOf(plan.files)
   const todo = [...plan.files].filter(([, v]) => v !== 'noop')
   if (args.opt.json) {
-    return out(JSON.stringify({ from: plan.from, to: plan.to, standalone: plan.standalone, files: Object.fromEntries(todo), counts, migrations: plan.migrations.map(m => m.id), proposals: plan.proposals, ignoredManifestKeys: plan.ignoredManifestKeys }, null, 2))
+    return out(JSON.stringify({ from: plan.from, to: plan.to, standalone: plan.standalone, files: Object.fromEntries(todo), counts, migrations: plan.migrations.map(m => m.id), proposals: plan.proposals, workflow: plan.workflow, ignoredManifestKeys: plan.ignoredManifestKeys }, null, 2))
   }
   const lines = [`upgrade ${plan.from || 'unversioned'} -> ${plan.to}${plan.standalone ? ' (standalone)' : ' (plugin mode: no project copies to update)'}`]
   if (plan.standalone) lines.push(Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(', '))
@@ -207,6 +213,7 @@ export function cmdUpgrade(args: Args): void {
   if (conflicts.length) lines.push('conflicts (edited here and changed upstream; when applying you choose mine, new or later for each):', ...conflicts.map(rel => `  ${rel}`))
   if (plan.migrations.length) lines.push('migrations:', ...plan.migrations.map(m => `  ${m.id}`))
   if (plan.proposals) lines.push(`proposed ${plan.proposals.stack} sensors (not applied):`, ...plan.proposals.sensors.map(s => `  ${String(s.id)}`))
+  if (plan.workflow === 'differs') lines.push(`${WORKFLOW} differs from the plugin's template (newer: ai-review and security review on every PR, the merge queue, checks: read for the tier-0 path); apply writes ${WORKFLOW}.rig-new beside it to merge by hand, never over it`)
   if (plan.ignoredManifestKeys.length) lines.push(`ignored ${plan.ignoredManifestKeys.length} manifest entries outside the harness`)
   if (isCurrent(plan)) lines.push('already current')
   out(lines.join('\n'))
