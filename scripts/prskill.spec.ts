@@ -66,6 +66,8 @@ test('init writes a Review block into CLAUDE.md, and REVIEW.md defers to it', ()
   const rv = repoText('templates/REVIEW.md')
   assert.match(rv, /CLAUDE\.md/)
   assert.match(rv, /## Review passes/, 'the managed service keeps its passes')
+  assert.match(rv, /## What failure looks like here/)
+  assert.match(rv, /## Skip/)
 })
 
 test('after the fix wave the verdict says what ships: fixed findings are marked and a review with nothing left open is a pass', () => {

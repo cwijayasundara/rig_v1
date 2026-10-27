@@ -1,6 +1,9 @@
 # REVIEW.md: how changes are reviewed here
 
-Read by the managed GitHub Code Review service. The local review in `/rig:pr` (a clean-context reviewer agent, `templates/review-brief.md`, and `/security-review`) follows `CLAUDE.md` instead: the rules for contracts and non-goals live there under `## Review`. Edit this file to match your team.
+Read by the managed GitHub Code Review service, by the clean-context reviewer in `/rig:pr` (`templates/review-brief.md`) and by CI's `ai-review` job. The rules for contracts and non-goals live in `CLAUDE.md` under `## Review`. Edit this file to match your team.
+
+## What failure looks like here
+- Replace with the one failure that costs most in this repo, e.g. a rounding bug that silently charges the wrong amount.
 
 ## Review passes
 1. **Correctness:** behaviour matches the spec's B-numbers; edge cases the intent names are handled.
@@ -15,5 +18,5 @@ Read by the managed GitHub Code Review service. The local review in `/rig:pr` (a
 ## Nits (medium or lower; never block)
 - Naming, comments, small duplication, style a linter does not catch.
 
-## Exclusions
+## Skip
 - Generated files, lockfiles, vendored `.rig/bin/**`, and anything CI's rig-check already enforces.
