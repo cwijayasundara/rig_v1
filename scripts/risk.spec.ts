@@ -66,3 +66,12 @@ test('a rename is judged by its old path too: moving a workflow or contract out 
   const reg = defaultRegistry(); reg.contracts.files = ['api/**']
   assert.ok(riskOf([{ ...moved[0]!, file: 'old/openapi.yaml', from: 'api/openapi.yaml' }], ['x'], reg, [], true).reasons.includes('one-way door'))
 })
+
+// shop_app cart-storage 2026-10-27: 1222 lines tripped maxLines (400) mostly because runs.jsonl and the wiki pages rode in the same commit.
+test('records the harness generates (evidence, wiki pages) do not count towards the diff size', () => {
+  const rows = (file: string, n: number) => ({ file, status: 'A' as const, added: Array.from({ length: n }, (_, i) => ({ n: i + 1, text: 'x' })), removed: [] })
+  const generated = [rows('.rig/changes/cart/evidence/runs.jsonl', 300), rows('.rig/wiki/cart.md', 300), rows('.rig/wiki/state.json', 100)]
+  assert.doesNotMatch(riskOf(generated as never, ['cart'], defaultRegistry(), [], false).reasons.join(), /diff of/)
+  const code = [...generated, rows('src/cart.py', 450)]
+  assert.match(riskOf(code as never, ['cart'], defaultRegistry(), [], false).reasons.join(), /diff of 450 lines/)
+})

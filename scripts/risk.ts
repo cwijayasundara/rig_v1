@@ -49,11 +49,13 @@ export function assessRisk(i: RiskInput): Risk {
   return { tier: one.length ? 1 : 0, reasons: one }
 }
 
+// Records the harness writes (a change's evidence, the code wiki) are not code a reviewer reads, so they do not count towards risk.maxLines.
+const GENERATED = /^\.rig\/(changes\/[^/]+\/evidence\/|wiki\/)/
 // The inputs every caller shares: the diff's files and size, and the change records read from the working tree.
 export function riskOf(diffs: FileDiff[], slugs: string[], registry: Registry, access: AccessRule[], ci: boolean): Risk {
   return assessRisk({
     // a rename is judged by both paths, so moving a workflow or contract out of its glob still counts
-    files: diffs.flatMap(d => (d.from ? [d.file, d.from] : [d.file])), lines: diffs.reduce((n, d) => n + d.added.length + d.removed.length, 0), slugs,
+    files: diffs.flatMap(d => (d.from ? [d.file, d.from] : [d.file])), lines: diffs.filter(d => !GENERATED.test(d.file)).reduce((n, d) => n + d.added.length + d.removed.length, 0), slugs,
     read: (slug, name) => read(path.join(CHANGES, slug, name)), access, risk: registry.risk, contractGlobs: registry.contracts.files, ci,
   })
 }

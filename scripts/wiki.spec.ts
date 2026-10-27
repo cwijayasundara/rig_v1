@@ -222,3 +222,16 @@ test('sync with no source files does nothing', () => {
   assert.match(cmd(repo, ['sync'], run).text, /no source files yet/)
   assert.equal(calls.length, 0)
 })
+
+// shop_app cart-storage 2026-10-27: a page that could not be built was still linked from index.md, a dead link.
+test('index.md links only the pages that exist and names the ones that were not built', () => {
+  const repo = repoWithSources()
+  const { run } = fake()
+  const failing: Runner = a => { if (a.role === 'write' && /Page title: Beta/.test(a.prompt)) throw new Error('model down'); return run(a) }
+  write(repo, '.rig/wiki.json', JSON.stringify(CONFIG))
+  assert.equal(cmd(repo, ['build'], failing).code, 1)
+  const index = fs.readFileSync(path.join(repo, '.rig/wiki/index.md'), 'utf8')
+  assert.match(index, /\[Alpha\]\(alpha\.md\)/)
+  assert.doesNotMatch(index, /beta\.md/)
+  assert.match(index, /- Beta \(not built yet\): The b module\./)
+})
