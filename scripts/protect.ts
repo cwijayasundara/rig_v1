@@ -2,7 +2,9 @@
 // to branch protection that already exists, never creates or replaces it; without protection, gh or a remote it prints the commands instead.
 // --dry (the --quick and --defaults lane) never calls a write route.
 import { execFileSync } from 'node:child_process'
-import { git } from './core.ts'
+import fs from 'node:fs'
+import path from 'node:path'
+import { git, ROOT } from './core.ts'
 import { ghBin } from './model.ts'
 
 const CHECKS = ['rig-check', 'ai-review']
@@ -12,13 +14,21 @@ const gh = (args: string[]): { ok: boolean; out: string } => {
   try { return { ok: true, out: execFileSync(ghBin(), args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 }) } } catch (e) { return { ok: false, out: String((e as { stderr?: string }).stderr ?? (e as Error).message) } }
 }
 
-export function protect(dry: boolean, branch = ['main', 'master'].find(b => git(['rev-parse', '--verify', '--quiet', b]) || git(['rev-parse', '--verify', '--quiet', `origin/${b}`])) ?? 'main'): string[] {
+// The remote's default branch when git knows it (origin/HEAD), else main or master, else main.
+const trunk = (): string => git(['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'])?.trim().replace(/^origin\//, '') || (['main', 'master'].find(b => git(['rev-parse', '--verify', '--quiet', b]) || git(['rev-parse', '--verify', '--quiet', `origin/${b}`])) ?? 'main')
+
+export function protect(dry: boolean, branch = trunk()): string[] {
   const route = `repos/{owner}/{repo}/branches/${branch}/protection`
   const add = `gh api -X POST ${route}/required_status_checks/contexts ${CHECKS.map(c => `-f 'contexts[]=${c}'`).join(' ')}`
   const create = `gh api -X PUT ${route} --input - <<'EOF'\n{"required_status_checks":{"strict":true,"contexts":${JSON.stringify(CHECKS)}},"enforce_admins":false,"required_pull_request_reviews":null,"restrictions":null}\nEOF`
   const lines: string[] = []
+  // Checks that never report would block every PR: require them only once the workflow that reports them is installed.
+  const installed = fs.existsSync(path.join(ROOT, '.github', 'workflows', 'rig-check.yml'))
+  if (!installed && !dry) return [`.github/workflows/rig-check.yml is not installed, so nothing was made required (checks that never report would block every PR); run init --full --workflows first`]
   const now = gh(['api', `${route}/required_status_checks`])
-  if (!now.ok && /404|Not Found|Branch not protected/i.test(now.out)) lines.push(`${branch} has no branch protection; nothing changed. Create it with the checks required (or in Settings > Branches):`, create)
+  // Only "Branch not protected" means no protection. A protected branch with no status checks also answers 404, and the PUT below would replace its protection.
+  if (!now.ok && /Branch not protected/i.test(now.out)) lines.push(`${branch} has no branch protection; nothing changed. Create it with the checks required (or in Settings > Branches):`, create)
+  else if (!now.ok && /Required status checks not enabled/i.test(now.out)) lines.push(`${branch} is protected but requires no status checks; nothing changed. In Settings > Branches, edit ${branch}'s rule: turn on "Require status checks to pass" and add ${CHECKS.join(' and ')}`)
   else if (!now.ok) lines.push(`could not read ${branch}'s branch protection (gh: ${now.out.trim().split('\n')[0] ?? ''}); to require the checks, run:`, add)
   else {
     let have: string[] = []
@@ -32,6 +42,6 @@ export function protect(dry: boolean, branch = ['main', 'master'].find(b => git(
     }
   }
   const secrets = gh(['secret', 'list'])
-  if (!secrets.ok || !SECRETS.some(s => new RegExp(`^${s}\\b`, 'm').test(secrets.out))) lines.push(`ai-review needs a Claude credential as a repository secret: gh secret set CLAUDE_CODE_OAUTH_TOKEN (from \`claude setup-token\`), or gh secret set ANTHROPIC_API_KEY`)
+  if (!secrets.ok || !SECRETS.some(s => new RegExp(`^${s}\\b`, 'm').test(secrets.out))) lines.push(`no Claude credential found as a repository secret (an organisation or environment secret also works): ai-review needs gh secret set CLAUDE_CODE_OAUTH_TOKEN (from \`claude setup-token\`), or gh secret set ANTHROPIC_API_KEY`)
   return lines
 }

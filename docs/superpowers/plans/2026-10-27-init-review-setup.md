@@ -8,7 +8,7 @@
 
 ## Global Constraints
 
-- A change to GitHub settings is outward-facing: full `init` asks first; `--quick` and `--defaults` never call GitHub, they print the commands (`init --protect --dry`).
+- A change to GitHub settings is outward-facing: full `init` asks first; `--quick` and `--defaults` never change anything on GitHub (`init --protect --dry` only reads protection and the secret list, then prints the commands).
 - `--protect` only adds required checks to existing branch protection (POST `.../required_status_checks/contexts`); it never creates or replaces protection. No protection, no `gh`, or no remote: it prints the command and changes nothing.
 - `init --enforce` sets `risk.enforce: true` in `.rig/sensors.json` (a sanctioned write, like `--stack`); it never turns it off.
 - Rung 3 is never set by init. `autonomy set 3` refuses until `.rig/sensors.json` has `risk.enforce: true` and a non-empty `humanApproval.trusted`, naming both.

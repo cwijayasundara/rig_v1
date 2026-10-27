@@ -14,7 +14,7 @@ import { formatFindings, SENSOR_NAMES, type Finding } from './model.ts'
 import { readBaseline, branchDiff, turnDiff, type Snapshot } from './diffs.ts'
 import { cmdHook } from './hooks.ts'
 import { cmdCheck, cmdCheckFile, loadConfig } from './check.ts'
-import { inertSensors, type Inert } from './registry.ts'
+import { inertSensors, isRegistryShape, type Inert } from './registry.ts'
 import { runCommand, recordRun } from './runs.ts'
 import { cmdVendor, installStandalone, older, pluginVersion } from './vendor.ts'
 import { cmdUpgrade } from './upgrade.ts'
@@ -79,6 +79,8 @@ function cmdInit(args: Args): void {
     const file = path.join(SDLC, 'sensors.json')
     let j: Record<string, unknown> = {}
     try { j = JSON.parse(read(file) || '{}') as Record<string, unknown> } catch { fail('.rig/sensors.json is not JSON; fix it before init --enforce') }
+    // Only a registry: a bare {"risk":…} would be overwritten by a later init --stack, silently dropping enforce.
+    if (!isRegistryShape(read(file))) fail('.rig/sensors.json is not a sensor registry yet: run init --stack first, then init --enforce')
     j.risk = { ...(typeof j.risk === 'object' && j.risk ? j.risk : {}), enforce: true }
     fs.writeFileSync(file, JSON.stringify(j, null, 2) + '\n')
     sanctionWrites(['.rig/sensors.json'])
