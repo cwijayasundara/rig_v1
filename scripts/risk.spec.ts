@@ -1,7 +1,8 @@
 // The risk tier (proposal 2026-10-27 B1): the max over signals the change's own files and the base config give; nothing lowers it.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { assessRisk, reviewSignals } from './risk.ts'
+import { assessRisk, reviewSignals, riskOf } from './risk.ts'
+import { defaultRegistry } from './registry.ts'
 
 const clean = { 'plan.md': '# Plan\n\n## Contracts\nnone\n', 'review.md': 'verdict: pass\n## Findings\n' }
 const input = (o: Partial<Parameters<typeof assessRisk>[0]> = {}, files: Record<string, string> = clean) => ({
@@ -57,4 +58,11 @@ test('the max signal wins and every reason is kept', () => {
   const r = assessRisk(input({ files: ['.github/workflows/x.yml'], lines: 999 }))
   assert.equal(r.tier, 2)
   assert.deepEqual(r.reasons, ['always-human path: .github/workflows/x.yml', 'diff of 999 lines is over risk.maxLines (400)', TWO])
+})
+
+test('a rename is judged by its old path too: moving a workflow or contract out of its glob still counts', () => {
+  const moved = [{ file: 'ci/deploy.yml.bak', from: '.github/workflows/deploy.yml', status: 'R' as const, added: [], removed: [] }]
+  assert.deepEqual(riskOf(moved, ['x'], defaultRegistry(), [], true).reasons.slice(0, 1), ['always-human path: .github/workflows/deploy.yml'])
+  const reg = defaultRegistry(); reg.contracts.files = ['api/**']
+  assert.ok(riskOf([{ ...moved[0]!, file: 'old/openapi.yaml', from: 'api/openapi.yaml' }], ['x'], reg, [], true).reasons.includes('one-way door'))
 })

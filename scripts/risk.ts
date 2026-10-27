@@ -1,7 +1,7 @@
 // The risk tier (proposal 2026-10-27 B1, B2): which changes a person must read. The tier is the max over signals from the change's
 // own files and the config; nothing lowers it. Tier 2 suggests a second reviewer, which branch protection enforces, never rig.
 import path from 'node:path'
-import { CHANGES, ROOT, SENSORS_JSON, read, readJson, out, optString, checkSlug, type Args } from './core.ts'
+import { CHANGES, ROOT, SENSORS_JSON, read, readJson, out, optString, checkSlug, defaultBase, type Args } from './core.ts'
 import { section, matchesAny, type FileDiff } from './model.ts'
 import { parseRegistry, type Registry } from './registry.ts'
 import { isProtected } from './sensors.ts'
@@ -52,7 +52,8 @@ export function assessRisk(i: RiskInput): Risk {
 // The inputs every caller shares: the diff's files and size, and the change records read from the working tree.
 export function riskOf(diffs: FileDiff[], slugs: string[], registry: Registry, access: AccessRule[], ci: boolean): Risk {
   return assessRisk({
-    files: diffs.map(d => d.file), lines: diffs.reduce((n, d) => n + d.added.length + d.removed.length, 0), slugs,
+    // a rename is judged by both paths, so moving a workflow or contract out of its glob still counts
+    files: diffs.flatMap(d => (d.from ? [d.file, d.from] : [d.file])), lines: diffs.reduce((n, d) => n + d.added.length + d.removed.length, 0), slugs,
     read: (slug, name) => read(path.join(CHANGES, slug, name)), access, risk: registry.risk, contractGlobs: registry.contracts.files, ci,
   })
 }
@@ -61,7 +62,7 @@ export const formatRisk = (r: Risk): string => [`tier: ${r.tier}`, ...r.reasons.
 
 export function cmdRisk(args: Args): void {
   const slug = args.pos[0] ? checkSlug(args.pos[0]) : activeSlug()
-  const base = optString(args, 'base') ?? (slug ? readJson<{ base?: string } | null>(path.join(CHANGES, slug, 'verify.json'), null)?.base : undefined) ?? 'main'
+  const base = optString(args, 'base') ?? (slug ? readJson<{ base?: string } | null>(path.join(CHANGES, slug, 'verify.json'), null)?.base : undefined) ?? defaultBase() ?? 'HEAD'
   const r = riskOf(branchDiff(base), slug ? [slug] : [], parseRegistry(read(path.join(ROOT, SENSORS_JSON))).registry, parseAccess(read(archPath)), false)
   out(args.opt.json ? JSON.stringify(r) : formatRisk(r))
 }
