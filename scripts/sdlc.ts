@@ -217,7 +217,9 @@ const approvalRel = (n: number): string => `${sprintRel(n)}/approval.json`
 function commitApproval(n: number): boolean | null {
   if (git(['rev-parse', '--is-inside-work-tree']) !== 'true') return false
   const want = [approvalRel(n), `${sprintRel(n)}/plan.md`, ARCH_REL, ...chartFiles(n)].filter((f, i, a) => a.indexOf(f) === i && exists(path.join(ROOT, f)))
-  const dirty = (git(['status', '--porcelain', '--untracked-files=all', '--', ...want]) ?? '').split('\n').filter(Boolean).map(l => l.replace(/^\S+\s+/, '').replace(/^"|"$/g, ''))
+  // Names, never porcelain lines: git() trims its output, which shifted the status columns of every line after the first.
+  const names = (args: string[]): string[] => (git([...args, '--', ...want]) ?? '').split('\n').filter(Boolean)
+  const dirty = [...new Set([...names(['diff', '--name-only', 'HEAD']), ...names(['ls-files', '--others', '--exclude-standard'])])]
   if (!dirty.length) return false
   if (git(['add', '--', ...dirty]) === null) return null
   return git(['commit', '-q', '-m', `chore: approve chart-${n}`, '--', ...dirty]) === null ? null : true

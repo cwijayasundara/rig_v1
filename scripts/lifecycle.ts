@@ -108,8 +108,9 @@ export function status(slug: string, gates: { plan: boolean }, tree: string | nu
 
 // pr.ts clears the active pointer after committing, so a change waiting on review would vanish from the journey (shop_app 2026-10-27).
 export function awaitingReview(): string | null {
-  const dirs = exists(CHANGES) ? fs.readdirSync(CHANGES).sort() : []
-  return dirs.find(s => exists(file(s, 'pr.md')) && !isShipped(s)) ?? null
+  // The newest PR first: an older one left open must not hide the change the person just shipped.
+  const dirs = exists(CHANGES) ? fs.readdirSync(CHANGES).filter(s => exists(file(s, 'pr.md'))) : []
+  return dirs.sort((a, b) => fs.statSync(file(b, 'pr.md')).mtimeMs - fs.statSync(file(a, 'pr.md')).mtimeMs).find(s => !isShipped(s)) ?? null
 }
 // No remote: pr.md says local-only and nobody can open a PR, so the person merges it themselves.
 function reviewStep(slug: string): string {

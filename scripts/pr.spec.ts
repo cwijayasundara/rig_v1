@@ -164,6 +164,10 @@ test('pr refuses when an intent AC has no test naming it, and ships once one doe
   const r = pr()
   assert.notEqual(r.code, 0)
   assert.match(r.stderr, /not shipping: .*acceptance criteria[\s\S]*B1 AC-1\.2/)
+  // Review 2026-10-27: a longer id never stands in for a shorter one.
+  write(repo, 'test/ac.test.js', "test('test_ac_1_20_works', () => {}); test('AC-1.21', () => {})\n")
+  verified(repo, 'demo')
+  assert.match(pr().stderr, /B1 AC-1\.2/, 'ac_1_20 and AC-1.21 are not tests of AC-1.2')
   write(repo, 'test/ac.test.js', "test('test_ac_1_2_works', () => {})\n")
   verified(repo, 'demo')
   const ok = pr()

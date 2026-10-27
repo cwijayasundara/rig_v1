@@ -16,5 +16,7 @@ export function untestedAcs(slug: string, paths: Paths): string[] {
   if (!cited.length) return []
   const files = [...new Set([...(git(['ls-files']) ?? '').split('\n'), ...(git(['ls-files', '--others', '--exclude-standard']) ?? '').split('\n')])].filter(f => f && isTest(f, paths))
   const text = files.map(f => { try { return read(`${ROOT}/${f}`) } catch { return '' } }).join('\n').toLowerCase()
-  return cited.filter(({ ac }) => { const m = AC_ID.exec(ac); return !text.includes(ac.toLowerCase()) && !text.includes(`ac_${m?.[1]}_${m?.[2]}`) }).map(({ b, ac }) => `${b} ${ac}`)
+  // Bounded on both sides, so ac_1_10 or AC-1.20 never counts as a test of AC-1.1 or AC-1.2.
+  const named = (ac: string): boolean => { const m = AC_ID.exec(ac); return new RegExp(`(?<![a-z0-9.])ac[-_]${m?.[1]}[._]${m?.[2]}(?![\\d.])`).test(text) }
+  return cited.filter(({ ac }) => !named(ac)).map(({ b, ac }) => `${b} ${ac}`)
 }

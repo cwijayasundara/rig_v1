@@ -200,7 +200,18 @@ test('journey: a change with pr.md and no active change keeps its rail at review
   write(repo, '.rig/changes/cart-core/pr.md', '---\nstate: local-only\nbranch: sdlc/cart-core\n---\ncart\n')
   const j = view()
   assert.equal(j.inner?.slug, 'cart-core')
-  assert.equal(j.inner?.steps.find(s => s.id === 'build')?.state, 'done') // the rail sits at the PR step, past build
+  assert.deepEqual(j.inner?.steps.filter(s => s.state !== 'done').map(s => `${s.id}:${s.state}`), ['review:current', 'merge:todo'], 'the PR is made; review is next')
+  write(repo, '.rig/changes/cart-core/review.md', 'verdict: pass\n')
+  assert.deepEqual(view().inner?.steps.filter(s => s.state !== 'done').map(s => `${s.id}:${s.state}`), ['merge:gate'], 'reviewed: only the merge is left')
   assert.match(j.next.command, /merges sdlc\/cart-core into main locally, or adds a remote/)
   assert.equal(j.next.by, 'person')
+})
+
+test('journey: with two changes in review, the one whose PR is newest is shown (review 2026-10-27)', () => {
+  for (const slug of ['alpha-old', 'zeta-new']) {
+    write(repo, `.rig/changes/${slug}/intent.md`, '---\ntype: feature\n---\n# x\n')
+    write(repo, `.rig/changes/${slug}/pr.md`, `---\nstate: local-only\nbranch: sdlc/${slug}\n---\nx\n`)
+  }
+  fs.utimesSync(`${repo}/.rig/changes/alpha-old/pr.md`, new Date('2026-01-01'), new Date('2026-01-01'))
+  assert.equal(view().inner?.slug, 'zeta-new')
 })
