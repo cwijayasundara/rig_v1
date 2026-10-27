@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import fs from 'node:fs'
 import path from 'node:path'
 import assert from 'node:assert/strict'
-import { designIntents, prdIds, parseIntent, parseCases, traceReport, intentSpecProblems, parkedDecisions, parseAccess, accessProblems, implementationPlanProblems, parseLedger, prdUnits, ledgerProblems, normalise, parseReview, openFindings, type Intent, type TestCase } from './chartcheck.ts'
+import { designIntents, prdIds, parseIntent, parseCases, traceReport, intentSpecProblems, parkedDecisions, parseAccess, accessProblems, implementationPlanProblems, parseLedger, prdUnits, ledgerProblems, normalise, parseReview, openFindings, sharedScopeProblems, type Intent, type TestCase } from './chartcheck.ts'
 
 const PRD = '---\nsprint: 1\nengineers: 1\n---\n# Sprint 1\n\n### FR-1: add\n### FR-2: remove\n| NFR-1 | fast |\n\nMentioned only in prose: FR-9.\n\n## Open questions\nnone\n'
 const intent = (slug: string, o: { prd?: string; depends?: string; days?: string; kind?: string; behaviours?: string; iface?: string; open?: string } = {}): string =>
@@ -483,4 +483,22 @@ test('a one-word residue that is a number or a negation or quantifier is still u
 
 test('parseReview also reads numbered findings', () => {
   assert.deepEqual(parseReview('verdict: changes-needed\n## Findings\n1. a → fix\n2) b → fixed (confirmed)\n').map(f => [f.n, f.status]), [[1, 'open'], [2, 'confirmed']])
+})
+
+// shop_app 2026-10-27: three intents listed tests/test_ac_coverage.py in scope and chart check said nothing.
+test('sharedScopeProblems blocks a file two parallel intents write, and only reports one shared by intents built in order', () => {
+  const one = (slug: string, depends: string[], scope: string[]): ReturnType<typeof parseIntent> =>
+    parseIntent(slug, `---\nsprint: 1\nprd: [FR-1]\ndepends: [${depends.join(', ')}]\nscope: [${scope.join(', ')}]\n---\n# ${slug}\n`)
+  const core = one('cart-core', [], ['src/cart/models.py', 'tests/test_ac_coverage.py'])
+  const storage = one('cart-storage', ['cart-core'], ['src/cart/storage.py', './tests/test_ac_coverage.py'])
+  const cli = one('cart-cli', ['cart-storage'], ['src/cart/cli.py', 'tests/test_ac_coverage.py'])
+  const report = sharedScopeProblems([core, storage, cli], [core, storage, cli])
+  assert.deepEqual(report.map(f => `${f.severity} ${f.where}`), ['report cart-storage', 'report cart-cli', 'report cart-cli'])
+  assert.match(report[1]!.message, /tests\/test_ac_coverage\.py is in the scope of cart-core and cart-cli; they are built in order/)
+  const docs = one('cart-docs', [], ['tests/test_ac_coverage.py'])
+  const block = sharedScopeProblems([core, docs], [core, docs])
+  assert.deepEqual(block.map(f => [f.rule, f.severity]), [['scope-shared', 'block']])
+  assert.match(block[0]!.message, /can be built at the same time/)
+  assert.deepEqual(sharedScopeProblems([core, one('other', [], ['src/x.py'])], []), [])
+  assert.equal(sharedScopeProblems([one('a', [], ['x.py', 'x.py']), one('b', [], ['x.py'])], []).length, 1, 'a file listed twice is one finding')
 })

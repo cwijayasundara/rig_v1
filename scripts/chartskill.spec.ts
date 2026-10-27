@@ -169,7 +169,9 @@ test('chart step 1 keeps the original as source.md, converts a PRD not in format
   assert.match(step1, /\(out of scope: <when>, decided by <who> — <reason>\)/)
   assert.match(step1, /`S prd map <N>/)
   assert.match(step1, /check the conversion for sprint <N>[^\n]*conversion-review\.md/)
-  assert.match(step1, /`S prd status <N>`[^\n]*\/rig:approve prd-<N>[^\n]*\/rig:chart <N>/)
+  assert.match(step1, /\*\*One gate, at the end\.\*\*[^\n]*no PRD approval[^\n]*`\/rig:approve chart-<N>` covers `prd\.md`, `source\.md` and `conversion\.md`/)
+  assert.match(step1, /`--convert-only`[^\n]*\/rig:chart <N>` again[^\n]*nothing is approved/)
+  assert.doesNotMatch(skill, /approve prd-/)
   assert.match(step1, /re-run[^\n]*never rewrite `prd\.md` or `source\.md`/i)
   assert.match(step1, /\*\*Requirements ledger\.\*\*[^\n]*`S prd ledger <N>`[^\n]*never write or edit it yourself/)
 })
@@ -221,9 +223,9 @@ test('start, plan and build read the change requirements.md and never edit it', 
   for (const f of ['skills/start/SKILL.md', 'skills/plan/SKILL.md', 'skills/build/SKILL.md']) assert.match(fidelity(f), /requirements\.md[^\n]*never edit/, f)
 })
 
-test('chart step 1 on a re-run of a converted sprint checks prd status first and never reviews the conversion twice', () => {
+test('chart step 1 on a re-run of a converted sprint checks prd status first, never reviews the conversion twice, and never stops for a PRD approval', () => {
   const step1 = skill.slice(skill.indexOf('1. **Which sprint'), skill.indexOf('2. **Design.**'))
-  assert.match(step1, /re-run[^\n]*`S prd status <N>` first[^\n]*`approved`[^\n]*ledger[^\n]*otherwise[^\n]*`S prd check <N>`[^\n]*`S prd map <N>`[^\n]*stop/i)
+  assert.match(step1, /re-run[^\n]*`S prd status <N>` first[^\n]*`converted: ready`[^\n]*ledger[^\n]*otherwise[^\n]*`S prd check <N>`[^\n]*`S prd map <N>`[^\n]*go on/i)
   assert.match(step1, /gap pass and the conversion review run on the first pass only/i)
 })
 
@@ -234,4 +236,11 @@ test('chart skill: looks for docs/prd/sprint-<N>/prd.md before docs/prd/sprint-<
   const folder = step.indexOf('docs/prd/sprint-<N>/prd.md'), flat = step.indexOf('docs/prd/sprint-<N>.md')
   assert.ok(folder > 0 && flat > folder, 'folder form first, flat form as the fallback')
   assert.match(skill, /other files in (that|the PRD's) folder[^\n]*attachments\//i)
+})
+
+// shop_app 2026-10-27: tests/test_ac_coverage.py sat in all three intents' scope.
+test('the architect gives each repo file to one intent unless one depends on the other', () => {
+  assert.match(skill, /a repo file goes in the `scope:` of one intent only, unless one of the two depends on the other/)
+  assert.match(fs.readFileSync(path.resolve(import.meta.dirname, '../agents/architect.md'), 'utf8'), /A repo file goes in the `scope:` of one intent only/)
+  assert.match(fs.readFileSync(path.resolve(import.meta.dirname, '../skills/approve/SKILL.md'), 'utf8'), /chart-N, which covers a converted PRD too/)
 })
