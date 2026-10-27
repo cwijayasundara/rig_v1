@@ -241,6 +241,43 @@ test('approve chart-N is human-only, refuses while a block finding stands, and i
   assert.match(sdlc(repo, ['approve', 'chart-1'], HUMAN).stdout, /already approved/)
 })
 
+// shop_app 2026-10-27: approval.json rode into a feature commit without the ADR edits, so CI saw the chart as stale.
+const proposedAdr = (): void => {
+  write(repo, `${P}/adr/0001-store.md`, '---\nstatus: proposed\nsprint: 1\n---\n# 0001 store\n')
+  gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'chart', '--allow-empty')
+}
+test('approve chart-N commits approval.json, the accepted ADRs, architecture.md and plan.md in one commit', () => {
+  cleanChart(); proposedAdr()
+  const r = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  assert.equal(r.code, 0, r.stderr)
+  assert.equal(gitIn(repo, 'status', '--porcelain', '--', '.rig/product'), '')
+  assert.equal(gitIn(repo, 'log', '-1', '--format=%s'), 'chore: approve chart-1')
+  assert.match(gitIn(repo, 'show', 'HEAD:.rig/product/adr/0001-store.md'), /status: accepted/)
+  assert.match(gitIn(repo, 'show', '--name-only', '--format=', 'HEAD'), /approval\.json/)
+})
+// Review 2026-10-27: git() trims its output, so a porcelain parse lost the second tracked path and nothing was committed.
+test('approve chart-N commits when several chart files are already tracked and modified', () => {
+  cleanChart(); proposedAdr()
+  gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'chart', '--allow-empty')
+  write(repo, `${P}/architecture.md`, ARCH_DOC() + '\n')
+  write(repo, `${P}/sprints/sprint-1/implementation-plan.md`, IMPL_OK(['alpha']) + '\n')
+  const r = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  assert.equal(r.code, 0, r.stderr)
+  assert.doesNotMatch(r.stdout + r.stderr, /refused/)
+  assert.equal(gitIn(repo, 'status', '--porcelain', '--', '.rig/product'), '')
+  assert.equal(gitIn(repo, 'log', '-1', '--format=%s'), 'chore: approve chart-1')
+})
+test('approve chart-N on a rig/chart-N branch says to merge it into the trunk first', () => {
+  cleanChart(); gitIn(repo, 'checkout', '-qb', 'rig/chart-1')
+  const r = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  assert.equal(r.code, 0, r.stderr)
+  assert.match(r.stdout, /Next: merge rig\/chart-1 into main first, then start from main with \/rig:start/)
+})
+test('start-brief warns on a rig/chart-N branch', () => {
+  gitIn(repo, 'checkout', '-qb', 'rig/chart-1')
+  assert.match(sdlc(repo, ['start-brief']).stdout, /WARNING: you are on the chart branch rig\/chart-1\. Merge it into main first/)
+})
+
 test('ready lists the intents that can start and leaves out the blocked ones', () => {
   cleanChart()
   write(repo, `${P}/sprints/sprint-1/intents/beta.md`, intent(1, { depends: '[alpha]' }))

@@ -129,3 +129,12 @@ test('after the fix wave one fresh agent confirms each fixed finding, raising no
   assert.match(brief, /<n>\. reopened: <why>/)
   assert.ok(brief.trimEnd().split('\n').length <= 30)
 })
+
+test('the reviewer is told to flag public names the intent does not list (shop_app 2026-10-27)', () => {
+  assert.match(pr(), /Flag any public name \(function, class, method, property\) the change adds that the intent's ## Design or ## Interfaces does not list/)
+})
+
+test('build and test skills load named test-plan data files unchanged and name tests after their AC (shop_app 2026-10-27)', () => {
+  for (const f of ['skills/build/SKILL.md', 'skills/test/SKILL.md']) assert.match(repoText(f), /Data column names a file[^\n]*testplan\/data\/[^\n]*unchanged, never a copy/, f)
+  assert.match(repoText('skills/build/SKILL.md'), /test_ac_1_2_\.\.\./)
+})

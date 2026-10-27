@@ -145,3 +145,31 @@ test('the PR body is built from the change files, kept apart from the pr.md stat
   assert.doesNotMatch(body, /^state:/m)
   assert.match(gitIn(repo, 'show', '--name-only', '--format=', 'HEAD'), /\.rig\/changes\/demo\/pr-body\.md/)
 })
+
+// shop_app 2026-10-27: an uncommitted /rig:upgrade rode into a feature commit.
+test('pr leaves a dirty vendored harness file out of the commit and names it', () => {
+  write(repo, '.claude/skills/rig-x/SKILL.md', 'upgraded\n')
+  shipReady()
+  const r = pr()
+  assert.equal(r.code, 0, r.stderr)
+  assert.match(r.stdout, /left out 1 vendored harness file.*uncommitted \/rig:upgrade/)
+  assert.doesNotMatch(gitIn(repo, 'show', '--name-only', '--format=', 'HEAD'), /\.claude\/skills/)
+  assert.match(gitIn(repo, 'status', '--porcelain', '-uall'), /\.claude\/skills\/rig-x/)
+})
+
+// shop_app 2026-10-27: the AC -> test table was kept by hand and drifted.
+test('pr refuses when an intent AC has no test naming it, and ships once one does', () => {
+  write(repo, '.rig/product/sprints/sprint-1/intents/demo.md', '---\nslug: demo\nsprint: 1\n---\n# Demo\n\n## Behaviours\n- B1 (FR-1, AC-1.2): the change works\n\n## Open questions\nnone\n')
+  shipReady()
+  const r = pr()
+  assert.notEqual(r.code, 0)
+  assert.match(r.stderr, /not shipping: .*acceptance criteria[\s\S]*B1 AC-1\.2/)
+  // Review 2026-10-27: a longer id never stands in for a shorter one.
+  write(repo, 'test/ac.test.js', "test('test_ac_1_20_works', () => {}); test('AC-1.21', () => {})\n")
+  verified(repo, 'demo')
+  assert.match(pr().stderr, /B1 AC-1\.2/, 'ac_1_20 and AC-1.21 are not tests of AC-1.2')
+  write(repo, 'test/ac.test.js', "test('test_ac_1_2_works', () => {})\n")
+  verified(repo, 'demo')
+  const ok = pr()
+  assert.equal(ok.code, 0, ok.stderr)
+})

@@ -2,7 +2,7 @@
 // status is which files it has. Only a person writes approval.json; verify writes verify.json for the tree it judged.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SENSORS_PATH, SDLC, CHANGES, read, readJson, exists, isTrunk, sha, now, git, defaultBase, frontmatter, skillRef as k } from './core.ts'
+import { ROOT, SENSORS_PATH, SDLC, CHANGES, read, readJson, exists, isTrunk, trunkName, sha, now, git, defaultBase, frontmatter, skillRef as k } from './core.ts'
 import { openQuestions, globToRegex, planFiles, blastRadius } from './model.ts'
 import { parseRegistry, contractGlobs } from './registry.ts'
 
@@ -106,7 +106,20 @@ export function status(slug: string, gates: { plan: boolean }, tree: string | nu
   return verifyFresh(slug, tree) ? 'pr' : 'build'
 }
 
+// pr.ts clears the active pointer after committing, so a change waiting on review would vanish from the journey (shop_app 2026-10-27).
+export function awaitingReview(): string | null {
+  // The newest PR first: an older one left open must not hide the change the person just shipped.
+  const dirs = exists(CHANGES) ? fs.readdirSync(CHANGES).filter(s => exists(file(s, 'pr.md'))) : []
+  return dirs.sort((a, b) => fs.statSync(file(b, 'pr.md')).mtimeMs - fs.statSync(file(a, 'pr.md')).mtimeMs).find(s => !isShipped(s)) ?? null
+}
+// No remote: pr.md says local-only and nobody can open a PR, so the person merges it themselves.
+function reviewStep(slug: string): string {
+  const pr = frontmatter(read(file(slug, 'pr.md'))).data
+  return pr.state === 'local-only'
+    ? `a person merges ${pr.branch || `sdlc/${slug}`} into ${trunkName()} locally, or adds a remote and pushes it: there is no remote, so no PR was opened`
+    : 'a person reviews and merges the PR'
+}
 export const nextStep = (slug: string, s: Status): string => ({
   spec: `${k('start')} ${slug}`, plan: `${k('plan')} ${slug}`, approve: `a person reviews spec.md and plan.md, then runs ${k('approve')} ${slug}`,
-  build: `${k('build')} ${slug}`, pr: `${k('pr')} ${slug}`, review: 'a person reviews and merges the PR', shipped: 'done',
+  build: `${k('build')} ${slug}`, pr: `${k('pr')} ${slug}`, review: reviewStep(slug), shipped: 'done',
 })[s]

@@ -3,7 +3,7 @@
 // `show` says which loops a person should see: a greenfield repo has both, a brownfield repo is entered through the outer loop.
 import path from 'node:path'
 import { ROOT, SENSORS_PATH, SDLC, CHANGES, exists, readJson, skillRef } from './core.ts'
-import { activeSlug, changeType, isShipped, nextStep, status, type Status } from './lifecycle.ts'
+import { activeSlug, awaitingReview, changeType, isShipped, nextStep, status, type Status } from './lifecycle.ts'
 import { latestAgents } from './modelstate.ts'
 import { readAutonomy } from './autonomy.ts'
 import { queueNext } from './queue.ts'
@@ -46,8 +46,8 @@ function innerSteps(s: Status, gates: boolean, slug: string, reviewed: boolean):
     { id: 'start', label: 'Start', command: `${k('start')} ${slug}`, done: done(0) }, { id: 'plan', label: 'Plan', command: `${k('plan')} ${slug}`, done: done(1) },
     { id: 'approve', label: gates ? 'Approve' : 'Approve (off)', command: `${k('approve')} ${slug}`, done: done(2) || !gates, gate: true },
     { id: 'build', label: 'Build', command: `${k('build')} ${slug}`, done: at > 3, auto: true }, { id: 'test', label: 'Test', command: `${k('test')} ${slug}`, done: at > 3, auto: true },
-    { id: 'pr', label: 'PR', command: `${k('pr')} ${slug}`, done: done(5), auto: true },
-    { id: 'review', label: 'Review', command: `review and its fixes (the ${k('pr')} reviewer)`, done: s === 'shipped' || (at > 5 && reviewed), auto: true }, { id: 'merge', label: 'Merge', command: 'review and merge the PR', done: s === 'shipped', gate: true },
+    { id: 'pr', label: 'PR', command: `${k('pr')} ${slug}`, done: done(4), auto: true },
+    { id: 'review', label: 'Review', command: `review and its fixes (the ${k('pr')} reviewer)`, done: s === 'shipped' || (at >= 5 && reviewed), auto: true }, { id: 'merge', label: 'Merge', command: 'review and merge the PR', done: s === 'shipped', gate: true },
   ]
   return mark(rows)
 }
@@ -75,7 +75,7 @@ export function journey(i: { gates: { plan: boolean }; tree: string | null }): J
   ])
   const pick = queueNext(), queue = 'slug' in pick ? pick.slug : null
   const active = activeSlug()
-  const act = active && !isShipped(active) ? active : null
+  const act = active && !isShipped(active) ? active : awaitingReview()
   const st = act ? status(act, i.gates, i.tree) : null
   const outerNext = ((): Journey['next'] => {
     if (!initialised) return { command: k('init'), by: 'model', why: 'set this repo up for rig' }

@@ -7,7 +7,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { waiverLive, whoami, ownerOrFail,
-  ROOT, SDLC, CHANGES, SLUG_RE, SOFT_HOOK_FAILURE, exists, read, now, defaultBase, toPosix, out, fail, git, parseArgs, optString, listChanges, scanSecrets, checkSlug,
+  ROOT, SDLC, CHANGES, SLUG_RE, SOFT_HOOK_FAILURE, exists, read, now, defaultBase, isTrunk, trunkName, toPosix, out, fail, git, parseArgs, optString, listChanges, scanSecrets, checkSlug,
   WAIVERS, readJsonl, type Waiver, ensureGitignore, PLUGIN_ROOT, IS_VENDORED, skillRef, sanctionWrites, readGate, type Args,
 } from './core.ts'
 import { formatFindings, SENSOR_NAMES, type Finding } from './model.ts'
@@ -33,7 +33,7 @@ import { cmdQueue, conflictsFor } from './queue.ts'
 import { intentScope } from './scope.ts'
 import { prdFormatProblems, prdLedger, conversionProblems } from './prdformat.ts'
 import { parseLedger } from './chartcheck.ts'
-import { intentRelOf, prdRel, sprintRel, prdPath, reviewPath, ledgerPath, sourcePath, conversionPath } from './product.ts'
+import { ARCH_REL, intentRelOf, prdRel, sprintRel, prdPath, reviewPath, ledgerPath, sourcePath, conversionPath } from './product.ts'
 import { cmdSlice } from './slice.ts'
 import { cmdMaintain } from './maintain.ts'
 import { cmdReadiness } from './readiness.ts'
@@ -203,7 +203,26 @@ function approveChart(n: number, args: Args): void {
   const by = ownerOrFail(args, 'approvals')
   writeChartApproval(n, by)
   writePlan(n)
-  out(`approved chart-${n} by ${by}: ${chartFiles(n).length} file(s). Next: engineers run \`ready\` to see which intents can start, then ${skillRef('start')} ${sprintRel(n)}/intents/<slug>.md`)
+  const committed = commitApproval(n)
+  const branch = git(['branch', '--show-current']) ?? ''
+  const trunk = trunkName()
+  const first = branch && !isTrunk(branch) ? `merge ${branch} into ${trunk} first, then start from ${trunk} with ` : 'engineers run `ready` to see which intents can start, then '
+  out(`${committed === null ? `warning: the approval is kept but git refused to commit it: commit it before building, with git add ${approvalRel(n)} ${sprintRel(n)}/plan.md ${ARCH_REL} .rig/product/adr && git commit -m "chore: approve chart-${n}"\n` : ''}approved chart-${n} by ${by}: ${chartFiles(n).length} file(s). Next: ${first}${skillRef('start')} ${sprintRel(n)}/intents/<slug>.md`)
+}
+
+const approvalRel = (n: number): string => `${sprintRel(n)}/approval.json`
+// The approval hashes the files `acceptAdrs` edited: they must land in the same commit as approval.json, or HEAD disagrees with the approval
+// and CI sees the chart as stale (shop_app 2026-10-27, where approval.json rode into a feature commit alone). Never --no-verify.
+// true: committed; false: nothing to commit (not a git repo / nothing dirty); null: git refused.
+function commitApproval(n: number): boolean | null {
+  if (git(['rev-parse', '--is-inside-work-tree']) !== 'true') return false
+  const want = [approvalRel(n), `${sprintRel(n)}/plan.md`, ARCH_REL, ...chartFiles(n)].filter((f, i, a) => a.indexOf(f) === i && exists(path.join(ROOT, f)))
+  // Names, never porcelain lines: git() trims its output, which shifted the status columns of every line after the first.
+  const names = (args: string[]): string[] => (git([...args, '--', ...want]) ?? '').split('\n').filter(Boolean)
+  const dirty = [...new Set([...names(['diff', '--name-only', 'HEAD']), ...names(['ls-files', '--others', '--exclude-standard'])])]
+  if (!dirty.length) return false
+  if (git(['add', '--', ...dirty]) === null) return null
+  return git(['commit', '-q', '-m', `chore: approve chart-${n}`, '--', ...dirty]) === null ? null : true
 }
 
 function cmdChart(args: Args): void {
@@ -255,7 +274,8 @@ function cmdStartBrief(): void {
   const branch = git(['branch', '--show-current']) ?? ''
   const base = git(['rev-parse', '--verify', '-q', 'main']) === null && git(['rev-parse', '--verify', '-q', 'master']) !== null ? 'master' : 'main'
   const lines: string[] = []
-  if (branch && branch !== base) lines.push(`WARNING: you are on branch ${branch}, not ${base}. The previous change may not be merged yet; a new change starts from this branch.`)
+  if (/^rig\/chart-\d+$/.test(branch)) lines.push(`WARNING: you are on the chart branch ${branch}. Merge it into ${base} first and start the change from ${base}; a change built on an unmerged chart branch ships the chart with it (shop_app 2026-10-27: sdlc/cart-core sat on rig/chart-1).`)
+  else if (branch && branch !== base) lines.push(`WARNING: you are on branch ${branch}, not ${base}. The previous change may not be merged yet; a new change starts from this branch.`)
   const ready = readyIntents()
   const plans = sprintsKnown().filter(n => exists(prdPath(n)) && planRows(n).some(r => r.status !== 'done')).map(writePlan)
   if (plans.length) lines.push(`build order (waves and dependency graph): ${plans.join(', ')}`)
