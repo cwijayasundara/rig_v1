@@ -1,5 +1,6 @@
 // Policy stage (spec §3.3, §10.2): the same change, one turn under a continuous model and one under a final model.
 // continuous: every turn sensor runs at Stop. final: only secrets and harness-tamper run at Stop; the rest waits for commit.
+// Both turns run with no change open (the vibe path): the floor applies to unplanned work too.
 import crypto from 'node:crypto'
 import { Checks } from '../lib/checks.mjs'
 
@@ -33,6 +34,7 @@ export async function runPolicy(sb) {
   try {
     const cont = turn(sb, 'pol-sonnet', 'claude-sonnet-5-5')
     const fin = turn(sb, 'pol-opus', 'claude-opus-5-5')
+    await c.check('S5: the probe turns run with no change open (the vibe path)', () => /No active change/.test(cont.ctx) || cont.ctx.split('\n').find(l => /change|Queue/.test(l)))
     await c.check('S5: SessionStart names the continuous policy for Sonnet', () => /rig policy: continuous checks for claude-sonnet-5-5/.test(cont.ctx) || cont.ctx.split('\n')[0])
     await c.check('S5: SessionStart names the final policy for Opus', () => /rig policy: final checks for claude-opus-5-5/.test(fin.ctx) || fin.ctx.split('\n')[0])
     await c.check('S5: under continuous, Stop blocks on the unit suite and the secret', () => (cont.sensors.includes('unit') && cont.sensors.includes('secrets')) || `fired: ${cont.sensors.join(', ') || 'none'}`)

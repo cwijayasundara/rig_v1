@@ -48,6 +48,12 @@ Work moves through an optional outer loop (a sprint) and an inner loop (one chan
 - **Build** takes one change at a time from `/rig:start` to a merged PR. A person approves the spec and plan once. `/rig:pr` refuses without that approval and a fresh, passing `verify.json`.
 - **Run** deploys behind a production gate, which the platform team installs as a managed hook.
 
+## Is the lifecycle fixed?
+
+No. rig has two layers. The quality floor (guides, sensors, secret and test-tamper checks, git hooks, the CI `rig-check`) is fixed and runs on all work, including exploratory "vibe" coding with no change open: the per-edit check and the end-of-turn gate need no active change. The lifecycle above follows Anthropic's AI-native SDLC playbook, which calls itself "a starting point to tailor", and you opt into it per piece of work. Every change, explored or planned, reaches the base branch by a feature branch and a PR; a PR with no change record is marked tier 1 at CI.
+
+Today the lifecycle is one path for every change. On the roadmap (`docs/proposals/2026-10-27-one-door-right-sized.md`): `/rig:start` opens with a grill-me interview and is light by default, with only high-risk changes taking the full path, and `/rig:start --from-diff` turns explored work into a tracked change whose tests must fail without the code.
+
 ## Greenfield and brownfield
 
 ```
