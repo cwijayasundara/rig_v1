@@ -92,3 +92,13 @@ test('rig-check runs in the merge queue: merge_group triggers it, ai-review stay
   assert.equal((t.match(/BASE: \$\{\{ github\.base_ref \|\| github\.event\.merge_group\.base_ref \}\}/g) ?? []).length, 2)
   assert.equal((t.match(/origin\/\$\{BASE#refs\/heads\/\}/g) ?? []).length, 3)
 })
+
+test('CI reviews the delta only, with a turn cap, no lockfiles or vendored harness, and a newer push cancels the older run', () => {
+  const t = read('templates/rig-check.yml')
+  const w = parse(t) as Workflow & { concurrency?: { group?: string; 'cancel-in-progress'?: boolean } }
+  assert.match(w.concurrency?.group ?? '', /pull_request\.number/)
+  assert.equal(w.concurrency?.['cancel-in-progress'], true)
+  assert.equal((t.match(/claude -p --model sonnet --max-turns 25 /g) ?? []).length, 2)
+  assert.equal((t.match(/Review only what this diff adds or changes; read another file only to understand a changed line, and never review code the diff does not change\./g) ?? []).length, 2)
+  assert.match(t, /git diff "origin\/\$BASE\.\.\.HEAD" -- \. ':\(exclude\)\*package-lock\.json'[^\n]*':\(exclude\)\.rig\/bin'/)
+})

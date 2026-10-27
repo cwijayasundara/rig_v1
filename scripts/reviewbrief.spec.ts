@@ -78,3 +78,8 @@ test('a finding on a line older than the base goes under Pre-existing, untagged,
   const pre = brief.split('## Pre-existing')[1] ?? ''
   assert.doesNotMatch(pre, /\[category:/)
 })
+
+test('the reviewer reviews the delta only: other files are read only to understand a changed line', () => {
+  assert.match(brief, /Review only what the delta adds or changes/)
+  assert.match(brief, /never review code the delta does not change/)
+})
