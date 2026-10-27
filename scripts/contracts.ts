@@ -1,10 +1,31 @@
 // Contracts (behavioural harness spec 2026-10-16 §6): frozen per file at plan approval (lifecycle.ts writes the freeze into
 // approval.json), validated before they run.
-import { skillRef } from './core.ts'
+import fs from 'node:fs'
+import path from 'node:path'
+import { skillRef, SENSORS_PATH, exists } from './core.ts'
 import { readApproval, digest } from './lifecycle.ts'
-import { contractGlobs, type Contracts } from './registry.ts'
+import { contractGlobs, isRegistryShape, type Contracts } from './registry.ts'
 import { matchesAny, type Finding } from './model.ts'
 import { runCommand, type RunRow } from './runs.ts'
+
+// The `Contract:` and `Example:` files intents declare under ## Interfaces (chartcheck's parseIntent reads them) are registered in sensors.json
+// contracts.files when a chart is approved, so every change's approval freezes them (shop_app 2026-10-27: declared, never registered).
+// Returns the files added, or why it left sensors.json alone.
+export function registerContracts(declared: string[]): { added: string[]; warning?: string } {
+  const files = [...new Set(declared.map(f => path.posix.normalize(f.replace(/^(\.\/)+/, ''))))]
+  if (!files.length || !exists(SENSORS_PATH)) return { added: [] }
+  const text = fs.readFileSync(SENSORS_PATH, 'utf8')
+  let json: { contracts?: { files?: string[]; covers?: string[]; validate?: string; run?: string } }
+  try { json = JSON.parse(text) } catch { return { added: [], warning: 'sensors.json is not valid JSON' } }
+  if (!isRegistryShape(text)) return { added: [], warning: 'sensors.json is not a registry' }
+  // Commands with no files declared freeze .rig/contracts/**; naming a file must not drop that default.
+  const have = json.contracts?.files?.length ? json.contracts.files : json.contracts?.validate || json.contracts?.run ? ['.rig/contracts/**'] : []
+  const added = files.filter(f => !matchesAny(f, have))
+  if (!added.length) return { added: [] }
+  json.contracts = { covers: [], validate: '', run: '', ...(typeof json.contracts === 'object' && !Array.isArray(json.contracts) ? json.contracts : {}), files: [...have, ...added] }
+  fs.writeFileSync(SENSORS_PATH, JSON.stringify(json, null, 2) + '\n')
+  return { added }
+}
 
 // The freeze in force: the contracts the change's approval recorded.
 export const frozenFor = (slug: string): Record<string, string> => readApproval(slug)?.contracts ?? {}
