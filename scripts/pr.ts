@@ -67,7 +67,7 @@ export function cmdPr(args: Args): void {
     const c = (name: string): string => read(path.join(CHANGES, slug, name))
     let verify: Parameters<typeof prBody>[0]['verify'] = null
     try { verify = JSON.parse(c('verify.json')) } catch { /* no verify.json: the body says so */ }
-    fs.writeFileSync(path.join(CHANGES, slug, 'pr-body.md'), prBody({ intent: c('intent.md'), spec: c('spec.md'), plan: c('plan.md'), verify, outline: c('pr-outline.md') }))
+    fs.writeFileSync(path.join(CHANGES, slug, 'pr-body.md'), prBody({ intent: c('intent.md'), spec: c('spec.md'), plan: c('plan.md'), verify, outline: c('pr-outline.md'), review: c('review.md') }))
   }
   const files = changeFiles(slug)
   if (!files.length) return out(followUp ? `${slug} already has a PR (.rig/changes/${slug}/pr.md); nothing new to commit` : 'not shipping: nothing to commit')
