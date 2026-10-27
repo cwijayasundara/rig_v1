@@ -6,7 +6,7 @@ const row = (arm, run, ok, usd = 1, extra = {}) => ({ arm, run, accepted: ok, ch
 
 test('summarize merges rows from several files and keeps ARMS order', () => {
   const s = summarize([row('opus-bare', 1, true), row('haiku-bare', 1, false), row('haiku-bare', 2, true), row('opus-bare', 2, true)])
-  assert.deepEqual(s.map(a => a.arm), ['haiku-rig', 'haiku-bare', 'sonnet-bare', 'opus-bare', 'haiku-rig-arch', 'haiku-rig-final'])
+  assert.deepEqual(s.map(a => a.arm), ['haiku-rig', 'haiku-bare', 'sonnet-bare', 'opus-bare', 'haiku-rig-arch', 'haiku-rig-full', 'haiku-rig-final'])
   const hb = s.find(a => a.arm === 'haiku-bare')
   assert.deepEqual([hb.runs, hb.accepted, hb.checksMean, hb.inMedian, hb.usdMean, hb.tamper], [2, 1, 2, 1500, 1, 1])
 })

@@ -31,3 +31,13 @@ test('start keeps open questions a person\'s, orders documents by recency and as
   assert.match(start, /the latest wins/)
   assert.match(start, /design system/)
 })
+
+test('start is a grill and reports the weight; plan writes light plans itself in 30 lines', () => {
+  const start = text('skills/start/SKILL.md'), plan = text('skills/plan/SKILL.md')
+  assert.match(start, /one question at a time/)
+  assert.match(start, /S weight <slug>/)
+  assert.match(start, /--full/)
+  assert.match(plan, /S weight <slug>/)
+  assert.match(plan, /`light`: do not invoke `superpowers:writing-plans`[^]*at most 30 lines/)
+  assert.match(plan, /`full`: invoke `superpowers:writing-plans`/)
+})

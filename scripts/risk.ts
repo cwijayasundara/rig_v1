@@ -1,8 +1,8 @@
 // The risk tier (proposal 2026-10-27 B1, B2): which changes a person must read. The tier is the max over signals from the change's
 // own files and the config; nothing lowers it. Tier 2 suggests a second reviewer, which branch protection enforces, never rig.
 import path from 'node:path'
-import { CHANGES, ROOT, SENSORS_JSON, read, readJson, out, optString, checkSlug, defaultBase, type Args } from './core.ts'
-import { section, matchesAny, type FileDiff } from './model.ts'
+import { CHANGES, ROOT, SENSORS_JSON, read, readJson, out, fail, optString, checkSlug, defaultBase, frontmatter, type Args } from './core.ts'
+import { section, matchesAny, blastRadius, type FileDiff } from './model.ts'
 import { parseRegistry, type Registry } from './registry.ts'
 import { isProtected } from './sensors.ts'
 import { parseAccess, type AccessRule } from './chartcheck.ts'
@@ -67,4 +67,27 @@ export function cmdRisk(args: Args): void {
   const base = optString(args, 'base') ?? (slug ? readJson<{ base?: string } | null>(path.join(CHANGES, slug, 'verify.json'), null)?.base : undefined) ?? defaultBase() ?? 'HEAD'
   const r = riskOf(branchDiff(base), slug ? [slug] : [], parseRegistry(read(path.join(ROOT, SENSORS_JSON))).registry, parseAccess(read(archPath)), false)
   out(args.opt.json ? JSON.stringify(r) : formatRisk(r))
+}
+
+// The planning weight (proposal 2026-10-27 P3): light unless a tier-2 signal shows in the spec's blast radius or the person asked; nothing lowers a stored `weight: full`.
+export type Weight = { weight: 'light' | 'full'; reasons: string[] }
+export function predictWeight(i: { slug: string; radius: string[]; access: AccessRule[]; risk: Registry['risk']; asked: boolean }): Weight {
+  const globs = [...i.risk.alwaysHuman, '.github/workflows/**']
+  // an entry is a directory/prefix when no glob names it exactly but a glob's literal part (before its first `*`) sits under it
+  const holds = (e: string): boolean => { const dir = e.includes('*') ? e : e.replace(/\/?$/, '/'); return !e.includes('*') && globs.some(g => g.slice(0, g.indexOf('*') < 0 ? g.length : g.indexOf('*')).startsWith(dir)) }
+  const reasons = [
+    ...(i.asked ? ['the person asked for full'] : []),
+    ...i.radius.filter(e => isProtected(e) || matchesAny(e, globs) || holds(e)).map(e => `always-human path in the blast radius: ${e}`),
+    ...i.access.filter(a => a.intent === i.slug).map(a => `access: ${a.intent} builds "${a.action}"`),
+  ]
+  return { weight: reasons.length ? 'full' : 'light', reasons: reasons.length ? reasons : ['no always-human path or access action in the blast radius'] }
+}
+
+export function cmdWeight(args: Args): void {
+  const slug = args.pos[0] ? checkSlug(args.pos[0]) : activeSlug()
+  if (!slug) return fail('usage: weight [<slug>] [--json] (no slug and no active change)')
+  const radius = blastRadius(read(path.join(CHANGES, slug, 'spec.md'))) ?? []
+  const asked = frontmatter(read(path.join(CHANGES, slug, 'intent.md'))).data.weight === 'full'
+  const w = predictWeight({ slug, radius: radius.map(e => e.replace(/^\.\//, '')), access: parseAccess(read(archPath)), risk: parseRegistry(read(path.join(ROOT, SENSORS_JSON))).registry.risk, asked })
+  out(args.opt.json ? JSON.stringify(w) : [`weight: ${w.weight}`, ...w.reasons.map(x => `- ${x}`)].join('\n'))
 }

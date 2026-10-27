@@ -39,7 +39,7 @@ import { registerContracts } from './contracts.ts'
 import { cmdMaintain } from './maintain.ts'
 import { cmdReadiness } from './readiness.ts'
 import { cmdAutonomy, initAutonomy } from './autonomy.ts'
-import { cmdRisk } from './risk.ts'
+import { cmdRisk, cmdWeight } from './risk.ts'
 import { protect } from './protect.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'
 import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, waiveChartFinding, changeRequirements, PRD_RE, isConverted, conversionRefusal } from './chart.ts'
@@ -93,7 +93,7 @@ function cmdInit(args: Args): void {
 
 function cmdNew(args: Args): void {
   const slug = args.pos[0] ?? ''
-  if (!SLUG_RE.test(slug)) fail(`usage: new <kebab-slug> [--type ${TYPES.join('|')}] [--title "..."] [--source .rig/product/sprints/sprint-<N>/intents/<slug>.md]`)
+  if (!SLUG_RE.test(slug)) fail(`usage: new <kebab-slug> [--type ${TYPES.join('|')}] [--title "..."] [--source .rig/product/sprints/sprint-<N>/intents/<slug>.md] [--full]`)
   const raw = optString(args, 'type') ?? 'feature'
   // The four types, plus the older names toType folds in (greenfield, incident, migration, spike).
   if (![...TYPES, 'greenfield', 'incident', 'migration', 'spike'].includes(raw)) fail(`usage: new <slug> [--type ${TYPES.join('|')}] [--title "..."]`)
@@ -110,7 +110,7 @@ function cmdNew(args: Args): void {
   ensureGitignore()
   const intent = source ? intentOf(slug) : null
   const title = optString(args, 'title') ?? (source ? /^#\s+(.+)$/m.exec(read(path.resolve(ROOT, source)))?.[1] : undefined) ?? slug
-  newChange(slug, toType(raw), title, source && toPosix(path.relative(ROOT, path.resolve(ROOT, source))))
+  newChange(slug, toType(raw), title, source && toPosix(path.relative(ROOT, path.resolve(ROOT, source))), args.opt.full === true)
   if (intent) fs.writeFileSync(path.join(changeDir(slug), 'spec.md'), `# Spec: ${title}\n\n## Behaviours\n${intent.behaviours.map(b => { const ids = [...new Set([...b.reqs, ...b.rules])]; return `- ${b.id}${ids.length ? ` (${ids.join(', ')})` : ''}: ${b.text}` }).join('\n')}\n\n## Out of scope\n\n## Open questions\nnone\n`)
   const reqs = intent ? changeRequirements(slug) : null
   if (reqs) fs.writeFileSync(path.join(changeDir(slug), 'requirements.md'), reqs)
@@ -446,6 +446,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   readiness: cmdReadiness,
   autonomy: cmdAutonomy,
   risk: cmdRisk,
+  weight: cmdWeight,
 }
 
 const [command = '', ...rest] = process.argv.slice(2)
