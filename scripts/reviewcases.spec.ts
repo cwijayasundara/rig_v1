@@ -94,7 +94,7 @@ test('review-eval scores confirmed cases only, stops at the cap, records a faile
 test('learn review-eval refuses without a positive --max-usd, before spending anything', () => {
   const { dir } = confirmedShop()
   const sdlcTs = path.resolve(import.meta.dirname, 'sdlc.ts')
-  for (const extra of [[], ['--max-usd', '0'], ['--max-usd', 'lots']]) {
+  for (const extra of [[], ['--max-usd', '0'], ['--max-usd', 'lots'], ['--max-usd'], ['--max-usd', 'Infinity']]) {
     const r = spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', sdlcTs, 'learn', 'review-eval', ...extra], { cwd: dir, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir, RIG_CLAUDE: '/nonexistent' } })
     assert.notEqual(r.status, 0)
     assert.match(r.stderr, /--max-usd/)
@@ -107,4 +107,35 @@ test('with the real brief, the prompt asks for nothing a tool-less reviewer cann
   assert.doesNotMatch(p, /Read them yourself|You may read files|git blame/)
   assert.match(p, /Everything you may use is below; you have no tools\./)
   assert.match(p, /verdict: pass \| changes-needed/)
+})
+
+test('a revert done by a PR labelled revert becomes a case when its number is passed', () => {
+  const s = shop()
+  s.ship('cart-total')
+  fs.rmSync(path.join(s.dir, '.rig/changes/cart-total/pr.md')); s.git('add', '-A'); s.git('commit', '-qm', 'Undo the total (#9)')
+  assert.deepEqual(writeCandidates(s.dir).added, [])
+  assert.equal(writeCandidates(s.dir, [9]).added.length, 1)
+})
+
+test('a brief whose wording the eval cannot strip refuses the run before any spend, and logs nothing', () => {
+  const { dir } = confirmedShop()
+  fs.mkdirSync(path.join(dir, '.rig/templates'), { recursive: true })
+  fs.writeFileSync(path.join(dir, '.rig/templates/review-brief.md'), 'You review a change.\n\nInputs: look them up with your tools.\n\nYou may read files as you like.\n')
+  let ran = 0
+  assert.throws(() => reviewEval(dir, { maxUsd: 5, runner: () => { ran++; return { text: '', usd: 1 } } }), /review-brief\.md[\s\S]*tools/)
+  assert.equal(ran, 0)
+  assert.equal(fs.existsSync(path.join(dir, '.rig/learn/review-eval.jsonl')), false)
+})
+
+test('the prompt leaves binary files out and truncates a huge file, so one case cannot blow the budget', () => {
+  const s = shop()
+  fs.writeFileSync(path.join(s.dir, 'logo.png'), Buffer.from([0, 1, 2, 255, 0, 9]))
+  fs.writeFileSync(path.join(s.dir, 'package-lock.json'), 'x'.repeat(200_000))
+  const sha = s.ship('cart-total'); s.git('revert', '--no-edit', sha)
+  const [name] = writeCandidates(s.dir).added
+  const c = JSON.parse(fs.readFileSync(path.join(caseDir(s.dir), name!), 'utf8')) as ReviewCase
+  const p = casePrompt(s.dir, c, 'Review for, in this order: correctness.\n')
+  assert.match(p, /### logo\.png\n\(binary, left out\)/)
+  assert.match(p, /\(truncated at 20000 characters\)/)
+  assert.ok(p.length < 120_000, `prompt is ${p.length} characters`)
 })

@@ -25,9 +25,10 @@ export function readCases(root: string): { cases: ReviewCase[]; bad: string[] } 
 }
 
 // One candidate per reverted merge, named <slug>-<sha7>.json; an existing file is never rewritten, so a person's confirmation stays.
-export function writeCandidates(root: string): { added: string[]; total: number; confirmed: number } {
+// `revertPrs`: merged PRs labelled `revert` (Decision 3), which the CLI reads from GitHub when it can.
+export function writeCandidates(root: string, revertPrs: number[] = []): { added: string[]; total: number; confirmed: number } {
   const dir = dirOf(root), added: string[] = []
-  for (const row of changeHistory(root, [], 'HEAD', true).filter(r => r.reverted)) {
+  for (const row of changeHistory(root, revertPrs, 'HEAD', true).filter(r => r.reverted)) {
     const name = `${row.slug}-${row.sha.slice(0, 7)}.json`
     if (fs.existsSync(path.join(dir, name))) continue
     const base = gitIn(root, ['rev-parse', `${row.sha}^1`]) ?? ''
@@ -52,14 +53,26 @@ export function scoreFindings(text: string, d: ReviewCase['defect']): boolean {
 }
 
 // The brief made tool-less (the reviewer gets everything inline, as in eval/review.mjs), then the change as it merged.
+// The brief with its tool instructions taken out; a brief reworded so they survive is refused, never scored with a reviewer told to use tools it lacks.
+export function toolless(brief: string, where = 'the review brief'): string {
+  const t = brief.replace(/Inputs\. Read them yourself[\s\S]*?(?=\nReview for)/, 'Everything you may use is below; you have no tools.\n')
+    .replace(/You may read files[^\n]*\n/, '').replace(/Before you report a finding, run `git blame[^\n]*\n\n?/, '')
+  if (/Read them yourself|You may read files|git blame|your tools/i.test(t.replace('you have no tools', ''))) throw new Error(`${where} still tells the reviewer to use tools after the eval strips its "Inputs. Read them yourself", "You may read files" and "git blame" lines: keep that wording, or the eval would score a reviewer told to use tools it does not have`)
+  return t
+}
+
+const FILE_CHARS = 20_000, DIFF_CHARS = 60_000
+const clip = (text: string, max: number): string => (text.length > max ? `${text.slice(0, max)}\n(truncated at ${max} characters)` : text)
+
+// The change as it merged, inline and bounded: binary files are left out and a file or diff past its limit is cut, so one case cannot blow the budget.
 export function casePrompt(root: string, c: ReviewCase, brief: string): string {
   const at = (rel: string): string => gitIn(root, ['show', `${c.sha}:${rel}`]) ?? '(missing)'
-  const head = brief.replace(/Inputs\. Read them yourself[\s\S]*?(?=\nReview for)/, 'Everything you may use is below; you have no tools.\n')
-    .replace(/You may read files[^\n]*\n/, '').replace(/Before you report a finding, run `git blame[^\n]*\n\n?/, '').replace(/<base>/g, c.base).replace(/<slug>/g, c.slug)
+  const head = toolless(brief).replace(/<base>/g, c.base).replace(/<slug>/g, c.slug)
+  const binary = new Set((gitIn(root, ['diff', '--numstat', c.base, c.sha, '--', '.', ':!.rig']) ?? '').split('\n').filter(l => l.startsWith('-\t-\t')).map(l => l.split('\t')[2]))
   const rec = (f: string): string => `## ${f}\n${at(`.rig/changes/${c.slug}/${f}`)}`
   return [head, rec('intent.md'), rec('spec.md'), rec('plan.md'),
-    `## The delta (git diff ${c.base.slice(0, 7)} ${c.sha.slice(0, 7)})\n\`\`\`diff\n${gitIn(root, ['diff', c.base, c.sha, '--', '.', ':!.rig']) ?? ''}\n\`\`\``,
-    '## Files the change touches, as merged', ...c.files.map(f => `### ${f}\n\`\`\`\n${at(f)}\n\`\`\``)].join('\n\n')
+    `## The delta (git diff ${c.base.slice(0, 7)} ${c.sha.slice(0, 7)})\n\`\`\`diff\n${clip(gitIn(root, ['diff', c.base, c.sha, '--', '.', ':!.rig']) ?? '', DIFF_CHARS)}\n\`\`\``,
+    '## Files the change touches, as merged', ...c.files.map(f => (binary.has(f) ? `### ${f}\n(binary, left out)` : `### ${f}\n\`\`\`\n${clip(at(f), FILE_CHARS)}\n\`\`\``))].join('\n\n')
 }
 
 export const briefPath = (root: string): string => { const vendored = path.join(root, '.rig', 'templates', 'review-brief.md'); return fs.existsSync(vendored) ? vendored : path.join(PLUGIN_ROOT, 'templates', 'review-brief.md') }
@@ -69,6 +82,7 @@ export const EVAL_LOG = (root: string): string => path.join(root, '.rig', 'learn
 export function reviewEval(root: string, opts: { maxUsd: number; model?: string; runner?: Runner }): { scored: number; caught: number; failed: number; usd: number } {
   const model = opts.model ?? 'claude-sonnet-5-5', run = opts.runner ?? claudeRunner(model)
   const brief = fs.readFileSync(briefPath(root), 'utf8')
+  toolless(brief, path.relative(root, briefPath(root))) // refuses before any spend
   const r = { scored: 0, caught: 0, failed: 0, usd: 0 }
   for (const c of readCases(root).cases.filter(confirmedCase)) {
     if (r.usd >= opts.maxUsd) break
