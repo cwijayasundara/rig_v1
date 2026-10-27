@@ -670,10 +670,11 @@ test('an old commands waiver no longer silences a command sensor', () => {
 })
 
 // Risk tiers in CI (proposal 2026-10-27 B1, B2): the base config sets the knobs, the PR's diff and change record set the signals.
-const riskRun = (o: { enforce?: boolean; reviews?: unknown[]; files?: Record<string, string>; baseFiles?: Record<string, string>; remove?: string[] } = {}) => {
+const riskRun = (o: { enforce?: boolean; reviews?: unknown[]; files?: Record<string, string>; baseFiles?: Record<string, string>; remove?: string[]; sensors?: object; history?: (sha: () => string) => void } = {}) => {
   const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-gh-'))
   gitIn(repo, 'checkout', '-q', 'main')
-  write(repo, '.rig/sensors.json', JSON.stringify({ ...JSON.parse(fromOld({})), risk: { enforce: Boolean(o.enforce) } }) + '\n')
+  o.history?.(() => spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).stdout.trim())
+  write(repo, '.rig/sensors.json', JSON.stringify({ ...JSON.parse(fromOld({})), risk: { enforce: Boolean(o.enforce) }, ...o.sensors }) + '\n')
   for (const [f, t] of Object.entries(o.baseFiles ?? {})) write(repo, f, t)
   gitIn(repo, 'add', '-A')
   gitIn(repo, 'commit', '-q', '--allow-empty', '-m', `risk base ${++prN}`)
@@ -728,4 +729,33 @@ test('a merge queue run never re-checks approvals: they were checked on the PR',
   const r = sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main'], { env: { GITHUB_EVENT_PATH: ev, GITHUB_EVENT_NAME: 'merge_group' } })
   assert.doesNotMatch(r.stdout, /human-approval/)
   assert.match(r.stdout, /risk: tier/)
+})
+
+// A tier-0 PR: reviewed clean, two-way, small. Rung 3 and trusted authors come from the base.
+const rung = (n: number) => ({ '.rig/autonomy.json': JSON.stringify({ rung: n, since: 'x', deferred: [], history: [] }) })
+const tier0 = { '.rig/changes/tiny/review.md': 'verdict: pass\n## Findings\n' }
+const trusted = { risk: { enforce: true }, humanApproval: { trusted: ['dev'] } }
+
+test('at rung 3 a tier-0 PR by a trusted author passes with no person', { skip: !posix }, () => {
+  const r = riskRun({ sensors: trusted, baseFiles: rung(3), files: tier0 })
+  assert.match(r.stdout, /risk: tier 0/)
+  assert.match(r.stdout, /tier 0: merges without a person \(rung 3, trusted author\)/)
+  assert.doesNotMatch(r.stdout, /human-approval/)
+})
+
+test('the tier-0 path needs rung 3 on the base, a trusted author and a holding breaker, and names what is missing', { skip: !posix }, () => {
+  const selfPromoted = riskRun({ sensors: trusted, baseFiles: rung(2), files: { ...tier0, ...rung(3) } })
+  assert.match(selfPromoted.stdout, /\[human-approval\]/, 'editing autonomy.json is a human row: a PR never promotes itself')
+  assert.doesNotMatch(selfPromoted.stdout, /merges without a person/)
+  const atTwo = riskRun({ sensors: trusted, baseFiles: rung(2), files: tier0 })
+  assert.match(atTwo.stdout, /\[human-approval\]\n\s*✗ risk\.enforce: this PR is tier 0 and needs a person: rung 2, not 3/)
+  const untrusted = riskRun({ sensors: { risk: { enforce: true } }, baseFiles: rung(3), files: tier0 })
+  assert.match(untrusted.stdout, /\[human-approval\][\s\S]*author not trusted/)
+  const history = (sha: () => string) => {
+    write(repo, '.rig/changes/old/pr.md', 'pr\n'); write(repo, '.rig/changes/old/pr-body.md', '## Risk\n\nTier 0: none of the signals\n')
+    gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'ship old')
+    gitIn(repo, 'revert', '--no-edit', sha())
+  }
+  const tripped = riskRun({ sensors: { ...trusted, risk: { enforce: true, window: 2 } }, baseFiles: rung(3), files: tier0, history })
+  assert.match(tripped.stdout, /\[human-approval\][\s\S]*tier-0 merges reverted: 1 of 1 in the last 2/)
 })

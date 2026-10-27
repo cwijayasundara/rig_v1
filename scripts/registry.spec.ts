@@ -205,8 +205,8 @@ test('humanApproval.selfApprovers parses, rejects other shapes, and adding a log
 
 test('risk parses, rejects other shapes, and loosening it is a weakening', () => {
   const reg = (r: unknown) => JSON.stringify({ sensors: [], risk: r })
-  assert.deepEqual(parseRegistry(reg({ enforce: true, alwaysHuman: ['src/billing/**'], maxLines: 200 })).registry.risk, { enforce: true, alwaysHuman: ['src/billing/**'], maxLines: 200 })
-  assert.deepEqual(parseRegistry('{}').registry.risk, { enforce: false, alwaysHuman: [], maxLines: 400 })
+  assert.deepEqual(parseRegistry(reg({ enforce: true, alwaysHuman: ['src/billing/**'], maxLines: 200 })).registry.risk, { enforce: true, alwaysHuman: ['src/billing/**'], maxLines: 200, window: 20, maxRevertRate: 0.1 })
+  assert.deepEqual(parseRegistry('{}').registry.risk, { enforce: false, alwaysHuman: [], maxLines: 400, window: 20, maxRevertRate: 0.1 })
   assert.match(parseRegistry(reg(5)).errors.join(), /risk must be/)
   assert.match(parseRegistry(reg({ maxLines: -1 })).errors.join(), /risk.maxLines must be/)
   assert.match(parseRegistry(reg({ alwaysHuman: 'x' })).errors.join(), /risk.alwaysHuman must be/)
@@ -218,4 +218,18 @@ test('risk parses, rejects other shapes, and loosening it is a weakening', () =>
   assert.match(loose, /risk.alwaysHuman lost src\/billing\/\*\*/)
   assert.match(loose, /risk.maxLines raised/)
   assert.deepEqual(weakensRegistry(reg({}), tight), [])
+})
+
+test('the breaker knobs and trusted authors parse, and loosening them is a weakening', () => {
+  const reg = (r: unknown, h: unknown = {}) => JSON.stringify({ sensors: [], risk: r, humanApproval: h })
+  const p = parseRegistry(reg({ window: 10, maxRevertRate: 0.05 }, { trusted: ['Dev', 'dev'] })).registry
+  assert.deepEqual([p.risk.window, p.risk.maxRevertRate, p.humanApproval.trusted], [10, 0.05, ['dev']])
+  assert.deepEqual([parseRegistry('{}').registry.risk.window, parseRegistry('{}').registry.risk.maxRevertRate, parseRegistry('{}').registry.humanApproval.trusted], [20, 0.1, []])
+  assert.match(parseRegistry(reg({ maxRevertRate: 2 })).errors.join(), /risk.maxRevertRate must be/)
+  assert.match(parseRegistry(reg({ window: 0 })).errors.join(), /risk.window must be/)
+  assert.match(parseRegistry(reg({}, { trusted: 'dev' })).errors.join(), /humanApproval.trusted must be/)
+  const loose = weakensRegistry(reg({ window: 10, maxRevertRate: 0.05 }), reg({ window: 30, maxRevertRate: 0.2 }, { trusted: ['dev'] })).join()
+  assert.match(loose, /risk.maxRevertRate raised/)
+  assert.match(loose, /risk.window raised/)
+  assert.match(loose, /humanApproval.trusted added dev/)
 })

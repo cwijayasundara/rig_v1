@@ -20,6 +20,7 @@ import { isRegistryShape, parseRegistry, defaultRegistry, updateKnownRed, active
 import { frozenFindings, runContracts } from './contracts.ts'
 import { syncFindings } from './sync.ts'
 import { riskOf, formatRisk, type Risk } from './risk.ts'
+import { changeHistory, breaker } from './reverts.ts'
 import { parseAccess } from './chartcheck.ts'
 import { ARCH_REL } from './product.ts'
 
@@ -316,6 +317,26 @@ function humanRowsAdded(base: string): string[] {
 // A PR file cannot prove who wrote an approval row (the model commits as the developer): CI asks GitHub for an approving review of the head commit by someone other than the author.
 // A lead named in the base config's humanApproval.selfApprovers may instead pass with the lead override: this run's `ai-review` job succeeded and its `lead-override` job
 // (gated by a GitHub Environment whose required reviewer clicks in the web UI) succeeded, both on the head commit.
+// The PR's author and repository from the pull_request event, or null outside one.
+function prEvent(): { login: string; repo: string } | null {
+  try { const ev = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH ?? '', 'utf8')) as { pull_request?: { user?: { login?: string } }; repository?: { full_name?: string } }; return ev.pull_request ? { login: (ev.pull_request.user?.login ?? '').toLowerCase(), repo: ev.repository?.full_name ?? '' } : null } catch { return null }
+}
+
+// Merged PRs labelled `revert` (Decision 3); a lookup that fails counts none, and says so.
+function revertPrs(repo: string): number[] {
+  try { return (JSON.parse(execFileSync(ghBin(), ['api', '--paginate', '--slurp', `search/issues?q=repo:${repo}+is:pr+is:merged+label:revert&per_page=100`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 })) as { items?: { number?: number }[] }[]).flatMap(p => p.items ?? []).map(i => Number(i.number)).filter(Number.isFinite) } catch { out('warning: could not list revert-labelled PRs; counting reverts from commit messages only'); return [] }
+}
+
+// Why a tier-0 PR still needs a person (null: it does not): rung 3 on the base, a trusted author, and a holding revert breaker over the base's history.
+function tierZeroRefusal(base: string, config: Registry): string {
+  let rung: unknown = 0
+  try { rung = (JSON.parse(showAt(base, '.rig/autonomy.json') ?? '{}') as { rung?: unknown }).rung ?? 0 } catch { /* unreadable: rung 0 */ }
+  if (rung !== 3) return `rung ${String(rung)}, not 3`
+  const ev = prEvent()
+  if (!ev || !config.humanApproval.trusted.includes(ev.login)) return 'author not trusted'
+  return breaker(changeHistory(ROOT, revertPrs(ev.repo), base), config.risk.window, config.risk.maxRevertRate) ?? ''
+}
+
 function independentApproval(selfApprovers: string[], workflowEdited: boolean): string | null {
   const eventPath = process.env.GITHUB_EVENT_PATH
   if (!eventPath || !fs.existsSync(eventPath)) return 'cannot verify a reviewer outside a GitHub pull_request run'
@@ -411,16 +432,18 @@ export function cmdCheck(args: Args): void {
   const humanRows = at === 'ci' && base && !queued ? humanRowsAdded(base) : []
   // The tier comes from the base config; the Access rows are the base's and the head's together, so a PR cannot drop a row to lower it.
   const risk = at === 'ci' && base ? riskOf(diffs, slugs, config, [...parseAccess(showAt(base, ARCH_REL) ?? ''), ...parseAccess(read(path.join(ROOT, ARCH_REL)))], true) : null
-  const why = humanRows.length || (risk && config.risk.enforce && !queued) ? independentApproval(config.humanApproval.selfApprovers, Boolean((git(['diff', '--name-only', base ?? 'HEAD', 'HEAD', '--', '.github/workflows']) ?? '').trim())) : null // before runChecks: the PR's test commands could rewrite the event file or shadow gh
+  const enforced = Boolean(risk && config.risk.enforce && !queued)
+  const refusal = enforced && !humanRows.length && risk?.tier === 0 && base ? tierZeroRefusal(base, config) : null // '': tier 0 merges without a person
+  const why = humanRows.length || (enforced && refusal !== '') ? independentApproval(config.humanApproval.selfApprovers, Boolean((git(['diff', '--name-only', base ?? 'HEAD', 'HEAD', '--', '.github/workflows']) ?? '').trim())) : null // before runChecks: the PR's test commands could rewrite the event file or shadow gh
   const result = runChecks({ point: at, diffs, config, rules, slugs, commands: replaying ? 'none' : at === 'stop' ? 'fast' : 'full', budgetMs, before, after, base, ratchet: !optString(args, 'config-from') && at !== 'commit', ratchetWrite: optString(args, 'config-from') ? null : at === 'commit' ? 'stage' : 'write', contracts: at === 'commit' ? !replaying : undefined, gates: config.gates })
   // At commit, like at push, a sensor out of time warns: CI runs it again, and a hanging tool must not hold git commit hostage.
   if (at === 'commit') for (const f of result.findings) if (f.outOfTime) f.severity = 'warn'
   result.blocks = result.findings.filter(f => f.severity === 'block')
   const configFindings: Finding[] = errors.map(e => ({ sensor: 'config', severity: 'block', file: SENSORS_JSON, message: e, fix: 'fix the file; see the sdlc README for its format' }))
-  const humanFindings: Finding[] = why ? [{ sensor: 'human-approval', severity: 'block', message: humanRows.length ? `this PR adds ${humanRows.length} approval/waiver row(s): ${why}` : `risk.enforce: this PR is tier ${risk?.tier} and needs a person: ${why}`, fix: humanRows.length ? 'a code owner other than the PR author reviews the rows below and approves the current head commit; pushing again needs a fresh approval' : 'someone other than the PR author approves the current head commit; pushing again needs a fresh approval' }] : []
+  const humanFindings: Finding[] = why ? [{ sensor: 'human-approval', severity: 'block', message: humanRows.length ? `this PR adds ${humanRows.length} approval/waiver row(s): ${why}` : `risk.enforce: this PR is tier ${risk?.tier} and needs a person: ${refusal ? `${refusal}; ` : ''}${why}`, fix: humanRows.length ? 'a code owner other than the PR author reviews the rows below and approves the current head commit; pushing again needs a fresh approval' : 'someone other than the PR author approves the current head commit; pushing again needs a fresh approval' }] : []
   const syncBlocks = (at === 'commit' || at === 'ci') && declaresRegistry() ? syncFindings(config, [], 'block') : [] // config errors already block above
   const all = { ...result, findings: [...humanFindings, ...configFindings, ...syncBlocks, ...result.findings], blocks: [...humanFindings, ...configFindings, ...syncBlocks.filter(f => f.severity === 'block'), ...result.blocks] }
-  report(at, all, diffs.length, Boolean(args.opt.json), humanRows, inertSensors(config, rules.length, draftApps()), risk)
+  report(at, all, diffs.length, Boolean(args.opt.json), humanRows, inertSensors(config, rules.length, draftApps()), risk && refusal === '' ? { ...risk, reasons: ['tier 0: merges without a person (rung 3, trusted author)'] } : risk)
   process.exitCode = all.blocks.length ? 1 : 0
 }
 

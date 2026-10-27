@@ -16,10 +16,10 @@ export const ALWAYS_ON: BuiltinId[] = ['secrets', 'harness-tamper']
 export type RegistrySensor = { id: string; cmd?: string; builtin?: true; cadence: Cadence; blocks: boolean; guide: string; timeoutMs?: number; enabled: boolean; options?: Record<string, unknown>; ratchet?: 'down' | 'up' }
 export type Paths = { tests: string[]; testSupport: string[]; fixtures: string[]; ignore: string[] }
 // The risk tier's knobs (proposal 2026-10-27 B1, B2): paths that always want a person, the diff size above which a person looks, and whether rig-check requires the approval.
-export type Risk = { enforce: boolean; alwaysHuman: string[]; maxLines: number }
+export type Risk = { enforce: boolean; alwaysHuman: string[]; maxLines: number; window: number; maxRevertRate: number }
 export type Contracts = { files: string[]; covers: string[]; validate: string; run: string }
 type Policy = Record<string, Mode> & { default: Mode }
-export type Registry = { ratchets?: Record<string, number>; stack: string | null; gates: { plan: boolean }; humanApproval: { selfApprovers: string[] }; risk: Risk; contracts: Contracts; models: { build: string; evaluate: string; design: string }; paths: Paths; sensors: RegistrySensor[]; knownRed: string[]; policy: Policy }
+export type Registry = { ratchets?: Record<string, number>; stack: string | null; gates: { plan: boolean }; humanApproval: { selfApprovers: string[]; trusted: string[] }; risk: Risk; contracts: Contracts; models: { build: string; evaluate: string; design: string }; paths: Paths; sensors: RegistrySensor[]; knownRed: string[]; policy: Policy }
 
 type Base = { cadence: Cadence; blocks: boolean; guide: string }
 const BUILTIN_DEFAULTS: Record<BuiltinId, Base> = {
@@ -52,8 +52,8 @@ export function defaultRegistry(): Registry {
   return {
     stack: null,
     gates: { plan: true },
-    humanApproval: { selfApprovers: [] },
-    risk: { enforce: false, alwaysHuman: [], maxLines: 400 },
+    humanApproval: { selfApprovers: [], trusted: [] },
+    risk: { enforce: false, alwaysHuman: [], maxLines: 400, window: 20, maxRevertRate: 0.1 },
     contracts: { files: [], covers: [], validate: '', run: '' },
     models: { build: 'sonnet', evaluate: 'opus', design: 'sonnet' },
     paths: { tests: [...GENERIC_TESTS], testSupport: [], fixtures: [], ignore: ['**/*.md', '**/*.lock'] },
@@ -137,10 +137,10 @@ function parseSections(value: Record<string, unknown>, r: Registry, errors: stri
   }
   if ('humanApproval' in value) {
     const h = value.humanApproval
-    if (!isObject(h)) errors.push('humanApproval must be { selfApprovers?: [GitHub logins] }')
+    if (!isObject(h)) errors.push('humanApproval must be { selfApprovers?: [GitHub logins], trusted?: [GitHub logins] }')
     else for (const [k, v] of Object.entries(h)) {
-      if (k === 'selfApprovers' && isStringList(v)) r.humanApproval.selfApprovers = [...new Set(v.map(x => x.trim().toLowerCase()).filter(Boolean))]
-      else errors.push(`humanApproval.${k} must be selfApprovers, a list of GitHub logins`)
+      if ((k === 'selfApprovers' || k === 'trusted') && isStringList(v)) r.humanApproval[k] = [...new Set(v.map(x => x.trim().toLowerCase()).filter(Boolean))]
+      else errors.push(`humanApproval.${k} must be selfApprovers or trusted, a list of GitHub logins`)
     }
   }
   if ('risk' in value) {
@@ -150,7 +150,9 @@ function parseSections(value: Record<string, unknown>, r: Registry, errors: stri
       if (k === 'enforce') { if (typeof v === 'boolean') r.risk.enforce = v; else errors.push('risk.enforce must be true or false') }
       else if (k === 'alwaysHuman') { if (isStringList(v)) r.risk.alwaysHuman = v; else errors.push('risk.alwaysHuman must be a list of globs') }
       else if (k === 'maxLines') { if (posInt(v)) r.risk.maxLines = v; else errors.push('risk.maxLines must be a positive integer') }
-      else errors.push(`risk.${k} is not enforce, alwaysHuman or maxLines`)
+      else if (k === 'window') { if (posInt(v)) r.risk.window = v; else errors.push('risk.window must be a positive integer') }
+      else if (k === 'maxRevertRate') { if (typeof v === 'number' && v >= 0 && v <= 1) r.risk.maxRevertRate = v; else errors.push('risk.maxRevertRate must be a number from 0 to 1') }
+      else errors.push(`risk.${k} is not enforce, alwaysHuman, maxLines, window or maxRevertRate`)
     }
   }
   if ('contracts' in value) {
@@ -307,6 +309,9 @@ export function weakensRegistry(beforeText: string, afterText: string): string[]
   if (b.risk.enforce && !a.risk.enforce) out.push('risk.enforce turned off')
   for (const g of b.risk.alwaysHuman) if (!a.risk.alwaysHuman.includes(g)) out.push(`risk.alwaysHuman lost ${g}`)
   if (a.risk.maxLines > b.risk.maxLines) out.push('risk.maxLines raised')
+  if (a.risk.window > b.risk.window) out.push('risk.window raised')
+  if (a.risk.maxRevertRate > b.risk.maxRevertRate) out.push('risk.maxRevertRate raised')
+  for (const u of a.humanApproval.trusted) if (!b.humanApproval.trusted.includes(u)) out.push(`humanApproval.trusted added ${u}`)
   return out
 }
 

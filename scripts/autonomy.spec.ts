@@ -109,3 +109,15 @@ test('proposeRung: a tagged finding in a review with no Findings heading still b
   ship(repo, 'c-three', { review: '- [severity: high] [category: security] a.ts:1: x (confidence 90)\n' })
   assert.equal(proposeRung(repo), null)
 })
+
+test('rung 3 is set only by a person, reads back, and is never proposed', () => {
+  const repo = makeRepo()
+  atRung(repo, 2)
+  ship(repo, 'a-one'); ship(repo, 'b-two'); ship(repo, 'c-three')
+  assert.equal(proposeRung(repo), null, 'the evidence loop stops at rung 2: rung 3 is a person\'s call')
+  assert.notEqual(sdlc(repo, ['autonomy', 'set', '3', '--why', 'x']).code, 0)
+  assert.equal(sdlc(repo, ['autonomy', 'set', '3', '--why', 'tier 0 is boring here'], human).code, 0)
+  assert.equal(readAutonomy(repo).rung, 3)
+  assert.match(sdlc(repo, ['autonomy']).stdout, /rung 3[\s\S]*tier-0 PR by a trusted author/)
+  assert.notEqual(sdlc(repo, ['autonomy', 'set', '4', '--why', 'x'], human).code, 0)
+})
