@@ -1,5 +1,5 @@
 // The journey view (dashboard spec 2026-10-18): where a repo is in the AI SDLC and the one command to run next, computed from
-// files only. The outer loop is a sprint (init, PRD, chart, test plan, approval, build); the inner loop is one change.
+// files only. The outer loop is a sprint (init, PRD, chart with its test plan, one approval, build); the inner loop is one change.
 // `show` says which loops a person should see: a greenfield repo has both, a brownfield repo is entered through the outer loop.
 import path from 'node:path'
 import { ROOT, SENSORS_PATH, SDLC, CHANGES, exists, readJson, skillRef } from './core.ts'
@@ -68,7 +68,8 @@ export function journey(i: { gates: { plan: boolean }; tree: string | null }): J
     { id: 'init', label: 'Init', command: k('init'), done: initialised },
     { id: 'prd', label: 'PRD', command: `add PRD → ${hint(n)}`, person: true, done: exists(prdPath(n)) || exists(path.join(ROOT, hint(n))), detail: `sprint ${n}` },
     { id: 'chart', label: 'Chart', command: `${k('chart')} ${n}`, done: slugs.length > 0, detail: slugs.length ? `${slugs.length} intents` : undefined },
-    { id: 'testplan', label: 'Test plan', command: `${k('testplan')} ${n}`, done: cases },
+    // The chart writes the test plan itself (its QA step): a separate step only when a chart ended without cases.md.
+    ...(slugs.length && !cases ? [{ id: 'testplan', label: 'Test plan', command: `${k('testplan')} ${n}`, done: false }] : []),
     { id: 'approve', label: 'Approve', command: `${k('approve')} chart-${n}`, done: approved, gate: true },
     { id: 'build', label: 'Build', command: `${k('start')} <intent>`, done: slugs.length > 0 && shipped === slugs.length, detail: slugs.length ? `${shipped}/${slugs.length} shipped` : undefined },
   ])

@@ -76,7 +76,8 @@ test('journey: PRD but no intents → chart', () => {
   assert.equal(j.next.by, 'model')
 })
 
-test('journey: intents but no test plan → testplan', () => {
+// 2026-10-27: the chart writes the test plan (its step 4), so the rail shows /rig:testplan only when a chart ended without cases.md.
+test('journey: intents but no test plan → testplan, the only time the rail shows it', () => {
   write(repo, '.rig/product/sprints/sprint-0/prd.md', PRD)
   write(repo, '.rig/product/sprints/sprint-0/intents/walking-skeleton.md', INTENT())
   const j = view()
@@ -92,7 +93,7 @@ test('journey: test plan present, chart unapproved → a person approves chart-0
   write(repo, '.rig/product/architecture.md', ARCH)
   write(repo, '.rig/product/sprints/sprint-0/implementation-plan.md', IMPL_OK(['walking-skeleton']))
   const j = view()
-  assert.match(states(j), /testplan:done approve:gate build:todo/)
+  assert.match(states(j), /chart:done approve:gate build:todo/)
   assert.match(j.next.command, /approve chart-0$/)
   assert.equal(j.next.by, 'person')
   assert.deepEqual(j.ready, [])
@@ -128,7 +129,7 @@ test('journey: an active change takes over the next command and fills the inner 
 
 test('journey: every step carries the full command to run, and the text form shows them', () => {
   const j = view()
-  assert.deepEqual(j.outer.map(x => x.command), ['/rig:init', 'add PRD → docs/prd/sprint-0/prd.md', '/rig:chart 0', '/rig:testplan 0', '/rig:approve chart-0', '/rig:start <intent>'])
+  assert.deepEqual(j.outer.map(x => x.command), ['/rig:init', 'add PRD → docs/prd/sprint-0/prd.md', '/rig:chart 0', '/rig:approve chart-0', '/rig:start <intent>'])
   assert.equal(sdlc(repo, ['new', 'add-login', '--type', 'feature']).code, 0)
   assert.deepEqual(view().inner?.steps.map(x => x.command), ['/rig:start add-login', '/rig:plan add-login', '/rig:approve add-login', '/rig:build add-login', '/rig:test add-login', '/rig:pr add-login', 'review and its fixes (the /rig:pr reviewer)', 'review and merge the PR'])
   assert.match(sdlc(repo, ['status', '--journey']).stdout, /✓ \/rig:init {2}● add PRD → docs\/prd\/sprint-0\/prd\.md {2}○ \/rig:chart 0/)
@@ -188,7 +189,7 @@ test('journey: a converted PRD with no intents yet → the chart runs on to deco
   write(repo, '.rig/product/sprints/sprint-0/source.md', '# Thing\n\nIt does b on a.\n')
   write(repo, '.rig/product/sprints/sprint-0/conversion.md', '- FR-0 source.md:3 "It does b on a."\n')
   const j = view()
-  assert.match(states(j), /^init:done prd:done chart:current testplan:todo approve:todo build:todo$/)
+  assert.match(states(j), /^init:done prd:done chart:current approve:todo build:todo$/)
   assert.equal(j.next.command, '/rig:chart 0')
   assert.equal(j.next.by, 'model')
   assert.ok(!j.outer.some(s => /prd-0/.test(s.command)), 'no approve prd-N step')
