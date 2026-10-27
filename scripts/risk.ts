@@ -4,7 +4,7 @@ import path from 'node:path'
 import { CHANGES, ROOT, SENSORS_JSON, read, readJson, out, fail, optString, checkSlug, defaultBase, frontmatter, type Args } from './core.ts'
 import { section, matchesAny, blastRadius, type FileDiff } from './model.ts'
 import { parseRegistry, type Registry } from './registry.ts'
-import { isProtected } from './sensors.ts'
+import { isProtected, PROTECTED } from './sensors.ts'
 import { parseAccess, type AccessRule } from './chartcheck.ts'
 import { branchDiff } from './diffs.ts'
 import { activeSlug } from './lifecycle.ts'
@@ -71,13 +71,21 @@ export function cmdRisk(args: Args): void {
 
 // The planning weight (proposal 2026-10-27 P3): light unless a tier-2 signal shows in the spec's blast radius or the person asked; nothing lowers a stored `weight: full`.
 export type Weight = { weight: 'light' | 'full'; reasons: string[] }
+const GLOB = /[*?[{]/
+const literal = (g: string): string => g.slice(0, GLOB.test(g) ? g.search(GLOB) : g.length)
+// A file entry is judged by its path; a directory, a glob or the whole repo ('') by overlap with each glob's literal part, so
+// `src/` holds `src/billing/**` and `**/migrations/**`. Case is folded: over-flagging only plans more carefully.
 export function predictWeight(i: { slug: string; radius: string[]; access: AccessRule[]; risk: Registry['risk']; asked: boolean }): Weight {
-  const globs = [...i.risk.alwaysHuman, '.github/workflows/**']
-  // an entry is a directory/prefix when no glob names it exactly but a glob's literal part (before its first `*`) sits under it
-  const holds = (e: string): boolean => { const dir = e.includes('*') ? e : e.replace(/\/?$/, '/'); return !e.includes('*') && globs.some(g => g.slice(0, g.indexOf('*') < 0 ? g.length : g.indexOf('*')).startsWith(dir)) }
+  const globs = [...PROTECTED, ...i.risk.alwaysHuman, '.github/workflows/**'].map(g => g.toLowerCase())
+  const hits = (raw: string): boolean => {
+    const e = raw.toLowerCase().replace(/^(\.\/|\/)+/, '').replace(/^\.$/, '')
+    if (e && !GLOB.test(e) && !e.endsWith('/') && /[^/]\.[^./]+$/.test(e)) return matchesAny(e, globs)
+    const at = GLOB.test(e) ? literal(e) : e && e.replace(/\/?$/, '/')
+    return matchesAny(e, globs) || globs.some(g => at.startsWith(literal(g)) || literal(g).startsWith(at))
+  }
   const reasons = [
     ...(i.asked ? ['the person asked for full'] : []),
-    ...i.radius.filter(e => isProtected(e) || matchesAny(e, globs) || holds(e)).map(e => `always-human path in the blast radius: ${e}`),
+    ...i.radius.filter(hits).map(e => `always-human path in the blast radius: ${e}`),
     ...i.access.filter(a => a.intent === i.slug).map(a => `access: ${a.intent} builds "${a.action}"`),
   ]
   return { weight: reasons.length ? 'full' : 'light', reasons: reasons.length ? reasons : ['no always-human path or access action in the blast radius'] }
@@ -88,6 +96,6 @@ export function cmdWeight(args: Args): void {
   if (!slug) return fail('usage: weight [<slug>] [--json] (no slug and no active change)')
   const radius = blastRadius(read(path.join(CHANGES, slug, 'spec.md'))) ?? []
   const asked = frontmatter(read(path.join(CHANGES, slug, 'intent.md'))).data.weight === 'full'
-  const w = predictWeight({ slug, radius: radius.map(e => e.replace(/^\.\//, '')), access: parseAccess(read(archPath)), risk: parseRegistry(read(path.join(ROOT, SENSORS_JSON))).registry.risk, asked })
+  const w = predictWeight({ slug, radius, access: parseAccess(read(archPath)), risk: parseRegistry(read(path.join(ROOT, SENSORS_JSON))).registry.risk, asked })
   out(args.opt.json ? JSON.stringify(w) : [`weight: ${w.weight}`, ...w.reasons.map(x => `- ${x}`)].join('\n'))
 }

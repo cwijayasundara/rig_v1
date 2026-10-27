@@ -47,3 +47,16 @@ test('--json prints { weight, reasons }; no slug and no active change fails with
   assert.notEqual(bare.code, 0)
   assert.match(bare.stderr, /usage: weight/)
 })
+
+test('glob entries, prefix-less globs, rooted entries, the whole repo and case all reach full (review fixes)', () => {
+  assert.match(weight(change(['.github/**'])).stdout, /^weight: full/)
+  assert.match(weight(change(['.claude/**'])).stdout, /^weight: full/)
+  assert.match(weight(change(['src/**'], { alwaysHuman: ['src/billing/**'] })).stdout, /^weight: full/)
+  assert.match(weight(change(['src/'], { alwaysHuman: ['**/migrations/**'] })).stdout, /^weight: full/)
+  assert.match(weight(change(['src/billing/'], { alwaysHuman: ['src/bill*/**'] })).stdout, /^weight: full/)
+  assert.match(weight(change(['/src/billing/'], { alwaysHuman: ['src/billing/**'] })).stdout, /^weight: full/)
+  assert.match(weight(change(['.'])).stdout, /^weight: full/)
+  assert.match(weight(change(['./'])).stdout, /^weight: full/)
+  assert.match(weight(change(['claude.md'])).stdout, /^weight: full/)
+  assert.match(weight(change(['src/cart/', 'src/cart.ts'], { alwaysHuman: ['src/bill*/**'] })).stdout, /^weight: light/)
+})
