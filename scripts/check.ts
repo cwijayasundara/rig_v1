@@ -311,20 +311,45 @@ function humanRowsAdded(base: string): string[] {
 }
 
 // A PR file cannot prove who wrote an approval row (the model commits as the developer): CI asks GitHub for an approving review of the head commit by someone other than the author.
-function independentApproval(): string | null {
+// A lead named in the base config's humanApproval.selfApprovers may instead pass with the lead override: this run's `ai-review` job succeeded and its `lead-override` job
+// (gated by a GitHub Environment whose required reviewer clicks in the web UI) succeeded, both on the head commit.
+function independentApproval(selfApprovers: string[], workflowEdited: boolean): string | null {
   const eventPath = process.env.GITHUB_EVENT_PATH
   if (!eventPath || !fs.existsSync(eventPath)) return 'cannot verify a reviewer outside a GitHub pull_request run'
   let pr: { number?: number; user?: { login?: string }; head?: { sha?: string } } = {}, repo = ''
   try { const ev = JSON.parse(fs.readFileSync(eventPath, 'utf8')) as { pull_request?: typeof pr; repository?: { full_name?: string } }; pr = ev.pull_request ?? {}; repo = ev.repository?.full_name ?? '' } catch { return 'the pull_request event payload is unreadable' }
   if (!pr.number || !repo || !pr.head?.sha) return 'the pull_request event has no number, repository or head commit'
+  const gh = (route: string): unknown[] => (JSON.parse(execFileSync(ghBin(), ['api', '--paginate', '--slurp', route], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 })) as unknown[]).flat()
   let reviews: { user?: { login?: string }; state?: string; commit_id?: string; author_association?: string }[]
-  try { reviews = (JSON.parse(execFileSync(ghBin(), ['api', '--paginate', '--slurp', `repos/${repo}/pulls/${pr.number}/reviews?per_page=100`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 })) as unknown[]).flat() as typeof reviews } catch { return 'could not read the PR reviews (the job needs pull-requests: read and GH_TOKEN)' }
+  try { reviews = gh(`repos/${repo}/pulls/${pr.number}/reviews?per_page=100`) as typeof reviews } catch { return 'could not read the PR reviews (the job needs pull-requests: read and GH_TOKEN)' }
   // a pull_request checkout is a merge commit (head is its 2nd parent); a workflow re-run reuses an old event
   if (![git(['rev-parse', 'HEAD']), git(['rev-parse', 'HEAD^2'])].includes(pr.head.sha)) return `the event's head ${pr.head.sha.slice(0, 7)} is not the checked-out commit (a re-run on a stale event?)`
   const latest = new Map<string, (typeof reviews)[number]>()
   for (const r of reviews) if (r.user?.login && r.state !== 'COMMENTED') latest.set(r.user.login, r)
   const ok = [...latest].some(([login, r]) => login !== pr.user?.login && r.state === 'APPROVED' && r.commit_id === pr.head?.sha && ['OWNER', 'MEMBER', 'COLLABORATOR'].includes(r.author_association ?? ''))
-  return ok ? null : `no approving review of ${pr.head.sha.slice(0, 7)} from someone other than ${pr.user?.login ?? 'the author'}`
+  if (ok) return null
+  const none = `no approving review of ${pr.head.sha.slice(0, 7)} from someone other than ${pr.user?.login ?? 'the author'}`
+  if (!pr.user?.login || !selfApprovers.includes(pr.user.login.toLowerCase())) return none
+  if (workflowEdited) return `${none}; this PR edits .github/workflows, which the lead override will not judge (the workflow is read from the PR)`
+  const refused = leadOverride(gh, repo, pr.head.sha, selfApprovers)
+  return refused === null ? null : `${none}; ${refused}`
+}
+
+// null when this workflow run's ai-review and lead-override jobs both succeeded on the head commit; otherwise why the override does not apply.
+function leadOverride(gh: (route: string) => unknown[], repo: string, sha: string, selfApprovers: string[]): string | null {
+  const run = process.env.GITHUB_RUN_ID
+  if (!run) return 'the lead override needs GITHUB_RUN_ID (a rig-check workflow run)'
+  let jobs: { name?: string; conclusion?: string; head_sha?: string }[]
+  try { jobs = gh(`repos/${repo}/actions/runs/${run}/jobs?per_page=100`).flatMap(p => (p as { jobs?: typeof jobs }).jobs ?? []) } catch { return 'could not read this run\'s jobs (the job needs actions: read and GH_TOKEN)' }
+  const passed = (name: string): boolean => jobs.some(j => j.name === name && j.conclusion === 'success' && j.head_sha === sha)
+  const missing = ['ai-review', 'lead-override'].filter(n => !passed(n))
+  if (!missing.length) {
+    // the click itself: GitHub records who approved which Environment for this run; an unprotected Environment has no such record
+    let approvals: { state?: string; user?: { login?: string }; environments?: { name?: string }[] }[]
+    try { approvals = gh(`repos/${repo}/actions/runs/${run}/approvals`) as typeof approvals } catch { return 'could not read this run\'s environment approvals (the job needs actions: read and GH_TOKEN)' }
+    if (!approvals.some(a => a.state === 'approved' && selfApprovers.includes((a.user?.login ?? '').toLowerCase()) && (a.environments ?? []).some(e => e.name === 'rig-lead-override'))) return 'the rig-lead-override Environment has no approval by a listed self-approver (give it a required reviewer)'
+  }
+  return missing.length ? `the lead override needs the "${missing.join('" and "')}" job to succeed on ${sha.slice(0, 7)} (label the PR rig-lead-override, then approve the rig-lead-override environment)` : null
 }
 
 function report(point: string, result: CheckResult, count: number, json: boolean, humanRows: string[] = [], inert: Inert[] = []): void {
@@ -378,7 +403,7 @@ export function cmdCheck(args: Args): void {
   const budgetMs = Number(optString(args, 'budget-ms') ?? BUDGET_MS[at])
   if (!Number.isFinite(budgetMs) || budgetMs <= 0) fail('--budget-ms must be a positive number')
   const humanRows = at === 'ci' && base ? humanRowsAdded(base) : []
-  const why = humanRows.length ? independentApproval() : null // before runChecks: the PR's test commands could rewrite the event file or shadow gh
+  const why = humanRows.length ? independentApproval(config.humanApproval.selfApprovers, Boolean((git(['diff', '--name-only', base ?? 'HEAD', 'HEAD', '--', '.github/workflows']) ?? '').trim())) : null // before runChecks: the PR's test commands could rewrite the event file or shadow gh
   const result = runChecks({ point: at, diffs, config, rules, slugs, commands: replaying ? 'none' : at === 'stop' ? 'fast' : 'full', budgetMs, before, after, base, ratchet: !optString(args, 'config-from') && at !== 'commit', ratchetWrite: optString(args, 'config-from') ? null : at === 'commit' ? 'stage' : 'write', contracts: at === 'commit' ? !replaying : undefined, gates: config.gates })
   // At commit, like at push, a sensor out of time warns: CI runs it again, and a hanging tool must not hold git commit hostage.
   if (at === 'commit') for (const f of result.findings) if (f.outOfTime) f.severity = 'warn'

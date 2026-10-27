@@ -80,7 +80,7 @@ The step-by-step guides are under [User guide](#user-guide).
 
 `/rig:autonomy set <0|1|2>` and `queue defer` are person-only gates too.
 
-A model never approves. Every gate is a command the person types (`SDLC_HUMAN` is set only from the person's own prompt). CI treats an `approval.json` that a PR adds or edits as a human row, which needs GitHub approval from someone other than the PR's author.
+A model never approves. Every gate is a command the person types (`SDLC_HUMAN` is set only from the person's own prompt). CI treats an `approval.json` that a PR adds or edits as a human row, which needs GitHub approval from someone other than the PR's author. A lead who works alone on a large refactor can opt in to the lead override instead: list their login under `humanApproval.selfApprovers` in `.rig/sensors.json`, label the PR `rig-lead-override`, and CI runs an AI review of the diff and then waits for the lead's click on the `rig-lead-override` GitHub Environment (see SECURITY.md).
 
 ## Where everything lives
 
@@ -409,7 +409,7 @@ Separate changes run side by side, each in its own checkout or worktree on its o
 ## Team rollout
 
 1. Onboard as above and commit; teammates need nothing else. Make `rig-check` a required check. Add CODEOWNERS entries for `.rig/**` and the workflows. Add `CLAUDE_CODE_OAUTH_TOKEN` (`claude setup-token`) or `ANTHROPIC_API_KEY` for CI review.
-2. Read [SECURITY.md](SECURITY.md) before rollout. The hooks are guardrails; the boundary is CI plus branch protection, code-owner review and managed settings. A PR that adds or edits an `approval.json`, or adds waiver rows, fails `rig-check` until someone other than its author approves the head commit.
+2. Read [SECURITY.md](SECURITY.md) before rollout. The hooks are guardrails; the boundary is CI plus branch protection, code-owner review and managed settings. A PR that adds or edits an `approval.json`, or adds waiver rows, fails `rig-check` until someone other than its author approves the head commit, or a listed self-approver passes the lead override (AI review plus an Environment approval).
 3. For the platform team, `templates/managed-settings.json` and `templates/production-gate.sh` hold the playbook's managed settings and the production gate as a managed-only hook.
 
 **The Opus advisor is off.** In the v0.3 trials, an Opus advisor on the main thread was the largest single cost, about a third of each run. The settings template turns it off with `"env": { "CLAUDE_CODE_DISABLE_ADVISOR_TOOL": "true" }`. Remove that line to opt back in. The template also sets `ENABLE_STOP_REVIEW=0`, so the security-guidance plugin does not run an Opus review on every Stop. The rule is one review per change, at `/rig:pr`.
