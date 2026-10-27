@@ -13,13 +13,14 @@ name: rig-check
 on:
   pull_request:
     types: [opened, synchronize, reopened, labeled]
+  merge_group: # the merge queue re-runs the sensors on main with the change applied; approvals were checked on the PR
 permissions:
   contents: read
   pull-requests: read # lets CI verify an independent approving review when a PR adds approval or waiver rows
   actions: read # lets CI read this run's ai-review and lead-override jobs
 jobs:
   ai-review:
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -88,9 +89,9 @@ jobs:
           node-version: '22.18'
       - name: Load the checker and config from the base branch
         env:
-          BASE: ${{ github.base_ref }}
+          BASE: ${{ github.base_ref || github.event.merge_group.base_ref }}
         run: |
-          base="origin/$BASE"
+          base="origin/${BASE#refs/heads/}"
           mkdir -p "$RUNNER_TEMP/sdlc"
           if git cat-file -e "$base:.rig/bin/sdlc.ts" 2>/dev/null; then
             git ls-tree --name-only "$base" .rig/bin/ | while IFS= read -r f; do git show "$base:$f" > "$RUNNER_TEMP/sdlc/$(basename "$f")"; done
@@ -112,9 +113,9 @@ jobs:
       - name: sdlc check
         env:
           CLAUDE_PROJECT_DIR: ${{ github.workspace }}
-          BASE: ${{ github.base_ref }}
+          BASE: ${{ github.base_ref || github.event.merge_group.base_ref }}
           GH_TOKEN: ${{ github.token }}
-        run: node --disable-warning=ExperimentalWarning "$RUNNER_TEMP/sdlc/sdlc.ts" check --at ci --base "origin/$BASE" --config-from "origin/$BASE"
+        run: node --disable-warning=ExperimentalWarning "$RUNNER_TEMP/sdlc/sdlc.ts" check --at ci --base "origin/${BASE#refs/heads/}" --config-from "origin/${BASE#refs/heads/}"
       - name: Wiki staleness (warning only)
         continue-on-error: true
         env:

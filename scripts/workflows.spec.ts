@@ -83,3 +83,12 @@ test('both CI reviewers are told what Pre-existing is and that it never changes 
   assert.match(t, /no verdict line/, 'an empty or failed review run blocks with a clear reason')
   assert.doesNotMatch(t, /"verdict: pass" \]/, 'the verdict word alone never fails the gate: only a critical or high finding does')
 })
+
+test('rig-check runs in the merge queue: merge_group triggers it, ai-review stays a PR job, and the base comes from the queue', () => {
+  const w = parse(read('templates/rig-check.yml')) as Workflow
+  assert.ok(Object.keys(w.on as object).includes('merge_group'))
+  assert.match((w.jobs as Record<string, { if?: string }>)['ai-review']!.if ?? '', /github\.event_name == 'pull_request'/)
+  const t = read('templates/rig-check.yml')
+  assert.equal((t.match(/BASE: \$\{\{ github\.base_ref \|\| github\.event\.merge_group\.base_ref \}\}/g) ?? []).length, 2)
+  assert.equal((t.match(/origin\/\$\{BASE#refs\/heads\/\}/g) ?? []).length, 3)
+})

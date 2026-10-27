@@ -406,10 +406,12 @@ export function cmdCheck(args: Args): void {
   const slugs = slugArg ? [slugArg] : at === 'ci' ? slugsIn(diffs) : [activeSlug()].filter((s): s is string => Boolean(s))
   const budgetMs = Number(optString(args, 'budget-ms') ?? BUDGET_MS[at])
   if (!Number.isFinite(budgetMs) || budgetMs <= 0) fail('--budget-ms must be a positive number')
-  const humanRows = at === 'ci' && base ? humanRowsAdded(base) : []
+  // A merge queue run re-checks the sensors on main with the change applied; the PR's approvals were judged on the PR itself.
+  const queued = process.env.GITHUB_EVENT_NAME === 'merge_group'
+  const humanRows = at === 'ci' && base && !queued ? humanRowsAdded(base) : []
   // The tier comes from the base config; the Access rows are the base's and the head's together, so a PR cannot drop a row to lower it.
   const risk = at === 'ci' && base ? riskOf(diffs, slugs, config, [...parseAccess(showAt(base, ARCH_REL) ?? ''), ...parseAccess(read(path.join(ROOT, ARCH_REL)))], true) : null
-  const why = humanRows.length || (risk && config.risk.enforce) ? independentApproval(config.humanApproval.selfApprovers, Boolean((git(['diff', '--name-only', base ?? 'HEAD', 'HEAD', '--', '.github/workflows']) ?? '').trim())) : null // before runChecks: the PR's test commands could rewrite the event file or shadow gh
+  const why = humanRows.length || (risk && config.risk.enforce && !queued) ? independentApproval(config.humanApproval.selfApprovers, Boolean((git(['diff', '--name-only', base ?? 'HEAD', 'HEAD', '--', '.github/workflows']) ?? '').trim())) : null // before runChecks: the PR's test commands could rewrite the event file or shadow gh
   const result = runChecks({ point: at, diffs, config, rules, slugs, commands: replaying ? 'none' : at === 'stop' ? 'fast' : 'full', budgetMs, before, after, base, ratchet: !optString(args, 'config-from') && at !== 'commit', ratchetWrite: optString(args, 'config-from') ? null : at === 'commit' ? 'stage' : 'write', contracts: at === 'commit' ? !replaying : undefined, gates: config.gates })
   // At commit, like at push, a sensor out of time warns: CI runs it again, and a hanging tool must not hold git commit hostage.
   if (at === 'commit') for (const f of result.findings) if (f.outOfTime) f.severity = 'warn'
