@@ -4,7 +4,8 @@
 # The checker and its config come from the BASE branch, so a PR cannot loosen the rules it is judged by.
 # ai-review runs on every PR from this repository (fork PRs have no secrets, so it is skipped there and a person reviews): a clean-context code review and a
 # security review, each briefed from the BASE branch, failing on a critical or high item under ## Findings (## Pre-existing never fails it). Make "ai-review"
-# a required status check too. Two reviewers for risky paths is a branch-protection or ruleset setting (with CODEOWNERS), never this workflow.
+# a required status check too. rig-check prints each PR's risk tier; with risk.enforce in the base .rig/sensors.json it requires one approval from someone
+# other than the author on every PR. Two reviewers for tier 2 or risky paths is a branch-protection or ruleset setting (with CODEOWNERS), never this workflow.
 # Lead override (off unless .rig/sensors.json on the base branch lists you under humanApproval.selfApprovers): label the PR rig-lead-override. The
 # lead-override job then waits for the required reviewer of the rig-lead-override Environment
 # (Settings > Environments: add the lead as required reviewer and leave "prevent self-review" off; rig-check reads GitHub's record of that approval, so an Environment without a reviewer never passes). rig-check accepts the PR's approval rows only when both jobs succeeded on the head commit.

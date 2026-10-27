@@ -38,6 +38,7 @@ import { cmdSlice } from './slice.ts'
 import { cmdMaintain } from './maintain.ts'
 import { cmdReadiness } from './readiness.ts'
 import { cmdAutonomy, initAutonomy } from './autonomy.ts'
+import { cmdRisk } from './risk.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'
 import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, waiveChartFinding, changeRequirements, PRD_RE, isConverted, prdApprovalState, prdApprovalRefusal, writePrdApproval } from './chart.ts'
 import { journey, journeyText } from './journey.ts'
@@ -412,6 +413,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   maintain: cmdMaintain,
   readiness: cmdReadiness,
   autonomy: cmdAutonomy,
+  risk: cmdRisk,
 }
 
 const [command = '', ...rest] = process.argv.slice(2)

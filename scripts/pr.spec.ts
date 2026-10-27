@@ -140,6 +140,8 @@ test('the PR body is built from the change files, kept apart from the pr.md stat
   assert.match(body, /## Why the change/)
   assert.match(body, /- B1: the change works/)
   assert.match(body, /## Change outline\n\nsrc only/)
+  assert.match(body, /## Risk\n\nTier [0-2]\n\n[\s\S]*- no review\.md: the change was not reviewed/, 'S pr computes the tier from the files it ships since the verified base')
+  assert.doesNotMatch(body, /always-human path: \.rig\/(?!sensors\.json|guides\/)/, 'local-only .rig/ files are not in the PR, so they never set its tier')
   assert.doesNotMatch(body, /^state:/m)
   assert.match(gitIn(repo, 'show', '--name-only', '--format=', 'HEAD'), /\.rig\/changes\/demo\/pr-body\.md/)
 })

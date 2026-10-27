@@ -668,3 +668,48 @@ test('an old commands waiver no longer silences a command sensor', () => {
   assert.equal(r.code, 1)
   assert.match(r.stdout, /\[unit\]/)
 })
+
+// Risk tiers in CI (proposal 2026-10-27 B1, B2): the base config sets the knobs, the PR's diff and change record set the signals.
+const riskRun = (o: { enforce?: boolean; reviews?: unknown[]; files?: Record<string, string>; baseFiles?: Record<string, string>; remove?: string[] } = {}) => {
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-gh-'))
+  gitIn(repo, 'checkout', '-q', 'main')
+  write(repo, '.rig/sensors.json', JSON.stringify({ ...JSON.parse(fromOld({})), risk: { enforce: Boolean(o.enforce) } }) + '\n')
+  for (const [f, t] of Object.entries(o.baseFiles ?? {})) write(repo, f, t)
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-q', '--allow-empty', '-m', `risk base ${++prN}`)
+  gitIn(repo, 'checkout', '-qb', `pr${++prN}`)
+  sdlc(repo, ['new', 'tiny', '--type', 'chore'])
+  for (const [f, t] of Object.entries(o.files ?? {})) write(repo, f, t)
+  for (const f of o.remove ?? []) fs.rmSync(path.join(repo, f), { force: true })
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', 'pr')
+  const sha = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).stdout.trim()
+  const reviews = (o.reviews ?? []).map(r => ({ ...(r as object), commit_id: sha }))
+  fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\necho '${JSON.stringify([reviews])}'\n`, { mode: 0o755 })
+  const ev = path.join(bin, 'event.json')
+  fs.writeFileSync(ev, JSON.stringify({ repository: { full_name: 'o/r' }, pull_request: { number: 5, user: { login: 'dev' }, head: { sha } } }))
+  return sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main'], { env: { PATH: `${bin}:${process.env.PATH}`, GITHUB_EVENT_PATH: ev } })
+}
+const ACCESS = '# Architecture\n\n## Access\n\n| Action | Allowed | Interfaces | Intent |\n|---|---|---|---|\n| refund an order | admin | api | tiny |\n'
+
+test('CI reports the risk tier; a workflow edit is tier 2 with the two-reviewer suggestion, and no approval is required while risk.enforce is off', { skip: !posix }, () => {
+  const r = riskRun({ files: { '.github/workflows/deploy.yml': 'name: deploy\n' } })
+  assert.match(r.stdout, /risk: tier 2/)
+  assert.match(r.stdout, /always-human path: \.github\/workflows\/deploy\.yml/)
+  assert.match(r.stdout, /two reviewers, one a code owner, recommended/)
+  assert.doesNotMatch(r.stdout, /human-approval/)
+})
+
+test('a PR that deletes the base Access row for its own change is still tier 2', { skip: !posix }, () => {
+  const r = riskRun({ baseFiles: { '.rig/product/architecture.md': ACCESS }, files: { '.rig/product/architecture.md': '# Architecture\n' } })
+  assert.match(r.stdout, /risk: tier 2/)
+  assert.match(r.stdout, /access: tiny builds "refund an order"/)
+})
+
+test('with risk.enforce on the base, a PR needs an approval of its head commit from someone else, and the block names the tier', { skip: !posix }, () => {
+  const none = riskRun({ enforce: true })
+  assert.match(none.stdout, /\[human-approval\]\n\s*✗ risk\.enforce: this PR is tier 1 and needs a person[^\n]*→ someone other than the PR author approves the current head commit/)
+  assert.notEqual(none.code, 0)
+  const approved = riskRun({ enforce: true, reviews: [{ user: { login: 'lead' }, state: 'APPROVED', author_association: 'MEMBER' }] })
+  assert.doesNotMatch(approved.stdout, /human-approval/)
+})

@@ -15,9 +15,11 @@ export const ALWAYS_ON: BuiltinId[] = ['secrets', 'harness-tamper']
 
 export type RegistrySensor = { id: string; cmd?: string; builtin?: true; cadence: Cadence; blocks: boolean; guide: string; timeoutMs?: number; enabled: boolean; options?: Record<string, unknown>; ratchet?: 'down' | 'up' }
 export type Paths = { tests: string[]; testSupport: string[]; fixtures: string[]; ignore: string[] }
+// The risk tier's knobs (proposal 2026-10-27 B1, B2): paths that always want a person, the diff size above which a person looks, and whether rig-check requires the approval.
+export type Risk = { enforce: boolean; alwaysHuman: string[]; maxLines: number }
 export type Contracts = { files: string[]; covers: string[]; validate: string; run: string }
 type Policy = Record<string, Mode> & { default: Mode }
-export type Registry = { ratchets?: Record<string, number>; stack: string | null; gates: { plan: boolean }; humanApproval: { selfApprovers: string[] }; contracts: Contracts; models: { build: string; evaluate: string; design: string }; paths: Paths; sensors: RegistrySensor[]; knownRed: string[]; policy: Policy }
+export type Registry = { ratchets?: Record<string, number>; stack: string | null; gates: { plan: boolean }; humanApproval: { selfApprovers: string[] }; risk: Risk; contracts: Contracts; models: { build: string; evaluate: string; design: string }; paths: Paths; sensors: RegistrySensor[]; knownRed: string[]; policy: Policy }
 
 type Base = { cadence: Cadence; blocks: boolean; guide: string }
 const BUILTIN_DEFAULTS: Record<BuiltinId, Base> = {
@@ -35,7 +37,7 @@ const BUILTIN_DEFAULTS: Record<BuiltinId, Base> = {
 const GENERIC_TESTS = ['**/test/**', '**/tests/**', '**/__tests__/**']
 const DEFAULT_POLICY: Policy = { haiku: 'continuous', sonnet: 'continuous', opus: 'final', default: 'continuous' }
 const SENSOR_KEYS = ['id', 'cmd', 'builtin', 'cadence', 'blocks', 'count', 'guide', 'timeoutMs', 'enabled', 'options', 'ratchet']
-const TOP_KEYS = ['stack', 'gates', 'humanApproval', 'contracts', 'models', 'paths', 'sensors', 'policy', 'knownRed']
+const TOP_KEYS = ['stack', 'gates', 'humanApproval', 'risk', 'contracts', 'models', 'paths', 'sensors', 'policy', 'knownRed']
 const KEBAB = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
 const isBuiltinId = (v: string): v is BuiltinId => (BUILTIN_IDS as readonly string[]).includes(v)
@@ -51,6 +53,7 @@ export function defaultRegistry(): Registry {
     stack: null,
     gates: { plan: true },
     humanApproval: { selfApprovers: [] },
+    risk: { enforce: false, alwaysHuman: [], maxLines: 400 },
     contracts: { files: [], covers: [], validate: '', run: '' },
     models: { build: 'sonnet', evaluate: 'opus', design: 'sonnet' },
     paths: { tests: [...GENERIC_TESTS], testSupport: [], fixtures: [], ignore: ['**/*.md', '**/*.lock'] },
@@ -138,6 +141,16 @@ function parseSections(value: Record<string, unknown>, r: Registry, errors: stri
     else for (const [k, v] of Object.entries(h)) {
       if (k === 'selfApprovers' && isStringList(v)) r.humanApproval.selfApprovers = [...new Set(v.map(x => x.trim().toLowerCase()).filter(Boolean))]
       else errors.push(`humanApproval.${k} must be selfApprovers, a list of GitHub logins`)
+    }
+  }
+  if ('risk' in value) {
+    const k0 = value.risk
+    if (!isObject(k0)) errors.push('risk must be { enforce?: boolean, alwaysHuman?: [globs], maxLines?: positive integer }')
+    else for (const [k, v] of Object.entries(k0)) {
+      if (k === 'enforce') { if (typeof v === 'boolean') r.risk.enforce = v; else errors.push('risk.enforce must be true or false') }
+      else if (k === 'alwaysHuman') { if (isStringList(v)) r.risk.alwaysHuman = v; else errors.push('risk.alwaysHuman must be a list of globs') }
+      else if (k === 'maxLines') { if (posInt(v)) r.risk.maxLines = v; else errors.push('risk.maxLines must be a positive integer') }
+      else errors.push(`risk.${k} is not enforce, alwaysHuman or maxLines`)
     }
   }
   if ('contracts' in value) {
@@ -291,6 +304,9 @@ export function weakensRegistry(beforeText: string, afterText: string): string[]
   for (const k of ['validate', 'run'] as const) if (b.contracts[k] && a.contracts[k] !== b.contracts[k]) out.push(`contracts.${k} changed`)
   if (b.gates.plan && !a.gates.plan) out.push('gates.plan turned off')
   for (const u of a.humanApproval.selfApprovers) if (!b.humanApproval.selfApprovers.includes(u)) out.push(`humanApproval.selfApprovers added ${u}`)
+  if (b.risk.enforce && !a.risk.enforce) out.push('risk.enforce turned off')
+  for (const g of b.risk.alwaysHuman) if (!a.risk.alwaysHuman.includes(g)) out.push(`risk.alwaysHuman lost ${g}`)
+  if (a.risk.maxLines > b.risk.maxLines) out.push('risk.maxLines raised')
   return out
 }
 

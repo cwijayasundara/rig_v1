@@ -19,6 +19,9 @@ import { RATCHET_FILE, lastNumber, loadRatchets, judge, tighten, type RatchetWri
 import { isRegistryShape, parseRegistry, defaultRegistry, updateKnownRed, activeSensors, commandFor, builtinOptions, inertSensors, type Registry, type RegistrySensor, type Cadence, type Inert } from './registry.ts'
 import { frozenFindings, runContracts } from './contracts.ts'
 import { syncFindings } from './sync.ts'
+import { riskOf, formatRisk, type Risk } from './risk.ts'
+import { parseAccess } from './chartcheck.ts'
+import { ARCH_REL } from './product.ts'
 
 type Point = 'stop' | 'commit' | 'ship' | 'ci'
 type CheckInput = {
@@ -352,18 +355,19 @@ function leadOverride(gh: (route: string) => unknown[], repo: string, sha: strin
   return missing.length ? `the lead override needs the "${missing.join('" and "')}" job to succeed on ${sha.slice(0, 7)} (label the PR rig-lead-override, then approve the rig-lead-override environment)` : null
 }
 
-function report(point: string, result: CheckResult, count: number, json: boolean, humanRows: string[] = [], inert: Inert[] = []): void {
-  if (json) return out(JSON.stringify({ ...result, humanRows, inert }))
+function report(point: string, result: CheckResult, count: number, json: boolean, humanRows: string[] = [], inert: Inert[] = [], risk: Risk | null = null): void {
+  if (json) return out(JSON.stringify({ ...result, humanRows, inert, risk }))
   // A commit hook and the CI log are read by a person, so they list each warning with its fix, not just a count.
   const text = [formatFindings(result.findings), ...(point === 'commit' || point === 'ci' ? warnLines(result.findings) : [])].filter(Boolean).join('\n')
   const idle = inert.length && point !== 'stop' ? `not configured (passing checks nothing): ${inert.map(i => `${i.id} (${i.reason})`).join('; ')}` : ''
   const human = humanRows.length ? `needs human review: ${humanRows.length} waiver/approval row(s) added by this PR\n${humanRows.map(r => `  - ${r}`).join('\n')}` : ''
-  out([text || `sdlc check ${point}: pass (${count} file(s) checked${result.waived ? `, ${result.waived} waived` : ''})`, human].filter(Boolean).join('\n'))
+  const tier = risk ? `risk: ${formatRisk(risk).replace(/^tier: /, 'tier ')}` : ''
+  out([text || `sdlc check ${point}: pass (${count} file(s) checked${result.waived ? `, ${result.waived} waived` : ''})`, human, tier].filter(Boolean).join('\n'))
   if (idle) out(idle)
   const summary = process.env.GITHUB_STEP_SUMMARY
   // Backticks in a file name or message must not close the summary's code fence.
   const fenced = (t: string): string => '```\n' + t.replace(/`/g, "'") + '\n```'
-  if (summary) fs.appendFileSync(summary, `## sdlc check (${point})\n\n${text ? fenced(text) : 'pass'}\n${human ? '\n' + fenced(human) + '\n' : ''}`)
+  if (summary) fs.appendFileSync(summary, `## sdlc check (${point})\n\n${text ? fenced(text) : 'pass'}\n${human ? '\n' + fenced(human) + '\n' : ''}${tier ? '\n' + fenced(tier) + '\n' : ''}`)
 }
 
 export function cmdCheck(args: Args): void {
@@ -403,16 +407,18 @@ export function cmdCheck(args: Args): void {
   const budgetMs = Number(optString(args, 'budget-ms') ?? BUDGET_MS[at])
   if (!Number.isFinite(budgetMs) || budgetMs <= 0) fail('--budget-ms must be a positive number')
   const humanRows = at === 'ci' && base ? humanRowsAdded(base) : []
-  const why = humanRows.length ? independentApproval(config.humanApproval.selfApprovers, Boolean((git(['diff', '--name-only', base ?? 'HEAD', 'HEAD', '--', '.github/workflows']) ?? '').trim())) : null // before runChecks: the PR's test commands could rewrite the event file or shadow gh
+  // The tier comes from the base config; the Access rows are the base's and the head's together, so a PR cannot drop a row to lower it.
+  const risk = at === 'ci' && base ? riskOf(diffs, slugs, config, [...parseAccess(showAt(base, ARCH_REL) ?? ''), ...parseAccess(read(path.join(ROOT, ARCH_REL)))], true) : null
+  const why = humanRows.length || (risk && config.risk.enforce) ? independentApproval(config.humanApproval.selfApprovers, Boolean((git(['diff', '--name-only', base ?? 'HEAD', 'HEAD', '--', '.github/workflows']) ?? '').trim())) : null // before runChecks: the PR's test commands could rewrite the event file or shadow gh
   const result = runChecks({ point: at, diffs, config, rules, slugs, commands: replaying ? 'none' : at === 'stop' ? 'fast' : 'full', budgetMs, before, after, base, ratchet: !optString(args, 'config-from') && at !== 'commit', ratchetWrite: optString(args, 'config-from') ? null : at === 'commit' ? 'stage' : 'write', contracts: at === 'commit' ? !replaying : undefined, gates: config.gates })
   // At commit, like at push, a sensor out of time warns: CI runs it again, and a hanging tool must not hold git commit hostage.
   if (at === 'commit') for (const f of result.findings) if (f.outOfTime) f.severity = 'warn'
   result.blocks = result.findings.filter(f => f.severity === 'block')
   const configFindings: Finding[] = errors.map(e => ({ sensor: 'config', severity: 'block', file: SENSORS_JSON, message: e, fix: 'fix the file; see the sdlc README for its format' }))
-  const humanFindings: Finding[] = why ? [{ sensor: 'human-approval', severity: 'block', message: `this PR adds ${humanRows.length} approval/waiver row(s): ${why}`, fix: 'a code owner other than the PR author reviews the rows below and approves the current head commit; pushing again needs a fresh approval' }] : []
+  const humanFindings: Finding[] = why ? [{ sensor: 'human-approval', severity: 'block', message: humanRows.length ? `this PR adds ${humanRows.length} approval/waiver row(s): ${why}` : `risk.enforce: this PR is tier ${risk?.tier} and needs a person: ${why}`, fix: humanRows.length ? 'a code owner other than the PR author reviews the rows below and approves the current head commit; pushing again needs a fresh approval' : 'someone other than the PR author approves the current head commit; pushing again needs a fresh approval' }] : []
   const syncBlocks = (at === 'commit' || at === 'ci') && declaresRegistry() ? syncFindings(config, [], 'block') : [] // config errors already block above
   const all = { ...result, findings: [...humanFindings, ...configFindings, ...syncBlocks, ...result.findings], blocks: [...humanFindings, ...configFindings, ...syncBlocks.filter(f => f.severity === 'block'), ...result.blocks] }
-  report(at, all, diffs.length, Boolean(args.opt.json), humanRows, inertSensors(config, rules.length, draftApps()))
+  report(at, all, diffs.length, Boolean(args.opt.json), humanRows, inertSensors(config, rules.length, draftApps()), risk)
   process.exitCode = all.blocks.length ? 1 : 0
 }
 
