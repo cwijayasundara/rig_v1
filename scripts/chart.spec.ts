@@ -918,3 +918,27 @@ test('approve chart-N leaves sensors.json alone when no intent declares a contra
   assert.equal(sdlc(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN).code, 0)
   assert.equal(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8'), before)
 })
+
+test('approve chart-N registers what the chart check accepts: ./ paths normalised, unbulleted lines, and keeps the .rig/contracts default for a validate command', () => {
+  cleanChart()
+  write(repo, 'api/x.yaml', 'a: 1\n')
+  write(repo, 'api/ex.json', '{}\n')
+  write(repo, `${P}/sprints/sprint-1/intents/alpha.md`, intent(1, { iface: 'Contract: ./api/x.yaml (v2)\nExample: api/ex.json' }))
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], contracts: { validate: 'true' } }))
+  const ok = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
+  assert.equal(ok.code, 0, ok.stderr)
+  const c = (JSON.parse(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8')) as { contracts: { files: string[]; validate: string } }).contracts
+  assert.deepEqual(c.files, ['.rig/contracts/**', 'api/x.yaml', 'api/ex.json'])
+  assert.equal(c.validate, 'true')
+})
+
+test('approve chart-N leaves an unparseable sensors.json alone and says so; a sensors.json with edits of its own is not committed with the approval', () => {
+  cleanChart()
+  write(repo, 'api/x.yaml', 'a: 1\n')
+  write(repo, 'api/ex.json', '{}\n')
+  write(repo, `${P}/sprints/sprint-1/intents/alpha.md`, intent(1, { iface: '- Contract: api/x.yaml\n- Example: api/ex.json' }))
+  write(repo, '.rig/sensors.json', '{ "sensors": [], }')
+  const bad = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
+  assert.match(bad.stdout, /not registered \(sensors\.json is not valid JSON\)/)
+  assert.equal(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8'), '{ "sensors": [], }')
+})
