@@ -10,6 +10,10 @@ import { ghBin } from './model.ts'
 import { treeStamp } from './stamp.ts'
 import { activeSlug, setActive, approvalState, verifyFresh } from './lifecycle.ts'
 import { prBody } from './prbody.ts'
+import { riskOf } from './risk.ts'
+import { parseAccess } from './chartcheck.ts'
+import { branchDiff } from './diffs.ts'
+import { archPath } from './product.ts'
 
 const ghLast = (text: string): string => text.trim().split('\n').at(-1) ?? ''
 const URL_RE = /^https?:\/\//
@@ -32,8 +36,11 @@ const SHARED_DIRS = ['.rig/guides/', '.rig/wiki/']
 const SHARED_RE = /^\.rig\/product\/sprints\/sprint-\d+\/approval\.json$/
 function changeFiles(slug: string): string[] {
   const dirty = [...(git(['diff', '--name-only', 'HEAD']) ?? '').split('\n'), ...(git(['ls-files', '--others', '--exclude-standard']) ?? '').split('\n')].filter(Boolean)
-  return [...new Set(dirty)].filter(f => !f.startsWith('.rig/') || f.startsWith(`.rig/changes/${slug}/`) || SHARED_DIRS.some(d => f.startsWith(d)) || SHARED_RE.test(f) || SHARED.includes(f))
+  return [...new Set(dirty)].filter(ships(slug))
 }
+
+// What a PR for this change carries under .rig/: its own record and the shared files; the rest of .rig/ stays local.
+const ships = (slug: string) => (f: string): boolean => !f.startsWith('.rig/') || f.startsWith(`.rig/changes/${slug}/`) || SHARED_DIRS.some(d => f.startsWith(d)) || SHARED_RE.test(f) || SHARED.includes(f)
 
 export function cmdPr(args: Args): void {
   const given = args.pos[0]
@@ -65,9 +72,9 @@ export function cmdPr(args: Args): void {
     fs.writeFileSync(path.join(CHANGES, slug, 'pr.md'), `---\nstate: ${remote ? 'open' : 'local-only'}\nbranch: ${branch}\n---\n${title}\n`)
     ensureGitignore()
     const c = (name: string): string => read(path.join(CHANGES, slug, name))
-    let verify: Parameters<typeof prBody>[0]['verify'] = null
+    let verify: (Parameters<typeof prBody>[0]['verify'] & { base?: string }) | null = null
     try { verify = JSON.parse(c('verify.json')) } catch { /* no verify.json: the body says so */ }
-    fs.writeFileSync(path.join(CHANGES, slug, 'pr-body.md'), prBody({ intent: c('intent.md'), spec: c('spec.md'), plan: c('plan.md'), verify, outline: c('pr-outline.md'), review: c('review.md') }))
+    fs.writeFileSync(path.join(CHANGES, slug, 'pr-body.md'), prBody({ intent: c('intent.md'), spec: c('spec.md'), plan: c('plan.md'), verify, outline: c('pr-outline.md'), review: c('review.md'), risk: riskOf(branchDiff(verify?.base ?? 'main').filter(d => ships(slug)(d.file)), [slug], loadConfig().registry, parseAccess(read(archPath)), false) }))
   }
   const files = changeFiles(slug)
   if (!files.length) return out(followUp ? `${slug} already has a PR (.rig/changes/${slug}/pr.md); nothing new to commit` : 'not shipping: nothing to commit')
