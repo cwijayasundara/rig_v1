@@ -18,9 +18,10 @@ function door(plan: string): string {
 const count = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`
 
 // What a person should weigh before approving (proposal 2026-10-27 B3). A finding is open unless the confirm pass closed it
-// (` → fixed (confirmed)`) or the builder fixed it before any confirm ran (` → fixed`); a reopened one is open.
+// (` → fixed (confirmed)`): a bare ` → fixed` is the builder's own claim, and a reopened one is open. No review.md is never read as a clean review.
 function risk(plan: string, review: string): string {
-  const open = bullets(section(review, 'Findings')).filter(l => !/→\s*fixed(?: \(confirmed\))?\s*$/.test(l)).length
+  if (!review.trim()) return '- no review.md: the change was not reviewed'
+  const open = bullets(section(review, 'Findings')).filter(l => !/→\s*fixed \(confirmed\)\s*$/.test(l)).length
   const dismissed = bullets(section(review, 'Dismissed')).length
   const unverifiable = bullets(section(review, 'Unverifiable')).length
   const signals = [
@@ -51,7 +52,7 @@ export function prBody(i: PrBodyInput): string {
     `## Blast radius\n\n${radius.length ? radius.join('\n') : 'none recorded'}\n\nDoor: ${door(i.plan)}`,
     `## Risk\n\n${risk(i.plan, i.review)}`,
     `## How to revert\n\n${revert(i.plan)}`,
-    `## What the checks would miss\n\n${missed.length ? missed.join('\n') : 'nothing the reviewer named'}`,
+    `## What the checks would miss\n\n${!i.review.trim() ? 'no review.md' : missed.length ? missed.join('\n') : 'nothing the reviewer named'}`,
     `## Evidence\n\n${evidence}`,
     i.outline.trim(),
   ]

@@ -47,7 +47,7 @@ const review = 'verdict: changes-needed\n## Findings\n- [severity: high] [catego
 test('Risk lists the signals a person should weigh', () => {
   const b = prBody({ intent, spec, plan: plan.replace('none', '- api.yaml'), verify, outline: '', review })
   assert.match(b, /## Risk\n\n- one-way door\n- 1 finding still open\n- 1 finding dismissed by the builder\n- 1 item the reviewer could not verify/)
-  assert.match(prBody({ intent, spec, plan, verify, outline: '', review: '' }), /## Risk\n\nnone of the signals: two-way door, no open, dismissed or unverifiable findings/)
+  assert.match(prBody({ intent, spec, plan, verify, outline: '', review: 'verdict: pass\n## Findings\n' }), /## Risk\n\nnone of the signals: two-way door, no open, dismissed or unverifiable findings/)
 })
 
 test('How to revert depends on the door', () => {
@@ -57,5 +57,12 @@ test('How to revert depends on the door', () => {
 
 test('What the checks would miss quotes the Unverifiable list, and says so when there is none', () => {
   assert.match(prBody({ intent, spec, plan, verify, outline: '', review }), /## What the checks would miss\n\n- the CSV opens in Excel → settle by: a journey/)
-  assert.match(prBody({ intent, spec, plan, verify, outline: '', review: '' }), /## What the checks would miss\n\nnothing the reviewer named/)
+  assert.match(prBody({ intent, spec, plan, verify, outline: '', review: 'verdict: pass\n' }), /## What the checks would miss\n\nnothing the reviewer named/)
+})
+
+test('a fix the confirm pass did not confirm counts as open, and no review.md is never read as a clean one', () => {
+  const claimed = 'verdict: changes-needed\n## Findings\n- [severity: high] [category: tests] a.ts:1: p → f → fixed\n'
+  assert.match(prBody({ intent, spec, plan, verify, outline: '', review: claimed }), /## Risk\n\n- 1 finding still open/)
+  assert.match(prBody({ intent, spec, plan, verify, outline: '', review: '' }), /## Risk\n\n- no review\.md: the change was not reviewed/)
+  assert.match(prBody({ intent, spec, plan, verify, outline: '', review: '' }), /## What the checks would miss\n\nno review\.md/)
 })

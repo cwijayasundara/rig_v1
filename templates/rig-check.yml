@@ -36,29 +36,31 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          # the brief comes from the base branch, so the PR cannot soften what it is reviewed against
-          git show "origin/$BASE:.rig/review-brief.md" > "$RUNNER_TEMP/brief.md" 2>/dev/null || git show "origin/$BASE:REVIEW.md" > "$RUNNER_TEMP/brief.md" 2>/dev/null || echo "Review this diff for correctness bugs, broken contracts, security problems and missing tests." > "$RUNNER_TEMP/brief.md"
+          set -o pipefail
+          # the team's rules come from the base branch, so the PR cannot soften what it is reviewed against
+          git show "origin/$BASE:REVIEW.md" > "$RUNNER_TEMP/brief.md" 2>/dev/null || echo "Review this diff for correctness bugs, broken contracts, data loss and missing tests." > "$RUNNER_TEMP/brief.md"
           git diff "origin/$BASE...HEAD" > "$RUNNER_TEMP/change.diff"
           claude -p --model sonnet --allowedTools "Read,Grep,Glob" "$(cat "$RUNNER_TEMP/brief.md")
 
-          The change to review is the diff in $RUNNER_TEMP/change.diff (read it, and the files it touches). Answer in the verdict / Findings shape." | tee "$RUNNER_TEMP/review.md"
+          Security is reviewed separately: skip it. The change to review is the diff in $RUNNER_TEMP/change.diff (read it, and the files it touches). Answer in exactly this shape: a line 'verdict: pass | changes-needed', then '## Findings' with '- [severity: critical|high|medium] path:line: problem → fix' lines, then '## Pre-existing' with '- path:line: problem → fix' lines. Report a finding only with the file, line and the input where it goes wrong; a line the diff did not add or change goes under ## Pre-existing. Pre-existing items never change the verdict: it is changes-needed only when ## Findings has an item." | tee "$RUNNER_TEMP/review.md"
       - name: Review the diff for security
         env:
           BASE: ${{ github.base_ref }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          git show "origin/$BASE:.rig/security-brief.md" > "$RUNNER_TEMP/security-brief.md" 2>/dev/null || echo "Review this diff for security only: injection, authn/authz, secrets, unsafe input, crypto, path traversal, and every action in .rig/product/architecture.md ## Access the change touches against its row: each allowed role enforced, every other role refused, on each interface. Report a finding only with the file, line and the input that exploits it. A problem on a line the diff did not change goes under ## Pre-existing. Edit nothing." > "$RUNNER_TEMP/security-brief.md"
+          set -o pipefail
+          git show "origin/$BASE:.rig/security-brief.md" > "$RUNNER_TEMP/security-brief.md" 2>/dev/null || echo "Review this diff for security only: injection, authn/authz, secrets, unsafe input, crypto, path traversal, and every action in .rig/product/architecture.md ## Access the change touches against its row: each allowed role enforced, every other role refused, on each interface. Edit nothing." > "$RUNNER_TEMP/security-brief.md"
           claude -p --model sonnet --allowedTools "Read,Grep,Glob" "$(cat "$RUNNER_TEMP/security-brief.md")
 
-          The change to review is the diff in $RUNNER_TEMP/change.diff (read it, and the files it touches). Answer in exactly this shape: a line 'verdict: pass | changes-needed', then '## Findings' with '- [severity: critical|high|medium] path:line: problem → fix' lines, then '## Pre-existing'." | tee "$RUNNER_TEMP/security.md"
+          The change to review is the diff in $RUNNER_TEMP/change.diff (read it, and the files it touches). Answer in exactly this shape: a line 'verdict: pass | changes-needed', then '## Findings' with '- [severity: critical|high|medium] path:line: problem → fix' lines, then '## Pre-existing' with '- path:line: problem → fix' lines. Report a finding only with the file, line and the input where it goes wrong; a line the diff did not add or change goes under ## Pre-existing. Pre-existing items never change the verdict: it is changes-needed only when ## Findings has an item." | tee "$RUNNER_TEMP/security.md"
       - name: Gate on both reviews
+        if: ${{ !cancelled() }}
         run: |
-          # only ## Findings can fail the job: an item under ## Pre-existing stood before this change
+          # only a critical or high item under ## Findings fails the job: ## Pre-existing stood before this change, and a medium finding is for the person
           gate() {
-            verdict=$(grep -m1 -E '^verdict: ' "$1" || true)
-            if [ "$verdict" != "verdict: pass" ]; then echo "::error::the $2 did not pass ($verdict)"; return 1; fi
-            if sed -n '/^## Findings/,/^## [^F]/p' "$1" | grep -qE '\[severity: (critical|high)\]'; then echo "::error::the $2 reported critical or high findings"; return 1; fi
+            if [ ! -s "$1" ] || ! grep -qE '^verdict: ' "$1"; then echo "::error::the $2 gave no verdict line (did claude run? check CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY)"; return 1; fi
+            if awk '/^## /{f=($0 ~ /^## Findings/)} f' "$1" | grep -qE '\[severity: (critical|high)\]'; then echo "::error::the $2 reported critical or high findings"; return 1; fi
           }
           ok=0
           gate "$RUNNER_TEMP/review.md" "AI review" || ok=1
