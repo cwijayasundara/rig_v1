@@ -14,6 +14,8 @@ import { riskOf } from './risk.ts'
 import { parseAccess } from './chartcheck.ts'
 import { branchDiff } from './diffs.ts'
 import { archPath } from './product.ts'
+import { isHarnessPath } from './vendor.ts'
+import { untestedAcs } from './actrace.ts'
 
 const ghLast = (text: string): string => text.trim().split('\n').at(-1) ?? ''
 const URL_RE = /^https?:\/\//
@@ -34,13 +36,15 @@ function openPr(slug: string, branch: string, title: string): string | null {
 const SHARED = ['.rig/waivers.jsonl', '.rig/autonomy.json', '.rig/.gitignore', '.rig/sensors.json', '.rig/rules.json', '.rig/product/brief.md', '.rig/wiki.json']
 const SHARED_DIRS = ['.rig/guides/', '.rig/wiki/']
 const SHARED_RE = /^\.rig\/product\/sprints\/sprint-\d+\/approval\.json$/
-function changeFiles(slug: string): string[] {
+function dirtyFiles(): string[] {
   const dirty = [...(git(['diff', '--name-only', 'HEAD']) ?? '').split('\n'), ...(git(['ls-files', '--others', '--exclude-standard']) ?? '').split('\n')].filter(Boolean)
-  return [...new Set(dirty)].filter(ships(slug))
+  return [...new Set(dirty)]
 }
+const changeFiles = (slug: string): string[] => dirtyFiles().filter(ships(slug))
 
 // What a PR for this change carries under .rig/: its own record and the shared files; the rest of .rig/ stays local.
-const ships = (slug: string) => (f: string): boolean => !f.startsWith('.rig/') || f.startsWith(`.rig/changes/${slug}/`) || SHARED_DIRS.some(d => f.startsWith(d)) || SHARED_RE.test(f) || SHARED.includes(f)
+// A vendored harness file never rides along: a rig upgrade left uncommitted ended up in a feature commit (shop_app 2026-10-27).
+const ships = (slug: string) => (f: string): boolean => !isHarnessPath(f) && (!f.startsWith('.rig/') || f.startsWith(`.rig/changes/${slug}/`) || SHARED_DIRS.some(d => f.startsWith(d)) || SHARED_RE.test(f) || SHARED.includes(f))
 
 export function cmdPr(args: Args): void {
   const given = args.pos[0]
@@ -62,6 +66,8 @@ export function cmdPr(args: Args): void {
   const waived = readJsonl<Waiver>(WAIVERS).filter(w => w.slug === slug && w.sensor === 'harness-tamper' && waiverLive(w))
   const frozen = frozenFindings([slug], Object.keys(frozenFor(slug)), f => read(path.join(ROOT, f))).filter(f => !waived.some(w => w.file === '*' || w.file === f.file))
   if (frozen.length) fail(`not shipping: ${frozen.map(f => f.message).join('; ')}. Revert it, or a person re-approves or waives it`)
+  const missing = untestedAcs(slug, loadConfig().registry.paths)
+  if (missing.length) fail(`not shipping: no test names these acceptance criteria (name each test after its AC, e.g. test_ac_1_2_..., or put the id in the test title):\n${missing.map(m => `  ${m}`).join('\n')}`)
   if (head !== branch) {
     if (git(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]) !== null) fail(`not shipping: branch ${branch} already exists; check it out first`)
     if (git(['checkout', '-b', branch]) === null) fail(`could not create branch ${branch}`)
@@ -77,6 +83,8 @@ export function cmdPr(args: Args): void {
     fs.writeFileSync(path.join(CHANGES, slug, 'pr-body.md'), prBody({ intent: c('intent.md'), spec: c('spec.md'), plan: c('plan.md'), verify, outline: c('pr-outline.md'), review: c('review.md'), risk: riskOf(branchDiff(verify?.base ?? defaultBase() ?? 'HEAD').filter(d => ships(slug)(d.file)), [slug], loadConfig().registry, parseAccess(read(archPath)), false) }))
   }
   const files = changeFiles(slug)
+  const left = dirtyFiles().filter(isHarnessPath)
+  if (left.length) out(`pr ${slug}: left out ${left.length} vendored harness file(s) (${left.slice(0, 3).join(', ')}${left.length > 3 ? ', ...' : ''}); they look like an uncommitted ${skillRef('upgrade')}: commit them on their own branch`)
   if (!files.length) return out(followUp ? `${slug} already has a PR (.rig/changes/${slug}/pr.md); nothing new to commit` : 'not shipping: nothing to commit')
   // A first run that fails before the PR is open must leave no pr.md (and no commit), or a rerun reads it as a follow-up and never opens the PR.
   const undo = (committed: boolean): void => { if (followUp) return; if (committed) git(['reset', '-q', 'HEAD~1']); fs.rmSync(path.join(CHANGES, slug, 'pr.md'), { force: true }); fs.rmSync(path.join(CHANGES, slug, 'pr-body.md'), { force: true }) }

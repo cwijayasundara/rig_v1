@@ -194,3 +194,13 @@ test('journey: a converted PRD with no intents yet → the chart runs on to deco
   assert.equal(j.next.by, 'model')
   assert.ok(!j.outer.some(s => /prd-0/.test(s.command)), 'no approve prd-N step')
 })
+
+test('journey: a change with pr.md and no active change keeps its rail at review; local-only names the local merge (shop_app 2026-10-27)', () => {
+  write(repo, '.rig/changes/cart-core/intent.md', '---\ntype: feature\n---\n# cart\n')
+  write(repo, '.rig/changes/cart-core/pr.md', '---\nstate: local-only\nbranch: sdlc/cart-core\n---\ncart\n')
+  const j = view()
+  assert.equal(j.inner?.slug, 'cart-core')
+  assert.equal(j.inner?.steps.find(s => s.id === 'build')?.state, 'done') // the rail sits at the PR step, past build
+  assert.match(j.next.command, /merges sdlc\/cart-core into main locally, or adds a remote/)
+  assert.equal(j.next.by, 'person')
+})

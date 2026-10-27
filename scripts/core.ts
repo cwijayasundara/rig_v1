@@ -160,6 +160,7 @@ export function relPosix(file: string): string {
 }
 
 export const TRUNKS = ['origin/main', 'main', 'origin/master', 'master']
+export const trunkName = (): string => git(['rev-parse', '--verify', '-q', 'main']) === null && git(['rev-parse', '--verify', '-q', 'master']) !== null ? 'master' : 'main'
 export const isTrunk = (name: string): boolean => ['main', 'master'].includes(name)
 export function defaultBase(): string | null {
   const head = git(['rev-parse', '--abbrev-ref', 'HEAD'])

@@ -433,3 +433,14 @@ test('a current or absent rig-check.yml is left out of the plan', () => {
   assert.equal((plan(repo) as { workflow?: string }).workflow, 'same')
   assert.doesNotMatch(sdlc(repo, ['upgrade']).stdout, /rig-check\.yml differs/)
 })
+
+test('apply leaves one commit on chore/rig-upgrade-*, without .rig-new files (shop_app 2026-10-27)', () => {
+  const repo = committed()
+  lag(repo, SKILL, 'old\n')
+  const r = sdlc(repo, ['upgrade', '--apply'])
+  assert.equal(r.code, 0, r.stderr)
+  assert.match(gitIn(repo, 'rev-parse', '--abbrev-ref', 'HEAD').trim(), /^chore\/rig-upgrade-/)
+  assert.match(gitIn(repo, 'log', '-1', '--format=%s'), /^chore: rig upgrade .* → /)
+  assert.match(gitIn(repo, 'show', '--name-only', '--format=', 'HEAD'), /\.claude\/skills\/rig-/)
+  assert.doesNotMatch(gitIn(repo, 'show', '--name-only', '--format=', 'HEAD'), /\.rig-new/)
+})

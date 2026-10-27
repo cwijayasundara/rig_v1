@@ -38,3 +38,8 @@ test('upgrade skill: never pushes, never hand-edits sensors or the manifest, sto
   assert.match(body, /apply refuses[^\n]*stop/i)
   assert.match(body, /Next: review and merge the branch; nothing was pushed/)
 })
+
+test('upgrade skill: the apply commits on its branch and the person merges it (shop_app 2026-10-27)', () => {
+  assert.match(body, /commits what it wrote in one commit `chore: rig upgrade <from> → <to>`/)
+  assert.match(body, /The person merges that branch/)
+})

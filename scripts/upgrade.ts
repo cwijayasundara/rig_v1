@@ -194,7 +194,13 @@ function applyUpgrade(args: Args): void {
     out(`applied on branch ${branch}; running sync and baseline (if one fails: fix it, then re-run sdlc.ts sync and sdlc.ts baseline by name, or discard with: git checkout -- . && git clean -fd && git checkout ${previous} && git branch -D ${branch})`)
     cmdSync({ pos: [], opt: {} }); cmdBaseline()
   }
-  out(`branch ${branch}\nreview and merge; nothing was pushed`)
+  // The apply commits what it wrote, so a later /rig:pr cannot sweep it into a feature commit (shop_app 2026-10-27). Never --no-verify.
+  const later = new Set([...decisions].filter(([, d]) => d === 'later').map(([rel]) => rel))
+  const keep = [...new Set(written)].filter(rel => !rel.endsWith('.rig-new') && !later.has(rel))
+  const msg = `chore: rig upgrade ${plan.from || 'unversioned'} → ${plan.to}`
+  const committed = keep.length > 0 && git(['add', '-A', '--', ...keep]) !== null && git(['commit', '-q', '-m', msg, '--', ...keep]) !== null
+  if (keep.length && !committed) out(`warning: could not commit the upgrade; commit it yourself: git add -A -- ${keep.join(' ')} && git commit -m ${JSON.stringify(msg)}`)
+  out(`branch ${branch}${committed ? ` (committed: ${msg})` : ''}\nreview and merge; nothing was pushed`)
 }
 
 export function cmdUpgrade(args: Args): void {
