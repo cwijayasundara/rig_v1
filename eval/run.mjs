@@ -47,7 +47,7 @@ export async function runOne(arm, n, { dry, out, capRunUsd, failAt, seed = null,
       base = await setupRig(sb, arm, { dry, variant })
       settled = sb.git('rev-parse', 'HEAD')
       for (const phase of PHASES[variant] ?? [S2, S3]) {
-        const driver = failing(dry ? scriptedDriver(sb, phase) : liveDriver(sb, phase, { sessions }), failAt)
+        const driver = failing(dry ? scriptedDriver(sb, phase) : liveDriver(sb, arm.full ? { ...phase, prompt: `${phase.prompt} --full` } : phase, { sessions }), failAt)
         const { slug, answered } = await runChange(sb, phase, driver)
         row.reapproved = (row.reapproved ?? 0) + (driver.reapproved ?? 0)
         if (driver.reapprovalNotes?.length) row.reapprovalNotes = [...(row.reapprovalNotes ?? []), ...driver.reapprovalNotes]
