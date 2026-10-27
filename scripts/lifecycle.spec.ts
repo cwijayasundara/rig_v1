@@ -247,3 +247,35 @@ test('a spec.md with no ## Blast radius heading is not checked', () => {
   const r = sdlc(repo, ['approve', 'demo'], HUMAN)
   assert.equal(r.code, 0, r.stderr)
 })
+
+// shop_app cart-storage 2026-10-27: the code and its red/green runs came at 12:21-12:25, the approval at 12:28.
+test('post-edit blocks an edit to a planned file until a person approves the plan, then lets it through', () => {
+  planned()
+  hook(repo, 'prompt-submit', {})
+  write(repo, 'src/a.js', 'export const a = 1\n')
+  const early = hook(repo, 'post-edit', { tool_input: { file_path: path.join(repo, 'src/a.js') } })
+  assert.equal(early.code, 2)
+  assert.match(early.stderr, /\[?plan-gate\]?.*src\/a\.js.*before.*approv/is)
+  write(repo, 'notes.txt', 'not in the plan\n')
+  assert.equal(hook(repo, 'post-edit', { tool_input: { file_path: path.join(repo, 'notes.txt') } }).code, 0, 'a file the plan does not list is not this gate')
+  sdlc(repo, ['approve', 'demo'], HUMAN)
+  assert.equal(hook(repo, 'post-edit', { tool_input: { file_path: path.join(repo, 'src/a.js') } }).code, 0)
+})
+
+test('post-edit does not block a planned file when the plan gate is off', () => {
+  planned()
+  write(repo, '.rig/sensors.json', JSON.stringify({ gates: { plan: false } }))
+  hook(repo, 'prompt-submit', {})
+  write(repo, 'src/a.js', 'export const a = 1\n')
+  assert.equal(hook(repo, 'post-edit', { tool_input: { file_path: path.join(repo, 'src/a.js') } }).code, 0)
+})
+
+test('the stop check honours gates.plan: off lets a planned file through, on blocks it', () => {
+  planned()
+  hook(repo, 'prompt-submit', {})
+  write(repo, 'src/a.js', 'export const a = 1\n')
+  const stop = () => sdlc(repo, ['check', '--at', 'stop', '--slug', 'demo'])
+  assert.match(stop().stdout, /plan-gate/)
+  write(repo, '.rig/sensors.json', JSON.stringify({ gates: { plan: false } }))
+  assert.doesNotMatch(stop().stdout, /plan-gate/)
+})

@@ -3,7 +3,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { ROOT, SENSORS_PATH, SDLC, CHANGES, read, readJson, exists, isTrunk, trunkName, sha, now, git, defaultBase, frontmatter, skillRef as k } from './core.ts'
-import { openQuestions, globToRegex, planFiles, blastRadius } from './model.ts'
+import { openQuestions, globToRegex, planFiles, blastRadius, type Finding } from './model.ts'
 import { parseRegistry, contractGlobs } from './registry.ts'
 
 export const TYPES = ['feature', 'bugfix', 'refactor', 'chore'] as const
@@ -75,6 +75,22 @@ export function outsideRadius(planPaths: string[], radius: string[]): string[] {
   const inside = (p: string): boolean => entries.some(r => r === p || p.startsWith(r.endsWith('/') ? r : `${r}/`) || (r.includes('*') && globToRegex(r).test(p)))
   return planPaths.map(normPath).filter(p => !inside(p))
 }
+// A file a change's plan lists, touched before a person approved the plan: the build ran ahead of the gate (shop_app cart-storage, 2026-10-27:
+// red and green runs at 12:21-12:25, approval at 12:28). A plan changed since its approval is the ship-time plan-gate's, not this one.
+export function unapprovedBuild(slugs: string[], touched: string[], planGate: boolean): Finding[] {
+  if (!planGate) return []
+  return slugs.flatMap(slug => {
+    const plan = file(slug, 'plan.md')
+    if (!exists(plan) || approvalState(slug) !== 'missing') return []
+    const listed = planFiles(read(plan))
+    return touched.filter(f => !f.startsWith('.rig/') && listed.length && !outsideRadius([f], listed).length).map(file => ({
+      sensor: 'plan-gate', severity: 'block' as const, file,
+      message: `${slug}: ${file} is in the plan but the plan is not approved; the build started before the person approved it`,
+      fix: `stop: a person reviews spec.md and plan.md and runs ${k('approve')} ${slug}, then build`,
+    }))
+  })
+}
+
 export function writeApproval(slug: string, by: string): Approval {
   const a: Approval = { by, at: now(), hashes: hashes(slug), contracts: freezeRecord() }
   fs.writeFileSync(file(slug, 'approval.json'), JSON.stringify(a, null, 2) + '\n')
