@@ -33,7 +33,7 @@
 **Files:** `templates/rig-check.yml`, `scripts/check.ts`; tests `scripts/workflows.spec.ts`, `scripts/check.spec.ts`
 
 - [ ] Test: workflow `on` has `merge_group`; `ai-review` `if` requires `github.event_name == 'pull_request'`; `rig-check`'s BASE is `${{ github.base_ref || github.event.merge_group.base_ref }}` with `refs/heads/` stripped in the shell.
-- [ ] Test (check.spec): with `GITHUB_EVENT_NAME=merge_group`, a PR adding a waiver row and `risk.enforce` on gets no `human-approval` block.
+- [ ] Test (check.spec): with `GITHUB_EVENT_NAME=merge_group`, a PR adding a waiver row gets no `human-approval` block (with `risk.enforce` on the queue re-checks the unattended path; final-review fix).
 - [ ] Implement: `const queued = process.env.GITHUB_EVENT_NAME === 'merge_group'`; skip `humanRowsAdded`/enforce when queued. Commit `feat(ci): rig-check runs in the merge queue`.
 
 ### Task 2: change history and per-tier metrics (C1)

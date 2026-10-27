@@ -16,17 +16,27 @@ const tierOf = (root: string, sha: string, slug: string): ChangeRow['tier'] => {
 }
 
 // `ref`: whose history to read; CI passes the base so a PR cannot add merges of its own to dilute the revert rate.
-export function changeHistory(root: string, revertPrs: number[] = [], ref = 'HEAD'): ChangeRow[] {
-  // One commit may add several pr.md files (a squash that ships two changes); a change re-added after a revert counts once.
+// `every`: one row per merge (the breaker: a change reverted and landed again keeps its revert); else one per change, as it lands now (the report).
+export function changeHistory(root: string, revertPrs: number[] = [], ref = 'HEAD', every = false): ChangeRow[] {
+  const order = (gitIn(root, ['log', ref, '--first-parent', '--format=%H']) ?? '').split('\n').filter(Boolean).reverse()
+  const at = new Map(order.map((sha, n) => [sha, n]))
   const seen = new Set<string>()
   const added = blocks(gitIn(root, ['log', ref, '--first-parent', '--diff-filter=A', '--name-only', '--format=%x00%H %cs', '--', PR_MD]))
     .flatMap(({ head, files }) => { const [sha = '', date = ''] = head.split(' '); return files.map(f => ({ sha, date, slug: f.split('/')[2] ?? '' })) })
-    .filter(m => m.sha && m.slug && !seen.has(m.slug) && seen.add(m.slug))
+    .filter(m => m.sha && m.slug && (every || (!seen.has(m.slug) && seen.add(m.slug))))
+    .reverse()
   const log = gitIn(root, ['log', ref, '--format=%B']) ?? ''
-  const labelled = new Set(blocks(gitIn(root, ['log', ref, '--first-parent', '--diff-filter=D', '--name-only', '--format=%x00%H %s', '--', PR_MD]))
-    .filter(({ head }) => revertPrs.includes(Number(/ Merge pull request #(\d+)\b/.exec(head)?.[1] ?? NaN)))
-    .flatMap(({ files }) => files.map(f => f.split('/')[2] ?? '')))
-  return added.reverse().map(m => ({ ...m, tier: tierOf(root, m.sha, m.slug), reverted: log.includes(`This reverts commit ${m.sha}`) || labelled.has(m.slug) }))
+  // A merged revert-labelled PR (a merge commit "Merge pull request #N", or a squash "Title (#N)") that deleted a change's pr.md reverts the add before it.
+  const pr = (subject: string): number => Number(/ Merge pull request #(\d+)\b/.exec(subject)?.[1] ?? /\(#(\d+)\)\s*$/.exec(subject)?.[1] ?? NaN)
+  const deletions = blocks(gitIn(root, ['log', ref, '--first-parent', '--diff-filter=D', '--name-only', '--format=%x00%H %s', '--', PR_MD]))
+    .filter(({ head }) => revertPrs.includes(pr(head)))
+    .flatMap(({ head, files }) => files.map(f => ({ slug: f.split('/')[2] ?? '', n: at.get(head.split(' ')[0] ?? '') ?? -1 })))
+  return added.map((m, i) => {
+    const next = added.slice(i + 1).find(o => o.slug === m.slug)
+    const from = at.get(m.sha) ?? -1, to = next ? (at.get(next.sha) ?? Infinity) : Infinity
+    const labelled = deletions.some(d => d.slug === m.slug && d.n > from && d.n < to)
+    return { ...m, tier: tierOf(root, m.sha, m.slug), reverted: log.includes(`This reverts commit ${m.sha}`) || labelled }
+  })
 }
 
 export function breaker(rows: ChangeRow[], window: number, maxRate: number): string | null {

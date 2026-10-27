@@ -57,3 +57,19 @@ test('the breaker trips when reverted tier-0 merges in the window exceed the rat
   assert.equal(breaker([row('a', 0, true), row('b', 0, false), row('c', 0, false)], 2, 0.1), null, 'only the last window tier-0 merges count')
   assert.equal(breaker([row('a', 0, true), row('b', 0, false)], 20, 0.5), null, 'at the rate is not over it')
 })
+
+test('for the breaker every merge is a row: a change reverted and landed again keeps its revert', () => {
+  const r = repo()
+  const first = r.ship('a', T0)
+  r.git('revert', '--no-edit', first)
+  r.ship('a', T0, 'ship a again')
+  assert.deepEqual(changeHistory(r.dir).map(c => [c.slug, c.reverted]), [['a', false]], 'the report counts a change once, as it lands now')
+  assert.deepEqual(changeHistory(r.dir, [], 'HEAD', true).map(c => [c.slug, c.reverted]), [['a', true], ['a', false]])
+})
+
+test('a squash-merged revert PR (subject "Title (#N)") counts when labelled', () => {
+  const r = repo()
+  r.ship('a', T0)
+  fs.rmSync(path.join(r.dir, '.rig/changes/a/pr.md')); r.git('add', '-A'); r.git('commit', '-qm', 'Undo the cart change (#42)')
+  assert.equal(changeHistory(r.dir, [42])[0]!.reverted, true)
+})
