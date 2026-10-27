@@ -39,7 +39,8 @@ Claude Code only discovers skills, agents and hooks under `.claude/`; everything
 | `.rig/sensors.json` | The sensor registry: commands, cadences, `knownRed` | a person (asks first) |
 | `.rig/product/` | The product brief, architecture and ADRs, and one folder per sprint (`sprints/sprint-N/`: PRD, intents, test plan, review, approval) | a person, `/rig:chart` |
 | `.rig/changes/<slug>/` | One folder per change: spec, plan, approval, evidence, `verify.json`, `pr.md` | the build steps |
-| `.rig/.gate`, `.rig/.gitignore` | Local gate state, never committed | rig |
+| `.rig/.gate` | Local gate state, never committed | rig |
+| `.rig/.gitignore` | What under `.rig/` stays local; committed | rig |
 
 ### User guide
 

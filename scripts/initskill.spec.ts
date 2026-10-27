@@ -128,3 +128,9 @@ test('init sets up the review gates: asks in full mode, prints the commands unde
   assert.match(skill, /risk\.enforce[\s\S]*init --enforce/)
   assert.match(skill, /never set(s)? rung 3|rung 3 is never set/i)
 })
+
+test('the scaffold Makefile gets a types target when the stack has a types sensor, and the README never calls .rig/.gitignore uncommitted', () => {
+  const root = (f: string): string => fs.readFileSync(path.resolve(import.meta.dirname, '..', f), 'utf8')
+  assert.match(root('skills/init/SKILL.md'), /plus a `types` target when the stack pack has a `types` sensor/)
+  assert.doesNotMatch(root('templates/readme-rig.md'), /`\.rig\/\.gitignore`[^|]*\| Local gate state, never committed/)
+})

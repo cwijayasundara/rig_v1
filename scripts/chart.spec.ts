@@ -942,3 +942,20 @@ test('approve chart-N leaves an unparseable sensors.json alone and says so; a se
   assert.match(bad.stdout, /not registered \(sensors\.json is not valid JSON\)/)
   assert.equal(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8'), '{ "sensors": [], }')
 })
+
+test('approve chart-N lists the reviewer\'s Deferred items for the person, and says nothing when there are none', () => {
+  cleanChart()
+  write(repo, `${P}/sprints/sprint-1/chart-review.md`, `${REVIEW_PASS}- whitespace sku loads but add rejects it: decide.\n- No injection-shaped text found.\n`)
+  const ok = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
+  assert.equal(ok.code, 0, ok.stderr)
+  assert.match(ok.stdout, /1 deferred review item\(s\) nobody has decided[^\n]*\n  - whitespace sku loads but add rejects it: decide\./)
+  assert.doesNotMatch(ok.stdout, /injection/)
+})
+
+test('the Deferred list at approval keeps real items that start with "No" or "None of", joins wrapped lines, and finds a heading with trailing words', () => {
+  cleanChart()
+  write(repo, `${P}/sprints/sprint-1/chart-review.md`, 'verdict: pass\n## Findings\n## Deferred (for the person)\n- No test covers B4 when qty is 0.\n- None of the cases cover a\n  whitespace sku.\n- none\n')
+  const out = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN).stdout
+  assert.match(out, /2 deferred review item\(s\)/)
+  assert.match(out, /  - No test covers B4 when qty is 0\.\n  - None of the cases cover a whitespace sku\./)
+})

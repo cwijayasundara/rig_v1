@@ -80,7 +80,7 @@ Evidence: `dbaef8d` bundles 27 files incl. `evidence/runs.jsonl` (absolute home/
 
 ## Wave D: docs, tests data, naming (batch, lower priority)
 
-- [ ] **10 stale `CLAUDE.md` Map/Planned:** the `pr`/`learn` flow refreshes the hand-written Map from the diff, or flags it. Smallest: the PR body lists "CLAUDE.md Map lists these paths as planned but they now exist". Decide with the person before generating text into a hand-written section. Also fix the README template claim `.rig/.gitignore` "never committed".
+- [~] **10 stale `CLAUDE.md` Map/Planned:** the `pr`/`learn` flow refreshes the hand-written Map from the diff, or flags it. Smallest: the PR body lists "CLAUDE.md Map lists these paths as planned but they now exist". Decide with the person before generating text into a hand-written section. Also fix the README template claim `.rig/.gitignore` "never committed".
 - [ ] **11 whitespace-only sku/name:** a chart decision, not a harness bug. Surface it: the conversion/chart review's `Deferred` list must reach the person at approve, with each item decided or accepted. Spec in `chartcheck.ts`: an approve with undecided Deferred items warns.
 - [ ] **12 tests read `.rig/.../testplan/data`:** `testplan` skill and `testkit` copy the data into `tests/data` and the tests reference that. Spec first; also grep other stacks' templates.
 - [ ] **13 review.md fixed and deferred twin:** spec in `reviewcases.ts` that one finding cannot appear under both.

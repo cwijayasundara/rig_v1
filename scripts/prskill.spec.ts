@@ -144,3 +144,7 @@ test('the fix wave records behaviour changes in amendments.md and never edits th
   assert.match(t, /amendments\.md/)
   assert.match(t, /Never edit spec\.md or plan\.md for this/)
 })
+
+test('a fixed finding leaves ## Deferred, so review.md never lists one issue as fixed and deferred', () => {
+  assert.match(pr(), /delete the `## Deferred` line for the same issue/)
+})
