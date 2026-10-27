@@ -1,5 +1,5 @@
 import { test, expect, mock } from 'claude-code/testing'
-import { fitNext, kilo, meter, modelLabel, pack, parseJourney, sdlcArgv } from './dashboard.tsx'
+import { fitNext, gradientRule, kilo, meter, modelLabel, pack, parseJourney, sdlcArgv } from './dashboard.tsx'
 
 const journey = {
   agents: [{ agent: 'rig-architect', model: 'claude-sonnet-5-5', at: 'a' }, { agent: 'rig:evaluator', model: 'claude-opus-5-5', at: 'b' }],
@@ -182,4 +182,13 @@ test('the chart step draws its intent count and the next line says why', async (
   expect(await ui.find({ type: 'Text', text: /^◆ \/rig:approve chart-1$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /approve the sprint once/ })).toBeDefined()
   await ui.unmount()
+})
+
+test('gradientRule fills the width exactly and fades from the first colour to the second', () => {
+  const rule = gradientRule(40, [125, 211, 252], [29, 78, 216])
+  expect(rule.map(p => p.text).join('')).toBe('━'.repeat(40))
+  expect(rule[0]?.color).not.toBe(rule[rule.length - 1]?.color)
+  expect(rule.every(p => /^#[0-9a-f]{6}$/.test(p.color ?? ''))).toBe(true)
+  expect(gradientRule(6, [0, 0, 0], [255, 255, 255]).map(p => p.text)).toEqual(['━━━━', '━━'])
+  expect(gradientRule(0, [0, 0, 0], [1, 1, 1])).toEqual([])
 })
