@@ -7,7 +7,7 @@ import { activeSlug, changeType, isShipped, nextStep, status, type Status } from
 import { latestAgents } from './modelstate.ts'
 import { readAutonomy } from './autonomy.ts'
 import { queueNext } from './queue.ts'
-import { chartState, readyIntents, sprintIntents, sprintsKnown, isConverted, prdApprovalState } from './chart.ts'
+import { chartState, readyIntents, sprintIntents, sprintsKnown } from './chart.ts'
 import { testplanDir, prdHint, prdsInDocs, intentRel, prdPath } from './product.ts'
 
 // The command a person types: /rig:<name> from the plugin, /rig-<name> (the skill's folder, never /rig:<name>) from a standalone copy.
@@ -64,16 +64,10 @@ export function journey(i: { gates: { plan: boolean }; tree: string | null }): J
   const cases = exists(path.join(testplanDir(n), 'cases.md'))
   const approved = slugs.length > 0 && chartState(n).state === 'approved'
   const ready = readyIntents().map(r => r.slug)
-  const converted = isConverted(n), prdApproved = converted && prdApprovalState(n) === 'approved'
   const outer = mark([
     { id: 'init', label: 'Init', command: k('init'), done: initialised },
     { id: 'prd', label: 'PRD', command: `add PRD → ${hint(n)}`, person: true, done: exists(prdPath(n)) || exists(path.join(ROOT, hint(n))), detail: `sprint ${n}` },
-    // A converted PRD charts in two passes with a person between them: convert, approve the conversion, then decompose.
-    ...(converted ? [
-      { id: 'convert', label: 'Convert', command: `${k('chart')} ${n}`, done: true, detail: 'convert' },
-      { id: 'approve-prd', label: 'Approve PRD', command: `${k('approve')} prd-${n}`, done: prdApproved, gate: true },
-    ] : []),
-    { id: 'chart', label: 'Chart', command: `${k('chart')} ${n}`, done: slugs.length > 0, detail: slugs.length ? `${slugs.length} intents` : converted ? 'decompose' : undefined },
+    { id: 'chart', label: 'Chart', command: `${k('chart')} ${n}`, done: slugs.length > 0, detail: slugs.length ? `${slugs.length} intents` : undefined },
     { id: 'testplan', label: 'Test plan', command: `${k('testplan')} ${n}`, done: cases },
     { id: 'approve', label: 'Approve', command: `${k('approve')} chart-${n}`, done: approved, gate: true },
     { id: 'build', label: 'Build', command: `${k('start')} <intent>`, done: slugs.length > 0 && shipped === slugs.length, detail: slugs.length ? `${shipped}/${slugs.length} shipped` : undefined },
@@ -85,10 +79,9 @@ export function journey(i: { gates: { plan: boolean }; tree: string | null }): J
   const outerNext = ((): Journey['next'] => {
     if (!initialised) return { command: k('init'), by: 'model', why: 'set this repo up for rig' }
     if (!exists(prdPath(n)) && !exists(path.join(ROOT, hint(n)))) return { command: `add the PRD at ${hint(n)}, then ${k('chart')} ${n} @${hint(n)}`, by: 'person', why: 'the sprint starts from your PRD, in any format and from any path' }
-    if (converted && !prdApproved) return { command: `${k('approve')} prd-${n}`, by: 'person', why: 'read the converted prd.md beside source.md, then approve it; the chart decomposes it after' }
-    if (!slugs.length) return { command: exists(prdPath(n)) ? `${k('chart')} ${n}` : `${k('chart')} ${n} @${hint(n)}`, by: 'model', why: prdApproved ? `prd-${n} is approved: chart again to decompose it into intents, architecture, ADRs and the test plan` : 'turn the PRD into traced intents, architecture and ADRs' }
+    if (!slugs.length) return { command: exists(prdPath(n)) ? `${k('chart')} ${n}` : `${k('chart')} ${n} @${hint(n)}`, by: 'model', why: 'turn the PRD into traced intents, architecture, ADRs and the test plan' }
     if (!cases) return { command: `${k('testplan')} ${n}`, by: 'model', why: 'write the test plan and cases for the sprint' }
-    if (!approved) return { command: `${k('approve')} chart-${n}`, by: 'person', why: 'review the chart branch, then approve the sprint once' }
+    if (!approved) return { command: `${k('approve')} chart-${n}`, by: 'person', why: 'review the chart branch (a converted PRD: prd.md beside source.md first), then approve the sprint once' }
     if (ready[0]) return { command: `${k('start')} ${intentRel(n, ready[0] as string)}`, by: 'model', why: `${ready.length} intent(s) ready to build` }
     return shipped === slugs.length ? { command: exists(path.join(ROOT, hint(n + 1))) ? `${k('chart')} ${n + 1} @${hint(n + 1)}` : `add the PRD at ${hint(n + 1)}, then ${k('chart')} ${n + 1} @${hint(n + 1)}`, by: 'person', why: `sprint ${n} is shipped` } : { command: 'a change in flight must ship first', by: 'person', why: 'the remaining intents wait on their dependencies' }
   })()
@@ -96,8 +89,8 @@ export function journey(i: { gates: { plan: boolean }; tree: string | null }): J
   return { agents: latestAgents(path.join(SDLC, 'state', 'model.json')), initialised, kind, show, sprint: initialised ? n : null, outer, inner: act && st ? { slug: act, type: changeType(act), steps: innerSteps(st, i.gates.plan, act, exists(path.join(CHANGES, act, 'review.md'))) } : null, next, ready, rung: readAutonomy().rung, queue }
 }
 
-// The steps whose detail is drawn on the rail: the build count, and the two chart passes of a converted PRD.
-export const RAIL_DETAIL = new Set(['build', 'convert', 'chart'])
+// The steps whose detail is drawn on the rail: the intent count and the build count.
+export const RAIL_DETAIL = new Set(['chart', 'build'])
 export function journeyText(j: Journey): string {
   const row = (steps: JourneyStep[]): string => steps.map(s => `${{ done: '✓', current: '●', gate: '◆', todo: '○' }[s.state]}${s.auto ? '⟳' : ''} ${s.command}${s.detail && RAIL_DETAIL.has(s.id) ? ` (${s.detail})` : ''}`).join('  ')
   return [

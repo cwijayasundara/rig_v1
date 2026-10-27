@@ -10,6 +10,7 @@ export type Intent = {
   behaviours: Behaviour[]; contractFiles: string[]; exampleFiles: string[]; openQuestions: string[]
   failures: string[]; design: number // B-numbers under `### Failure behaviour`; `## Design` table rows
   owner: string // who builds it: a person fills it in when the sprint is allocated; empty until then
+  scope: string[] // the repo files the intent writes (frontmatter `scope:`)
 }
 export type TestCase = { id: string; reqs: string[]; rules: string[]; intent: string; behaviour: string; level: string; data: string; access: string }
 // A row of architecture.md `## Access`: who may take an action, on which interfaces. `nobody`: the cell says no role may.
@@ -62,7 +63,27 @@ export function parseIntent(slug: string, raw: string): Intent {
     failures: [...(section(text, 'Behaviours').split(/^###\s+Failure behaviour\s*$/m)[1] ?? '').matchAll(/^\s*[-*]\s+(B\d+)/gm)].map(m => m[1]!),
     design: Math.max(0, section(text, 'Design').split('\n').filter(l => /^\s*\|/.test(l) && !/^\s*\|[\s|:-]*$/.test(l)).length - 1),
     owner: (data.owner ?? '').replace(/(^|\s)#.*$/, '').trim().replace(/^["']|["']$/g, ''), // a `# ...` comment is not a name
+    scope: fmList(text, 'scope').map(f => f.replace(/^\.\//, '')).filter(Boolean),
   }
+}
+
+// shop_app 2026-10-27: three intents listed tests/test_ac_coverage.py. Two intents that can be built at once and write the same
+// file are a merge conflict waiting for the second PR, so that blocks; when one depends on the other they are built in order and
+// the later one edits what the earlier one wrote, which the person should see but may keep.
+export function sharedScopeProblems(mine: Intent[], all: Intent[]): ChartFinding[] {
+  const deps = new Map(all.map(i => [i.slug, i.depends]))
+  const reaches = (from: string, to: string, seen = new Set<string>()): boolean =>
+    (deps.get(from) ?? []).some(d => d === to || (!seen.has(d) && (seen.add(d), reaches(d, to, seen))))
+  const found: ChartFinding[] = []
+  mine.forEach((a, x) => mine.slice(x + 1).forEach(b => {
+    for (const f of a.scope.filter(f => b.scope.includes(f))) {
+      const ordered = reaches(a.slug, b.slug) || reaches(b.slug, a.slug)
+      found.push(ordered
+        ? { rule: 'scope-shared', severity: 'report', where: b.slug, message: `${f} is in the scope of ${a.slug} and ${b.slug}; they are built in order, so the later one edits what the earlier one wrote` }
+        : { rule: 'scope-shared', severity: 'block', where: b.slug, message: `${f} is in the scope of ${a.slug} and ${b.slug}, which can be built at the same time: give the file to one intent, or make one depend on the other` })
+    }
+  }))
+  return found
 }
 
 // `- slug: scope (ids)` lines (a `*` bullet, bold or backticked slug also read; fenced blocks skipped) under `## Intents` in the sprint design doc: the intents the design says the sprint is made of.

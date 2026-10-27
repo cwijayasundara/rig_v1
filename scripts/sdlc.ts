@@ -41,7 +41,7 @@ import { cmdAutonomy, initAutonomy } from './autonomy.ts'
 import { cmdRisk } from './risk.ts'
 import { protect } from './protect.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'
-import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, waiveChartFinding, changeRequirements, PRD_RE, isConverted, prdApprovalState, prdApprovalRefusal, writePrdApproval } from './chart.ts'
+import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, waiveChartFinding, changeRequirements, PRD_RE, isConverted, conversionRefusal } from './chart.ts'
 import { journey, journeyText } from './journey.ts'
 import { TYPES, toType, changeDir, newChange, setActive, activeSlug, isShipped, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
 
@@ -164,7 +164,7 @@ function cmdApprove(args: Args): void {
   const chart = CHART_RE.exec(given ?? '')?.[1]
   if (chart) return approveChart(Number(chart), args)
   const prd = PRD_RE.exec(given ?? '')?.[1]
-  if (prd) return approvePrd(Number(prd), args)
+  if (prd) fail(`there is no separate PRD approval: ${skillRef('approve')} chart-${prd} covers prd.md, source.md and conversion.md with the rest of the chart. Run ${skillRef('chart')} ${prd} to its end, then approve chart-${prd}`)
   const slug = given ? checkSlug(given) : activeSlug()
   if (!slug || !exists(changeDir(slug))) fail('usage: approve <slug>')
   const refusal = approvalRefusal(slug)
@@ -183,29 +183,16 @@ function cmdApprove(args: Args): void {
 function approveTarget(): string {
   const active = activeSlug()
   if (active && exists(changeDir(active)) && !isShipped(active)) return `ASK change ${active}`
-  const prd = sprintsKnown().find(n => isConverted(n) && prdApprovalState(n) !== 'approved')
-  if (prd !== undefined) return `ASK prd-${prd}`
   const chart = sprintsKnown().find(n => exists(prdPath(n)) && sprintIntents(n).length > 0 && chartState(n).state !== 'approved')
   return chart === undefined ? 'ASK none: no change is in flight and no chart is waiting' : `ASK chart-${chart}`
 }
 
 const needPrd = (n: number): void => { if (!exists(prdPath(n))) fail(`no PRD for sprint ${n}: write ${prdRel(n)} first`) }
 
-// A person accepts the converted PRD (source.md → prd.md) before the chart decomposes it.
-function approvePrd(n: number, args: Args): void {
-  needPrd(n)
-  if (!isConverted(n)) return out(`prd-${n} was not converted (no source.md, or it is prd.md itself): nothing to approve. Next: ${skillRef('chart')} ${n}`)
-  const refusal = prdApprovalRefusal(n)
-  if (refusal) fail(refusal)
-  if (prdApprovalState(n) === 'approved') return out(`prd-${n} is already approved. Next: ${skillRef('chart')} ${n}`)
-  const by = ownerOrFail(args, 'approvals')
-  writePrdApproval(n, by)
-  out(`approved prd-${n} by ${by}: prd.md, source.md and conversion.md. Next: ${skillRef('chart')} ${n} decomposes it`)
-}
-
 function approveChart(n: number, args: Args): void {
   needPrd(n)
-  if (isConverted(n) && prdApprovalState(n) !== 'approved') fail(`chart-${n} decomposes a converted PRD that is ${prdApprovalState(n) === 'stale' ? 'changed since its approval' : 'not approved'}: a person reads prd.md beside source.md and runs ${skillRef('approve')} prd-${n} first`)
+  const conversion = isConverted(n) ? conversionRefusal(n) : null
+  if (conversion) fail(conversion)
   const block = chartFindings(n, true).filter(f => f.severity === 'block')
   if (block.length) fail(`chart-${n} has ${block.length} blocking finding(s); fix them, then approve:\n${block.map(f => `  [${f.rule}] ${f.message}`).join('\n')}`)
   if (chartState(n).state === 'approved') return out(`chart-${n} is already approved`)
@@ -238,7 +225,11 @@ function cmdPrd(args: Args): void {
   if (!['check', 'map', 'ledger', 'status'].includes(sub ?? '') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: prd (check [--json] | map [--json] | ledger | status) <sprint number>')
   const n = Number(num)
   needPrd(n)
-  if (sub === 'status') return out(isConverted(n) ? `${prdApprovalState(n)}: ${prdApprovalState(n) === 'approved' ? 'the chart may decompose prd.md' : `a person reads prd.md beside source.md, then runs ${skillRef('approve')} prd-${n}`}` : 'not converted: prd.md is the person\'s own, no PRD approval needed')
+  if (sub === 'status') {
+    if (!isConverted(n)) return out('not converted: prd.md is the person\'s own')
+    const why = conversionRefusal(n)
+    return out(why ? `converted, not ready: ${why}` : `converted: ready to decompose; ${skillRef('approve')} chart-${n} covers prd.md, source.md and conversion.md`)
+  }
   if (sub === 'ledger') {
     const format = prdFormatProblems(read(prdPath(n)))
     if (format.length) fail(`prd.md is not in format, so no ledger can be generated: run \`prd check ${n}\``)

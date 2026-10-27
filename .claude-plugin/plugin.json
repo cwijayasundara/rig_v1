@@ -1,6 +1,6 @@
 {
   "name": "rig",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Behavioural harness for Claude Code: one sensor registry, contracts frozen at plan approval, guides kept in sync, human gates.",
   "author": {
     "name": "Chaminda Wijayasundara"

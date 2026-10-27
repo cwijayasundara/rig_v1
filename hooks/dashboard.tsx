@@ -8,9 +8,8 @@ const journey = atom({ plugin: 'rig', key: 'journey' } as const, null as Journey
 const spend = atom({ plugin: 'rig', key: 'spend' } as const, { contextTokens: 0, contextWindow: 0, usd: 0 } as Spend)
 const isHidden = atom({ plugin: 'rig', key: 'isHidden' } as const, false)
 
-// The steps whose detail is drawn (journey.ts RAIL_DETAIL; the mod never imports the scripts): the build count, and the two
-// chart passes of a converted PRD, which share one command and are told apart only by it (shop_app, 2026-10-27).
-const RAIL_DETAIL = new Set(['build', 'convert', 'chart'])
+// The steps whose detail is drawn (journey.ts RAIL_DETAIL; the mod never imports the scripts): the intent and build counts.
+const RAIL_DETAIL = new Set(['chart', 'build'])
 const GLYPH = { done: '✓', current: '●', gate: '◆', todo: '○' } as const
 const COLOR = { done: 'green', current: 'cyan', gate: 'yellow', todo: undefined } as const
 

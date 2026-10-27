@@ -1,5 +1,7 @@
 # A PRD format for coding agents, and converting any PRD into it
 
+
+> **Superseded in part (2026-10-27):** the separate PRD approval (`/rig:approve prd-<N>`, `prd-approval.json`) is removed. `/rig:approve chart-<N>` is the one gate and checks the conversion; see CHANGELOG "One human gate per sprint chart".
 Date: 2026-10-26. Follows `2026-10-26-prd-fidelity-design.md` (the requirements ledger, merged in 2d1dd84).
 
 ## Relation to the PRD fidelity design

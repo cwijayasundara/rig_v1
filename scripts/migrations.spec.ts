@@ -20,6 +20,7 @@ test('pendingMigrations returns only versions after installed and up to next', (
   assert.deepEqual(pendingMigrations(since, since), [])
   assert.deepEqual(pendingMigrations('0.0.1', '0.0.2'), [])
   assert.deepEqual(pendingMigrations('0.0.1', since).map(m => m.id), ['pre-registry-sensors'])
+  assert.deepEqual(pendingMigrations('0.6.0', '0.7.0').map(m => m.id), ['drop-prd-approval'])
 })
 test('an unknown installed version runs everything', () => assert.deepEqual(pendingMigrations('', '99.0.0'), MIGRATIONS))
 test('pre-registry-sensors writes sensors.json.rig-new and leaves sensors.json byte-identical', () => {
@@ -57,4 +58,18 @@ test('pre-registry-sensors applies only to an old-shape sensors.json', () => {
   assert.equal(m.applies(tmpRepo('{}')), false)
   assert.equal(m.applies(tmpRepo(JSON.stringify({ version: 1, sensors: [] }))), false)
   assert.equal(m.applies(tmpRepo(OLD)), true)
+})
+
+// 2026-10-27 one chart gate: a PRD approval an older rig wrote is a record nothing reads any more.
+test('drop-prd-approval removes every sprint prd-approval.json and leaves the rest of the sprint alone', () => {
+  const d = tmpRepo(null)
+  const sprint = path.join(d, '.rig', 'product', 'sprints', 'sprint-1')
+  fs.mkdirSync(sprint, { recursive: true })
+  for (const f of ['prd-approval.json', 'prd.md', 'approval.json']) fs.writeFileSync(path.join(sprint, f), '{}')
+  const m = MIGRATIONS.find(x => x.id === 'drop-prd-approval')!
+  assert.equal(m.applies(d), true)
+  assert.match(runMigrations([m], d).join('\n'), /sprint-1\/prd-approval\.json removed/)
+  assert.deepEqual(fs.readdirSync(sprint).sort(), ['approval.json', 'prd.md'])
+  assert.equal(m.applies(d), false)
+  assert.equal(m.applies(tmpRepo(null)), false)
 })

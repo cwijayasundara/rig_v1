@@ -26,7 +26,22 @@ const preRegistrySensors: Migration = {
   },
 }
 
-export const MIGRATIONS: Migration[] = [preRegistrySensors]
+// 2026-10-27 one chart gate: `approve prd-N` is gone and the chart approval covers the conversion, so a PRD approval left by an
+// older rig is a record nothing reads. It is removed so nobody takes it for a gate still to pass.
+const sprintsDir = (root: string): string => path.join(root, '.rig', 'product', 'sprints')
+const prdApprovals = (root: string): string[] => {
+  try { return fs.readdirSync(sprintsDir(root)).map(d => path.join(sprintsDir(root), d, 'prd-approval.json')).filter(f => fs.existsSync(f)) } catch { return [] }
+}
+const dropPrdApproval: Migration = {
+  id: 'drop-prd-approval',
+  since: '0.7.0',
+  applies: root => prdApprovals(root).length > 0,
+  run(root) {
+    return prdApprovals(root).map(f => { fs.rmSync(f); return `${path.relative(root, f)} removed: the chart approval now covers prd.md, source.md and conversion.md` })
+  },
+}
+
+export const MIGRATIONS: Migration[] = [preRegistrySensors, dropPrdApproval]
 
 const parts = (v: string): number[] => (v || '0.0.0').split('.').map(n => parseInt(n, 10) || 0)
 const cmp = (a: string, b: string): number => {

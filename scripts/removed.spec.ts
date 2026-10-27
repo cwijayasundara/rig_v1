@@ -46,7 +46,7 @@ test('4a: a retired hook name from an old vendored settings file exits quietly',
 })
 
 test('4a: the plugin ships human-only approve and waive skills that run sdlc with SDLC_HUMAN=1', () => {
-  for (const [cmd, hint] of [['approve', '<slug | prd-N | chart-N>'], ['waive', '<sensor-or-command-id> <file|*> <reason> [--days N] | chart-<N> <finding number> <reason>']] as const) {
+  for (const [cmd, hint] of [['approve', '<slug | chart-N>'], ['waive', '<sensor-or-command-id> <file|*> <reason> [--days N] | chart-<N> <finding number> <reason>']] as const) {
     const text = read(`skills/${cmd}/SKILL.md`)
     assert.match(text, /^disable-model-invocation: true$/m)
     assert.ok(text.includes(`argument-hint: ${hint}\n`), `${cmd} argument-hint`)

@@ -182,26 +182,14 @@ test('start-brief warns off main and lists ready intents; approve --ask names th
   assert.doesNotMatch(sdlc(repo, ['status']).stdout, /approved/)
 })
 
-test('journey: a converted PRD waiting for approval → a person approves prd-0 before the chart goes on', () => {
-  write(repo, '.rig/product/sprints/sprint-0/prd.md', '---\nsprint: 0\n---\n# PRD\n\n## Functional requirements\n\n### FR-0: thing\n\n- AC-0.1: WHEN a THE SYSTEM SHALL b\n\n## Data rules\n\nnone\n\n## Non-functional requirements\n\nnone\n\n## Boundaries\n\nnone\n\n## Open questions\n\nnone\n')
-  write(repo, '.rig/product/sprints/sprint-0/source.md', '# Thing\n\nIt does b on a.\n')
-  const j = view()
-  assert.match(j.next.command, /approve prd-0$/)
-  assert.equal(j.next.by, 'person')
-})
-
-test('journey: a converted PRD puts convert and approve-prd on the rail, and once approved the chart runs again to decompose it', () => {
+// 2026-10-27 one gate: a converted PRD has no approval of its own; the rail goes straight from chart to the chart approval.
+test('journey: a converted PRD with no intents yet → the chart runs on to decompose it, with no PRD gate on the rail', () => {
   write(repo, '.rig/product/sprints/sprint-0/prd.md', '---\nsprint: 0\n---\n# PRD\n\n## Functional requirements\n\n### FR-0: thing\n\n- AC-0.1: WHEN a THE SYSTEM SHALL b\n\n## Data rules\n\nnone\n\n## Non-functional requirements\n\nnone\n\n## Boundaries\n\nnone\n\n## Open questions\n\nnone\n')
   write(repo, '.rig/product/sprints/sprint-0/source.md', '# Thing\n\nIt does b on a.\n')
   write(repo, '.rig/product/sprints/sprint-0/conversion.md', '- FR-0 source.md:3 "It does b on a."\n')
-  let j = view()
-  assert.match(states(j), /^init:done prd:done convert:done approve-prd:gate chart:todo testplan:todo approve:todo build:todo$/)
-  assert.equal(j.outer.find(s => s.id === 'approve-prd')?.command, '/rig:approve prd-0')
-  assert.equal(sdlc(repo, ['approve', 'prd-0'], { env: { SDLC_HUMAN: '1' } }).code, 0)
-  j = view()
-  assert.match(states(j), /convert:done approve-prd:done chart:current/)
-  assert.deepEqual(['convert', 'chart'].map(id => j.outer.find(s => s.id === id)?.detail), ['convert', 'decompose'])
+  const j = view()
+  assert.match(states(j), /^init:done prd:done chart:current testplan:todo approve:todo build:todo$/)
   assert.equal(j.next.command, '/rig:chart 0')
-  assert.match(j.next.why, /approved/)
-  assert.match(sdlc(repo, ['status', '--journey']).stdout, /✓ \/rig:chart 0 \(convert\) {2}✓ \/rig:approve prd-0 {2}● \/rig:chart 0 \(decompose\)/)
+  assert.equal(j.next.by, 'model')
+  assert.ok(!j.outer.some(s => /prd-0/.test(s.command)), 'no approve prd-N step')
 })
