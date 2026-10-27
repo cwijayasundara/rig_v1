@@ -226,7 +226,7 @@ function builtinFindings(diffs: FileDiff[], config: Registry, rules: Rule[], lin
   const pattern = withoutFixtures(diffs, config)
   return [
     ...testTamper(pattern, config), ...suppressions(pattern, config), ...layering(pattern, config), ...size(diffs, config, lineCounts, point),
-    ...secretsInDiff(pattern), ...rulesSensor(pattern, rules), ...frozenFindings(slugs, touched, after), ...unapprovedBuild(slugs, touched, planGate), ...scopeFindings(diffs, slugs, config.paths, point, scopeOf),
+    ...secretsInDiff(pattern), ...rulesSensor(pattern, rules), ...frozenFindings(slugs, touched, after), ...unapprovedBuild(slugs, touched, planGate && (point === 'edit' || point === 'stop')), ...scopeFindings(diffs, slugs, config.paths, point, scopeOf),
   ]
 }
 

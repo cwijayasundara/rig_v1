@@ -269,3 +269,13 @@ test('post-edit does not block a planned file when the plan gate is off', () => 
   write(repo, 'src/a.js', 'export const a = 1\n')
   assert.equal(hook(repo, 'post-edit', { tool_input: { file_path: path.join(repo, 'src/a.js') } }).code, 0)
 })
+
+test('the stop check honours gates.plan: off lets a planned file through, on blocks it', () => {
+  planned()
+  hook(repo, 'prompt-submit', {})
+  write(repo, 'src/a.js', 'export const a = 1\n')
+  const stop = () => sdlc(repo, ['check', '--at', 'stop', '--slug', 'demo'])
+  assert.match(stop().stdout, /plan-gate/)
+  write(repo, '.rig/sensors.json', JSON.stringify({ gates: { plan: false } }))
+  assert.doesNotMatch(stop().stdout, /plan-gate/)
+})

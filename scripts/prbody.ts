@@ -27,7 +27,7 @@ export function prBody(i: PrBodyInput): string {
   const why = firstSentence(section(i.intent, 'Intent')) || 'none recorded'
   const behaviours = bullets(section(i.spec, 'Behaviours'))
   const radius = bullets(section(i.spec, 'Blast radius'))
-  const amended = bullets(section(i.amendments ?? '', 'Amendments'))
+  const amended = bullets(section(i.amendments ?? '', 'Amendments')).filter(l => !/^[-*]\s+none\.?$/i.test(l))
   const evidence = i.verify ? `verify: ${i.verify.pass ? 'pass' : 'fail'} on tree ${i.verify.tree ?? 'unknown'} (${i.verify.blocks.join(', ') || 'no blocking sensors'})` : 'verify: none'
   const missed = bullets(section(i.review, 'Unverifiable'))
   const parts = [

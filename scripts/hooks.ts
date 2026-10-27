@@ -222,7 +222,7 @@ function hookStop(input: HookInput = {}): { halt: boolean; warn?: string } {
   const result = runChecks({
     point: 'stop', diffs, config: registry, rules, slugs: slug ? [slug] : [], commands: treePassed || mode === 'final' ? 'none' : 'fast', budgetMs: BUDGET_MS.stop,
     before: f => showAt(snap.sha, f) ?? '', toolEdited: new Set(gate.tool), base: null, ratchet: true, ratchetWrite: 'write',
-    contracts: mode === 'continuous' && contractsTouched(registry.contracts, diffs.map(d => d.file)),
+    contracts: mode === 'continuous' && contractsTouched(registry.contracts, diffs.map(d => d.file)), gates: registry.gates,
   })
   const configBlocks: Finding[] = errors.map(e => ({ sensor: 'config', severity: 'block', file: SENSORS_JSON, message: e, fix: 'fix the file' }))
   const kept = mode === 'final' ? result.findings.filter(f => (ALWAYS_ON as string[]).includes(f.sensor)) : result.findings

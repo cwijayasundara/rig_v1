@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process'
 import { ROOT, CHANGES, WAIVERS, waiverLive, exists, isTrunk, read, readJsonl, out, fail, git, checkSlug, optString, ensureGitignore, skillRef, defaultBase, type Args, type Waiver } from './core.ts'
 import { frozenFindings, frozenFor } from './contracts.ts'
 import { loadConfig } from './check.ts'
-import { ghBin } from './model.ts'
+import { ghBin, section } from './model.ts'
 import { treeStamp } from './stamp.ts'
 import { activeSlug, setActive, approvalState, verifyFresh } from './lifecycle.ts'
 import { prBody } from './prbody.ts'
@@ -67,7 +67,7 @@ export function cmdPr(args: Args): void {
   const frozen = frozenFindings([slug], Object.keys(frozenFor(slug)), f => read(path.join(ROOT, f))).filter(f => !waived.some(w => w.file === '*' || w.file === f.file))
   if (frozen.length) fail(`not shipping: ${frozen.map(f => f.message).join('; ')}. Revert it, or a person re-approves or waives it`)
   // A review fix wave that changed behaviour amends the spec, but spec.md is hashed into the approval: the amendment goes in amendments.md (or "none").
-  if (/^- .*→ fixed/m.test(read(path.join(CHANGES, slug, 'review.md'))) && !exists(path.join(CHANGES, slug, 'amendments.md'))) fail(`not shipping: review.md has fixed findings but ${slug} has no amendments.md; write it: one "- A<n> (B<n>): what now behaves differently, and why" line per fix that changed documented behaviour, or "none" under ## Amendments`)
+  if (/^\s*[-*] .*→ fixed\b/m.test(section(read(path.join(CHANGES, slug, 'review.md')), 'Findings')) && !exists(path.join(CHANGES, slug, 'amendments.md'))) fail(`not shipping: review.md has fixed findings but ${slug} has no amendments.md; write it: one "- A<n> (B<n>): what now behaves differently, and why" line per fix that changed documented behaviour, or "none" under ## Amendments`)
   const missing = untestedAcs(slug, loadConfig().registry.paths)
   if (missing.length) fail(`not shipping: no test names these acceptance criteria (name each test after its AC, e.g. test_ac_1_2_..., or put the id in the test title):\n${missing.map(m => `  ${m}`).join('\n')}`)
   if (head !== branch) {
