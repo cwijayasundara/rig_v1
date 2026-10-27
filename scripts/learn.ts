@@ -8,6 +8,7 @@ import { mineCandidates, shippedChanges, lessonStatus } from './learnmine.ts'
 import { replayRule, replayLayers } from './learnreplay.ts'
 import { mineTranscripts, projectDirs, repeated } from './learntranscripts.ts'
 import { parseRules, type Rule } from './model.ts'
+import { writeCandidates, readCases } from './reviewcases.ts'
 
 const LESSONS = path.join(SDLC, 'lessons.md')
 const ARCHIVE = path.join(SDLC, 'lessons-archive.md')
@@ -127,5 +128,6 @@ export function cmdLearn(args: Args): void {
   if (sub === 'proposal') { const p = proposalCheck(); out(p.length ? p.map(x => `[learn] ${x}`).join('\n') : 'learn proposal: every promotion carries a passing replay'); process.exitCode = p.length ? 1 : 0; return }
   if (sub === 'replay') return replay(args)
   if (sub === 'status') return status()
-  fail('usage: learn <mine [--transcripts]|replay <rule.json>|--layers <block.md> --earned a,b|proposal|check|status>')
+  if (sub === 'reverts') { const r = writeCandidates(ROOT); const bad = readCases(ROOT).bad; out([`review cases: ${r.added.length} new, ${r.total} total, ${r.confirmed} confirmed (.rig/learn/review-cases/)`, ...r.added.map(n => `  + ${n}`), ...bad.map(n => `  ! ${n}: unreadable, skipped`), r.total > r.confirmed ? 'to confirm one: a person who knows the code sets defect.file, defect.pattern and confirmed: true in its file' : ''].filter(Boolean).join('\n')); return }
+  fail('usage: learn <mine [--transcripts]|replay <rule.json>|--layers <block.md> --earned a,b|proposal|check|status|reverts|review-eval --max-usd <n> [--model <id>]>')
 }
