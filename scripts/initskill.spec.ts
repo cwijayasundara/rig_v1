@@ -121,3 +121,10 @@ test('init and the README block name docs/prd/sprint-0/prd.md, the folder per sp
     assert.doesNotMatch(t, /docs\/prd\/sprint-0\.md/)
   }
 })
+
+test('init sets up the review gates: asks in full mode, prints the commands under --quick and --defaults, never sets rung 3', () => {
+  assert.match(skill, /init --protect --dry/)
+  assert.match(skill, /AskUserQuestion[^\n]*required checks[\s\S]*init --protect`/)
+  assert.match(skill, /risk\.enforce[\s\S]*init --enforce/)
+  assert.match(skill, /never set(s)? rung 3|rung 3 is never set/i)
+})

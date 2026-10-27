@@ -52,3 +52,12 @@ test('without gh the commands are printed and nothing fails', { skip: !posix }, 
   assert.equal(r.code, 0)
   assert.match(r.stdout, /gh api -X POST repos\/\{owner\}\/\{repo\}\/branches\/main\/protection\/required_status_checks\/contexts/)
 })
+
+test('init --enforce turns risk.enforce on and keeps every other key of sensors.json', () => {
+  const repo = makeRepo()
+  fs.mkdirSync(path.join(repo, '.rig'), { recursive: true })
+  fs.writeFileSync(path.join(repo, '.rig/sensors.json'), JSON.stringify({ stack: 'node', sensors: [], risk: { maxLines: 200 } }))
+  assert.equal(sdlc(repo, ['init', '--enforce']).code, 0)
+  const j = JSON.parse(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8')) as { stack: string; risk: { enforce: boolean; maxLines: number } }
+  assert.deepEqual([j.stack, j.risk.enforce, j.risk.maxLines], ['node', true, 200])
+})
