@@ -951,3 +951,11 @@ test('approve chart-N lists the reviewer\'s Deferred items for the person, and s
   assert.match(ok.stdout, /1 deferred review item\(s\) nobody has decided[^\n]*\n  - whitespace sku loads but add rejects it: decide\./)
   assert.doesNotMatch(ok.stdout, /injection/)
 })
+
+test('the Deferred list at approval keeps real items that start with "No" or "None of", joins wrapped lines, and finds a heading with trailing words', () => {
+  cleanChart()
+  write(repo, `${P}/sprints/sprint-1/chart-review.md`, 'verdict: pass\n## Findings\n## Deferred (for the person)\n- No test covers B4 when qty is 0.\n- None of the cases cover a\n  whitespace sku.\n- none\n')
+  const out = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN).stdout
+  assert.match(out, /2 deferred review item\(s\)/)
+  assert.match(out, /  - No test covers B4 when qty is 0\.\n  - None of the cases cover a whitespace sku\./)
+})
