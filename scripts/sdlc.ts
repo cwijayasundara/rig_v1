@@ -39,6 +39,7 @@ import { cmdMaintain } from './maintain.ts'
 import { cmdReadiness } from './readiness.ts'
 import { cmdAutonomy, initAutonomy } from './autonomy.ts'
 import { cmdRisk } from './risk.ts'
+import { protect } from './protect.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'
 import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, waiveChartFinding, changeRequirements, PRD_RE, isConverted, prdApprovalState, prdApprovalRefusal, writePrdApproval } from './chart.ts'
 import { journey, journeyText } from './journey.ts'
@@ -72,6 +73,7 @@ function cmdInit(args: Args): void {
   out(`initialised ${toPosix(path.relative(ROOT, SDLC)) || SDLC}${newRepo ? ' (ran git init: no repository was here)' : ''}`)
   if (args.opt.stack) out(declareStack(args.opt.stack))
   if (args.opt.full) out(installStandalone(Boolean(args.opt.workflows)))
+  if (args.opt.protect) out(protect(Boolean(args.opt.dry)).join('\n'))
   const me = whoami()
   out(me ? `approvals and waivers are recorded as "${me}" (git user.name); change it with: git config user.name "<name>"` : 'no user name found: set one with `git config user.name "<name>"` so approvals say who approved')
 }
