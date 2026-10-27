@@ -110,3 +110,22 @@ test('the security pass checks every touched action against its ## Access row on
 test('pr triage never defers or dismisses a finding that cites a ledger id', () => {
   assert.match(pr(), /cites a ledger id[^\n]*never moved to `## Deferred`[^\n]*never dismissed/)
 })
+
+test('pr copies Pre-existing findings to review.md, untagged, never fixed and never changing the verdict', () => {
+  const t = pr()
+  assert.match(t, /`## Pre-existing`/)
+  assert.match(t, /Pre-existing[^.]*never fixed/)
+})
+
+test('after the fix wave one fresh agent confirms each fixed finding, raising nothing new', () => {
+  const t = pr()
+  assert.match(t, /templates\/confirm-brief\.md/)
+  assert.match(t, / → fixed \(confirmed\)/)
+  assert.match(t, / → reopened: <why>/)
+  assert.match(t, /a reopened finding keeps `verdict: changes-needed`/)
+  const brief = repoText('templates/confirm-brief.md')
+  assert.match(brief, /Raise nothing new/)
+  assert.match(brief, /<n>\. confirmed/)
+  assert.match(brief, /<n>\. reopened: <why>/)
+  assert.ok(brief.trimEnd().split('\n').length <= 30)
+})
