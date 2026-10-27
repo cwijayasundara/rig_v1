@@ -64,3 +64,9 @@ test('What the checks would miss quotes the Unverifiable list, and says so when 
 test('no review.md is never read as a clean one', () => {
   assert.match(prBody({ intent, spec, plan, verify, outline: '', review: '', risk }), /## What the checks would miss\n\nno review\.md/)
 })
+
+test('amendments recorded after approval are listed under their own heading, and "none" adds nothing', () => {
+  const b = prBody({ intent, spec, plan, verify, outline: '', review: '', risk, amendments: '## Amendments\n- A1 (B2): an empty report also exports a BOM.\n' })
+  assert.match(b, /## Amendments after approval\n\n- A1 \(B2\): an empty report also exports a BOM\./)
+  assert.doesNotMatch(prBody({ intent, spec, plan, verify, outline: '', review: '', risk, amendments: '## Amendments\nnone\n' }), /Amendments/)
+})

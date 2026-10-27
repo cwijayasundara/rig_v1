@@ -138,3 +138,9 @@ test('build and test skills load named test-plan data files unchanged and name t
   for (const f of ['skills/build/SKILL.md', 'skills/test/SKILL.md']) assert.match(repoText(f), /Data column names a file[^\n]*testplan\/data\/[^\n]*unchanged, never a copy/, f)
   assert.match(repoText('skills/build/SKILL.md'), /test_ac_1_2_\.\.\./)
 })
+
+test('the fix wave records behaviour changes in amendments.md and never edits the approved spec', () => {
+  const t = pr()
+  assert.match(t, /amendments\.md/)
+  assert.match(t, /Never edit spec\.md or plan\.md for this/)
+})

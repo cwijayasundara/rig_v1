@@ -173,3 +173,23 @@ test('pr refuses when an intent AC has no test naming it, and ships once one doe
   const ok = pr()
   assert.equal(ok.code, 0, ok.stderr)
 })
+
+// shop_app cart-storage 2026-10-27: a security fix changed what load catches, and spec.md B7 and the PR body never said so.
+// amendments.md sits beside the hashed spec.md and plan.md, so recording one keeps the approval valid.
+test('pr refuses a review fix wave with no amendments.md, and ships once it records the amendment or says none', () => {
+  shipReady()
+  write(repo, '.rig/changes/demo/review.md', 'verdict: pass\n## Findings\n- [severity: high] [category: correctness] src/a.js:1: load raises on a deep file. Fails when: nesting is 100000 deep. → fix → fixed (confirmed)\n')
+  verified(repo, 'demo')
+  assert.match(pr().stderr, /amendments\.md/)
+  write(repo, '.rig/changes/demo/amendments.md', '## Amendments\n- A1 (B1): load also rejects a file nested too deeply, as a StorageError. Found by the security review after approval.\n')
+  const r = pr()
+  assert.equal(r.code, 0, r.stderr)
+  assert.match(fs.readFileSync(path.join(repo, '.rig/changes/demo/pr-body.md'), 'utf8'), /## Amendments after approval\n\n- A1 \(B1\): load also rejects/)
+})
+
+test('pr needs no amendments.md when the review fixed nothing', () => {
+  shipReady()
+  write(repo, '.rig/changes/demo/review.md', 'verdict: pass\n## Findings\n\n## Deferred\n- none\n')
+  verified(repo, 'demo')
+  assert.equal(pr().code, 0)
+})

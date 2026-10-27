@@ -66,6 +66,8 @@ export function cmdPr(args: Args): void {
   const waived = readJsonl<Waiver>(WAIVERS).filter(w => w.slug === slug && w.sensor === 'harness-tamper' && waiverLive(w))
   const frozen = frozenFindings([slug], Object.keys(frozenFor(slug)), f => read(path.join(ROOT, f))).filter(f => !waived.some(w => w.file === '*' || w.file === f.file))
   if (frozen.length) fail(`not shipping: ${frozen.map(f => f.message).join('; ')}. Revert it, or a person re-approves or waives it`)
+  // A review fix wave that changed behaviour amends the spec, but spec.md is hashed into the approval: the amendment goes in amendments.md (or "none").
+  if (/^- .*→ fixed/m.test(read(path.join(CHANGES, slug, 'review.md'))) && !exists(path.join(CHANGES, slug, 'amendments.md'))) fail(`not shipping: review.md has fixed findings but ${slug} has no amendments.md; write it: one "- A<n> (B<n>): what now behaves differently, and why" line per fix that changed documented behaviour, or "none" under ## Amendments`)
   const missing = untestedAcs(slug, loadConfig().registry.paths)
   if (missing.length) fail(`not shipping: no test names these acceptance criteria (name each test after its AC, e.g. test_ac_1_2_..., or put the id in the test title):\n${missing.map(m => `  ${m}`).join('\n')}`)
   if (head !== branch) {
@@ -80,7 +82,7 @@ export function cmdPr(args: Args): void {
     const c = (name: string): string => read(path.join(CHANGES, slug, name))
     let verify: (Parameters<typeof prBody>[0]['verify'] & { base?: string }) | null = null
     try { verify = JSON.parse(c('verify.json')) } catch { /* no verify.json: the body says so */ }
-    fs.writeFileSync(path.join(CHANGES, slug, 'pr-body.md'), prBody({ intent: c('intent.md'), spec: c('spec.md'), plan: c('plan.md'), verify, outline: c('pr-outline.md'), review: c('review.md'), risk: riskOf(branchDiff(verify?.base ?? defaultBase() ?? 'HEAD').filter(d => ships(slug)(d.file)), [slug], loadConfig().registry, parseAccess(read(archPath)), false) }))
+    fs.writeFileSync(path.join(CHANGES, slug, 'pr-body.md'), prBody({ intent: c('intent.md'), spec: c('spec.md'), plan: c('plan.md'), verify, outline: c('pr-outline.md'), review: c('review.md'), amendments: c('amendments.md'), risk: riskOf(branchDiff(verify?.base ?? defaultBase() ?? 'HEAD').filter(d => ships(slug)(d.file)), [slug], loadConfig().registry, parseAccess(read(archPath)), false) }))
   }
   const files = changeFiles(slug)
   const left = dirtyFiles().filter(isHarnessPath)
