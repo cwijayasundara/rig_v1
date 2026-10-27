@@ -52,7 +52,7 @@ test('Risk shows the tier and its reasons, and a tier 0 says so', () => {
 })
 
 test('How to revert depends on the door', () => {
-  assert.match(prBody({ intent, spec, plan, verify, outline: '', review: '', risk }), /## How to revert\n\nRevert the merge commit: `git revert -m 1 <merge sha>`\./)
+  assert.match(prBody({ intent, spec, plan, verify, outline: '', review: '', risk }), /## How to revert\n\nRevert the change: `git revert <sha>` for a plain commit on the trunk, or `git revert -m 1 <merge sha>` for a merge commit\./)
   assert.match(prBody({ intent, spec, plan: plan.replace('none', '- api.yaml'), verify, outline: '', review: '', risk }), /## How to revert\n\nReverting the code does not undo the contract change to api\.yaml/)
 })
 
@@ -69,4 +69,14 @@ test('amendments recorded after approval are listed under their own heading, and
   const b = prBody({ intent, spec, plan, verify, outline: '', review: '', risk, amendments: '## Amendments\n- A1 (B2): an empty report also exports a BOM.\n' })
   assert.match(b, /## Amendments after approval\n\n- A1 \(B2\): an empty report also exports a BOM\./)
   assert.doesNotMatch(prBody({ intent, spec, plan, verify, outline: '', review: '', risk, amendments: '## Amendments\nnone\n' }), /Amendments/)
+})
+
+// shop_app cart-storage 2026-10-27: the spec listed five files one per line without bullets and the body said "none recorded"; the revert text always said -m 1.
+test('the blast radius reads path lines without bullets, and the revert text fits a plain commit as well as a merge', () => {
+  const plain = spec.replace('- src/export/\n- test/export.test.ts', 'src/export/csv.ts\ntest/export.test.ts')
+  assert.match(prBody({ intent, spec: plain, plan, verify, outline: '', review: '', risk }), /## Blast radius\n\n- src\/export\/csv\.ts\n- test\/export\.test\.ts/)
+  assert.doesNotMatch(prBody({ intent, spec: plain, plan, verify, outline: '', review: '', risk }), /none recorded/)
+  const b = prBody({ intent, spec, plan, verify, outline: '', review: '', risk })
+  assert.match(b, /`git revert <sha>`/)
+  assert.match(b, /`git revert -m 1 <merge sha>`/)
 })

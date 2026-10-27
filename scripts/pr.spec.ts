@@ -193,3 +193,18 @@ test('pr needs no amendments.md when the review fixed nothing', () => {
   verified(repo, 'demo')
   assert.equal(pr().code, 0)
 })
+
+// shop_app cart-storage 2026-10-27: pr-body.md embeds pr-outline.md, so shipping both stored the text twice; the regenerated sprint plan stayed dirty after the merge.
+test('pr ships pr-body.md but not the pr-outline.md it embeds, and carries the sprint plan the build refreshed', () => {
+  shipReady()
+  write(repo, '.rig/changes/demo/pr-outline.md', '## Special things to note\n- one\n')
+  write(repo, '.rig/product/sprints/sprint-1/plan.md', '# plan\n')
+  verified(repo, 'demo')
+  const r = pr()
+  assert.equal(r.code, 0, r.stderr)
+  const shipped = gitIn(repo, 'show', '--name-only', '--format=', 'HEAD').split('\n')
+  assert.ok(shipped.includes('.rig/changes/demo/pr-body.md'))
+  assert.ok(!shipped.includes('.rig/changes/demo/pr-outline.md'))
+  assert.ok(shipped.includes('.rig/product/sprints/sprint-1/plan.md'))
+  assert.match(fs.readFileSync(path.join(repo, '.rig/changes/demo/pr-body.md'), 'utf8'), /Special things to note/)
+})

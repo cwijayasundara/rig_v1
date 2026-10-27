@@ -85,7 +85,7 @@ const loadState = (root: string): WikiState => {
 
 function indexText(config: WikiConfig, state: WikiState): string {
   const line = (p: WikiPage, depth: number): string[] => [
-    `${'  '.repeat(depth)}- [${p.title}](${slugOf(p.title)}.md): ${p.purpose}${state.pages[slugOf(p.title)] ? ` (built ${state.pages[slugOf(p.title)]!.builtAt})` : ''}`,
+    state.pages[slugOf(p.title)] ? `${'  '.repeat(depth)}- [${p.title}](${slugOf(p.title)}.md): ${p.purpose} (built ${state.pages[slugOf(p.title)]!.builtAt})` : `${'  '.repeat(depth)}- ${p.title} (not built yet): ${p.purpose}`,
     ...config.pages.filter(c => c.parent === p.title).flatMap(c => line(c, depth + 1)),
   ]
   return `# Wiki\n\n${config.pages.filter(p => !p.parent).flatMap(p => line(p, 0)).join('\n')}\n`

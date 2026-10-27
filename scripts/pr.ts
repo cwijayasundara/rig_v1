@@ -35,7 +35,8 @@ function openPr(slug: string, branch: string, title: string): string | null {
 // Another change's folder never rides along, so its own gate cannot fail this PR. A sprint chart approval does, so CI sees it.
 const SHARED = ['.rig/waivers.jsonl', '.rig/autonomy.json', '.rig/.gitignore', '.rig/sensors.json', '.rig/rules.json', '.rig/product/brief.md', '.rig/wiki.json']
 const SHARED_DIRS = ['.rig/guides/', '.rig/wiki/']
-const SHARED_RE = /^\.rig\/product\/sprints\/sprint-\d+\/approval\.json$/
+// The sprint plan is regenerated as changes land (done, ready); the next change's PR carries it instead of leaving the tree dirty.
+const SHARED_RE = /^\.rig\/product\/sprints\/sprint-\d+\/(approval\.json|plan\.md)$/
 function dirtyFiles(): string[] {
   const dirty = [...(git(['diff', '--name-only', 'HEAD']) ?? '').split('\n'), ...(git(['ls-files', '--others', '--exclude-standard']) ?? '').split('\n')].filter(Boolean)
   return [...new Set(dirty)]
@@ -44,7 +45,8 @@ const changeFiles = (slug: string): string[] => dirtyFiles().filter(ships(slug))
 
 // What a PR for this change carries under .rig/: its own record and the shared files; the rest of .rig/ stays local.
 // A vendored harness file never rides along: a rig upgrade left uncommitted ended up in a feature commit (shop_app 2026-10-27).
-const ships = (slug: string) => (f: string): boolean => !isHarnessPath(f) && (!f.startsWith('.rig/') || f.startsWith(`.rig/changes/${slug}/`) || SHARED_DIRS.some(d => f.startsWith(d)) || SHARED_RE.test(f) || SHARED.includes(f))
+// pr-outline.md is embedded in pr-body.md, which ships; storing both kept the text twice.
+const ships = (slug: string) => (f: string): boolean => !isHarnessPath(f) && !f.endsWith(`/${slug}/pr-outline.md`) && (!f.startsWith('.rig/') || f.startsWith(`.rig/changes/${slug}/`) || SHARED_DIRS.some(d => f.startsWith(d)) || SHARED_RE.test(f) || SHARED.includes(f))
 
 export function cmdPr(args: Args): void {
   const given = args.pos[0]
