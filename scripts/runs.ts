@@ -27,7 +27,12 @@ child.on('error', () => process.exit(127))
 
 // Evidence is committed with the change: the repo root and the home directory become stable names (shop_app 2026-10-27: runs.jsonl held /Users/... paths).
 export function portable(text: string, root = ROOT, home = os.homedir()): string {
-  const swap = (t: string, dir: string, name: string): string => (dir.length > 1 ? t.replace(new RegExp(`${dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w.-])`, 'g'), name) : t)
+  const esc = (d: string): string => d.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  // A trailing separator would sit before the lookahead; either slash spelling matches (compilers and git print / on Windows). A path ending a sentence still swaps.
+  const swap = (t: string, dir: string, name: string): string => {
+    const d = dir.replace(/[\\/]+$/, '')
+    return d.length > 1 ? t.replace(new RegExp(`${esc(d).replace(/\\\\|\//g, '[\\\\/]')}(?![\\w-]|\\.\\w)`, 'gi'), name) : t
+  }
   return swap(swap(text, root, '<repo>'), home, '~')
 }
 
@@ -47,7 +52,7 @@ export function runCommand(cmd: string, opts: { cwd?: string; timeoutMs?: number
   const ms = Date.now() - started
   const timedOut = (r.status === TIMED_OUT && ms >= timeoutMs) || (r.error as NodeJS.ErrnoException | undefined)?.code === 'ETIMEDOUT'
   const row: RunRow = { at: now(), cmd, exit: r.status ?? TIMED_OUT, ms, tail: portable(maskSecrets(text.split('\n').slice(-TAIL_LINES).join('\n'))) }
-  if (opts.cwd && opts.cwd !== ROOT) row.cwd = opts.cwd
+  if (opts.cwd && opts.cwd !== ROOT) row.cwd = portable(opts.cwd)
   if (timedOut) row.timedOut = true
   return row
 }
