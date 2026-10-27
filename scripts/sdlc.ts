@@ -10,7 +10,7 @@ import { waiverLive, whoami, ownerOrFail,
   ROOT, SDLC, CHANGES, SLUG_RE, SOFT_HOOK_FAILURE, exists, read, now, defaultBase, isTrunk, trunkName, toPosix, out, fail, git, parseArgs, optString, listChanges, scanSecrets, checkSlug,
   WAIVERS, readJsonl, type Waiver, ensureGitignore, PLUGIN_ROOT, IS_VENDORED, skillRef, sanctionWrites, readGate, type Args,
 } from './core.ts'
-import { formatFindings, SENSOR_NAMES, type Finding } from './model.ts'
+import { formatFindings, section, SENSOR_NAMES, type Finding } from './model.ts'
 import { readBaseline, branchDiff, turnDiff, type Snapshot } from './diffs.ts'
 import { cmdHook } from './hooks.ts'
 import { cmdCheck, cmdCheckFile, loadConfig } from './check.ts'
@@ -201,6 +201,8 @@ function approveChart(n: number, args: Args): void {
   if (!open) fail(`chart-${n} has no chart-review.md: run ${skillRef('chart')} ${n} through its review step, then approve`)
   if (!open.length && !/^verdict:\s*pass\s*$/m.test(read(reviewPath(n)).split('\n')[0] ?? '') && !chartReview(n)?.length) fail(`chart-${n}'s chart-review.md says changes-needed but lists no finding rig can read: write each as a \`- \` line under \`## Findings\``)
   if (open.length) fail(`chart-${n} has ${open.length} review finding(s) not confirmed fixed:\n${open.map(f => `  ${f.n}. ${f.text}${f.status === 'claimed' ? ' (marked fixed, never confirmed)' : ''}`).join('\n')}\nFix them and re-run the chart's confirm pass, or waive one with ${skillRef('waive')} chart-${n} <finding number> <reason>`)
+  // The reviewer's Deferred list is for the person to decide; approval is where it is seen (shop_app 2026-10-27: a whitespace-sku question sat there undecided).
+  const deferred = section(read(reviewPath(n)), 'Deferred').split('\n').filter(l => /^\s*[-*]\s+/.test(l)).map(l => l.replace(/^\s*[-*]\s+/, '').trim()).filter(l => !/^(none|no\b)/i.test(l))
   const by = ownerOrFail(args, 'approvals')
   writeChartApproval(n, by)
   // A sensors.json with edits of its own is not swept into the approval commit: the person commits it.
@@ -212,7 +214,7 @@ function approveChart(n: number, args: Args): void {
   const branch = git(['branch', '--show-current']) ?? ''
   const trunk = trunkName()
   const first = branch && !isTrunk(branch) ? `merge ${branch} into ${trunk} first, then start from ${trunk} with ` : 'engineers run `ready` to see which intents can start, then '
-  out(`${registered.length ? `registered ${registered.length} contract file(s) in .rig/sensors.json: ${registered.join(', ')}${sensorsDirty ? ' (sensors.json had uncommitted edits: commit it yourself)' : ''}\n` : ''}${reg.warning ? `warning: declared contract files were not registered (${reg.warning}); add them to contracts.files\n` : ''}${committed === null ? `warning: the approval is kept but git refused to commit it: commit it before building, with git add ${approvalRel(n)} ${sprintRel(n)}/plan.md ${ARCH_REL} .rig/product/adr && git commit -m "chore: approve chart-${n}"\n` : ''}approved chart-${n} by ${by}: ${chartFiles(n).length} file(s). Next: ${first}${skillRef('start')} ${sprintRel(n)}/intents/<slug>.md`)
+  out(`${registered.length ? `registered ${registered.length} contract file(s) in .rig/sensors.json: ${registered.join(', ')}${sensorsDirty ? ' (sensors.json had uncommitted edits: commit it yourself)' : ''}\n` : ''}${deferred.length ? `${deferred.length} deferred review item(s) nobody has decided (chart-review.md ## Deferred); decide each before or during the build:\n${deferred.map(d => `  - ${d}`).join('\n')}\n` : ''}${reg.warning ? `warning: declared contract files were not registered (${reg.warning}); add them to contracts.files\n` : ''}${committed === null ? `warning: the approval is kept but git refused to commit it: commit it before building, with git add ${approvalRel(n)} ${sprintRel(n)}/plan.md ${ARCH_REL} .rig/product/adr && git commit -m "chore: approve chart-${n}"\n` : ''}approved chart-${n} by ${by}: ${chartFiles(n).length} file(s). Next: ${first}${skillRef('start')} ${sprintRel(n)}/intents/<slug>.md`)
 }
 
 const approvalRel = (n: number): string => `${sprintRel(n)}/approval.json`
