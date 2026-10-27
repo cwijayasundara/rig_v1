@@ -410,3 +410,26 @@ test('on a detached HEAD the recovery line names the HEAD sha, and sync and base
   assert.ok(r.stdout.includes(`git checkout ${head} `), r.stdout)
   assert.match(r.stdout, /sdlc\.ts sync and sdlc\.ts baseline/)
 })
+
+const WORKFLOW = '.github/workflows/rig-check.yml'
+const template = (): string => fs.readFileSync(path.resolve(import.meta.dirname, '../templates/rig-check.yml'), 'utf8')
+
+test('a rig-check.yml that differs from the template is flagged, and apply writes .rig-new beside it, never over it', () => {
+  const repo = committed()
+  write(repo, WORKFLOW, 'name: rig-check\n# an older copy\n')
+  gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'old workflow')
+  assert.equal((plan(repo) as { workflow?: string }).workflow, 'differs')
+  assert.match(sdlc(repo, ['upgrade']).stdout, /\.github\/workflows\/rig-check\.yml differs from the plugin's template/)
+  assert.equal(sdlc(repo, ['upgrade', '--apply']).code, 0)
+  assert.equal(fs.readFileSync(path.join(repo, WORKFLOW), 'utf8'), 'name: rig-check\n# an older copy\n')
+  assert.equal(fs.readFileSync(path.join(repo, `${WORKFLOW}.rig-new`), 'utf8'), template())
+})
+
+test('a current or absent rig-check.yml is left out of the plan', () => {
+  const repo = committed()
+  assert.equal((plan(repo) as { workflow?: string }).workflow, 'absent')
+  write(repo, WORKFLOW, template())
+  gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'current workflow')
+  assert.equal((plan(repo) as { workflow?: string }).workflow, 'same')
+  assert.doesNotMatch(sdlc(repo, ['upgrade']).stdout, /rig-check\.yml differs/)
+})

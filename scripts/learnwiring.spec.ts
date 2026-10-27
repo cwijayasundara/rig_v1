@@ -66,3 +66,9 @@ test('the learn skill mines the person\'s corrections and turns one seen in two 
   assert.match(skill, /2\. \*\*Read\.\*\*[^\n]*corrections\.json/)
   assert.match(skill.split('\n').find(l => l.startsWith('description:')) ?? '', /corrections/)
 })
+
+test('/rig:learn mines reverts into review cases and leaves the paid eval to the person', () => {
+  const t = fs.readFileSync(path.resolve(import.meta.dirname, '../skills/learn/SKILL.md'), 'utf8')
+  assert.match(t, /S learn reverts/)
+  assert.match(t, /learn review-eval --max-usd[\s\S]*never run it yourself/)
+})

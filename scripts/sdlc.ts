@@ -14,7 +14,7 @@ import { formatFindings, SENSOR_NAMES, type Finding } from './model.ts'
 import { readBaseline, branchDiff, turnDiff, type Snapshot } from './diffs.ts'
 import { cmdHook } from './hooks.ts'
 import { cmdCheck, cmdCheckFile, loadConfig } from './check.ts'
-import { inertSensors, type Inert } from './registry.ts'
+import { inertSensors, isRegistryShape, type Inert } from './registry.ts'
 import { runCommand, recordRun } from './runs.ts'
 import { cmdVendor, installStandalone, older, pluginVersion } from './vendor.ts'
 import { cmdUpgrade } from './upgrade.ts'
@@ -39,6 +39,7 @@ import { cmdMaintain } from './maintain.ts'
 import { cmdReadiness } from './readiness.ts'
 import { cmdAutonomy, initAutonomy } from './autonomy.ts'
 import { cmdRisk } from './risk.ts'
+import { protect } from './protect.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'
 import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, waiveChartFinding, changeRequirements, PRD_RE, isConverted, prdApprovalState, prdApprovalRefusal, writePrdApproval } from './chart.ts'
 import { journey, journeyText } from './journey.ts'
@@ -72,6 +73,19 @@ function cmdInit(args: Args): void {
   out(`initialised ${toPosix(path.relative(ROOT, SDLC)) || SDLC}${newRepo ? ' (ran git init: no repository was here)' : ''}`)
   if (args.opt.stack) out(declareStack(args.opt.stack))
   if (args.opt.full) out(installStandalone(Boolean(args.opt.workflows)))
+  if (args.opt.protect) out(protect(Boolean(args.opt.dry)).join('\n'))
+  if (args.opt.enforce) {
+    // risk.enforce on (never off): rig-check then wants an approval from someone other than the author on every PR. The rest of the file is kept.
+    const file = path.join(SDLC, 'sensors.json')
+    let j: Record<string, unknown> = {}
+    try { j = JSON.parse(read(file) || '{}') as Record<string, unknown> } catch { fail('.rig/sensors.json is not JSON; fix it before init --enforce') }
+    // Only a registry: a bare {"risk":…} would be overwritten by a later init --stack, silently dropping enforce.
+    if (!isRegistryShape(read(file))) fail('.rig/sensors.json is not a sensor registry yet: run init --stack first, then init --enforce')
+    j.risk = { ...(typeof j.risk === 'object' && j.risk ? j.risk : {}), enforce: true }
+    fs.writeFileSync(file, JSON.stringify(j, null, 2) + '\n')
+    sanctionWrites(['.rig/sensors.json'])
+    out('risk.enforce is on: rig-check now wants an approval of the head commit from someone other than the author on every PR')
+  }
   const me = whoami()
   out(me ? `approvals and waivers are recorded as "${me}" (git user.name); change it with: git config user.name "<name>"` : 'no user name found: set one with `git config user.name "<name>"` so approvals say who approved')
 }

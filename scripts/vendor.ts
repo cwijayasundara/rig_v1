@@ -7,7 +7,7 @@ import { findBlock, withBlock } from './sync.ts'
 import { HOOK_SCRIPTS, installHooks } from './githooks.ts'
 
 // Every script the checker imports; testkit and specs stay behind. CI runs this copy, so it never needs the plugin.
-export const VENDORED = ['core', 'model', 'sensors', 'diffs', 'runs', 'check', 'stamp', 'basetree', 'verify', 'hooks', 'pr', 'prbody', 'sdlc', 'githooks', 'vendor', 'initbaseline', 'registry', 'stackpacks', 'modelstate', 'stackinit', 'contracts', 'sync', 'lifecycle', 'chart', 'chartcheck', 'prdformat', 'plan', 'product', 'journey', 'wiki', 'wikicite', 'wikigen', 'wikistate', 'wikivalidate', 'learn', 'learnfile', 'learnmine', 'learnreplay', 'learntranscripts', 'report', 'arch', 'counts', 'queue', 'app', 'scope', 'slice', 'maintain', 'readiness', 'autonomy', 'upgrade', 'migrations', 'risk', 'reverts', 'reviewcases']
+export const VENDORED = ['core', 'model', 'sensors', 'diffs', 'runs', 'check', 'stamp', 'basetree', 'verify', 'hooks', 'pr', 'prbody', 'sdlc', 'githooks', 'vendor', 'initbaseline', 'registry', 'stackpacks', 'modelstate', 'stackinit', 'contracts', 'sync', 'lifecycle', 'chart', 'chartcheck', 'prdformat', 'plan', 'product', 'journey', 'wiki', 'wikicite', 'wikigen', 'wikistate', 'wikivalidate', 'learn', 'learnfile', 'learnmine', 'learnreplay', 'learntranscripts', 'report', 'arch', 'counts', 'queue', 'app', 'scope', 'slice', 'maintain', 'readiness', 'autonomy', 'upgrade', 'migrations', 'risk', 'reverts', 'reviewcases', 'protect']
 const SDLC_HOOK = '.rig/bin/sdlc.ts'
 type HookGroup = { matcher?: string; hooks: { type: string; command: string; timeout?: number; async?: boolean }[] }
 

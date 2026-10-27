@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { ROOT, SDLC, SLUG_RE, exists, read, readJson, now, out, fail, ownerOrFail, skillRef, type Args } from './core.ts'
 import { shippedChanges, mineCandidates, waiversOf, findingsSection } from './learnmine.ts'
+import { parseRegistry } from './registry.ts'
 
 export type Autonomy = { rung: 0 | 1 | 2 | 3; since: string; deferred: string[]; history: { at: string; by: string; from: number; to: number; why: string }[] }
 
@@ -91,6 +92,12 @@ export function cmdAutonomy(args: Args): void {
     const to = Number(args.pos[1])
     const why = typeof args.opt.why === 'string' ? args.opt.why.trim() : ''
     if (![0, 1, 2, 3].includes(to) || !why) fail('usage: autonomy set <0|1|2|3> --why "<text>"')
+    if (to === 3) {
+      // Rung 3 lets a tier-0 PR merge with no person; it means nothing until rig-check enforces approvals and someone is trusted to author such PRs.
+      const reg = parseRegistry(read(path.join(SDLC, 'sensors.json'))).registry
+      const missing = [reg.risk.enforce ? '' : 'risk.enforce is off (run: sdlc.ts init --enforce)', reg.humanApproval.trusted.length ? '' : 'humanApproval.trusted is empty (list the GitHub logins whose tier-0 PRs may merge unattended in .rig/sensors.json)'].filter(Boolean)
+      if (missing.length) fail(`rung 3 needs both first: ${missing.join('; ')}`)
+    }
     const by = ownerOrFail(args, 'autonomy changes')
     const a = setRung(to as Autonomy['rung'], why, by)
     return out(`autonomy rung is now ${a.rung} (set by ${by}): ${why}`)
