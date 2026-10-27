@@ -20,6 +20,7 @@ import { isRegistryShape, parseRegistry, defaultRegistry, updateKnownRed, active
 import { frozenFindings, runContracts } from './contracts.ts'
 import { syncFindings } from './sync.ts'
 import { riskOf, formatRisk, type Risk } from './risk.ts'
+import { changeHistory, breaker } from './reverts.ts'
 import { parseAccess } from './chartcheck.ts'
 import { ARCH_REL } from './product.ts'
 
@@ -316,6 +317,49 @@ function humanRowsAdded(base: string): string[] {
 // A PR file cannot prove who wrote an approval row (the model commits as the developer): CI asks GitHub for an approving review of the head commit by someone other than the author.
 // A lead named in the base config's humanApproval.selfApprovers may instead pass with the lead override: this run's `ai-review` job succeeded and its `lead-override` job
 // (gated by a GitHub Environment whose required reviewer clicks in the web UI) succeeded, both on the head commit.
+// The one path where a PR merges with no person (proposal 2026-10-27 B2, C2). Every input is the base's or GitHub's, never the PR's,
+// and every lookup that fails refuses: the unattended path fails closed.
+type Who = { number: number; author: string; sender: string; repo: string; headSha: string; sameRepo: boolean }
+const ghPages = (route: string): unknown[] => (JSON.parse(execFileSync(ghBin(), ['api', '--paginate', '--slurp', route], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 })) as unknown[]).flat()
+type Pull = { number?: number; user?: { login?: string }; head?: { sha?: string; repo?: { full_name?: string } } }
+type Event = { repository?: { full_name?: string }; sender?: { login?: string }; pull_request?: Pull; merge_group?: { head_ref?: string } }
+
+// Who this run is about: the pull_request event, or in the merge queue the PR its ref names (gh-readonly-queue/<base>/pr-<N>-<sha>), read from GitHub.
+function whoIs(): Who | null {
+  let ev: Event
+  try { ev = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH ?? '', 'utf8')) as Event } catch { return null }
+  const repo = ev.repository?.full_name ?? ''
+  let pr = ev.pull_request
+  const queued = /\/pr-(\d+)-[0-9a-f]+$/.exec(ev.merge_group?.head_ref ?? '')?.[1]
+  if (!pr && queued) { try { pr = ghPages(`repos/${repo}/pulls/${queued}`)[0] as Pull } catch { return null } }
+  if (!pr?.number || !pr.head?.sha || !repo) return null
+  return { number: pr.number, author: (pr.user?.login ?? '').toLowerCase(), sender: (ev.sender?.login ?? '').toLowerCase(), repo, headSha: pr.head.sha, sameRepo: pr.head.repo?.full_name === repo }
+}
+
+// The latest non-comment review per person; true when someone other than the author approved this head commit.
+function approvedBySomeoneElse(reviews: { user?: { login?: string }; state?: string; commit_id?: string; author_association?: string }[], author: string, sha: string): boolean {
+  const latest = new Map<string, (typeof reviews)[number]>()
+  for (const r of reviews) if (r.user?.login && r.state !== 'COMMENTED') latest.set(r.user.login, r)
+  return [...latest].some(([login, r]) => login.toLowerCase() !== author && r.state === 'APPROVED' && r.commit_id === sha && ['OWNER', 'MEMBER', 'COLLABORATOR'].includes(r.author_association ?? ''))
+}
+
+// Why a tier-0 PR still needs a person ('' when it does not). `ref` is the live base tip, so lowering the rung or a new revert counts at once.
+function tierZeroRefusal(ref: string, config: Registry, who: Who | null): string {
+  let rung: unknown = 0
+  try { rung = (JSON.parse(showAt(ref, '.rig/autonomy.json') ?? '{}') as { rung?: unknown }).rung ?? 0 } catch { /* unreadable: rung 0 */ }
+  if (rung !== 3) return `rung ${String(rung)}, not 3`
+  if (!who) return 'could not read the pull request from GitHub'
+  if (!who.sameRepo) return 'a fork PR never merges without a person'
+  if (!config.humanApproval.trusted.includes(who.author)) return 'author not trusted'
+  if (!config.humanApproval.trusted.includes(who.sender)) return `${who.sender || 'an unknown user'} (who triggered this run) is not trusted`
+  let runs: { name?: string; conclusion?: string; head_sha?: string }[]
+  try { runs = ghPages(`repos/${who.repo}/commits/${who.headSha}/check-runs?check_name=ai-review&per_page=100`).flatMap(p => (p as { check_runs?: typeof runs }).check_runs ?? []) } catch { return 'could not confirm ai-review (the job needs checks: read and GH_TOKEN)' }
+  if (!runs.some(r => r.name === 'ai-review' && r.conclusion === 'success' && r.head_sha === who.headSha)) return `ai-review has not passed on ${who.headSha.slice(0, 7)}`
+  let labelled: number[]
+  try { labelled = ghPages(`search/issues?q=repo:${who.repo}+is:pr+is:merged+label:revert&per_page=100`).flatMap(p => (p as { items?: { number?: number }[] }).items ?? []).map(i => Number(i.number)).filter(Number.isFinite) } catch { return 'could not list revert-labelled PRs' }
+  return breaker(changeHistory(ROOT, labelled, ref, true), config.risk.window, config.risk.maxRevertRate) ?? ''
+}
+
 function independentApproval(selfApprovers: string[], workflowEdited: boolean): string | null {
   const eventPath = process.env.GITHUB_EVENT_PATH
   if (!eventPath || !fs.existsSync(eventPath)) return 'cannot verify a reviewer outside a GitHub pull_request run'
@@ -406,19 +450,34 @@ export function cmdCheck(args: Args): void {
   const slugs = slugArg ? [slugArg] : at === 'ci' ? slugsIn(diffs) : [activeSlug()].filter((s): s is string => Boolean(s))
   const budgetMs = Number(optString(args, 'budget-ms') ?? BUDGET_MS[at])
   if (!Number.isFinite(budgetMs) || budgetMs <= 0) fail('--budget-ms must be a positive number')
-  const humanRows = at === 'ci' && base ? humanRowsAdded(base) : []
+  // A merge queue run re-checks the sensors on main with the change applied; the PR's approvals were judged on the PR itself.
+  const queued = process.env.GITHUB_EVENT_NAME === 'merge_group'
+  const humanRows = at === 'ci' && base && !queued ? humanRowsAdded(base) : []
   // The tier comes from the base config; the Access rows are the base's and the head's together, so a PR cannot drop a row to lower it.
   const risk = at === 'ci' && base ? riskOf(diffs, slugs, config, [...parseAccess(showAt(base, ARCH_REL) ?? ''), ...parseAccess(read(path.join(ROOT, ARCH_REL)))], true) : null
-  const why = humanRows.length || (risk && config.risk.enforce) ? independentApproval(config.humanApproval.selfApprovers, Boolean((git(['diff', '--name-only', base ?? 'HEAD', 'HEAD', '--', '.github/workflows']) ?? '').trim())) : null // before runChecks: the PR's test commands could rewrite the event file or shadow gh
+  const enforced = Boolean(risk && config.risk.enforce && !queued)
+  const live = baseRef ?? base ?? 'HEAD' // the base tip, not the merge base: a rung lowered or a revert made since the PR branched counts
+  const refusal = enforced && !humanRows.length && risk?.tier === 0 ? tierZeroRefusal(live, config, whoIs()) : null // '': tier 0 merges without a person
+  // The merge queue: approvals were judged on the PR, but the unattended path depends on the rung and the breaker, which move. Re-check it here.
+  const queueWho = queued && risk && config.risk.enforce ? whoIs() : null
+  let queueRefusal = ''
+  if (queued && risk && config.risk.enforce) {
+    let reviews: Parameters<typeof approvedBySomeoneElse>[0] = []
+    try { if (queueWho) reviews = ghPages(`repos/${queueWho.repo}/pulls/${queueWho.number}/reviews?per_page=100`) as typeof reviews } catch { /* none read: the tier-0 path decides */ }
+    const person = queueWho && (approvedBySomeoneElse(reviews, queueWho.author, queueWho.headSha) || config.humanApproval.selfApprovers.includes(queueWho.author))
+    if (!person) queueRefusal = risk.tier === 0 ? tierZeroRefusal(live, config, queueWho) : `tier ${risk.tier} and no approval of its head commit`
+  }
+  const why = humanRows.length || (enforced && refusal !== '') ? independentApproval(config.humanApproval.selfApprovers, Boolean((git(['diff', '--name-only', base ?? 'HEAD', 'HEAD', '--', '.github/workflows']) ?? '').trim())) : null // before runChecks: the PR's test commands could rewrite the event file or shadow gh
   const result = runChecks({ point: at, diffs, config, rules, slugs, commands: replaying ? 'none' : at === 'stop' ? 'fast' : 'full', budgetMs, before, after, base, ratchet: !optString(args, 'config-from') && at !== 'commit', ratchetWrite: optString(args, 'config-from') ? null : at === 'commit' ? 'stage' : 'write', contracts: at === 'commit' ? !replaying : undefined, gates: config.gates })
   // At commit, like at push, a sensor out of time warns: CI runs it again, and a hanging tool must not hold git commit hostage.
   if (at === 'commit') for (const f of result.findings) if (f.outOfTime) f.severity = 'warn'
   result.blocks = result.findings.filter(f => f.severity === 'block')
   const configFindings: Finding[] = errors.map(e => ({ sensor: 'config', severity: 'block', file: SENSORS_JSON, message: e, fix: 'fix the file; see the sdlc README for its format' }))
-  const humanFindings: Finding[] = why ? [{ sensor: 'human-approval', severity: 'block', message: humanRows.length ? `this PR adds ${humanRows.length} approval/waiver row(s): ${why}` : `risk.enforce: this PR is tier ${risk?.tier} and needs a person: ${why}`, fix: humanRows.length ? 'a code owner other than the PR author reviews the rows below and approves the current head commit; pushing again needs a fresh approval' : 'someone other than the PR author approves the current head commit; pushing again needs a fresh approval' }] : []
+  const queueFindings: Finding[] = queueRefusal ? [{ sensor: 'human-approval', severity: 'block', message: `merge queue: this PR needs a person: ${queueRefusal}`, fix: 'someone other than the author approves the PR\'s head commit, then queue it again' }] : []
+  const humanFindings: Finding[] = why ? [{ sensor: 'human-approval', severity: 'block', message: humanRows.length ? `this PR adds ${humanRows.length} approval/waiver row(s): ${why}` : `risk.enforce: this PR is tier ${risk?.tier} and needs a person: ${refusal ? `${refusal}; ` : ''}${why}`, fix: humanRows.length ? 'a code owner other than the PR author reviews the rows below and approves the current head commit; pushing again needs a fresh approval' : 'someone other than the PR author approves the current head commit; pushing again needs a fresh approval' }] : []
   const syncBlocks = (at === 'commit' || at === 'ci') && declaresRegistry() ? syncFindings(config, [], 'block') : [] // config errors already block above
-  const all = { ...result, findings: [...humanFindings, ...configFindings, ...syncBlocks, ...result.findings], blocks: [...humanFindings, ...configFindings, ...syncBlocks.filter(f => f.severity === 'block'), ...result.blocks] }
-  report(at, all, diffs.length, Boolean(args.opt.json), humanRows, inertSensors(config, rules.length, draftApps()), risk)
+  const all = { ...result, findings: [...queueFindings, ...humanFindings, ...configFindings, ...syncBlocks, ...result.findings], blocks: [...queueFindings, ...humanFindings, ...configFindings, ...syncBlocks.filter(f => f.severity === 'block'), ...result.blocks] }
+  report(at, all, diffs.length, Boolean(args.opt.json), humanRows, inertSensors(config, rules.length, draftApps()), risk && refusal === '' ? { ...risk, reasons: ['tier 0: merges without a person (rung 3, trusted author)'] } : risk)
   process.exitCode = all.blocks.length ? 1 : 0
 }
 

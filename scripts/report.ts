@@ -5,12 +5,14 @@ import path from 'node:path'
 import { ROOT, out, readJson, readJsonl, gitIn, type Args } from './core.ts'
 import { mineCandidates, shippedChanges } from './learnmine.ts'
 import type { RunRow } from './runs.ts'
+import { changeHistory } from './reverts.ts'
 
 export type Report = {
   merged: number; shipped: number; since: string | null // merged: every change whose pr.md a merge added; shipped: those whose records are still in the tree (a revert removes them)
   prLines: { median: number; max: number } | null // lines changed outside .rig/ by the commit on the first-parent line that added each change's pr.md (a rebase merge counts only that commit)
   firstPass: { measured: number; clean: number } // changes whose recorded runs (runs.jsonl) all passed, expected failures aside
   reverted: number // merged changes a later commit says it reverts
+  tiers: Record<'0' | '1' | '2' | 'unknown', { merged: number; reverted: number }> // the tier each merge shipped at (its committed pr-body.md); unknown: no Risk section
   hoursToApproval: { median: number; of: number } | null // first commit on the change to its person approval; of: the changes with both dates (a squash can hide the first commit)
   waiversPerChange: number
   waiverRows: { unowned: number; oldestDays: number | null } // Infinity: a row with no readable date; every waiver on record: rows with no owner, and the age of the oldest
@@ -25,14 +27,12 @@ const lines = (root: string, sha: string): number | null => {
 }
 
 export function buildReport(root: string, since: string | null = null): Report {
-  // One commit may add several pr.md files (a squash that ships two changes); a change re-added after a revert counts once.
-  const seen = new Set<string>()
-  const merges = (gitIn(root, ['log', '--first-parent', '--diff-filter=A', '--name-only', '--format=%x00%H %cs', '--', ':(glob).rig/changes/*/pr.md']) ?? '').split('\0').filter(Boolean)
-    .flatMap(b => { const [head = '', ...files] = b.split('\n').filter(Boolean); const [sha = '', date = ''] = head.split(' '); return files.map(f => ({ sha, date, slug: f.split('/')[2] ?? '' })) })
-    .filter(m => m.sha && m.slug && (!since || m.date >= since) && !seen.has(m.slug) && seen.add(m.slug))
-  const log = gitIn(root, ['log', '--format=%B']) ?? ''
+  const merges = changeHistory(root).filter(m => !since || m.date >= since)
+  const seen = new Set(merges.map(m => m.slug))
   const size = merges.map(m => lines(root, m.sha)).filter((n): n is number => n !== null)
-  const reverted = merges.filter(m => log.includes(`This reverts commit ${m.sha}`)).length
+  const reverted = merges.filter(m => m.reverted).length
+  const tiers: Report['tiers'] = { '0': { merged: 0, reverted: 0 }, '1': { merged: 0, reverted: 0 }, '2': { merged: 0, reverted: 0 }, unknown: { merged: 0, reverted: 0 } }
+  for (const m of merges) { const t = tiers[m.tier === null ? 'unknown' : String(m.tier) as '0']; t.merged++; if (m.reverted) t.reverted++ }
   const shipped = shippedChanges(root).filter(c => !since || seen.has(c.slug))
   const hours: number[] = []
   let measured = 0, clean = 0
@@ -52,7 +52,7 @@ export function buildReport(root: string, since: string | null = null): Report {
   return {
     merged: merges.length, shipped: shipped.length, since,
     prLines: size.length ? { median: median(size), max: Math.max(...size) } : null,
-    firstPass: { measured, clean }, reverted,
+    firstPass: { measured, clean }, reverted, tiers,
     hoursToApproval: hours.length ? { median: Math.round(median(hours) * 10) / 10, of: hours.length } : null,
     waiversPerChange: shipped.length ? Math.round((waivers / shipped.length) * 100) / 100 : 0,
     waiverRows: { unowned: all.filter(w => !w.by || w.by === 'unknown').length, oldestDays: ages.length ? Math.max(...ages) : null },
@@ -68,6 +68,7 @@ export function reportText(r: Report): string {
     `  lines changed per merge    ${r.prLines ? `median ${r.prLines.median}, max ${r.prLines.max}` : 'n/a'}`,
     `  first-pass runs            ${pct(r.firstPass.clean, r.firstPass.measured)} (${r.firstPass.clean} of ${r.firstPass.measured} changes with recorded runs)`,
     `  reverted                   ${r.reverted} of ${r.merged}`,
+    `  by tier (merged/reverted)  ${(['0', '1', '2', 'unknown'] as const).map(k => `${k}: ${r.tiers[k].merged}/${r.tiers[k].reverted}`).join(', ')}`,
     `  hours, first commit to approval  ${r.hoursToApproval ? `median ${r.hoursToApproval.median} (${r.hoursToApproval.of} change(s))` : 'n/a'}`,
     `  waivers per change         ${r.waiversPerChange} (${r.waiverRows.unowned} with no owner; oldest ${r.waiverRows.oldestDays === null ? 'n/a' : (Number.isFinite(r.waiverRows.oldestDays) ? `${r.waiverRows.oldestDays} day(s)` : 'age unknown')})`,
     `  repeat mistakes            ${r.repeat.classes} class(es) across ${r.repeat.changes} of ${r.shipped} change(s)`,

@@ -7,7 +7,7 @@ import { defaultRegistry } from './registry.ts'
 const clean = { 'plan.md': '# Plan\n\n## Contracts\nnone\n', 'review.md': 'verdict: pass\n## Findings\n' }
 const input = (o: Partial<Parameters<typeof assessRisk>[0]> = {}, files: Record<string, string> = clean) => ({
   files: ['src/cart.ts'], lines: 10, slugs: ['cart-add'], read: (_slug: string, name: string) => files[name] ?? '',
-  access: [], risk: { enforce: false, alwaysHuman: [], maxLines: 400 }, contractGlobs: [], ci: false, ...o,
+  access: [], risk: { enforce: false, alwaysHuman: [], maxLines: 400, window: 20, maxRevertRate: 0.1 }, contractGlobs: [], ci: false, ...o,
 })
 const access = (intent: string) => ({ action: 'refund an order', allowed: ['admin'], nobody: false, interfaces: ['api'], intent })
 const TWO = 'two reviewers, one a code owner, recommended; enforce it in branch protection'
@@ -19,11 +19,11 @@ test('a clean, reviewed, two-way change is tier 0 with no reasons', () => {
 test('an always-human path is tier 2: protected harness files, workflows, and the team globs', () => {
   assert.deepEqual(assessRisk(input({ files: ['.github/workflows/deploy.yml'] })), { tier: 2, reasons: ['always-human path: .github/workflows/deploy.yml', TWO] })
   assert.equal(assessRisk(input({ files: ['CLAUDE.md'] })).tier, 2)
-  assert.equal(assessRisk(input({ files: ['src/billing/charge.ts'], risk: { enforce: false, alwaysHuman: ['src/billing/**'], maxLines: 400 } })).tier, 2)
+  assert.equal(assessRisk(input({ files: ['src/billing/charge.ts'], risk: { enforce: false, alwaysHuman: ['src/billing/**'], maxLines: 400, window: 20, maxRevertRate: 0.1 } })).tier, 2)
 })
 
 test('in CI a path matches case-insensitively', () => {
-  const risk = { enforce: false, alwaysHuman: ['src/billing/**'], maxLines: 400 }
+  const risk = { enforce: false, alwaysHuman: ['src/billing/**'], maxLines: 400, window: 20, maxRevertRate: 0.1 }
   assert.equal(assessRisk(input({ files: ['SRC/Billing/x.ts'], risk, ci: true })).tier, 2)
   assert.equal(assessRisk(input({ files: ['SRC/Billing/x.ts'], risk })).tier, 0)
 })
