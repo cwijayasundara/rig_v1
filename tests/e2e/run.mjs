@@ -52,7 +52,7 @@ const ensureMain = slug => {
   if (b !== 'main') mergeToMain(sb, slug)
 }
 // A group that ran fewer checks than this lost coverage silently (an assertion call deleted or skipped): fail the scripted run.
-const FLOOR = { 'S0 install': 14, 'S1 brief': 3, 'S2 ': 22, 'S3 ': 27, 'S4 deploy': 9, 'S5 policy': 6, 'S6 chart': 12 }
+const FLOOR = { 'S0 install': 14, 'S1 brief': 3, 'S2 ': 22, 'S3 ': 27, 'S4 deploy': 9, 'S5 policy': 7, 'S6 chart': 12 }
 const lostCoverage = () => (live || only ? [] : Object.entries(FLOOR).filter(([k, n]) => {
   const g = results.find(c => c.title.startsWith(k))
   return !g || g.results.length < n

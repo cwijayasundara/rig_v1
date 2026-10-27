@@ -59,6 +59,9 @@ These come from the research (`docs/research/`) and from the one week this repo 
 ## Scope, in the order the person set
 
 1. **Inner loop (one change):** done. Registry of sensors, six hook events, frozen contracts, approval and verify gates, PR.
+   The floor (guides, sensors, git hooks, `rig-check`) runs on all work, with or without a change open; the change steps are
+   opt-in, and every change, explored or planned, reaches the base by a feature branch and a PR. Making the steps light by
+   default is planned in `docs/proposals/2026-10-27-one-door-right-sized.md`.
 2. **Outer loop (a sprint):** done (b07c0dc). PRD to traced intents, architecture, test plan; one approval per sprint.
 3. **Code wiki:** built (5eb09a1), not yet shown to beat native. A native Read/Grep arm tied 6/6 on a small repo, so the search index
    was not rebuilt; the wiki is judged on accuracy and staleness (`npm run eval:wiki`). `init` on an existing repo should index it.
