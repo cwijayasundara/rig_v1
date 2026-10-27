@@ -80,7 +80,7 @@ The step-by-step guides are under [User guide](#user-guide).
 
 `/rig:autonomy set <0|1|2>` and `queue defer` are person-only gates too.
 
-A model never approves. Every gate is a command the person types (`SDLC_HUMAN` is set only from the person's own prompt). CI treats an `approval.json` that a PR adds or edits as a human row, which needs GitHub approval from someone other than the PR's author. A lead who works alone on a large refactor can opt in to the lead override instead: list their login under `humanApproval.selfApprovers` in `.rig/sensors.json`, label the PR `rig-lead-override`, and CI runs an AI review of the diff and then waits for the lead's click on the `rig-lead-override` GitHub Environment (see SECURITY.md).
+A model never approves. Every gate is a command the person types (`SDLC_HUMAN` is set only from the person's own prompt). CI treats an `approval.json` that a PR adds or edits as a human row, which needs GitHub approval from someone other than the PR's author. A lead who works alone on a large refactor can opt in to the lead override instead: list their login under `humanApproval.selfApprovers` in `.rig/sensors.json`, label the PR `rig-lead-override`, and CI waits for the lead's click on the `rig-lead-override` GitHub Environment after its AI review passes (see SECURITY.md). That AI review (code and security, briefed from the base branch) runs on every PR from the repository, not only overrides, and fails on a critical or high finding; a fork PR skips it and needs a person.
 
 ## Where everything lives
 

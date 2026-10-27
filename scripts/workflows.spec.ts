@@ -56,3 +56,20 @@ test('/rig:pr may read a PR and comment on it, and no more: no merge, api or pus
   const net = bash.filter(b => /\b(gh|curl|wget|ssh|git (push|commit|reset|checkout))\b|Bash\(\*/.test(b))
   assert.deepEqual(net, ['Bash(gh pr view*)', 'Bash(gh pr comment*)'])
 })
+
+test('ai-review runs on every same-repo PR, and only the lead override needs the label', () => {
+  const w = parse(read('templates/rig-check.yml')) as Workflow
+  const jobs = w.jobs as Record<string, { if?: string; needs?: unknown }>
+  const ai = jobs['ai-review']!, lo = jobs['lead-override']!
+  assert.doesNotMatch(ai.if ?? '', /rig-lead-override/)
+  assert.match(ai.if ?? '', /head\.repo\.full_name == github\.repository/, 'fork PRs have no secrets: skip, never fail')
+  assert.match(lo.if ?? '', /rig-lead-override/)
+  assert.equal(lo.needs, 'ai-review')
+})
+
+test('ai-review runs a security pass from the base branch and gates on ## Findings only', () => {
+  const t = read('templates/rig-check.yml')
+  assert.match(t, /git show "origin\/\$BASE:\.rig\/security-brief\.md"/)
+  assert.match(t, /sed -n '\/\^## Findings\/,\/\^## \[\^F\]\/p'/)
+  assert.doesNotMatch(t, /grep -qE '\\\[severity: \(critical\|high\)\\\]' "\$RUNNER_TEMP\/review\.md"/, 'the whole-file grep would fail on Pre-existing items')
+})
