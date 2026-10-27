@@ -76,7 +76,7 @@ export function sharedScopeProblems(mine: Intent[], all: Intent[]): ChartFinding
     (deps.get(from) ?? []).some(d => d === to || (!seen.has(d) && (seen.add(d), reaches(d, to, seen))))
   const found: ChartFinding[] = []
   mine.forEach((a, x) => mine.slice(x + 1).forEach(b => {
-    for (const f of a.scope.filter(f => b.scope.includes(f))) {
+    for (const f of [...new Set(a.scope)].filter(f => b.scope.includes(f))) {
       const ordered = reaches(a.slug, b.slug) || reaches(b.slug, a.slug)
       found.push(ordered
         ? { rule: 'scope-shared', severity: 'report', where: b.slug, message: `${f} is in the scope of ${a.slug} and ${b.slug}; they are built in order, so the later one edits what the earlier one wrote` }

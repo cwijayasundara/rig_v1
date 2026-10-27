@@ -500,4 +500,5 @@ test('sharedScopeProblems blocks a file two parallel intents write, and only rep
   assert.deepEqual(block.map(f => [f.rule, f.severity]), [['scope-shared', 'block']])
   assert.match(block[0]!.message, /can be built at the same time/)
   assert.deepEqual(sharedScopeProblems([core, one('other', [], ['src/x.py'])], []), [])
+  assert.equal(sharedScopeProblems([one('a', [], ['x.py', 'x.py']), one('b', [], ['x.py'])], []).length, 1, 'a file listed twice is one finding')
 })
