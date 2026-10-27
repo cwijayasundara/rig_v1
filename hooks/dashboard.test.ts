@@ -163,3 +163,25 @@ test('fitNext: a hint that does not fit keeps the command and drops its argument
   expect(fitNext(hint, 40)).toBe('add the PRD at docs/prd/sprint-0.md, then /rig:chart')
   expect(fitNext('/rig:start <intent>', 5)).toBe('/rig:start')
 })
+
+// shop_app 2026-10-27: after /rig:approve prd-1 the rail still showed one ● /rig-chart 1, so the second chart pass read as a step that never finished.
+test('a converted PRD draws convert, approve-prd and the decompose pass, and the next line says why', async ($, on) => {
+  const outer = [
+    { id: 'init', label: 'Init', command: '/rig:init', state: 'done' },
+    { id: 'convert', label: 'Convert', command: '/rig:chart 1', state: 'done', detail: 'convert' },
+    { id: 'approve-prd', label: 'Approve PRD', command: '/rig:approve prd-1', state: 'done' },
+    { id: 'chart', label: 'Chart', command: '/rig:chart 1', state: 'current', detail: 'decompose' },
+  ]
+  const j = { ...journey, outer, next: { command: '/rig:chart 1', by: 'model', why: 'prd-1 is approved: chart again to decompose it' } }
+  on('process.run', async () => ({ value: { stdout: JSON.stringify(j), stderr: '', exitCode: 0 } }))
+  on('session.usage', async () => ({ value: { startedAt: 0, context: { tokens: 1000, window: 200000 }, rateLimits: [], cost: { usd: 1 } } }))
+  on('prompt.submit', async (_$, e) => ({ text: e.text }))
+  on('ui.status', async () => ({ value: undefined }))
+  await $.prompt.submit({ text: 'hi' })
+  const ui = await $.ui.mount({ plugin: 'rig', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false, bodyColumns: 200 } })
+  expect(await ui.find({ type: 'Text', text: /^✓ \/rig:chart 1 \(convert\) ─$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^✓ \/rig:approve prd-1 ─$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^● \/rig:chart 1 \(decompose\)$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /prd-1 is approved/ })).toBeDefined()
+  await ui.unmount()
+})

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { makeRepo, write, sdlc, ARCH_OK, IMPL_OK } from './testkit.ts'
 
-type J = { agents: { agent: string; model: string; at: string }[]; initialised: boolean; kind: string; show: string[]; sprint: number | null; outer: { id: string; state: string; command: string; by: string; detail?: string }[]; inner: { slug: string; steps: { id: string; state: string; command: string; by: string; auto?: true }[] } | null; next: { command: string; by: string }; ready: string[]; rung: number; queue: string | null; sensors?: unknown }
+type J = { agents: { agent: string; model: string; at: string }[]; initialised: boolean; kind: string; show: string[]; sprint: number | null; outer: { id: string; state: string; command: string; by: string; detail?: string }[]; inner: { slug: string; steps: { id: string; state: string; command: string; by: string; auto?: true }[] } | null; next: { command: string; by: string; why: string }; ready: string[]; rung: number; queue: string | null; sensors?: unknown }
 let repo: string
 const view = (): J => JSON.parse(sdlc(repo, ['status', '--journey', '--json']).stdout) as J
 const states = (j: J): string => j.outer.map(s => `${s.id}:${s.state}`).join(' ')
@@ -188,4 +188,20 @@ test('journey: a converted PRD waiting for approval → a person approves prd-0 
   const j = view()
   assert.match(j.next.command, /approve prd-0$/)
   assert.equal(j.next.by, 'person')
+})
+
+test('journey: a converted PRD puts convert and approve-prd on the rail, and once approved the chart runs again to decompose it', () => {
+  write(repo, '.rig/product/sprints/sprint-0/prd.md', '---\nsprint: 0\n---\n# PRD\n\n## Functional requirements\n\n### FR-0: thing\n\n- AC-0.1: WHEN a THE SYSTEM SHALL b\n\n## Data rules\n\nnone\n\n## Non-functional requirements\n\nnone\n\n## Boundaries\n\nnone\n\n## Open questions\n\nnone\n')
+  write(repo, '.rig/product/sprints/sprint-0/source.md', '# Thing\n\nIt does b on a.\n')
+  write(repo, '.rig/product/sprints/sprint-0/conversion.md', '- FR-0 source.md:3 "It does b on a."\n')
+  let j = view()
+  assert.match(states(j), /^init:done prd:done convert:done approve-prd:gate chart:todo testplan:todo approve:todo build:todo$/)
+  assert.equal(j.outer.find(s => s.id === 'approve-prd')?.command, '/rig:approve prd-0')
+  assert.equal(sdlc(repo, ['approve', 'prd-0'], { env: { SDLC_HUMAN: '1' } }).code, 0)
+  j = view()
+  assert.match(states(j), /convert:done approve-prd:done chart:current/)
+  assert.deepEqual(['convert', 'chart'].map(id => j.outer.find(s => s.id === id)?.detail), ['convert', 'decompose'])
+  assert.equal(j.next.command, '/rig:chart 0')
+  assert.match(j.next.why, /approved/)
+  assert.match(sdlc(repo, ['status', '--journey']).stdout, /✓ \/rig:chart 0 \(convert\) {2}✓ \/rig:approve prd-0 {2}● \/rig:chart 0 \(decompose\)/)
 })
