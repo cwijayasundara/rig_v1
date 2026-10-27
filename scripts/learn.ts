@@ -7,7 +7,9 @@ import { parseLessons, checkLessons, type Lesson } from './learnfile.ts'
 import { mineCandidates, shippedChanges, lessonStatus } from './learnmine.ts'
 import { replayRule, replayLayers } from './learnreplay.ts'
 import { mineTranscripts, projectDirs, repeated } from './learntranscripts.ts'
-import { parseRules, type Rule } from './model.ts'
+import { parseRules, ghBin, type Rule } from './model.ts'
+import { execFileSync } from 'node:child_process'
+import { writeCandidates, readCases, reviewEval, briefPath, EVAL_LOG } from './reviewcases.ts'
 
 const LESSONS = path.join(SDLC, 'lessons.md')
 const ARCHIVE = path.join(SDLC, 'lessons-archive.md')
@@ -120,6 +122,11 @@ function status(): void {
   out(`learn: active ${active}, eligible ${a.candidates.length}, flagged ${a.retire.length}`)
 }
 
+// Merged PRs labelled `revert` in this repo, or null when gh cannot say (no gh, no remote, no auth).
+function revertLabelled(): number[] | null {
+  try { return (JSON.parse(execFileSync(ghBin(), ['api', '--paginate', '--slurp', 'search/issues?q=repo:{owner}/{repo}+is:pr+is:merged+label:revert&per_page=100'], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 })) as { items?: { number?: number }[] }[]).flatMap(p => p.items ?? []).map(i => Number(i.number)).filter(Number.isFinite) } catch { return null }
+}
+
 export function cmdLearn(args: Args): void {
   const sub = args.pos[0]
   if (sub === 'mine') return args.opt.transcripts ? mineCorrections() : mine()
@@ -127,5 +134,17 @@ export function cmdLearn(args: Args): void {
   if (sub === 'proposal') { const p = proposalCheck(); out(p.length ? p.map(x => `[learn] ${x}`).join('\n') : 'learn proposal: every promotion carries a passing replay'); process.exitCode = p.length ? 1 : 0; return }
   if (sub === 'replay') return replay(args)
   if (sub === 'status') return status()
-  fail('usage: learn <mine [--transcripts]|replay <rule.json>|--layers <block.md> --earned a,b|proposal|check|status>')
+  if (sub === 'review-eval') {
+    const raw = args.opt['max-usd'], maxUsd = typeof raw === 'string' ? Number(raw) : NaN
+    if (!(Number.isFinite(maxUsd) && maxUsd > 0)) fail('learn review-eval costs money: pass --max-usd <dollars> (a positive number), the most this run may spend')
+    const model = typeof args.opt.model === 'string' ? args.opt.model : undefined
+    const prior = readJsonl<{ brief: string; model: string; caught: number; cases: number; at: string }>(EVAL_LOG(ROOT))
+    const r = reviewEval(ROOT, { maxUsd, model })
+    const now = readJsonl<{ brief: string; model: string }>(EVAL_LOG(ROOT)).at(-1)
+    const before = [...prior].reverse().find(p => p.brief === now?.brief || p.model === now?.model)
+    out([`caught ${r.caught} of ${r.scored} confirmed case(s)${r.failed ? `, ${r.failed} failed to run` : ''} (brief ${now?.brief}, ${now?.model}, $${r.usd})`, before ? `before: caught ${before.caught} of ${before.cases} (brief ${before.brief}, ${before.model}, ${before.at.slice(0, 10)})` : 'before: no earlier run', `brief: ${path.relative(ROOT, briefPath(ROOT))}`].join('\n'))
+    return
+  }
+  if (sub === 'reverts') { const labelled = revertLabelled(); const r = writeCandidates(ROOT, labelled ?? []); const bad = readCases(ROOT).bad; out([`review cases: ${r.added.length} new, ${r.total} total, ${r.confirmed} confirmed (.rig/learn/review-cases/)`, ...r.added.map(n => `  + ${n}`), ...bad.map(n => `  ! ${n}: unreadable, skipped`), labelled ? '' : 'note: could not list merged PRs labelled revert (gh); only `This reverts commit` reverts were read', r.total > r.confirmed ? 'to confirm one: a person who knows the code sets defect.file, defect.pattern and confirmed: true in its file' : ''].filter(Boolean).join('\n')); return }
+  fail('usage: learn <mine [--transcripts]|replay <rule.json>|--layers <block.md> --earned a,b|proposal|check|status|reverts|review-eval --max-usd <n> [--model <id>]>')
 }
