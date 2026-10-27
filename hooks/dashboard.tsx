@@ -25,6 +25,19 @@ export const modelLabel = (model: string): string => model.replace(/^claude-/, '
 const agentName = (agent: string): string => agent.replace(/^rig[:-]/, '')
 // One coloured run of text on the band.
 export type Piece = { text: string; color?: string; dim?: boolean; bold?: boolean }
+export type Rgb = readonly [number, number, number]
+const LIGHT_BLUE: Rgb = [125, 211, 252]
+const DARK_BLUE: Rgb = [29, 78, 216]
+// A rule of `width` cells fading from one colour to another, in runs of `run` cells so the band draws a handful of Texts, not one per cell.
+export function gradientRule(width: number, from: Rgb, to: Rgb, run = 4): Piece[] {
+  const pieces: Piece[] = []
+  for (let at = 0; at < width; at += run) {
+    const t = width > 1 ? Math.min(width - 1, at + (run - 1) / 2) / (width - 1) : 0
+    const [r, g, b] = from.map((c, i) => Math.round(c + ((to[i] ?? c) - c) * t))
+    pieces.push({ text: '━'.repeat(Math.min(run, width - at)), color: `#${[r, g, b].map(c => (c ?? 0).toString(16).padStart(2, '0')).join('')}` })
+  }
+  return pieces
+}
 const cells = (s: string): number => [...s].length
 // Pieces packed greedily into lines of at most `columns` cells, one cell between pieces, each line after the first
 // starting `indent` cells in. A piece is never split; one wider than a line stands alone and its Text wraps.
@@ -99,7 +112,11 @@ export const register: Register = on => {
     if (e.props.hasSurvey || !j || (await read($, isHidden))) return next(e)
     const s = await read($, spend)
     const { Box, Text, Button } = $.ui.resolve(e)
+    // The band sits between two light-to-dark blue rules so it reads apart from the console output around it.
     const columns = e.props.bodyColumns || 80
+    const rule = (key: string, from: Rgb, to: Rgb) => (
+      <Box key={key}>{gradientRule(columns, from, to).map((p, i) => <Text key={`g${i}`} color={p.color}>{p.text}</Text>)}</Box>
+    )
     const lines = (pieces: Piece[], indent: number) => pack(pieces, columns, indent).map((line, n) => (
       <Box key={`l${n}`} columnGap={1}>
         {n > 0 && indent > 1 ?<Text>{' '.repeat(indent - 1)}</Text> : null}
@@ -126,8 +143,9 @@ export const register: Register = on => {
     const blocks = j.sensors?.blocks ?? 0
     return (
       <Box flexDirection="column">
+        {rule('top', LIGHT_BLUE, DARK_BLUE)}
         <Box justifyContent="space-between" flexWrap="wrap">
-          <Text bold>{`rig ▸ ${j.kind}`}</Text>
+          <Text bold color="cyan">{`rig ▸ ${j.kind}`}</Text>
           <Box columnGap={1} flexShrink={0}>
             <Text dimColor>{`ctx ${kilo(s.contextTokens)} ${meter(s.contextTokens, s.contextWindow)} · $${s.usd.toFixed(2)}${s.turnUsd ? ` (+$${s.turnUsd.toFixed(2)} this turn)` : ''}`}</Text>
             <Text color={blocks ? 'red' : 'green'}>{blocks ? `✗ ${blocks} blocking` : '✓ sensors'}</Text>
@@ -144,6 +162,7 @@ export const register: Register = on => {
           ...(j.next.why ? [{ text: `— ${j.next.why}`, dim: true }] : []),
           { text: '  ◆ you  ⟳ runs by itself  ● now', dim: true },
         ], 7)}
+        {rule('bottom', DARK_BLUE, LIGHT_BLUE)}
       </Box>
     )
   })
