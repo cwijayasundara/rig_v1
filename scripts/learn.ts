@@ -8,7 +8,7 @@ import { mineCandidates, shippedChanges, lessonStatus } from './learnmine.ts'
 import { replayRule, replayLayers } from './learnreplay.ts'
 import { mineTranscripts, projectDirs, repeated } from './learntranscripts.ts'
 import { parseRules, type Rule } from './model.ts'
-import { writeCandidates, readCases } from './reviewcases.ts'
+import { writeCandidates, readCases, reviewEval, briefPath, EVAL_LOG } from './reviewcases.ts'
 
 const LESSONS = path.join(SDLC, 'lessons.md')
 const ARCHIVE = path.join(SDLC, 'lessons-archive.md')
@@ -128,6 +128,17 @@ export function cmdLearn(args: Args): void {
   if (sub === 'proposal') { const p = proposalCheck(); out(p.length ? p.map(x => `[learn] ${x}`).join('\n') : 'learn proposal: every promotion carries a passing replay'); process.exitCode = p.length ? 1 : 0; return }
   if (sub === 'replay') return replay(args)
   if (sub === 'status') return status()
+  if (sub === 'review-eval') {
+    const maxUsd = Number(args.opt['max-usd'])
+    if (!(maxUsd > 0)) fail('learn review-eval costs money: pass --max-usd <dollars> (a positive number), the most this run may spend')
+    const model = typeof args.opt.model === 'string' ? args.opt.model : undefined
+    const prior = readJsonl<{ brief: string; model: string; caught: number; cases: number; at: string }>(EVAL_LOG(ROOT))
+    const r = reviewEval(ROOT, { maxUsd, model })
+    const now = readJsonl<{ brief: string; model: string }>(EVAL_LOG(ROOT)).at(-1)
+    const before = [...prior].reverse().find(p => p.brief === now?.brief || p.model === now?.model)
+    out([`caught ${r.caught} of ${r.scored} confirmed case(s)${r.failed ? `, ${r.failed} failed to run` : ''} (brief ${now?.brief}, ${now?.model}, $${r.usd})`, before ? `before: caught ${before.caught} of ${before.cases} (brief ${before.brief}, ${before.model}, ${before.at.slice(0, 10)})` : 'before: no earlier run', `brief: ${path.relative(ROOT, briefPath(ROOT))}`].join('\n'))
+    return
+  }
   if (sub === 'reverts') { const r = writeCandidates(ROOT); const bad = readCases(ROOT).bad; out([`review cases: ${r.added.length} new, ${r.total} total, ${r.confirmed} confirmed (.rig/learn/review-cases/)`, ...r.added.map(n => `  + ${n}`), ...bad.map(n => `  ! ${n}: unreadable, skipped`), r.total > r.confirmed ? 'to confirm one: a person who knows the code sets defect.file, defect.pattern and confirmed: true in its file' : ''].filter(Boolean).join('\n')); return }
   fail('usage: learn <mine [--transcripts]|replay <rule.json>|--layers <block.md> --earned a,b|proposal|check|status|reverts|review-eval --max-usd <n> [--model <id>]>')
 }
