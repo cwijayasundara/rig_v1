@@ -1,10 +1,26 @@
 // Contracts (behavioural harness spec 2026-10-16 §6): frozen per file at plan approval (lifecycle.ts writes the freeze into
 // approval.json), validated before they run.
-import { skillRef } from './core.ts'
+import fs from 'node:fs'
+import { skillRef, SENSORS_PATH, exists } from './core.ts'
 import { readApproval, digest } from './lifecycle.ts'
 import { contractGlobs, type Contracts } from './registry.ts'
 import { matchesAny, type Finding } from './model.ts'
 import { runCommand, type RunRow } from './runs.ts'
+
+// The `Contract:` and `Example:` files intents declare under ## Interfaces are registered in sensors.json contracts.files when a chart is approved,
+// so every change's approval freezes them (shop_app 2026-10-27: declared, never registered). Returns the files added.
+export function registerContracts(intents: string[]): string[] {
+  const declared = intents.flatMap(t => [...t.matchAll(/^\s*[-*]\s*(?:Contract|Example):\s*`?([^\s`]+)`?\s*$/gim)].map(m => m[1] as string))
+  if (!declared.length || !exists(SENSORS_PATH)) return []
+  let json: { contracts?: { files?: string[] } }
+  try { json = JSON.parse(fs.readFileSync(SENSORS_PATH, 'utf8')) } catch { return [] }
+  const have = json.contracts?.files ?? []
+  const added = [...new Set(declared)].filter(f => !have.includes(f) && !matchesAny(f, have))
+  if (!added.length) return []
+  json.contracts = { covers: [], validate: '', run: '', ...json.contracts, files: [...have, ...added] } as typeof json.contracts
+  fs.writeFileSync(SENSORS_PATH, JSON.stringify(json, null, 2) + '\n')
+  return added
+}
 
 // The freeze in force: the contracts the change's approval recorded.
 export const frozenFor = (slug: string): Record<string, string> => readApproval(slug)?.contracts ?? {}

@@ -69,3 +69,21 @@ test('Specmatic contract commands are blanked when java is missing, and init say
   const own = { files: [], covers: [], validate: 'make contracts', run: '' }
   assert.deepEqual(packContracts(own, false), { contracts: own, note: '' }, 'a non-Specmatic command needs no java')
 })
+
+// shop_app 2026-10-27: the layers sensor exited 0 in silence with no .rig/gen config, and its committed evidence read as a pass.
+test('a layers command guarded by a generated config says so when it enforces nothing', () => {
+  for (const p of loadPacks(PACKS_DIR).packs) {
+    const cmd = packRegistry(p).sensors.find(s => s.id === 'layers')?.cmd ?? ''
+    if (!/^if \[ -f \.rig\/gen\//.test(cmd)) continue
+    assert.match(cmd, /; else echo 'layers: not enforced here[^']*'; fi$/, `${p.stack} layers passes silently without its config: ${cmd}`)
+  }
+})
+
+// pip-audit with no argument audits the machine's site-packages, not the project (shop_app 2026-10-27: unrelated local packages in the evidence).
+test('the python audit names the project, never the whole environment', () => {
+  const cmd = packRegistry(loadPacks(PACKS_DIR).packs.find(p => p.stack === 'python')!).sensors.find(s => s.id === 'audit')?.cmd ?? ''
+  assert.match(cmd, /pip-audit -r requirements\.txt/)
+  assert.match(cmd, /pip-audit \.;/)
+  assert.doesNotMatch(cmd, /pip-audit(?! [-.])/, 'a bare pip-audit audits the environment')
+  assert.match(cmd, /nothing to audit/)
+})

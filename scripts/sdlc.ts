@@ -33,8 +33,9 @@ import { cmdQueue, conflictsFor } from './queue.ts'
 import { intentScope } from './scope.ts'
 import { prdFormatProblems, prdLedger, conversionProblems } from './prdformat.ts'
 import { parseLedger } from './chartcheck.ts'
-import { ARCH_REL, intentRelOf, prdRel, sprintRel, prdPath, reviewPath, ledgerPath, sourcePath, conversionPath } from './product.ts'
+import { ARCH_REL, intentsDir, intentRelOf, prdRel, sprintRel, prdPath, reviewPath, ledgerPath, sourcePath, conversionPath } from './product.ts'
 import { cmdSlice } from './slice.ts'
+import { registerContracts } from './contracts.ts'
 import { cmdMaintain } from './maintain.ts'
 import { cmdReadiness } from './readiness.ts'
 import { cmdAutonomy, initAutonomy } from './autonomy.ts'
@@ -202,21 +203,22 @@ function approveChart(n: number, args: Args): void {
   if (open.length) fail(`chart-${n} has ${open.length} review finding(s) not confirmed fixed:\n${open.map(f => `  ${f.n}. ${f.text}${f.status === 'claimed' ? ' (marked fixed, never confirmed)' : ''}`).join('\n')}\nFix them and re-run the chart's confirm pass, or waive one with ${skillRef('waive')} chart-${n} <finding number> <reason>`)
   const by = ownerOrFail(args, 'approvals')
   writeChartApproval(n, by)
+  const registered = registerContracts((exists(intentsDir(n)) ? fs.readdirSync(intentsDir(n)) : []).map(f => read(path.join(intentsDir(n), f))))
   writePlan(n)
-  const committed = commitApproval(n)
+  const committed = commitApproval(n, registered.length > 0)
   const branch = git(['branch', '--show-current']) ?? ''
   const trunk = trunkName()
   const first = branch && !isTrunk(branch) ? `merge ${branch} into ${trunk} first, then start from ${trunk} with ` : 'engineers run `ready` to see which intents can start, then '
-  out(`${committed === null ? `warning: the approval is kept but git refused to commit it: commit it before building, with git add ${approvalRel(n)} ${sprintRel(n)}/plan.md ${ARCH_REL} .rig/product/adr && git commit -m "chore: approve chart-${n}"\n` : ''}approved chart-${n} by ${by}: ${chartFiles(n).length} file(s). Next: ${first}${skillRef('start')} ${sprintRel(n)}/intents/<slug>.md`)
+  out(`${registered.length ? `registered ${registered.length} contract file(s) in .rig/sensors.json: ${registered.join(', ')}\n` : ''}${committed === null ? `warning: the approval is kept but git refused to commit it: commit it before building, with git add ${approvalRel(n)} ${sprintRel(n)}/plan.md ${ARCH_REL} .rig/product/adr && git commit -m "chore: approve chart-${n}"\n` : ''}approved chart-${n} by ${by}: ${chartFiles(n).length} file(s). Next: ${first}${skillRef('start')} ${sprintRel(n)}/intents/<slug>.md`)
 }
 
 const approvalRel = (n: number): string => `${sprintRel(n)}/approval.json`
 // The approval hashes the files `acceptAdrs` edited: they must land in the same commit as approval.json, or HEAD disagrees with the approval
 // and CI sees the chart as stale (shop_app 2026-10-27, where approval.json rode into a feature commit alone). Never --no-verify.
 // true: committed; false: nothing to commit (not a git repo / nothing dirty); null: git refused.
-function commitApproval(n: number): boolean | null {
+function commitApproval(n: number, sensors = false): boolean | null {
   if (git(['rev-parse', '--is-inside-work-tree']) !== 'true') return false
-  const want = [approvalRel(n), `${sprintRel(n)}/plan.md`, ARCH_REL, ...chartFiles(n)].filter((f, i, a) => a.indexOf(f) === i && exists(path.join(ROOT, f)))
+  const want = [approvalRel(n), `${sprintRel(n)}/plan.md`, ARCH_REL, ...(sensors ? ['.rig/sensors.json'] : []), ...chartFiles(n)].filter((f, i, a) => a.indexOf(f) === i && exists(path.join(ROOT, f)))
   // Names, never porcelain lines: git() trims its output, which shifted the status columns of every line after the first.
   const names = (args: string[]): string[] => (git([...args, '--', ...want]) ?? '').split('\n').filter(Boolean)
   const dirty = [...new Set([...names(['diff', '--name-only', 'HEAD']), ...names(['ls-files', '--others', '--exclude-standard'])])]

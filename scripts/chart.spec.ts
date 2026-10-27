@@ -895,3 +895,26 @@ test('a generated ledger checked out with CRLF line endings is not stale', () =>
   fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/\n/g, '\r\n'))
   assert.ok(!(call('return C.chartFindings(1, false)') as { rule: string }[]).some(x => x.rule === 'ledger-stale'))
 })
+
+// shop_app 2026-10-27: the cart-storage intent named docs/contracts/cart-file.schema.json under ## Interfaces, yet sensors.json
+// kept contracts.files empty, so no change approval froze it.
+test('approve chart-N registers the contract and example files the intents declare, once, keeping what is already registered', () => {
+  cleanChart()
+  write(repo, `${P}/sprints/sprint-1/intents/alpha.md`, intent(1, { iface: '- Contract: docs/contracts/cart.schema.json\n- Example: docs/contracts/examples/cart.json' }))
+  write(repo, 'docs/contracts/cart.schema.json', '{}\n')
+  write(repo, 'docs/contracts/examples/cart.json', '{}\n')
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], contracts: { files: ['api/**'], covers: [], validate: '', run: '' } }))
+  const ok = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
+  assert.equal(ok.code, 0, ok.stderr)
+  const files = () => (JSON.parse(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8')) as { contracts: { files: string[] } }).contracts.files
+  assert.deepEqual(files(), ['api/**', 'docs/contracts/cart.schema.json', 'docs/contracts/examples/cart.json'])
+  assert.match(ok.stdout, /registered 2 contract file/)
+})
+
+test('approve chart-N leaves sensors.json alone when no intent declares a contract', () => {
+  cleanChart()
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [] }))
+  const before = fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8')
+  assert.equal(sdlc(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN).code, 0)
+  assert.equal(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8'), before)
+})
