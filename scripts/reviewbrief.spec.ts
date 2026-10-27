@@ -70,3 +70,11 @@ test('the reviewer reads the change requirements.md and a broken PRD row is corr
   assert.match(brief, /\.rig\/changes\/<slug>\/requirements\.md/)
   assert.match(brief, /breaks a quoted requirements\.md row is `correctness`[^\n]*ledger id/)
 })
+
+test('a finding on a line older than the base goes under Pre-existing, untagged, and never changes the verdict', () => {
+  assert.match(brief, /git blame/)
+  assert.match(brief, /## Pre-existing\n- path:line: problem → fix/)
+  assert.match(brief, /Pre-existing items never change the verdict/)
+  const pre = brief.split('## Pre-existing')[1] ?? ''
+  assert.doesNotMatch(pre, /\[category:/)
+})

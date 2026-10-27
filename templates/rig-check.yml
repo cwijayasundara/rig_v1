@@ -2,8 +2,11 @@
 # sensors.json `fixtures` lists files that intentionally contain detector patterns (skipped by pattern sensors only); adding to it needs human approval.
 # The workflow file itself is judged from the PR's copy (pull_request), so protect it with CODEOWNERS plus "Require review from Code Owners".
 # The checker and its config come from the BASE branch, so a PR cannot loosen the rules it is judged by.
-# Lead override (off unless .rig/sensors.json on the base branch lists you under humanApproval.selfApprovers): label the PR rig-lead-override. The ai-review job
-# reviews the diff and fails on a critical or high finding; the lead-override job then waits for the required reviewer of the rig-lead-override Environment
+# ai-review runs on every PR from this repository (fork PRs have no secrets, so it is skipped there and a person reviews): a clean-context code review and a
+# security review, each briefed from the BASE branch, failing on a critical or high item under ## Findings (## Pre-existing never fails it). Make "ai-review"
+# a required status check too. Two reviewers for risky paths is a branch-protection or ruleset setting (with CODEOWNERS), never this workflow.
+# Lead override (off unless .rig/sensors.json on the base branch lists you under humanApproval.selfApprovers): label the PR rig-lead-override. The
+# lead-override job then waits for the required reviewer of the rig-lead-override Environment
 # (Settings > Environments: add the lead as required reviewer and leave "prevent self-review" off; rig-check reads GitHub's record of that approval, so an Environment without a reviewer never passes). rig-check accepts the PR's approval rows only when both jobs succeeded on the head commit.
 name: rig-check
 on:
@@ -15,7 +18,7 @@ permissions:
   actions: read # lets CI read this run's ai-review and lead-override jobs
 jobs:
   ai-review:
-    if: contains(github.event.pull_request.labels.*.name, 'rig-lead-override') && github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -33,24 +36,46 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          # the brief comes from the base branch, so the PR cannot soften what it is reviewed against
-          git show "origin/$BASE:.rig/review-brief.md" > "$RUNNER_TEMP/brief.md" 2>/dev/null || git show "origin/$BASE:REVIEW.md" > "$RUNNER_TEMP/brief.md" 2>/dev/null || echo "Review this diff for correctness bugs, broken contracts, security problems and missing tests." > "$RUNNER_TEMP/brief.md"
+          set -o pipefail
+          # the team's rules come from the base branch, so the PR cannot soften what it is reviewed against
+          git show "origin/$BASE:REVIEW.md" > "$RUNNER_TEMP/brief.md" 2>/dev/null || echo "Review this diff for correctness bugs, broken contracts, data loss and missing tests." > "$RUNNER_TEMP/brief.md"
           git diff "origin/$BASE...HEAD" > "$RUNNER_TEMP/change.diff"
           claude -p --model sonnet --allowedTools "Read,Grep,Glob" "$(cat "$RUNNER_TEMP/brief.md")
 
-          The change to review is the diff in $RUNNER_TEMP/change.diff (read it, and the files it touches). Answer in the verdict / Findings shape." | tee "$RUNNER_TEMP/review.md"
-          verdict=$(grep -m1 -E '^verdict: ' "$RUNNER_TEMP/review.md" || true)
-          if [ "$verdict" != "verdict: pass" ]; then echo "::error::the AI review did not pass ($verdict)"; exit 1; fi
-          if grep -qE '\[severity: (critical|high)\]' "$RUNNER_TEMP/review.md"; then echo "::error::the AI review reported critical or high findings"; exit 1; fi
+          Security is reviewed separately: skip it. The change to review is the diff in $RUNNER_TEMP/change.diff (read it, and the files it touches). Answer in exactly this shape: a line 'verdict: pass | changes-needed', then '## Findings' with '- [severity: critical|high|medium] path:line: problem → fix' lines, then '## Pre-existing' with '- path:line: problem → fix' lines. Report a finding only with the file, line and the input where it goes wrong; a line the diff did not add or change goes under ## Pre-existing. Pre-existing items never change the verdict: it is changes-needed only when ## Findings has an item." | tee "$RUNNER_TEMP/review.md"
+      - name: Review the diff for security
+        env:
+          BASE: ${{ github.base_ref }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set -o pipefail
+          git show "origin/$BASE:.rig/security-brief.md" > "$RUNNER_TEMP/security-brief.md" 2>/dev/null || echo "Review this diff for security only: injection, authn/authz, secrets, unsafe input, crypto, path traversal, and every action in .rig/product/architecture.md ## Access the change touches against its row: each allowed role enforced, every other role refused, on each interface. Edit nothing." > "$RUNNER_TEMP/security-brief.md"
+          claude -p --model sonnet --allowedTools "Read,Grep,Glob" "$(cat "$RUNNER_TEMP/security-brief.md")
+
+          The change to review is the diff in $RUNNER_TEMP/change.diff (read it, and the files it touches). Answer in exactly this shape: a line 'verdict: pass | changes-needed', then '## Findings' with '- [severity: critical|high|medium] path:line: problem → fix' lines, then '## Pre-existing' with '- path:line: problem → fix' lines. Report a finding only with the file, line and the input where it goes wrong; a line the diff did not add or change goes under ## Pre-existing. Pre-existing items never change the verdict: it is changes-needed only when ## Findings has an item." | tee "$RUNNER_TEMP/security.md"
+      - name: Gate on both reviews
+        if: ${{ !cancelled() }}
+        run: |
+          # only a critical or high item under ## Findings fails the job: ## Pre-existing stood before this change, and a medium finding is for the person
+          gate() {
+            if [ ! -s "$1" ] || ! grep -qE '^verdict: ' "$1"; then echo "::error::the $2 gave no verdict line (did claude run? check CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY)"; return 1; fi
+            if awk '/^## /{f=($0 ~ /^## Findings/)} f' "$1" | grep -qE '\[severity: (critical|high)\]'; then echo "::error::the $2 reported critical or high findings"; return 1; fi
+          }
+          ok=0
+          gate "$RUNNER_TEMP/review.md" "AI review" || ok=1
+          gate "$RUNNER_TEMP/security.md" "security review" || ok=1
+          exit $ok
   lead-override:
     needs: ai-review
+    if: contains(github.event.pull_request.labels.*.name, 'rig-lead-override')
     runs-on: ubuntu-latest
     environment: rig-lead-override # the required reviewer's click in the GitHub web UI is the human decision
     steps:
       - run: echo "lead override approved for ${{ github.event.pull_request.head.sha }}" >> "$GITHUB_STEP_SUMMARY"
   rig-check:
-    needs: lead-override
-    if: ${{ !cancelled() }} # runs whether or not the override jobs ran (skipped without the label)
+    needs: [ai-review, lead-override]
+    if: ${{ !cancelled() }} # runs whatever the review jobs did: ai-review is its own required check, lead-override is skipped without the label
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

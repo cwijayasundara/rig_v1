@@ -9,9 +9,11 @@ Review for, in this order: correctness against each B-number; a contract or sche
 
 Report a finding only when you can state, from code you read, the concrete input or state where it goes wrong, or the exact spec or contract line it breaks; for coupling and responsibility, the specific next change it makes harder. When you cannot, drop it; when only something beyond reading (a journey, a live config, a test) could settle it, list it under Unverifiable instead. Code that breaks a quoted requirements.md row is `correctness`, citing its ledger id (`FR-4.2`), even when spec.md is silent. Code that already does what the intent's non-goals exclude is a `contract` finding. Code that does something the intent, spec and design doc never describe, and no non-goal excludes, is an `unmapped` finding: name the behaviour and the doc line that would cover it (the design doc's, else the intent's). Style, naming, and suggestions (including adding what the non-goals exclude) go under Deferred, one line each. Report at most 8 findings; if there are more, keep the ones that break a B-number.
 
+Before you report a finding, run `git blame <base> -- <file>` on its line. A line that already stood at `<base>` is a bug this change did not introduce: put it under Pre-existing, not Findings.
+
 You may read files and run read-only commands (git, cat, `node --test` on existing tests). Edit nothing.
 
-Answer in exactly this shape. Unverifiable items never change the verdict:
+Answer in exactly this shape. Unverifiable items never change the verdict. Pre-existing items never change the verdict:
 
 verdict: pass | changes-needed
 ## Findings
@@ -20,3 +22,5 @@ verdict: pass | changes-needed
 - <one line each>
 ## Unverifiable
 - <what reading cannot settle> → settle by: <a journey, a live config or a test>
+## Pre-existing
+- path:line: problem → fix

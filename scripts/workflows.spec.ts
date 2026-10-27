@@ -56,3 +56,30 @@ test('/rig:pr may read a PR and comment on it, and no more: no merge, api or pus
   const net = bash.filter(b => /\b(gh|curl|wget|ssh|git (push|commit|reset|checkout))\b|Bash\(\*/.test(b))
   assert.deepEqual(net, ['Bash(gh pr view*)', 'Bash(gh pr comment*)'])
 })
+
+test('ai-review runs on every same-repo PR, and only the lead override needs the label', () => {
+  const w = parse(read('templates/rig-check.yml')) as Workflow
+  const jobs = w.jobs as Record<string, { if?: string; needs?: unknown }>
+  const ai = jobs['ai-review']!, lo = jobs['lead-override']!
+  assert.doesNotMatch(ai.if ?? '', /rig-lead-override/)
+  assert.match(ai.if ?? '', /head\.repo\.full_name == github\.repository/, 'fork PRs have no secrets: skip, never fail')
+  assert.match(lo.if ?? '', /rig-lead-override/)
+  assert.equal(lo.needs, 'ai-review')
+})
+
+test('ai-review runs a security pass from the base branch and gates on ## Findings only', () => {
+  const t = read('templates/rig-check.yml')
+  assert.match(t, /git show "origin\/\$BASE:\.rig\/security-brief\.md"/)
+  assert.match(t, /awk '\/\^## \/\{f=\(\$0 ~ \/\^## Findings\/\)\} f'/, 'the Findings section ends at the next heading, whatever it starts with')
+  assert.doesNotMatch(t, /grep -qE '\\\[severity: \(critical\|high\)\\\]' "\$RUNNER_TEMP\/review\.md"/, 'the whole-file grep would fail on Pre-existing items')
+})
+
+test('both CI reviewers are told what Pre-existing is and that it never changes the verdict, and the gate fails closed', () => {
+  const t = read('templates/rig-check.yml')
+  assert.equal((t.match(/a line the diff did not add or change goes under ## Pre-existing/g) ?? []).length, 2)
+  assert.equal((t.match(/Pre-existing items never change the verdict/g) ?? []).length, 2)
+  assert.doesNotMatch(t, /\.rig\/review-brief\.md/, 'nothing installs that path; vendored templates live under .rig/templates/')
+  assert.match(t, /set -o pipefail/)
+  assert.match(t, /no verdict line/, 'an empty or failed review run blocks with a clear reason')
+  assert.doesNotMatch(t, /"verdict: pass" \]/, 'the verdict word alone never fails the gate: only a critical or high finding does')
+})
