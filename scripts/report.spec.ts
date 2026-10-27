@@ -45,6 +45,7 @@ test('report: size, first-pass, reverts, time to approval, waivers and repeat mi
   assert.deepEqual(r.prLines, { median: 20, max: 30 })
   assert.deepEqual(r.firstPass, { measured: 2, clean: 1 }, 'beta failed before it passed; alpha only failed an expected red run')
   assert.equal(r.reverted, 1)
+  assert.deepEqual(r.tiers, { '0': { merged: 0, reverted: 0 }, '1': { merged: 0, reverted: 0 }, '2': { merged: 0, reverted: 0 }, unknown: { merged: 3, reverted: 1 } }, 'bodies with no Risk section count as unknown, never as tier 0')
   assert.deepEqual(r.hoursToApproval, { median: 3, of: 2 })
   assert.equal(r.waiversPerChange, 0.5)
   assert.deepEqual(r.repeat, { classes: 1, changes: 2 })
@@ -62,7 +63,7 @@ test('report: --since drops earlier changes, and what git cannot know is named, 
 test('sdlc report prints the text, and --json the same numbers', () => {
   const json = JSON.parse(sdlc(repo, ['report', '--json']).stdout)
   assert.equal(json.merged, 3)
-  assert.match(sdlc(repo, ['report']).stdout, /rig report: 3 merged change\(s\), 2 with records[\s\S]*reverted\s+1 of 3/)
+  assert.match(sdlc(repo, ['report']).stdout, /rig report: 3 merged change\(s\), 2 with records[\s\S]*reverted\s+1 of 3[\s\S]*by tier \(merged\/reverted\)\s+0: 0\/0, 1: 0\/0, 2: 0\/0, unknown: 3\/1/)
 })
 
 test('report: a repo with no shipped changes reports zeros, not errors', () => {
