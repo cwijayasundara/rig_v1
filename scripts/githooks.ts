@@ -140,7 +140,8 @@ export function cmdCheckPush(_args: Args): void {
   const findings: Finding[] = errors.map(e => ({ sensor: 'config', severity: 'block', file: SENSORS_JSON, message: e, fix: 'fix the file' }))
   const notes = all.filter(r => !judged(r)).map(r => `${r.remoteRef}: skipped (a delete or tag)`)
   const head = git(['rev-parse', 'HEAD'])
-  if (refs.some(r => r.localSha !== head) || git(['status', '--porcelain', '--untracked-files=no'])) notes.push('note: the full commands and quality ratchet run against your working tree, not the pushed commits')
+  const drifted = refs.some(r => r.localSha !== head) || Boolean(git(['status', '--porcelain', '--untracked-files=no']))
+  if (drifted) notes.push('note: the full commands and quality ratchet run against your working tree, not the pushed commits; changed-lines sensors skipped (CI runs them)')
   for (const r of refs) {
     const base = pushBase(r)
     if (!base || git(['cat-file', '-e', `${base}^{commit}`]) === null) { notes.push(`${r.remoteRef.replace('refs/heads/', '')}: no base to compare against, so CI judges it`); continue }
@@ -153,7 +154,7 @@ export function cmdCheckPush(_args: Args): void {
     const covered = Boolean(slug) && r.localSha === head && !git(['status', '--porcelain', '--untracked-files=all', '--', '.', ':(exclude).rig']) && verifyFresh(slug as string, treeStamp())
     const result = runChecks({
       point: 'ship', diffs, config, rules, slugs: [], commands: covered ? 'none' : 'full', budgetMs: BUDGET_MS.commit,
-      before: f => showAt(base, f) ?? '', after: f => showAt(r.localSha, f) ?? '', base, ratchet: false,
+      before: f => showAt(base, f) ?? '', after: f => showAt(r.localSha, f) ?? '', base, ratchet: false, drifted,
     })
     findings.push(...result.findings.map(soften))
   }

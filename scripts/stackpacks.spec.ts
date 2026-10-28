@@ -32,6 +32,7 @@ test('a mutation-diff sensor runs before every PR on the change\'s own lines and
     assert.equal(s?.blocks, true, p.stack)
     assert.match(s?.cmd ?? '', /\{changed-lines:[a-z,]+\}/, `${p.stack} mutates only the changed lines of source it can parse`)
     assert.match(s?.cmd ?? '', /is not installed[\s\S]*exit 1/, `${p.stack} fails loudly without the tool`)
+    assert.match(s?.cmd ?? '', /rm -rf reports\/mutation; npx/, `${p.stack} never reads a report an earlier run left`)
   }
 })
 

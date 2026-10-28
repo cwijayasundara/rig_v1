@@ -41,6 +41,7 @@ type CheckInput = {
   after?: (file: string) => string // the text being judged; defaults to the working tree (commit passes the index)
   gates?: { plan: boolean } // the plan gate; absent: on
   contracts?: boolean // run the contract commands (validate, then run); absent: at ship and ci only
+  drifted?: boolean // the diff is not the working tree (a push of other commits), so {changed} sensors, run on disk, skip
 }
 type CheckResult = { findings: Finding[]; blocks: Finding[]; warns: Finding[]; waived: number }
 
@@ -248,7 +249,7 @@ export function runChecks(i: CheckInput): CheckResult {
   const c = config.contracts
   if ((i.contracts ?? (i.point === 'ship' || i.point === 'ci')) && (c.validate || c.run)) findings.push(...runContracts(c, i.point === 'stop' ? i.budgetMs : Math.max(i.budgetMs, 600_000)))
   const at: Cadence = i.commands === 'fast' ? 'turn' : i.point === 'commit' ? 'commit' : 'ci'
-  const changed = diffs.filter(d => d.status !== 'D' && !d.binary && isSource(d.file, config.paths) && !isTest(d.file, config.paths)).map(d => ({ file: d.file, lines: d.added.map(l => l.n) }))
+  const changed = i.drifted ? null : diffs.filter(d => d.status !== 'D' && !d.binary && isSource(d.file, config.paths) && !isTest(d.file, config.paths)).map(d => ({ file: d.file, lines: d.added.map(l => l.n) }))
   if (i.commands !== 'none') findings.push(...runSensors(config, at, i.point === 'ci' ? null : i.slugs[0] ?? null, i.budgetMs, Boolean(i.ratchet) && i.point !== 'ci', new Set([c.validate, c.run].filter(Boolean).map(normCmd)), i.point === 'ci' ? null : i.ratchetWrite ?? null, changed))
   // Journeys run where the heavier sensors do (verify, ship, CI), never at a commit or a turn.
   if (at === 'ci' && i.commands === 'full') findings.push(...journeyFindings(i.budgetMs, undefined, i.point === 'ci'))

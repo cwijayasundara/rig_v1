@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { makeRepo, sdlc, hook, write, gitIn, fromOld } from './testkit.ts'
+import { makeRepo, sdlc, hook, write, gitIn, fromOld, registry } from './testkit.ts'
 
 const SECRET = 'const apikey = "abcdefghijklmnop12345678"\n'
 let repo: string
@@ -200,6 +200,22 @@ test('push judges the commits the remote lacks, including a direct push to trunk
   stage('src/a.js', 'export const a = 1\n')
   gitIn(repo, 'commit', '-qm', 'ok')
   assert.equal(push(head(), remoteSha).code, 0)
+})
+
+test('push runs a {changed-lines} sensor only when the pushed commit is the working tree, so its line numbers are the ones on disk', () => {
+  const m = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rig-mut-')), 'ran.txt')
+  const echo = `node -e "require('fs').appendFileSync('${m}', process.argv.slice(1).join(' ') + '\\n')" {changed-lines:js}`
+  stage('.rig/sensors.json', registry({ extra: { sensors: [{ id: 'mutation-diff', cmd: echo, cadence: 'ci', blocks: true, guide: 'Kill the survivors.' }] } }))
+  stage('src/a.js', 'export const a = 1\n')
+  gitIn(repo, 'commit', '-qm', 'base', '--no-verify')
+  const remoteSha = head()
+  stage('src/a.js', 'export const a = 1\nexport const b = 2\n')
+  gitIn(repo, 'commit', '-qm', 'b', '--no-verify')
+  push(head(), remoteSha)
+  assert.deepEqual(fs.readFileSync(m, 'utf8').trim().split('\n'), ['src/a.js:2-2'])
+  write(repo, 'src/a.js', '// moved\nexport const a = 1\nexport const b = 2\n')
+  assert.match(push(head(), remoteSha).stdout, /changed-lines sensors skipped/)
+  assert.deepEqual(fs.readFileSync(m, 'utf8').trim().split('\n'), ['src/a.js:2-2'], 'not run on a tree whose lines moved')
 })
 
 test('push skips deletes, tags and a new branch with no base, and says so', () => {
