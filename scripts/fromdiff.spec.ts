@@ -72,3 +72,17 @@ test('red-proof judges captured work: a test that fails on the base passes, one 
   assert.equal(weak.code, 1)
   assert.match(weak.stdout, /\[red-proof\][\s\S]*already pass on the base/)
 })
+
+test('review fixes: a rename seeds both paths, a space becomes a glob, and a branch with no trunk to compare is warned', () => {
+  gitIn(repo, 'checkout', '-qb', 'vibe')
+  gitIn(repo, 'mv', 'src/add.js', 'src/plus.js')
+  write(repo, 'src/my file.js', 'export const x = 1\n')
+  assert.equal(sdlc(repo, ['new', 'rename', '--from-diff']).code, 0)
+  const spec = read('.rig/changes/rename/spec.md')
+  assert.match(spec, /^- src\/add\.js$/m)
+  assert.match(spec, /^- src\/plus\.js$/m)
+  assert.match(spec, /^- src\/my\?file\.js$/m)
+  gitIn(repo, 'branch', '-m', 'main', 'develop')
+  const r = sdlc(repo, ['new', 'no-trunk', '--from-diff'])
+  assert.match(r.stdout, /WARNING: no main or master to compare vibe with/)
+})

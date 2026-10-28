@@ -120,7 +120,7 @@ function cmdNew(args: Args): void {
   if (captured) {
     const file = path.join(changeDir(slug), 'intent.md')
     fs.writeFileSync(file, read(file).replace('\n---\n# ', `\nfrom-diff: ${captured.base}\n---\n# `))
-    fs.writeFileSync(path.join(changeDir(slug), 'spec.md'), `# Spec: ${title}\n\n## Behaviours\n\n## Blast radius\n${captured.diffs.map(d => `- ${d.file}`).join('\n')}\n\n## Out of scope\n\n## Open questions\nnone\n`)
+    fs.writeFileSync(path.join(changeDir(slug), 'spec.md'), `# Spec: ${title}\n\n## Behaviours\n\n## Blast radius\n${[...new Set(captured.diffs.flatMap(d => (d.from ? [d.from, d.file] : [d.file])))].map(f => `- ${f.replace(/ /g, '?')}`).join('\n')}\n\n## Out of scope\n\n## Open questions\nnone\n`)
   }
   out(`created .rig/changes/${slug}/intent.md (type ${toType(raw)}); ${slug} is the active change${intent ? `; spec.md starts with the ${intent.behaviours.length} behaviour(s) of the intent` : ''}${reqs ? `; requirements.md holds the PRD rows it cites` : ''}`)
   if (captured) out([`captured ${captured.diffs.length} file(s) changed since ${captured.base.slice(0, 7)} (spec.md's blast radius starts with them):`, ...captured.diffs.map(d => `  ${d.file} +${d.added.length} -${d.removed.length}`), ...(captured.warning ? [`WARNING: ${captured.warning}`] : [])].join('\n'))
@@ -131,8 +131,9 @@ function cmdNew(args: Args): void {
 function capturedWork(): { base: string; diffs: ReturnType<typeof branchDiff>; warning?: string } {
   const head = git(['rev-parse', '--abbrev-ref', 'HEAD']) ?? ''
   const remote = isTrunk(head) && git(['rev-parse', '--verify', '--quiet', `origin/${head}`]) ? git(['merge-base', 'HEAD', `origin/${head}`]) : null
-  const base = (isTrunk(head) ? remote : defaultBase()) ?? git(['rev-parse', 'HEAD']) ?? 'HEAD'
-  const warning = isTrunk(head) && !remote ? `${head} has no origin/${head}: commits already on ${head} count as the base, so only uncommitted work is captured and red-proof judges the new tests against that` : undefined
+  const found = isTrunk(head) ? remote : defaultBase()
+  const base = found ?? git(['rev-parse', 'HEAD']) ?? 'HEAD'
+  const warning = found ? undefined : isTrunk(head) ? `${head} has no origin/${head}: commits already on ${head} count as the base, so only uncommitted work is captured and red-proof judges the new tests against that` : `no main or master to compare ${head} with: its commits count as the base, so only uncommitted work is captured`
   return { base, diffs: branchDiff(base).filter(d => !d.file.startsWith('.rig/')), warning }
 }
 
