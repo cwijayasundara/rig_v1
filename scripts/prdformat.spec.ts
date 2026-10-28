@@ -149,6 +149,8 @@ test('map-misquote of a fenced block or a table header says neither is mapped', 
   assert.match(msg('- context source.md:9 "Goal | Target" — header\n'), /table header[^\n]*not mapped/)
   assert.match(msg('- context source.md:18 "{"id": 1, "sku": "coffee"}" — example\n'), /fenced block[^\n]*not mapped[^\n]*## Examples/)
   assert.match(msg('- context source.md:5 "Shoppers lost carts." — x\n'), /not in source\.md word for word$/)
+  const tiny = conversionProblems({ source: source + '\n```\n{}\n```\n', prd: CONVERTED.replace('## Open questions', '```\n{}\n```\n\n## Open questions'), map: map + '- context source.md:5 "Shoppers lost {} carts." — x\n' })
+  assert.match(tiny.find(f => f.rule === 'map-misquote')!.message, /not in source\.md word for word$/, 'a short fence body is no hint for a paraphrase')
 })
 
 // The same run asked the person for "a number" for NFR targets the source states as "never" and "contains no".

@@ -280,6 +280,7 @@ test('chart gap pass: reads the existing tests and code the PRD names, and asks 
 
 test('chart gap pass: the design questions are asked in the same sitting, right after the gap batch', () => {
   assert.match(step1, /right after that batch[^\n]*design questions/)
+  assert.match(step1, /design answers go into the design doc[^\n]*never into `prd\.md`/)
   assert.match(skill.slice(skill.indexOf('2. **Design.**'), skill.indexOf('**Architect.**')), /already answered in the gap pass/)
 })
 

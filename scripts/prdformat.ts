@@ -117,8 +117,8 @@ const fences = (text: string): { line: number; body: string }[] => [...text.repl
   .map(m => ({ line: text.slice(0, m.index).split('\n').length, body: normalise(m[3] ?? '') })).filter(f => f.body)
 
 // Why a quote is not in source.md: a fenced block or a table header (the row above |---|) is never mapped, anything else is misquoted.
-const misquote = (quote: string, source: string, q = normalise(quote), ls = source.replace(/\r\n/g, '\n').split('\n')): string =>
-  q && fences(source).some(f => f.body.includes(q) || q.includes(f.body.trim())) ? `"${quote}" is inside a fenced block: a fenced block is not mapped, it is copied under ## Examples; drop this row`
+const misquote = (quote: string, source: string, q = normalise(quote), ls = source.replace(/\r\n/g, '\n').split('\n'), flat = (s: string): string => s.replace(/\s+/g, ' ').trim()): string =>
+  q && fences(source).some(f => f.body.split('\n').some(l => l.trim() === q.trim()) || (flat(f.body).length >= 20 && flat(q).includes(flat(f.body)))) ? `"${quote}" is inside a fenced block: a fenced block is not mapped, it is copied under ## Examples; drop this row`
     : q && ls.some((l, n) => /^\s*\|/.test(l) && /^\s*\|?\s*:?-{3,}/.test(ls[n + 1] ?? '') && normalise(cells(l).join(' | ')) === q) ? `"${quote}" is a table header: a table header is not mapped, only its body rows; drop this row`
     : `"${quote}" is not in source.md word for word`
 
