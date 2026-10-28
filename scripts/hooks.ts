@@ -241,8 +241,9 @@ function hookStop(input: HookInput = {}): { halt: boolean; warn?: string } {
     const warns = gate.last?.warnRows ?? []
     return warns.length ? { halt: false, warn: `rig: ${gate.last?.warns} warning(s), not blocking: ${[...warns, ...more(gate.last)].join(' | ')}` } : { halt: false }
   }
-  fs.writeFileSync(UNRESOLVED, JSON.stringify({ at: now(), slug, findings: blocks }, null, 2) + '\n')
   const attempt = (gate.blocks.main ?? 0) + 1
+  const survived = attempt > 1 ? survivors(blocks) : []
+  fs.writeFileSync(UNRESOLVED, JSON.stringify({ at: now(), slug, findings: blocks }, null, 2) + '\n')
   if (attempt > MAX_BLOCKS) {
     save()
     out(JSON.stringify({ systemMessage: `sdlc quality gate: ${blocks.length} problem(s) unresolved after ${MAX_BLOCKS} attempts (.rig/unresolved.json). Ship and CI will refuse until they are fixed or the person waives them.` }))
@@ -250,9 +251,15 @@ function hookStop(input: HookInput = {}): { halt: boolean; warn?: string } {
   }
   gate.blocks.main = attempt
   save()
-  out(JSON.stringify({ decision: 'block', reason: `sdlc quality gate (attempt ${attempt}/${MAX_BLOCKS}): fix these before you finish.\n${formatFindings(findings)}` }))
+  out(JSON.stringify({ decision: 'block', reason: `sdlc quality gate (attempt ${attempt}/${MAX_BLOCKS}): fix these before you finish.\n${formatFindings(findings)}${premiseAsk(survived)}` }))
   return { halt: true }
 }
+
+// Blocks this turn's last Stop also raised (attempt > 1: this turn wrote unresolved.json), keyed without the line a fix may shift.
+const blockKey = (f: Finding): string => `${f.sensor} ${f.file ?? ''}: ${f.message}`
+const survivors = (blocks: Finding[]): string[] => { try { const old = new Set(((JSON.parse(read(UNRESOLVED)) as { findings?: Finding[] }).findings ?? []).map(blockKey)); return [...new Set(blocks.map(blockKey).filter(k => old.has(k)))] } catch { return [] } }
+// Attack the premise: a second fix aimed by the same wrong belief fails the same way, so it names that belief before editing.
+const premiseAsk = (survived: string[]): string => survived.length ? `\n\nStill failing after your last fix:\n${survived.map(s => `- ${s}`).join('\n')}\nThat fix rested on a premise that is wrong. Before you edit again, write that premise in one sentence, check it against the check's output and the code it judges, and aim the next fix at what the check shows. If the turn ends unresolved, give the person that sentence.` : ''
 
 const HOOKS: Record<string, (input: HookInput) => void> = {
   'session-start': hookSessionStart,
