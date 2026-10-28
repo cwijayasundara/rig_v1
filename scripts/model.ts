@@ -59,11 +59,11 @@ export const section = (text: string, heading: string): string =>
 const isPathLike = (t: string): boolean => /\/|\.\w+$/.test(t)
 const bulletPaths = (body: string): string[] => body.split('\n').flatMap(l => {
   const b = /^\s*[-*]\s+(.*)$/.exec(l)
-  if (!b) { const t = l.trim().replace(/`/g, ''); return t && !/\s/.test(t) && isPathLike(t) ? [t] : [] }
+  if (!b) { const t = /^\s*`([^`\s]+)`\s*$/.exec(l)?.[1] ?? l.trim(); return t && !/\s/.test(t) && (isPathLike(t) || t !== l.trim()) ? [t] : [] }
   return (b[1] ?? '').replace(/^[A-Za-z]+:\s+/, '').split(',').flatMap(seg => {
     const m = /^\s*\(?\s*(?:`([^`\s]+)`|([^`\s]+))/.exec(seg)
-    const t = (m?.[1] ?? m?.[2] ?? '').replace(/[.,;:)]+$/, '')
-    return t && isPathLike(t) ? [t] : []
+    const t = m?.[1] ?? (m?.[2] ?? '').replace(/[.,;:)]+$/, '')
+    return t && (m?.[1] || isPathLike(t)) ? [t] : []
   })
 })
 
