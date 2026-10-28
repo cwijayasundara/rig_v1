@@ -34,7 +34,7 @@ The biggest lever is **bounded context**. Everything below follows from that.
 
 ```
 skills/      the stages, /rig:* (start plan build test pr rule init, chart testplan wiki learn app arch, plus human-only approve, waive and autonomy), prompts only
-agents/      architect (charts a sprint); evaluator (sprint chart review; a change's diff is reviewed by a clean-context reviewer agent and /security-review in /rig:pr)
+agents/      architect (charts a sprint); evaluator (sprint chart review; a change's diff is reviewed by a clean-context Opus reviewer agent and an Opus security agent in /rig:pr)
 hooks/       hooks.json = six settings hook events (session start, prompt submit, post-edit, stop, agent launch/done, model switch) plus the journey dashboard module, none on Bash (work in -p and CI)
 scripts/     zero-dependency Node, no build step; sdlc.ts is the CLI; check.ts is the one checker
 templates/   CI workflow (rig-check), settings.json, stacks/ (stack packs), brief.md, REVIEW.md
@@ -76,7 +76,7 @@ Evidence files (`approval.json`, waivers, `runs.jsonl`, `verify.json`, `pr.md`, 
 | Bounded context | Small fresh contexts per subagent (briefs of ≤ 60 lines); `/compact` rather than a handoff skill |
 | Context guard: the session-start rules say to `/compact` at ~150k context, and the journey dashboard shows the session's context and dollars live | Live guard for the 50% finding above, not a retrospective; two review systems per turn is the single biggest waste found (proposal 2026-10-08) |
 | Sonnet main thread, Opus advisor **off** | Template sets `CLAUDE_CODE_DISABLE_ADVISOR_TOOL` (the advisor was a third of each run's cost; a user-level `advisorModel` otherwise still applies) |
-| One review per change | One clean-context reviewer agent (diff and intent only, builder triage with recorded dismissals) + native `/security-review` on the delta before the PR opens |
+| One review per change | One clean-context reviewer agent (diff and intent only, builder triage with recorded dismissals) + an Opus security agent on the delta before the PR opens (Sonnet output is always evaluated by Opus) |
 | Stamp, don't re-run | `verify` runs every commit and ci sensor once against the current tree and writes `verify.json`, tied to the working tree; `/rig:pr` checks it instead of re-running, and a stale one re-runs. CI reads no stamp |
 | Lean plans | No code in plans |
 | Plugin diet | Project `enabledPlugins` turns off unrelated plugins |

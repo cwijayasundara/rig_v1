@@ -47,7 +47,7 @@ These come from the research (`docs/research/`) and from the one week this repo 
 |---|---|---|
 | Guide injection | `.claude/rules/*.md` with `paths:` | generating them from the sensor registry, so guide and sensor share one source (`sync --check`) |
 | Planning, parallel work, auto mode | plan mode, subagents, worktrees, `/goal` | the approval gate: person-only, hash-and-staleness, frozen contracts |
-| Code review | `/code-review`, `REVIEW.md`, `/security-review` | a clean-context Sonnet reviewer in `/rig:pr`, and one `evaluator` (Opus) that reviews each sprint chart |
+| Code review | `/code-review`, `REVIEW.md`, `/security-review` | a clean-context Opus reviewer and an Opus security agent in `/rig:pr`, and one `evaluator` (Opus) that reviews each sprint chart |
 | Edit-time feedback | LSP plugins, hooks | the registry of sensors with cadence per grade, and test-tamper, suppression and harness-tamper detection |
 | Merge gate | `claude -p`, `claude-code-action` | the base-branch CI check and git hooks that judge any editor |
 | Traceability | nothing | requirement, intent, behaviour, test case, checked by a script (`chart check`, `sync`, red-proof) |
