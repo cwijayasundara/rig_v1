@@ -1,6 +1,6 @@
 # One door, right-sized: a flexible SDLC without a second command
 
-Status: agreed 2026-10-27 (decisions at the end). Not built, except the README answer (P0).
+Status: agreed 2026-10-27 (decisions at the end). Built: P0 and P1 (e5c206a), P2 and P3 (1249870), P4 (`new --from-diff`, 2026-10-28).
 
 Design constraint (owner, 2026-10-27): keep the harness as light and lean as possible, with fewer restrictions. Every
 step below either removes ceremony or adds none by default; nothing adds a new block.
@@ -104,7 +104,7 @@ signals. The person runs `/rig:start --from-diff` when they want the work tracke
 
 `--from-diff` runs the same grill against what was built, writes `intent.md` and `spec.md` with behaviours drawn from the
 diff, and the build step adds a test per behaviour. Tests written after the code prove nothing unless they fail without it,
-so red-proof stashes the source changes, runs the new tests and requires them to fail, then restores the stash. A behaviour
+so red-proof runs the new tests on the base, without the captured code, and requires them to fail (built: the existing `proofOnBase` in `scripts/check.ts` already does this; no stash is needed). A behaviour
 whose test passes with the code stashed is reported, not accepted.
 
 Every change ships on a feature branch through a PR to the base branch, vibe work included (decision 2). `--from-diff` takes
