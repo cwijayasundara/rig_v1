@@ -243,17 +243,24 @@ export function chartReport(n: number): string {
 
 // The sprint plan view: waves and graphs generated from the intents' `depends:` lines (see plan.ts), written beside the PRD. Not a chart
 // file, so regenerating it never makes an approved chart stale.
-export function planRows(n: number): PlanRow[] {
+export function planRows(n: number, assumeShipped?: string): PlanRow[] {
+  const shipped = (x: string): boolean => x === assumeShipped || isShipped(x)
   return intentsOf(n).map(i => ({
     slug: i.slug, depends: i.depends, estimateDays: i.estimateDays, owner: i.owner,
-    status: isShipped(i.slug) ? 'done' : exists(changeDir(i.slug)) ? 'active' : i.depends.every(isShipped) ? 'ready' : 'blocked',
+    status: shipped(i.slug) ? 'done' : exists(changeDir(i.slug)) ? 'active' : i.depends.every(shipped) ? 'ready' : 'blocked',
   }))
 }
-export function sprintPlan(n: number): string {
-  return planText(n, planRows(n), { chart: chartState(n).state, startCmd: slug => `${skillRef('start')} ${intentRel(n, slug)}` })
+export function sprintPlan(n: number, assumeShipped?: string): string {
+  return planText(n, planRows(n, assumeShipped), { chart: chartState(n).state, startCmd: slug => `${skillRef('start')} ${intentRel(n, slug)}` })
 }
-export function writePlan(n: number): string {
+export function writePlan(n: number, assumeShipped?: string): string {
   fs.mkdirSync(sprintDir(n), { recursive: true })
-  fs.writeFileSync(planPath(n), sprintPlan(n))
+  fs.writeFileSync(planPath(n), sprintPlan(n, assumeShipped))
   return `${sprintRel(n)}/plan.md`
+}
+// The start commands of the sprint's intents that are ready once `slug` ships; [] for an uncharted change.
+export function readyAfter(slug: string): string[] {
+  const n = intentOf(slug)?.sprint
+  if (typeof n !== 'number') return []
+  return planRows(n, slug).filter(r => r.status === 'ready').map(r => `${skillRef('start')} ${intentRel(n, r.slug)}`)
 }

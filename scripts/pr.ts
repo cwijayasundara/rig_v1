@@ -3,7 +3,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { ROOT, CHANGES, WAIVERS, waiverLive, exists, isTrunk, read, readJsonl, out, fail, git, checkSlug, optString, ensureGitignore, skillRef, defaultBase, type Args, type Waiver } from './core.ts'
+import { ROOT, CHANGES, WAIVERS, waiverLive, exists, isTrunk, trunkName, read, readJsonl, out, fail, git, checkSlug, optString, ensureGitignore, skillRef, defaultBase, type Args, type Waiver } from './core.ts'
 import { frozenFindings, frozenFor } from './contracts.ts'
 import { loadConfig } from './check.ts'
 import { ghBin, section } from './model.ts'
@@ -14,6 +14,7 @@ import { riskOf } from './risk.ts'
 import { parseAccess } from './chartcheck.ts'
 import { branchDiff } from './diffs.ts'
 import { archPath } from './product.ts'
+import { intentOf, writePlan, readyAfter } from './chart.ts'
 import { isHarnessPath } from './vendor.ts'
 import { untestedAcs } from './actrace.ts'
 
@@ -86,6 +87,9 @@ export function cmdPr(args: Args): void {
     try { verify = JSON.parse(c('verify.json')) } catch { /* no verify.json: the body says so */ }
     fs.writeFileSync(path.join(CHANGES, slug, 'pr-body.md'), prBody({ intent: c('intent.md'), spec: c('spec.md'), plan: c('plan.md'), verify, outline: c('pr-outline.md'), review: c('review.md'), amendments: c('amendments.md'), risk: riskOf(branchDiff(verify?.base ?? defaultBase() ?? 'HEAD').filter(d => ships(slug)(d.file)), [slug], loadConfig().registry, parseAccess(read(archPath)), false) }))
   }
+  // The merge ships this change: write the sprint plan as it will read then, so nothing regenerates dirty afterwards.
+  const sprint = intentOf(slug)?.sprint
+  if (typeof sprint === 'number') writePlan(sprint, slug)
   const files = changeFiles(slug)
   const left = dirtyFiles().filter(isHarnessPath)
   if (left.length) out(`pr ${slug}: left out ${left.length} vendored harness file(s) (${left.slice(0, 3).join(', ')}${left.length > 3 ? ', ...' : ''}); they look like an uncommitted ${skillRef('upgrade')}: commit them on their own branch`)
@@ -97,7 +101,8 @@ export function cmdPr(args: Args): void {
   if (git(['commit', '-q', '--no-verify', '-m', message]) === null) { undo(false); fail('git commit failed') }
   // The review's fix wave re-activates the change so the hooks guard it; its follow-up ends it. Another active change stays.
   if (!followUp || activeSlug() === slug) setActive(null)
-  if (!remote) return out(`pr ${slug}: committed on ${branch}${followUp ? ' (follow-up)' : ''}; no origin remote, local only`)
+  const next = readyAfter(slug)
+  if (!remote) return out(`pr ${slug}: committed on ${branch}${followUp ? ' (follow-up)' : ''}; no origin remote, local only. Next: merge ${branch} into ${trunkName()}${next[0] ? `, then ${next[0]}` : ''}`)
   const retry = `gh pr create --title ${JSON.stringify(title)} --body-file .rig/changes/${slug}/pr-body.md`
   if (git(['push', '--no-verify', '-u', 'origin', branch]) === null) { undo(true); fail(`git push failed; ${followUp ? `the follow-up is committed on ${branch}: push it` : 'nothing was kept: fix the remote and rerun pr'}`) }
   if (followUp) return out(`pr ${slug}: follow-up pushed to ${branch}`)

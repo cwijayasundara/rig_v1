@@ -3,7 +3,7 @@ import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { makeRepo, sdlc, write, gitIn, approvedChange, verified } from './testkit.ts'
+import { makeRepo, sdlc, write, gitIn, approvedChange, verified, ARCH_OK, IMPL_OK } from './testkit.ts'
 
 let repo: string
 beforeEach(() => { repo = makeRepo(); sdlc(repo, ['init']); write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [] })) })
@@ -207,4 +207,52 @@ test('pr ships pr-body.md but not the pr-outline.md it embeds, and carries the s
   assert.ok(!shipped.includes('.rig/changes/demo/pr-outline.md'))
   assert.ok(shipped.includes('.rig/product/sprints/sprint-1/plan.md'))
   assert.match(fs.readFileSync(path.join(repo, '.rig/changes/demo/pr-body.md'), 'utf8'), /Special things to note/)
+})
+
+// shop_app sprint 1 2026-10-28: pr-outline.md stayed untracked after the PR, and the sprint plan read stale until the merge regenerated it.
+const SP = '.rig/product/sprints/sprint-1'
+const HUMAN = { env: { SDLC_HUMAN: '1' } }
+const sprintShip = (): void => {
+  const intent = (depends: string): string => `---\nsprint: 1\nprd: [FR-1]\ndepends: ${depends}\nestimate_days: 1\nkind: internal\n---\n# i\n\n## Interfaces\nnone\n\n## Behaviours\n- B1 (FR-1): works\n\n## Open questions\nnone\n`
+  write(repo, `${SP}/prd.md`, '---\nsprint: 1\nengineers: 1\n---\n# Sprint 1\n\n### FR-1: thing\n\n## Open questions\nnone\n')
+  write(repo, `${SP}/intents/alpha.md`, intent('[]'))
+  write(repo, `${SP}/intents/beta.md`, intent('[alpha]'))
+  write(repo, '.rig/product/architecture.md', ARCH_OK(1))
+  write(repo, `${SP}/implementation-plan.md`, IMPL_OK(['alpha', 'beta']))
+  write(repo, `${SP}/chart-review.md`, 'verdict: pass\n## Findings\n## Deferred\n')
+  write(repo, `${SP}/testplan/cases.md`, '| ID | Req | Intent | B | Level | Data | Expected |\n| TC-1 | FR-1 | alpha | B1 | unit | - | ok |\n| TC-2 | FR-1 | beta | B1 | unit | - | ok |\n')
+  const ok = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
+  assert.equal(ok.code, 0, ok.stderr)
+  gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'chart')
+  const created = sdlc(repo, ['new', 'alpha', '--source', `${SP}/intents/alpha.md`])
+  assert.equal(created.code, 0, created.stderr)
+  write(repo, '.rig/changes/alpha/spec.md', '# Spec\n\n## Behaviours\n- B1: the change works\n\n## Open questions\nnone\n')
+  write(repo, '.rig/changes/alpha/plan.md', '# Plan\n\n## Files\n- src/\n\n## Open questions\nnone\n')
+  const planned = sdlc(repo, ['approve', 'alpha'], HUMAN)
+  assert.equal(planned.code, 0, planned.stderr)
+  write(repo, 'test/a.test.js', '// B1\n')
+  write(repo, '.rig/changes/alpha/pr-outline.md', '## Change outline\n\nsrc only\n')
+  verified(repo, 'alpha')
+}
+const prA = () => sdlc(repo, ['pr', 'alpha', '--message', 'feat: alpha'])
+
+test('pr leaves no uncommitted file and ships the sprint plan as it will read after the merge', () => {
+  sprintShip()
+  const r = prA()
+  assert.equal(r.code, 0, r.stderr)
+  assert.equal(gitIn(repo, 'status', '--porcelain'), '')
+  const plan = gitIn(repo, 'show', `HEAD:${SP}/plan.md`)
+  assert.match(plan, /alpha[^\n]*done/)
+  assert.match(plan, /beta[^\n]*ready/)
+  gitIn(repo, 'checkout', '-q', 'main')
+  gitIn(repo, 'merge', '-q', 'sdlc/alpha')
+  assert.equal(sdlc(repo, ['chart', 'plan', '1']).code, 0)
+  assert.equal(gitIn(repo, 'status', '--porcelain'), '')
+})
+
+test('a local-only pr names the merge and the next ready intent, and starts nothing', () => {
+  sprintShip()
+  const r = prA()
+  assert.match(r.stdout, /Next: merge sdlc\/alpha into main, then \/rig[:-]start \.rig\/product\/sprints\/sprint-1\/intents\/beta\.md/)
+  assert.ok(!fs.existsSync(path.join(repo, '.rig/changes/beta')))
 })

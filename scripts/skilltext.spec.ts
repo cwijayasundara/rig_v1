@@ -19,6 +19,10 @@ test('plan runs approve --check before handing the plan over', () => {
   assert.match(text('skills/plan/SKILL.md'), /approve <slug> --check/)
 })
 
+test('pr ends a local-only PR with the Next line and starts no further intent', () => {
+  assert.match(text('skills/pr/SKILL.md'), /local-only.*Next: merge/s)
+})
+
 test('build ticks phases and resumes at the first unticked one', () => {
   assert.match(text('skills/build/SKILL.md'), /first unticked phase/)
 })
