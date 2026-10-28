@@ -78,3 +78,19 @@ test('build and the review brief look at raises after the commit point', () => {
 test('chart reads the backlog at its gap pass', () => {
   assert.match(text('skills/chart/SKILL.md'), /\.rig\/product\/backlog\.md/)
 })
+
+// Person's rule 2026-10-28: every Sonnet output in rig is evaluated by Opus.
+test('no skill evaluates with sonnet', () => {
+  const files = [...fs.readdirSync(path.join(root, 'skills')).map(d => `skills/${d}/SKILL.md`), ...fs.readdirSync(path.join(root, 'templates')).filter(f => /brief/.test(f)).map(f => `templates/${f}`)].filter(f => fs.existsSync(path.join(root, f)))
+  assert.ok(files.length > 10)
+  for (const f of files) for (const sentence of text(f).split(/(?<=[.:;])\s+|\n/)) {
+    if (/review|confirm|evaluat/i.test(sentence)) assert.doesNotMatch(sentence, /model: sonnet|model `sonnet`/, `${f}: ${sentence.slice(0, 120)}`)
+  }
+})
+
+test('testplan and plan hand their output to the Opus evaluator once', () => {
+  assert.match(text('skills/testplan/SKILL.md'), /rig:evaluator|rig-evaluator/)
+  const plan = text('skills/plan/SKILL.md')
+  assert.match(plan, /rig:evaluator|rig-evaluator/)
+  assert.match(plan, /spec\.md and plan\.md/)
+})
