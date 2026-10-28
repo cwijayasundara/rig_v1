@@ -138,6 +138,25 @@ test('map-misquote: a paraphrase, or a line far from the sentence', () => {
   assert.deepEqual(conv({ map: MAP.replace('- DR-1 source.md:9', '- DR-1 source.md:30') }), ['map-misquote'])
 })
 
+// shop_app chart 2026-10-28: the coordinator quoted a fenced block and a table header in conversion.md, got a bare
+// "not in source.md word for word" twice, and read prdformat.ts to learn neither is mapped.
+test('map-misquote of a fenced block or a table header says neither is mapped', () => {
+  const source = SOURCE.replace('## Items\n', '## Items\n\n| Goal | Target |\n|---|---|\n| G1. Add | All pass |\n')
+  const map = MAP.replace('source.md:9', 'source.md:13').replace('source.md:9', 'source.md:13').replace('source.md:11', 'source.md:15') +
+    '- context source.md:11 "G1. Add | All pass" — goal row\n'
+  const msg = (row: string): string => conversionProblems({ source, prd: CONVERTED, map: map + row }).filter(f => f.rule === 'map-misquote').map(f => f.message).join('\n')
+  assert.equal(msg(''), '')
+  assert.match(msg('- context source.md:9 "Goal | Target" — header\n'), /table header[^\n]*not mapped/)
+  assert.match(msg('- context source.md:18 "{"id": 1, "sku": "coffee"}" — example\n'), /fenced block[^\n]*not mapped[^\n]*## Examples/)
+  assert.match(msg('- context source.md:5 "Shoppers lost carts." — x\n'), /not in source\.md word for word$/)
+})
+
+// The same run asked the person for "a number" for NFR targets the source states as "never" and "contains no".
+test('prd-nfr names an absolute such as "never" as the number 0', () => {
+  const f = prdFormatProblems(PRD({ nfr: '| ID | Category | Requirement | Target | Verified by |\n|---|---|---|---|---|\n| NFR-1 | reliability | atomic write | never half-written | unit |\n' }))
+  assert.match(f.find(x => x.rule === 'prd-nfr')!.message, /"never"[^\n]*\b0\b/)
+})
+
 test('a criterion marked out of scope becomes an out-of-scope ledger row with when, who and why', () => {
   const prd = PRD({ data: '- DR-1: Each item id is an integer starting at 1.\n- DR-2: Ids are archived after a year (out of scope: sprint 2, decided by Ana — storage first).\n' })
   assert.deepEqual(prdFormatProblems(prd), [])
