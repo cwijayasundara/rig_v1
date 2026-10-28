@@ -41,3 +41,11 @@ test('start is a grill and reports the weight; plan writes light plans itself in
   assert.match(plan, /`light`: do not invoke `superpowers:writing-plans`[^]*at most 30 lines/)
   assert.match(plan, /`full`: invoke `superpowers:writing-plans`/)
 })
+
+test('start captures work with --from-diff and grills from the code; build skips the local red step and leaves it to red-proof', () => {
+  const start = text('skills/start/SKILL.md'), build = text('skills/build/SKILL.md')
+  assert.match(start, /S new <slug> --from-diff/)
+  assert.match(start, /ask whether the person wants it, and record only confirmed behaviours/)
+  assert.match(build, /`from-diff:` line[^]*no `--expect-fail` step[^]*red-proof[^]*must fail/)
+  assert.match(build, /rewrite the test, never the base/)
+})

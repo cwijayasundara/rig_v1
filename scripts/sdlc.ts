@@ -93,12 +93,15 @@ function cmdInit(args: Args): void {
 
 function cmdNew(args: Args): void {
   const slug = args.pos[0] ?? ''
-  if (!SLUG_RE.test(slug)) fail(`usage: new <kebab-slug> [--type ${TYPES.join('|')}] [--title "..."] [--source .rig/product/sprints/sprint-<N>/intents/<slug>.md] [--full]`)
+  if (!SLUG_RE.test(slug)) fail(`usage: new <kebab-slug> [--type ${TYPES.join('|')}] [--title "..."] [--source .rig/product/sprints/sprint-<N>/intents/<slug>.md] [--full] [--from-diff]`)
   const raw = optString(args, 'type') ?? 'feature'
   // The four types, plus the older names toType folds in (greenfield, incident, migration, spike).
   if (![...TYPES, 'greenfield', 'incident', 'migration', 'spike'].includes(raw)) fail(`usage: new <slug> [--type ${TYPES.join('|')}] [--title "..."]`)
   if (exists(changeDir(slug))) fail(`${slug} already exists: ${skillRef('start')} ${slug} continues it`)
   const source = optString(args, 'source')
+  const captured = args.opt['from-diff'] === true ? capturedWork() : null
+  if (captured && source) fail('--from-diff captures work already done; a charted intent starts with --source alone')
+  if (captured && !captured.diffs.length) fail(`nothing to capture: no file differs from ${captured.base}`)
   if (source) {
     const rel = toPosix(path.relative(ROOT, path.resolve(ROOT, source)))
     const expected = intentRelOf(slug)
@@ -114,7 +117,24 @@ function cmdNew(args: Args): void {
   if (intent) fs.writeFileSync(path.join(changeDir(slug), 'spec.md'), `# Spec: ${title}\n\n## Behaviours\n${intent.behaviours.map(b => { const ids = [...new Set([...b.reqs, ...b.rules])]; return `- ${b.id}${ids.length ? ` (${ids.join(', ')})` : ''}: ${b.text}` }).join('\n')}\n\n## Out of scope\n\n## Open questions\nnone\n`)
   const reqs = intent ? changeRequirements(slug) : null
   if (reqs) fs.writeFileSync(path.join(changeDir(slug), 'requirements.md'), reqs)
+  if (captured) {
+    const file = path.join(changeDir(slug), 'intent.md')
+    fs.writeFileSync(file, read(file).replace('\n---\n# ', `\nfrom-diff: ${captured.base}\n---\n# `))
+    fs.writeFileSync(path.join(changeDir(slug), 'spec.md'), `# Spec: ${title}\n\n## Behaviours\n\n## Blast radius\n${[...new Set(captured.diffs.flatMap(d => (d.from ? [d.from, d.file] : [d.file])))].map(f => `- ${f.replace(/ /g, '?')}`).join('\n')}\n\n## Out of scope\n\n## Open questions\nnone\n`)
+  }
   out(`created .rig/changes/${slug}/intent.md (type ${toType(raw)}); ${slug} is the active change${intent ? `; spec.md starts with the ${intent.behaviours.length} behaviour(s) of the intent` : ''}${reqs ? `; requirements.md holds the PRD rows it cites` : ''}`)
+  if (captured) out([`captured ${captured.diffs.length} file(s) changed since ${captured.base.slice(0, 7)} (spec.md's blast radius starts with them):`, ...captured.diffs.map(d => `  ${d.file} +${d.added.length} -${d.removed.length}`), ...(captured.warning ? [`WARNING: ${captured.warning}`] : [])].join('\n'))
+}
+
+// --from-diff: the work done so far, committed on this branch or not, against the base it started from. On the trunk the base is
+// the remote trunk, so local commits count as work; with no remote, they are already the base and only uncommitted work is captured.
+function capturedWork(): { base: string; diffs: ReturnType<typeof branchDiff>; warning?: string } {
+  const head = git(['rev-parse', '--abbrev-ref', 'HEAD']) ?? ''
+  const remote = isTrunk(head) && git(['rev-parse', '--verify', '--quiet', `origin/${head}`]) ? git(['merge-base', 'HEAD', `origin/${head}`]) : null
+  const found = isTrunk(head) ? remote : defaultBase()
+  const base = found ?? git(['rev-parse', 'HEAD']) ?? 'HEAD'
+  const warning = found ? undefined : isTrunk(head) ? `${head} has no origin/${head}: commits already on ${head} count as the base, so only uncommitted work is captured and red-proof judges the new tests against that` : `no main or master to compare ${head} with: its commits count as the base, so only uncommitted work is captured`
+  return { base, diffs: branchDiff(base).filter(d => !d.file.startsWith('.rig/')), warning }
 }
 
 // After a refusal because of dependencies: where the whole order is, and what can start instead.
