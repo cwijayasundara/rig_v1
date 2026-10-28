@@ -257,3 +257,49 @@ test('the architect gives each repo file to one intent unless one depends on the
   assert.match(fs.readFileSync(path.resolve(import.meta.dirname, '../agents/architect.md'), 'utf8'), /A repo file goes in the `scope:` of one intent only/)
   assert.match(fs.readFileSync(path.resolve(import.meta.dirname, '../skills/approve/SKILL.md'), 'utf8'), /chart-N, which covers a converted PRD too/)
 })
+
+// shop_app chart 2026-10-28 (session f1ce0ac2): ~26 minutes of work took 2 h 36 min because the person was asked four times,
+// two of them after the architect (11 and 22 minutes in), and the run sat 2 h 10 min on the third. The fixes below move every
+// question the chart can foresee into one sitting at the start, and the rest into one batch after the architect.
+const step1 = skill.slice(skill.indexOf('1. **Which sprint'), skill.indexOf('2. **Design.**'))
+const archStep = skill.slice(skill.indexOf('**Architect.**'), skill.indexOf('4. **QA.**'))
+
+test('chart conversion: conversion.md maps what the checker counts, never a fenced block or a table header', () => {
+  assert.doesNotMatch(step1, /one line per sentence, bullet, table row and fenced block/)
+  assert.match(step1, /fenced block and a table header are not mapped/)
+})
+
+test('chart gap pass: an absolute target is the number 0 and is never a question', () => {
+  assert.match(step1, /"never"[^\n]*is the number 0[^\n]*not a gap/)
+})
+
+test('chart gap pass: reads the existing tests and code the PRD names, and asks when a PRD rule contradicts one', () => {
+  assert.match(step1, /existing tests/)
+  assert.match(step1, /contradicts an existing test/)
+})
+
+test('chart gap pass: the design questions are asked in the same sitting, right after the gap batch', () => {
+  assert.match(step1, /right after that batch[^\n]*design questions/)
+  assert.match(step1, /design answers go into the design doc[^\n]*never into `prd\.md`/)
+  assert.match(skill.slice(skill.indexOf('2. **Design.**'), skill.indexOf('**Architect.**')), /already answered in the gap pass/)
+})
+
+test('chart architect: chart check runs before asking, and its questions and every concern go in one batch', () => {
+  const ask = archStep.indexOf('in one `AskUserQuestion` batch')
+  assert.ok(ask > 0 && archStep.indexOf('S chart check <N> --json') < ask, 'check first, then one batch')
+  assert.match(archStep, /`concern` and `open-question` finding/)
+})
+
+test('the architect never reads the harness source to learn the check rules', () => {
+  assert.match(fs.readFileSync(path.resolve(import.meta.dirname, '../agents/architect.md'), 'utf8'), /Never read `\.rig\/bin\/`/)
+  assert.match(archStep, /never to read `\.rig\/bin\/`/)
+})
+
+// The same run: chart-review finding 3 suggested "no comparisons on the arguments" for cli.py, the confirm pass accepted it,
+// and TC-59 now forbids the `args.command` branch AC-5.8 needs.
+test('the confirm pass reopens a fix that bans a construct another behaviour needs', () => {
+  const ev = fs.readFileSync(path.resolve(import.meta.dirname, '../agents/evaluator.md'), 'utf8')
+  const confirm = ev.slice(ev.indexOf('## Confirm mode'))
+  assert.match(confirm, /contradicts no other behaviour of the intent/)
+  assert.match(confirm, /bans named imports and calls, never a construct/)
+})

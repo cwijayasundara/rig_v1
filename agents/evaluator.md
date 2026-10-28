@@ -42,4 +42,4 @@ The brief says "check the conversion for sprint N". Read `sprints/sprint-N/sourc
 Never edit; raise nothing else.
 
 ## Confirm mode
-The brief says "confirm the fixes for sprint N" and gives finding lines marked `→ fixed`. For each, reread only the files it cites, and the ledger rows it names, and answer one line per finding, in order: `<n>. confirmed` when the problem is gone, or `<n>. reopened: <why>` naming what still says it. Raise nothing new.
+The brief says "confirm the fixes for sprint N" and gives finding lines marked `→ fixed`. For each, reread only the files it cites, and the ledger rows it names, and answer one line per finding, in order: `<n>. confirmed` when the problem is gone and the fix contradicts no other behaviour of the intent, or `<n>. reopened: <why>` naming what still says it. A fix that bans a construct the intent's other behaviours need (an `ast` check forbidding every comparison, while the CLI must branch on its subcommand) is reopened: a structural check bans named imports and calls, never a construct. Raise nothing new.

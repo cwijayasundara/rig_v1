@@ -84,7 +84,7 @@ export function prdFormatProblems(prd: string): ChartFinding[] {
   for (const c of cs) {
     if (c.num !== null && c.fr !== `FR-${c.num}`) add('prd-criterion', `prd.md:${c.line}`, `${c.id} sits under ${c.fr ?? 'no FR'}; an AC-n.m belongs under ### FR-n`)
     if (!c.shaped) add('prd-criterion', `prd.md:${c.line}`, `${c.id} is not testable as written: use "WHEN <trigger> THE SYSTEM SHALL <response>" or "Given <state>, when <action>, then <result>" with exact values`)
-    if (c.id.startsWith('NFR-') && !/\d/.test(cells(ls.find(l => l.n === c.line)!.text)[3] ?? '')) add('prd-nfr', c.id, `${c.id} has no number in its target: give a number and a unit`)
+    if (c.id.startsWith('NFR-') && !/\d/.test(cells(ls.find(l => l.n === c.line)!.text)[3] ?? '')) add('prd-nfr', c.id, `${c.id} has no number in its target: give a number and a unit (an absolute such as "never" or "no" is 0, quoting the source's word)`)
   }
   const seen = new Map<string, number>()
   for (const c of cs) seen.set(c.id, (seen.get(c.id) ?? 0) + 1)
@@ -116,6 +116,12 @@ export const parseMap = (text: string): MapRow[] => text.replace(/\r\n/g, '\n').
 const fences = (text: string): { line: number; body: string }[] => [...text.replace(/\r\n/g, '\n').matchAll(/^(\s*)(```|~~~)[^\n]*\n([\s\S]*?)^\s*\2\s*$/gm)]
   .map(m => ({ line: text.slice(0, m.index).split('\n').length, body: normalise(m[3] ?? '') })).filter(f => f.body)
 
+// Why a quote is not in source.md: a fenced block or a table header (the row above |---|) is never mapped, anything else is misquoted.
+const misquote = (quote: string, source: string, q = normalise(quote), ls = source.replace(/\r\n/g, '\n').split('\n'), flat = (s: string): string => s.replace(/\s+/g, ' ').trim()): string =>
+  q && fences(source).some(f => f.body.split('\n').some(l => l.trim() === q.trim()) || (flat(f.body).length >= 20 && flat(q).includes(flat(f.body)))) ? `"${quote}" is inside a fenced block: a fenced block is not mapped, it is copied under ## Examples; drop this row`
+    : q && ls.some((l, n) => /^\s*\|/.test(l) && /^\s*\|?\s*:?-{3,}/.test(ls[n + 1] ?? '') && normalise(cells(l).join(' | ')) === q) ? `"${quote}" is a table header: a table header is not mapped, only its body rows; drop this row`
+    : `"${quote}" is not in source.md word for word`
+
 export function conversionProblems(i: { source: string; prd: string; map: string | null }): ChartFinding[] {
   const out: ChartFinding[] = []
   const add = (rule: string, where: string, message: string): number => out.push({ rule, severity: 'block', where, message })
@@ -127,7 +133,7 @@ export function conversionProblems(i: { source: string; prd: string; map: string
   for (const r of rows) {
     const q = normalise(r.quote)
     const near = blocks.filter(b => b.text.includes(q))
-    if (!q || !near.length) add('map-misquote', `source.md:${r.line}`, `"${r.quote}" is not in source.md word for word`)
+    if (!q || !near.length) add('map-misquote', `source.md:${r.line}`, misquote(r.quote, i.source))
     else if (!near.some(b => Math.abs(b.line - r.line) <= SLACK || (r.line >= b.line && r.line <= b.end))) add('map-misquote', `source.md:${r.line}`, `"${r.quote}" is at source.md:${near.map(b => b.line).join(', ')}, not ${r.line}`)
     for (const id of r.ids) if (!defined.has(id)) add('map-id', id, `conversion.md maps "${r.quote}" to ${id}, which prd.md does not define`)
     if (r.context && !r.reason) add('map-reason', `source.md:${r.line}`, `"${r.quote}" is mapped to context: add " — <why it is not a rule>"`)
