@@ -40,9 +40,8 @@ test('start keeps open questions a person\'s, orders documents by recency and as
   assert.match(start, /design system/)
 })
 
-test('start is a grill and reports the weight; plan writes light plans itself in 30 lines', () => {
+test('start reports the weight; plan writes light plans itself in 30 lines', () => {
   const start = text('skills/start/SKILL.md'), plan = text('skills/plan/SKILL.md')
-  assert.match(start, /one question at a time/)
   assert.match(start, /S weight <slug>/)
   assert.match(start, /--full/)
   assert.match(plan, /S weight <slug>/)
@@ -56,4 +55,26 @@ test('start captures work with --from-diff and grills from the code; build skips
   assert.match(start, /ask whether the person wants it, and record only confirmed behaviours/)
   assert.match(build, /`from-diff:` line[^]*no `--expect-fail` step[^]*red-proof[^]*must fail/)
   assert.match(build, /rewrite the test, never the base/)
+})
+
+test('start asks its foreseen questions in one batch and settles carried items', () => {
+  const start = text('skills/start/SKILL.md')
+  assert.doesNotMatch(start, /ask one question at a time/)
+  assert.match(start, /one `AskUserQuestion` batch/)
+  assert.match(start, /## Carried in/)
+})
+
+test('pr tells the builder to tag a review item for the intent that owns it, inside the blast radius it is fixed', () => {
+  const t = text('skills/pr/SKILL.md')
+  assert.match(t, /→ carry: <slug>/)
+  assert.match(t, /inside the blast radius/)
+})
+
+test('build and the review brief look at raises after the commit point', () => {
+  assert.match(text('skills/build/SKILL.md'), /after the commit point/)
+  assert.match(text('templates/review-brief.md'), /after the commit point/)
+})
+
+test('chart reads the backlog at its gap pass', () => {
+  assert.match(text('skills/chart/SKILL.md'), /\.rig\/product\/backlog\.md/)
 })
