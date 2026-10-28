@@ -40,6 +40,37 @@ test('Stop blocks twice, then lets the turn end with a system message and unreso
   assert.ok(!fs.existsSync(path.join(repo, '.rig/unresolved.json')))
 })
 
+test('a block that survives a fix asks for the premise the fix rested on; a new block does not', () => {
+  sdlc(repo, ['new', 'xx', '--type', 'chore'])
+  hook(repo, 'prompt-submit', {})
+  tamper()
+  assert.doesNotMatch(JSON.parse(stop().stdout).reason, /premise/, 'a first block has no fix to question')
+  const again = JSON.parse(stop().stdout).reason as string
+  assert.match(again, /Still failing after your last fix:[\s\S]*test-tamper test\/a\.test\.js[\s\S]*premise[\s\S]*one sentence/)
+  hook(repo, 'prompt-submit', {})
+  tamper()
+  JSON.parse(stop().stdout)
+  write(repo, 'test/a.test.js', "it('x', () => {})\n")
+  write(repo, 'test/b.test.js', "it.only('y', () => {})\n")
+  const moved = JSON.parse(stop().stdout).reason as string
+  assert.match(moved, /attempt 2\/2[\s\S]*test\/b\.test\.js/)
+  assert.doesNotMatch(moved, /premise/, 'the last fix worked; this block is new')
+})
+
+test('a block whose message carries a count still survives when a fix only moves the count', () => {
+  sdlc(repo, ['new', 'xx', '--type', 'chore'])
+  write(repo, '.rig/sensors.json', fromOld({ limits: { fileLines: 10 } }))
+  const lines = (n: number) => Array.from({ length: n }, (_, i) => `export const v${i} = ${i}`).join('\n') + '\n'
+  write(repo, 'src/a.js', lines(8))
+  gitIn(repo, 'add', '.')
+  gitIn(repo, 'commit', '-qm', 'cfg')
+  hook(repo, 'prompt-submit', {})
+  write(repo, 'src/a.js', lines(15))
+  assert.match(JSON.parse(stop().stdout).reason, /grew to 15 lines/)
+  write(repo, 'src/a.js', lines(13))
+  assert.match(JSON.parse(stop().stdout).reason, /grew to 13 lines[\s\S]*Still failing after your last fix:[\s\S]*size src\/a\.js/)
+})
+
 test('a harness file changed by Bash blocks at Stop; the same change through Edit only warns', () => {
   sdlc(repo, ['new', 'xx', '--type', 'chore'])
   write(repo, '.rig/sensors.json', fromOld({ limits: { diffLines: 500 } }))
