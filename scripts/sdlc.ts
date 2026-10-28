@@ -178,7 +178,19 @@ const words = (args: Args): string[] => (args.pos.length === 1 ? (args.pos[0] ??
 // What the person can type when their /rig-<cmd> slash command is not listed (a session started before the harness was vendored).
 const humanFallback = (cmd: string, usage: string): string => `! SDLC_HUMAN=1 node --disable-warning=ExperimentalWarning ${path.relative(process.cwd(), process.argv[1] ?? 'sdlc.ts')} ${cmd} ${usage}`
 
+// `approve <slug> --check`: the refusal the approval would give, without approving; needs no person.
+function approveCheck(args: Args): void {
+  const given = words(args)[0]
+  if (CHART_RE.test(given ?? '')) fail('--check is for a change plan: use approve chart-N without --check')
+  const slug = given ? checkSlug(given) : activeSlug()
+  if (!slug || !exists(changeDir(slug))) fail('usage: approve <slug> --check')
+  const refusal = approvalRefusal(slug)
+  if (refusal) fail(refusal)
+  out(`ok: ${slug} can be approved`)
+}
+
 function cmdApprove(args: Args): void {
+  if (args.opt.check) return approveCheck(args)
   if (process.env.SDLC_HUMAN !== '1') fail(`approvals are human-only: the person runs ${skillRef('approve')} <slug>. If that command is not listed, restart Claude Code, or the person types: ${humanFallback('approve', '<slug>')}`, 3)
   const given = words(args)[0] // a second word (the old stage name) is ignored
   if (!given && args.opt.ask) return out(approveTarget())

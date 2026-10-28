@@ -53,11 +53,18 @@ export function maskSecrets(text: string): string {
 export const section = (text: string, heading: string): string =>
   new RegExp(`^##\\s+${heading}\\s*\\n([\\s\\S]*?)(?=^##\\s|(?![\\s\\S]))`, 'm').exec(text)?.[1] ?? ''
 
-// The path that leads each line of a section, bulleted or bare, after an optional "Create:"-style label; backticks stripped.
-// A bare word counts only when it looks like a path (a / or an extension), so a prose line ("No existing test ...") is skipped.
+// The paths a section lists: each bullet is split on commas, a segment counts by its first token (backticked or bare, after an optional
+// "Create:"-style label, punctuation stripped) when that token looks like a path (a / or an extension), so prose ("No existing test ...",
+// "which this change ...") is skipped. A non-bullet line counts only when the whole line is one path.
+const isPathLike = (t: string): boolean => /\/|\.\w+$/.test(t)
 const bulletPaths = (body: string): string[] => body.split('\n').flatMap(l => {
-  const m = /^\s*(?:[-*]\s+)?(?:[A-Za-z]+:\s+)?(?:`([^`\s]+)`|([^`\s]+))/.exec(l)
-  return m?.[1] ? [m[1]] : m?.[2] && /\/|\.\w+$/.test(m[2]) ? [m[2]] : []
+  const b = /^\s*[-*]\s+(.*)$/.exec(l)
+  if (!b) { const t = l.trim().replace(/`/g, ''); return t && !/\s/.test(t) && isPathLike(t) ? [t] : [] }
+  return (b[1] ?? '').replace(/^[A-Za-z]+:\s+/, '').split(',').flatMap(seg => {
+    const m = /^\s*\(?\s*(?:`([^`\s]+)`|([^`\s]+))/.exec(seg)
+    const t = (m?.[1] ?? m?.[2] ?? '').replace(/[.,;:)]+$/, '')
+    return t && isPathLike(t) ? [t] : []
+  })
 })
 
 // The files a plan says it will touch (its ## Files section), as pr.ts reads them.

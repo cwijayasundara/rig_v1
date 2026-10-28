@@ -232,6 +232,21 @@ test('approve refuses a plan that touches a file outside spec.md ## Blast radius
   assert.ok(!fs.existsSync(path.join(repo, '.rig/changes/demo/approval.json')))
 })
 
+test('approve --check reports the refusal without approving', () => {
+  planned()
+  write(repo, '.rig/changes/demo/spec.md', `${SPEC}\n## Blast radius\n- src/a.ts\n`)
+  write(repo, '.rig/changes/demo/plan.md', '# Plan\n\n## Files\n- src/b.ts\n\n## Open questions\nnone\n')
+  const r = sdlc(repo, ['approve', 'demo', '--check'])
+  assert.equal(r.code, 1)
+  assert.match(r.stderr, /outside the blast radius: src\/b\.ts/)
+  assert.ok(!fs.existsSync(path.join(repo, '.rig/changes/demo/approval.json')))
+  write(repo, '.rig/changes/demo/plan.md', '# Plan\n\n## Files\n- src/a.ts\n\n## Open questions\nnone\n')
+  const ok = sdlc(repo, ['approve', 'demo', '--check'])
+  assert.equal(ok.code, 0, ok.stderr)
+  assert.match(ok.stdout, /^ok: demo can be approved/)
+  assert.ok(!fs.existsSync(path.join(repo, '.rig/changes/demo/approval.json')))
+})
+
 // shop_app cart-core: start/SKILL.md asks for the radius "one per line", so it came as bare lines and read as empty,
 // which put every plan file outside it; a prose bullet ("No existing test ...") and a "Modify:" label read as paths too.
 test('approve reads a bare-line ## Blast radius and skips labels and prose bullets in ## Files', () => {

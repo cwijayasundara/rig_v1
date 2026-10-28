@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseUnifiedDiff, globToRegex, matchesAny, parseRules, formatFindings, warnRow, printable, type Finding } from './model.ts'
+import { planFiles, parseUnifiedDiff, globToRegex, matchesAny, parseRules, formatFindings, warnRow, printable, type Finding } from './model.ts'
 
 test('parses a modified file with added and removed line numbers', () => {
   const d = parseUnifiedDiff('diff --git a/src/a.js b/src/a.js\nindex 1..2 100644\n--- a/src/a.js\n+++ b/src/a.js\n@@ -3 +3,2 @@\n-old\n+new\n+more\n')
@@ -125,4 +125,9 @@ test('an inner claude gets none of the outer session\'s Claude Code variables, b
     CLAUDE_CODE_OAUTH_TOKEN: 't', CLAUDE_CODE_USE_BEDROCK: '1', CLAUDE_CODE_SKIP_BEDROCK_AUTH: '1',
   })
   assert.deepEqual(Object.keys(env).sort(), ['CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CODE_SKIP_BEDROCK_AUTH', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CONFIG_DIR', 'HOME', 'PATH'])
+})
+
+test('planFiles reads comma lists and skips prose bullets', () => {
+  const plan = '# Plan\n\n## Files\n- src/cart/errors.py, src/cart/models.py (`Item` only), src/cart/storage.py\n- Modify: `src/app.js`\n- No existing test changes: tests/test_smoke.py only touches `cart.cli`, which this change leaves alone.\n`models.py` gets the `Item` class only.\nsrc/plain.py\n\n## Open questions\nnone\n'
+  assert.deepEqual(planFiles(plan), ['src/cart/errors.py', 'src/cart/models.py', 'src/cart/storage.py', 'src/app.js', 'src/plain.py'])
 })

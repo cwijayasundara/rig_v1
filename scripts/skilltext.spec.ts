@@ -15,6 +15,10 @@ test('plan asks for end-to-end phases as a checkbox list, and points at the show
   assert.match(plan, /templates\/show-me\.md/)
 })
 
+test('plan runs approve --check before handing the plan over', () => {
+  assert.match(text('skills/plan/SKILL.md'), /approve <slug> --check/)
+})
+
 test('build ticks phases and resumes at the first unticked one', () => {
   assert.match(text('skills/build/SKILL.md'), /first unticked phase/)
 })
