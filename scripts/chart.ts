@@ -80,7 +80,7 @@ function acceptAdrs(n: number): void {
     fs.writeFileSync(f, next)
     return [/^\d+/.exec(path.basename(f))?.[0]].filter((x): x is string => Boolean(x))
   })
-  if (ids.length && exists(archPath)) fs.writeFileSync(archPath, read(archPath).replace(new RegExp(`^(\\|\\s*(?:${ids.join('|')})\\s*\\|.*\\|\\s*)proposed(\\s*\\|\\s*${n}\\s*\\|\\s*)$`, 'gm'), '$1accepted$2'))
+  if (ids.length && exists(archPath)) fs.writeFileSync(archPath, read(archPath).replace(new RegExp(`^(\\|\\s*(?:\\[(?:${ids.join('|')})\\]\\([^)]*\\)|(?:${ids.join('|')}))\\s*\\|.*\\|\\s*)proposed(\\s*\\|\\s*${n}\\s*\\|\\s*)$`, 'gm'), '$1accepted$2'))
 }
 export function writeChartApproval(n: number, by: string): void {
   acceptAdrs(n)
