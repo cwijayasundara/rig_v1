@@ -113,6 +113,16 @@ test('{files} is shell-quoted, removed for whole-repo runs, and an empty list sk
 })
 
 
+test('{changed} and {changed-lines} take the change\'s source files, filtered by extension; nothing to judge skips', () => {
+  const changed = [{ file: 'src/a.ts', lines: [2, 3, 4, 9] }, { file: 'my dir/b.js', lines: [1] }, { file: 'src/c.json', lines: [1] }, { file: 'src/d.ts', lines: [] }]
+  assert.equal(commandFor(cmd('m', 'ci', 'mut {changed}'), null, changed), `mut src/a.ts 'my dir/b.js' src/c.json src/d.ts`)
+  assert.equal(commandFor(cmd('m', 'ci', 'mut {changed:ts,js}'), null, changed), `mut src/a.ts 'my dir/b.js' src/d.ts`)
+  assert.equal(commandFor(cmd('m', 'ci', 'mut --mutate {changed-lines:ts,js}'), null, changed), `mut --mutate 'src/a.ts:2-4,src/a.ts:9-9,my dir/b.js:1-1'`, 'one argument; a file with no added line has no range')
+  assert.equal(commandFor(cmd('m', 'ci', 'mut {changed:py}'), null, changed), null, 'no file of that kind changed: skip')
+  assert.equal(commandFor(cmd('m', 'ci', 'mut {changed}'), null, null), null, 'no diff to judge (a baseline or nightly run): skip')
+  assert.equal(commandFor(cmd('m', 'ci', 'mut {changed}'), null, []), null)
+})
+
 test('a file name starting with a dash is passed as a path, not a flag', () => {
   const s = cmd('lint', 'edit', 'eslint {files}')
   assert.equal(commandFor(s, ['-rf', 'src/-x.ts']), 'eslint ./-rf src/-x.ts')

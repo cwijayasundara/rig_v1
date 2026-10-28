@@ -6,7 +6,7 @@ import { waiverLive,
   ROOT, SDLC, CHANGES, WAIVERS, SENSORS_JSON, BUDGET_MS, readJson, exists, read, out, fail, git, toPosix, optString, readJsonl, defaultBase, checkSlug, skillRef,
   type Args, type Waiver,
 } from './core.ts'
-import { parseRules, formatFindings, warnLines, matchesAny, isTest, ghBin, planFiles, type FileDiff, type Finding, type Rule } from './model.ts'
+import { parseRules, formatFindings, warnLines, matchesAny, isTest, isSource, ghBin, planFiles, type FileDiff, type Finding, type Rule } from './model.ts'
 import { withoutFixtures, testTamper, suppressions, layering, size, secretsInDiff, rulesSensor, harnessTamper, isProtected, behaviourIds, behaviourText, missingBehaviours } from './sensors.ts'
 import { readBaseline, snapshot, turnDiff, fileDiff, branchDiff, showAt, fileLines, stagedDiff, showStaged } from './diffs.ts'
 import { runCommand, recordRun, normCmd } from './runs.ts'
@@ -16,7 +16,7 @@ import { approvedLayers } from './arch.ts'
 import { journeyFindings, draftApps } from './app.ts'
 import { scopeFindings, intentScope } from './scope.ts'
 import { RATCHET_FILE, lastNumber, loadRatchets, judge, tighten, type RatchetWrite } from './counts.ts'
-import { isRegistryShape, parseRegistry, defaultRegistry, updateKnownRed, activeSensors, commandFor, builtinOptions, inertSensors, type Registry, type RegistrySensor, type Cadence, type Inert } from './registry.ts'
+import { isRegistryShape, parseRegistry, defaultRegistry, updateKnownRed, activeSensors, commandFor, builtinOptions, type Changed, inertSensors, type Registry, type RegistrySensor, type Cadence, type Inert } from './registry.ts'
 import { frozenFindings, runContracts } from './contracts.ts'
 import { syncFindings } from './sync.ts'
 import { riskOf, formatRisk, type Risk } from './risk.ts'
@@ -104,12 +104,12 @@ function ratchetFinding(s: RegistrySensor, dir: 'down' | 'up', value: number | n
 
 // The registry's command sensors due at this cadence (spec §3.1), in order, inside one time budget. A sensor with
 // "blocks": false warns; a knownRed one warns while it fails and leaves knownRed once it passes.
-export function runSensors(r: Registry, at: Cadence, slug: string | null, budgetMs: number, allowRatchet = false, skip?: Set<string>, ratchetWrite: RatchetWrite = null): Finding[] {
+export function runSensors(r: Registry, at: Cadence, slug: string | null, budgetMs: number, allowRatchet = false, skip?: Set<string>, ratchetWrite: RatchetWrite = null, changed: Changed[] | null = null): Finding[] {
   const findings: Finding[] = []
   const cleared: string[] = []
   let left = budgetMs
   for (const s of activeSensors(r, at, 'continuous')) {
-    const cmd = commandFor(s, null)
+    const cmd = commandFor(s, null, changed)
     if (!cmd || skip?.has(normCmd(cmd))) continue
     const known = r.knownRed.includes(s.id)
     if (left <= 0) {
@@ -248,7 +248,8 @@ export function runChecks(i: CheckInput): CheckResult {
   const c = config.contracts
   if ((i.contracts ?? (i.point === 'ship' || i.point === 'ci')) && (c.validate || c.run)) findings.push(...runContracts(c, i.point === 'stop' ? i.budgetMs : Math.max(i.budgetMs, 600_000)))
   const at: Cadence = i.commands === 'fast' ? 'turn' : i.point === 'commit' ? 'commit' : 'ci'
-  if (i.commands !== 'none') findings.push(...runSensors(config, at, i.point === 'ci' ? null : i.slugs[0] ?? null, i.budgetMs, Boolean(i.ratchet) && i.point !== 'ci', new Set([c.validate, c.run].filter(Boolean).map(normCmd)), i.point === 'ci' ? null : i.ratchetWrite ?? null))
+  const changed = diffs.filter(d => d.status !== 'D' && !d.binary && isSource(d.file, config.paths) && !isTest(d.file, config.paths)).map(d => ({ file: d.file, lines: d.added.map(l => l.n) }))
+  if (i.commands !== 'none') findings.push(...runSensors(config, at, i.point === 'ci' ? null : i.slugs[0] ?? null, i.budgetMs, Boolean(i.ratchet) && i.point !== 'ci', new Set([c.validate, c.run].filter(Boolean).map(normCmd)), i.point === 'ci' ? null : i.ratchetWrite ?? null, changed))
   // Journeys run where the heavier sensors do (verify, ship, CI), never at a commit or a turn.
   if (at === 'ci' && i.commands === 'full') findings.push(...journeyFindings(i.budgetMs, undefined, i.point === 'ci'))
   const result = applyWaivers(builtinsApplied(findings, config), i.slugs, i.point === 'ci' ? { base: i.base } : undefined)
