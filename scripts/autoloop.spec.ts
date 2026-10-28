@@ -49,5 +49,6 @@ test('the chart and start brainstorms are handed the code wiki as cited, warn-on
 })
 
 test('nothing after approve asks the person a question except the existing stop cases', () => {
-  for (const name of ['build', 'test', 'pr', 'start', 'plan']) assert.doesNotMatch(skill(name), /AskUserQuestion/, `${name} must not ask`)
+  // start asks its foreseen questions in one AskUserQuestion batch before the spec (sprint 1 run findings, F7); the rest never ask.
+  for (const name of ['build', 'test', 'pr', 'plan']) assert.doesNotMatch(skill(name), /AskUserQuestion/, `${name} must not ask`)
 })
