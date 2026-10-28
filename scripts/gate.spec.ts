@@ -255,3 +255,20 @@ test('Stop does not continue a change that waits at a human gate or has no activ
   sdlc(repo, ['new', 'gated', '--type', 'feature'])
   assert.equal(stop().stdout, '', 'a feature before its design approval is a person step, not an auto step')
 })
+
+// shop_app sprint 1 2026-10-28: /rig-start ran on an Opus main thread with a long context; the model-role warning only showed at a later Stop.
+test('/rig-start on a large context or another model shows a nudge', () => {
+  sdlc(repo, ['init'])
+  const t = path.join(repo, 'transcript.jsonl')
+  const row = (model: string, read: number): string => JSON.stringify({ type: 'assistant', message: { model, usage: { input_tokens: 10, cache_read_input_tokens: read, cache_creation_input_tokens: 500 } } }) + '\n'
+  const msg = (prompt: string): string => { const r = hook(repo, 'prompt-submit', { prompt, transcript_path: t }); return r.stdout ? ((JSON.parse(r.stdout) as { systemMessage?: string }).systemMessage ?? '') : '' }
+  fs.writeFileSync(t, row('claude-sonnet-5-5', 120000))
+  assert.match(msg('/rig-start x'), /~121k tokens.*\/clear/)
+  assert.match(msg('/rig:start x'), /~121k tokens/)
+  assert.doesNotMatch(msg('/rig-start x'), /\/model/)
+  fs.writeFileSync(t, row('claude-opus-5-5', 120000))
+  assert.match(msg('/rig-start x'), /\/model sonnet/)
+  assert.equal(msg('/rig-plan x'), '')
+  fs.writeFileSync(t, row('claude-sonnet-5-5', 50000))
+  assert.equal(msg('/rig-start x'), '')
+})

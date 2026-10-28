@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { readModelState, recordSessionModel, recordLaunch, recordResolved, transcriptModel, pinnedModel, sessionModel, modelRoleFindings, latestAgents } from './modelstate.ts'
+import { readModelState, recordSessionModel, recordLaunch, recordResolved, transcriptModel, transcriptContext, pinnedModel, sessionModel, modelRoleFindings, latestAgents } from './modelstate.ts'
 import { defaultRegistry } from './registry.ts'
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'rig-model-'))
@@ -123,4 +123,13 @@ test('latestAgents tolerates a null or non-object launch entry', () => {
   const state = path.join(tmp(), 'model.json')
   fs.writeFileSync(state, JSON.stringify({ launches: [null, 7, { agent: 'rig-architect', requested: 'sonnet', resolved: null, at: 'a' }] }))
   assert.deepEqual(latestAgents(state), [{ agent: 'rig-architect', model: 'sonnet', at: 'a' }])
+})
+
+test('transcriptContext sums the last assistant usage', () => {
+  const d = tmp()
+  const f = path.join(d, 't.jsonl')
+  fs.writeFileSync(f, line({ type: 'assistant', message: { model: 'claude-opus-5-5', usage: { input_tokens: 1, cache_read_input_tokens: 5 } } }) + line({ type: 'user', message: { content: 'hi' } }) + line({ type: 'assistant', message: { model: 'claude-opus-5-5', usage: { input_tokens: 10, cache_read_input_tokens: 120000, cache_creation_input_tokens: 500, output_tokens: 99 } } }))
+  assert.equal(transcriptContext(f), 120510)
+  assert.equal(transcriptContext(path.join(d, 'none.jsonl')), null)
+  assert.equal(transcriptContext(undefined), null)
 })

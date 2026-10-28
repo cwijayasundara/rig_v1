@@ -48,8 +48,8 @@ export function recordResolved(file: string, id: string, resolved: string): void
   update(file, s => { const l = s.launches.find(x => x.id === id); if (l) l.resolved = resolved.trim(); return Boolean(l) })
 }
 
-// The model of the last assistant message in a Claude Code transcript (JSONL), read from the file's tail only.
-export function transcriptModel(transcriptPath: string | undefined): string | null {
+// The last assistant message of a Claude Code transcript (JSONL) that satisfies `want`, read from the file's tail only.
+function lastAssistant<T>(transcriptPath: string | undefined, key: string, want: (m: Record<string, unknown>) => T | null): T | null {
   if (!transcriptPath) return null
   let text: string
   try {
@@ -63,14 +63,21 @@ export function transcriptModel(transcriptPath: string | undefined): string | nu
     } finally { fs.closeSync(fd) }
   } catch { return null }
   for (const l of text.split('\n').reverse()) {
-    if (!l.includes('"model"')) continue
+    if (!l.includes(key)) continue
     try {
-      const v = JSON.parse(l) as { type?: string; message?: { model?: unknown } }
-      if (v.type === 'assistant' && typeof v.message?.model === 'string' && v.message.model) return v.message.model
+      const v = JSON.parse(l) as { type?: string; message?: Record<string, unknown> }
+      const got = v.type === 'assistant' && v.message ? want(v.message) : null
+      if (got !== null) return got
     } catch { /* the first line of a tail is usually cut */ }
   }
   return null
 }
+export const transcriptModel = (transcriptPath: string | undefined): string | null => lastAssistant(transcriptPath, '"model"', m => (typeof m.model === 'string' && m.model ? m.model : null))
+// Tokens the last assistant message read: input plus cache read plus cache creation. How full the context is.
+export const transcriptContext = (transcriptPath: string | undefined): number | null => lastAssistant(transcriptPath, '"usage"', m => {
+  const u = m.usage as Record<string, unknown> | undefined
+  return u ? ['input_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens'].reduce((n, k) => n + (typeof u[k] === 'number' ? u[k] : 0), 0) : null
+})
 
 export function pinnedModel(root: string): string | null {
   for (const f of ['.claude/settings.local.json', '.claude/settings.json']) {
