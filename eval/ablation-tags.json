@@ -110,6 +110,12 @@
     "ablatable": true
   },
   {
+    "id": "sensor:mutation-diff",
+    "kind": "sensor",
+    "weakness": "models open a PR whose new lines no test pins: changing them breaks nothing the suite notices",
+    "ablatable": true
+  },
+  {
     "id": "sensor:build",
     "kind": "sensor",
     "weakness": "models leave the project not compiling, so the next step builds on broken code",

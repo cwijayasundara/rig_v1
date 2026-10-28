@@ -243,9 +243,28 @@ const shq = (f: string): string => {
   return /^[A-Za-z0-9_./:@%+=,-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`
 }
 
+// A change's source files (no tests, no deletions) with the line numbers it added: what a diff-scoped sensor judges.
+export type Changed = { file: string; lines: number[] }
+const CHANGED = /\{changed(-lines)?(?::([A-Za-z0-9,]+))?\}/g
+const ranges = (c: Changed): string[] => c.lines.reduce<[number, number][]>((rs, n) => { const last = rs[rs.length - 1]; if (last && n === last[1] + 1) last[1] = n; else rs.push([n, n]); return rs }, []).map(([a, b]) => `${c.file}:${a}-${b}`)
+
+// {changed[:exts]} is the change's source files, space-separated; {changed-lines[:exts]} one argument of file:from-to ranges,
+// comma-separated. No diff (null: a baseline or nightly run) or nothing of those kinds changed: skip (null).
+function changedFor(cmd: string, changed: Changed[] | null): string | null {
+  let empty = false
+  const text = cmd.replace(CHANGED, (_, lines: string | undefined, exts: string | undefined) => {
+    const picked = (changed ?? []).filter(c => !exts || exts.split(',').some(k => c.file.endsWith(`.${k}`)))
+    const words = lines ? [picked.flatMap(ranges).join(',')].filter(Boolean) : picked.map(c => c.file)
+    if (!words.length) empty = true
+    return words.map(shq).join(' ')
+  })
+  return empty ? null : text
+}
+
 // null files: whole repo, so {files} becomes "." (tools that need a path still get one). An empty list with {files}: nothing to check, skip (null).
-export function commandFor(s: RegistrySensor, files: string[] | null): string | null {
+export function commandFor(s: RegistrySensor, files: string[] | null, changed: Changed[] | null = null): string | null {
   if (!s.cmd) return null
+  if (s.cmd.includes('{changed')) return changedFor(s.cmd, changed)
   if (!s.cmd.includes('{files}')) return s.cmd
   if (files && !files.length) return null
   if (!files) return s.cmd.replaceAll('{files}', '.')

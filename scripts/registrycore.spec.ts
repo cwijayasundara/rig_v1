@@ -69,6 +69,21 @@ test('red-proof with no unit sensor warns and skips', () => {
   assert.match(proof?.message ?? '', /no unit sensor/)
 })
 
+test('a ci sensor with {changed-lines} gets the lines this branch added to source files, never tests or deleted files', () => {
+  const m = marker()
+  const echo = `node -e "require('fs').appendFileSync('${m}', process.argv.slice(1).join(' ') + '\\n')" {changed-lines:js}`
+  write(repo, 'src/a.js', 'export const a = 1\nexport const b = 2\n')
+  write(repo, 'src/gone.js', 'x\n')
+  commit(registry({ extra: { sensors: [{ id: 'mutation-diff', cmd: echo, cadence: 'ci', blocks: true, guide: 'Kill the survivors.' }] } }))
+  gitIn(repo, 'checkout', '-qb', 'pr')
+  write(repo, 'src/a.js', 'export const a = 1\nexport const b = 3\nexport const c = 4\n')
+  write(repo, 'test/a.test.js', 'it(1)\n')
+  fs.rmSync(path.join(repo, 'src/gone.js'))
+  gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'pr')
+  sdlc(repo, ['check', '--at', 'ci', '--base', 'main'])
+  assert.deepEqual(ran(m), ['src/a.js:2-3'])
+})
+
 test('CI with --config-from judges with the base registry; an old-shape base is a config error', () => {
   commit(JSON.stringify({ fast: { test: 'node -e 0' } }))
   gitIn(repo, 'checkout', '-qb', 'pr')

@@ -23,6 +23,19 @@ test('every pack covers types, lint and unit, has a nightly mutation sensor, and
   }
 })
 
+test('a mutation-diff sensor runs before every PR on the change\'s own lines and blocks', () => {
+  const packs = loadPacks(PACKS_DIR).packs.filter(p => packRegistry(p).sensors.some(s => s.id === 'mutation-diff'))
+  assert.deepEqual(packs.map(p => p.stack).sort(), ['angular', 'node'])
+  for (const p of packs) {
+    const s = packRegistry(p).sensors.find(x => x.id === 'mutation-diff')
+    assert.equal(s?.cadence, 'ci', p.stack)
+    assert.equal(s?.blocks, true, p.stack)
+    assert.match(s?.cmd ?? '', /\{changed-lines:[a-z,]+\}/, `${p.stack} mutates only the changed lines of source it can parse`)
+    assert.match(s?.cmd ?? '', /is not installed[\s\S]*exit 1/, `${p.stack} fails loudly without the tool`)
+    assert.match(s?.cmd ?? '', /rm -rf reports\/mutation; npx/, `${p.stack} never reads a report an earlier run left`)
+  }
+})
+
 test('a pack may not declare built-ins, must name its file and must have markers', () => {
   const ok = { stack: 'x', markers: ['x.toml'], paths: {}, contracts: { files: [], validate: '', run: '' }, sensors: [] }
   assert.deepEqual(parsePack(JSON.stringify(ok), 'x.json').errors, [])
