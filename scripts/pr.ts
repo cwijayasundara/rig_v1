@@ -17,6 +17,7 @@ import { archPath } from './product.ts'
 import { intentOf, writePlan, readyAfter } from './chart.ts'
 import { isHarnessPath } from './vendor.ts'
 import { untestedAcs } from './actrace.ts'
+import { routeReview, recordAdditions } from './carry.ts'
 
 const ghLast = (text: string): string => text.trim().split('\n').at(-1) ?? ''
 const URL_RE = /^https?:\/\//
@@ -37,7 +38,7 @@ function openPr(slug: string, branch: string, title: string): string | null {
 const SHARED = ['.rig/waivers.jsonl', '.rig/autonomy.json', '.rig/.gitignore', '.rig/sensors.json', '.rig/rules.json', '.rig/product/brief.md', '.rig/wiki.json']
 const SHARED_DIRS = ['.rig/guides/', '.rig/wiki/']
 // The sprint plan is regenerated as changes land (done, ready); the next change's PR carries it instead of leaving the tree dirty.
-const SHARED_RE = /^\.rig\/product\/sprints\/sprint-\d+\/(approval\.json|plan\.md)$/
+const SHARED_RE = /^\.rig\/product\/sprints\/sprint-\d+\/(approval\.json|plan\.md|intents\/[^/]+\.md)$|^\.rig\/product\/backlog\.md$/
 function dirtyFiles(): string[] {
   const dirty = [...(git(['diff', '--name-only', 'HEAD']) ?? '').split('\n'), ...(git(['ls-files', '--others', '--exclude-standard']) ?? '').split('\n')].filter(Boolean)
   return [...new Set(dirty)]
@@ -90,6 +91,8 @@ export function cmdPr(args: Args): void {
   // The merge ships this change: write the sprint plan as it will read then, so nothing regenerates dirty afterwards.
   const sprint = intentOf(slug)?.sprint
   if (typeof sprint === 'number') writePlan(sprint, slug)
+  // Review items and additions are written into the intents and the backlog before the commit, so the PR carries them.
+  routeReview(slug); recordAdditions(slug)
   const files = changeFiles(slug)
   const left = dirtyFiles().filter(isHarnessPath)
   if (left.length) out(`pr ${slug}: left out ${left.length} vendored harness file(s) (${left.slice(0, 3).join(', ')}${left.length > 3 ? ', ...' : ''}); they look like an uncommitted ${skillRef('upgrade')}: commit them on their own branch`)

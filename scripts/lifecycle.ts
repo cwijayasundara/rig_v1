@@ -5,6 +5,7 @@ import path from 'node:path'
 import { ROOT, SENSORS_PATH, SDLC, CHANGES, read, readJson, exists, isTrunk, trunkName, sha, now, git, defaultBase, frontmatter, skillRef as k } from './core.ts'
 import { openQuestions, globToRegex, planFiles, blastRadius, type Finding } from './model.ts'
 import { parseRegistry, contractGlobs } from './registry.ts'
+import { carriedIds } from './carry.ts'
 
 export const TYPES = ['feature', 'bugfix', 'refactor', 'chore'] as const
 type ChangeType = typeof TYPES[number]
@@ -64,6 +65,9 @@ export function approvalRefusal(slug: string): string | null {
   if (missing.length) return `nothing to approve yet: ${slug} has no ${missing.join(' or ')}`
   const open = APPROVED.flatMap(n => openQuestions(read(file(slug, n))).map(q => `${n}: ${q}`))
   if (open.length) return `resolve the open question(s) first: answer each, or record the default under ## Decisions, and leave "## Open questions" as none:\n${open.map(q => `  - ${q}`).join('\n')}`
+  const source = frontmatter(read(file(slug, 'intent.md'))).data.source
+  const unsettled = source ? carriedIds(read(path.join(ROOT, source))).filter(id => !new RegExp(`\\b${id}\\b`).test(read(file(slug, 'spec.md')))) : []
+  if (unsettled.length) return `carried item(s) not settled in spec.md: ${unsettled.join(', ')} (put each in a behaviour or under ## Out of scope with the person's reason)`
   const radius = blastRadius(read(file(slug, 'spec.md')))
   const outside = radius ? outsideRadius(planFiles(read(file(slug, 'plan.md'))), radius) : []
   return outside.length ? `plan touches a file outside the blast radius: ${outside.join(', ')} (add it to spec.md ## Blast radius or drop it from plan.md ## Files)` : null

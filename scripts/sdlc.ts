@@ -22,6 +22,7 @@ import { cmdBaseline } from './initbaseline.ts'
 import { cmdVerify } from './verify.ts'
 import { cmdHooks, cmdCheckPush } from './githooks.ts'
 import { cmdPr } from './pr.ts'
+import { cmdCarry } from './carry.ts'
 import { treeStamp } from './stamp.ts'
 import { declareStack } from './stackinit.ts'
 import { cmdSync } from './sync.ts'
@@ -453,6 +454,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   ready: cmdReady,
   'start-brief': () => cmdStartBrief(),
   pr: cmdPr,
+  carry: cmdCarry,
   run: () => cmdRun(),
   verify: cmdVerify,
   secrets: cmdSecrets,
