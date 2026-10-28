@@ -81,6 +81,19 @@ test('chart step 2 invokes superpowers:brainstorming by name before the architec
   assert.doesNotMatch(body, /What's the moment you find yourself wishing/, 'the skill names the brainstorm, it does not restate it')
 })
 
+// A live run of `/rig-chart 1 @docs/prd/sprint-1-cart-add-remove.md` stopped mid-chart: step 2 said "let the skill run
+// its conversation", so the brainstorm asked one question and ended the turn. The chart approval is the one review.
+test('chart step 2 runs the brainstorm in one AskUserQuestion batch and goes straight on to the architect', () => {
+  const step2 = skill.slice(skill.indexOf('2. **Design.**'), skill.indexOf('**Architect.**'))
+  assert.doesNotMatch(step2, /run its conversation/i)
+  assert.match(step2, /never ask one question at a time/)
+  assert.match(step2, /never present the design in sections for approval/)
+  assert.match(step2, /never ask the person to review the written spec/)
+  assert.match(step2, /one `AskUserQuestion` batch of at most 4 questions/)
+  assert.match(step2, /with none open, skip the question/)
+  assert.match(step2, /go straight on to the architect/)
+})
+
 test('the architect brief names the design doc and the design: frontmatter line', () => {
   const architect = fs.readFileSync(path.resolve(import.meta.dirname, '../agents/architect.md'), 'utf8')
   assert.match(architect, /design: <repo-relative path>/)
