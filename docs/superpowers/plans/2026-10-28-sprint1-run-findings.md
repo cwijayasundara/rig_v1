@@ -215,7 +215,27 @@
 - [ ] **Step 3: Add** a CHANGELOG entry listing F1–F11 in one line each.
 - [ ] **Step 4: Run** `npm test` and `npm run typecheck`. Expected: both exit 0; quote the summary lines.
 - [ ] **Step 5: Commit** `chore: scripts cap and changelog for the sprint-1 run fixes`.
-- [ ] **Step 6:** One review of `git diff main...HEAD` (single Sonnet reviewer, CLAUDE.md), fix findings in one wave, rerun `npm test`.
+- [ ] **Step 6:** One review of `git diff main...HEAD` by a single **Opus** reviewer (the person's rule: Sonnet output is always evaluated by Opus), fix findings in one wave, rerun `npm test`.
+
+### Task 9: Every Sonnet output in rig is evaluated by Opus (person's rule, 2026-10-28)
+
+**Files:**
+- Modify: `skills/pr/SKILL.md` (code review, security review, confirm pass), `skills/testplan/SKILL.md`, `skills/plan/SKILL.md`
+- Modify: `scripts/prskill.spec.ts:22` (pins `model: sonnet` today), `scripts/skilltext.spec.ts`
+
+**Interfaces:** the evaluation model is `models.evaluate` (`opus` by default, `scripts/registry.ts:58`); skill text names the alias `opus`.
+
+- [ ] **Step 1: Write the failing tests**
+  - prskill.spec.ts: the code-review line matches `/launch one \`Agent\` \(\`general-purpose\`, \`model: opus\`, foreground\)/`; the confirm pass names `model: opus`; the security review is an agent with `model: opus` on every run (no main-thread `/security-review`, which runs on the session's Sonnet).
+  - skilltext.spec.ts `no skill evaluates with sonnet`: for every `skills/*/SKILL.md` and `templates/*brief*.md`, no sentence that contains `review`, `confirm` or `evaluat` also contains `model: sonnet` or "model `sonnet`".
+  - skilltext.spec.ts: testplan matches `/rig:evaluator|rig-evaluator/` after its QA step; plan matches `/rig:evaluator|rig-evaluator/` and `/spec\.md and plan\.md/`.
+- [ ] **Step 2: Run** `node --disable-warning=ExperimentalWarning --test scripts/prskill.spec.ts scripts/skilltext.spec.ts`. Expected: FAIL.
+- [ ] **Step 3: Write the text**
+  - pr step 2: code review agent `model: opus`; security review: always one `general-purpose` agent with `model: opus` and the existing fallback brief (drop the main-thread `/security-review` path and its no-origin fallback branch). Step 4 confirm agent: `model: opus`.
+  - testplan, after QA: launch `rig:evaluator` (Opus by its front matter; never pass a model override) on the test plan against the PRD and intents; fix its findings once.
+  - plan, before step 5: launch `rig:evaluator` once on spec.md and plan.md against the intent and requirements.md (missed requirement, behaviour without a test, plan outside the spec); fix its findings once, then `S approve <slug> --check`.
+- [ ] **Step 4: Run** the step 2 command plus `scripts/reviewbrief.spec.ts`. Expected: PASS.
+- [ ] **Step 5: Commit** `feat(skills): Opus evaluates every Sonnet output: code review, security, confirm, test plan, spec and plan`.
 
 ## After the build (person)
 
