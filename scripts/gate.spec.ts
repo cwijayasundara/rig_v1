@@ -3,6 +3,7 @@ import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { makeRepo, sdlc, hook, write, gitIn, fromOld, registry } from './testkit.ts'
 
 let repo: string
@@ -85,6 +86,18 @@ test('a harness file changed by Bash blocks at Stop; the same change through Edi
   const warned = JSON.parse(stop().stdout) as { decision?: string; systemMessage?: string }
   assert.equal(warned.decision, undefined, 'a warning does not block')
   assert.match(warned.systemMessage ?? '', /1 warning.*harness-tamper/)
+})
+
+test('contract files registered by sdlc in the turn are not harness-tamper', () => {
+  sdlc(repo, ['new', 'xx', '--type', 'chore'])
+  write(repo, '.rig/sensors.json', fromOld({}))
+  gitIn(repo, 'add', '.')
+  gitIn(repo, 'commit', '-qm', 'cfg')
+  hook(repo, 'prompt-submit', {})
+  const lib = path.resolve(import.meta.dirname, 'contracts.ts')
+  spawnSync('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', `import { registerContracts } from ${JSON.stringify(lib)}; registerContracts(['docs/contracts/cart.md'])`], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo } })
+  assert.match(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8'), /docs\/contracts\/cart\.md/)
+  assert.doesNotMatch(stop().stdout, /harness-tamper/)
 })
 
 test('post-edit blocks a single edited file with exit 2 and records the edit', () => {
