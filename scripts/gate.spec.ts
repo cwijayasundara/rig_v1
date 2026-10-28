@@ -57,6 +57,20 @@ test('a block that survives a fix asks for the premise the fix rested on; a new 
   assert.doesNotMatch(moved, /premise/, 'the last fix worked; this block is new')
 })
 
+test('a block whose message carries a count still survives when a fix only moves the count', () => {
+  sdlc(repo, ['new', 'xx', '--type', 'chore'])
+  write(repo, '.rig/sensors.json', fromOld({ limits: { fileLines: 10 } }))
+  const lines = (n: number) => Array.from({ length: n }, (_, i) => `export const v${i} = ${i}`).join('\n') + '\n'
+  write(repo, 'src/a.js', lines(8))
+  gitIn(repo, 'add', '.')
+  gitIn(repo, 'commit', '-qm', 'cfg')
+  hook(repo, 'prompt-submit', {})
+  write(repo, 'src/a.js', lines(15))
+  assert.match(JSON.parse(stop().stdout).reason, /grew to 15 lines/)
+  write(repo, 'src/a.js', lines(13))
+  assert.match(JSON.parse(stop().stdout).reason, /grew to 13 lines[\s\S]*Still failing after your last fix:[\s\S]*size src\/a\.js/)
+})
+
 test('a harness file changed by Bash blocks at Stop; the same change through Edit only warns', () => {
   sdlc(repo, ['new', 'xx', '--type', 'chore'])
   write(repo, '.rig/sensors.json', fromOld({ limits: { diffLines: 500 } }))

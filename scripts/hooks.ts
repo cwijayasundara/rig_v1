@@ -255,9 +255,10 @@ function hookStop(input: HookInput = {}): { halt: boolean; warn?: string } {
   return { halt: true }
 }
 
-// Blocks this turn's last Stop also raised (attempt > 1: this turn wrote unresolved.json), keyed without the line a fix may shift.
-const blockKey = (f: Finding): string => `${f.sensor} ${f.file ?? ''}: ${f.message}`
-const survivors = (blocks: Finding[]): string[] => { try { const old = new Set(((JSON.parse(read(UNRESOLVED)) as { findings?: Finding[] }).findings ?? []).map(blockKey)); return [...new Set(blocks.map(blockKey).filter(k => old.has(k)))] } catch { return [] } }
+// Blocks this turn's last Stop also raised (attempt > 1: this turn wrote unresolved.json), matched without the numbers a fix may
+// move (the line, "grew to 15 lines" becoming 13) and listed as they read now.
+const blockText = (f: Finding): string => `${f.sensor} ${f.file ?? ''}: ${f.message}`
+const survivors = (blocks: Finding[]): string[] => { try { const key = (f: Finding): string => blockText(f).replace(/\d+/g, '#'); const old = new Set(((JSON.parse(read(UNRESOLVED)) as { findings?: Finding[] }).findings ?? []).map(key)); return [...new Set(blocks.filter(f => old.has(key(f))).map(blockText))] } catch { return [] } }
 // Attack the premise: a second fix aimed by the same wrong belief fails the same way, so it names that belief before editing.
 const premiseAsk = (survived: string[]): string => survived.length ? `\n\nStill failing after your last fix:\n${survived.map(s => `- ${s}`).join('\n')}\nThat fix rested on a premise that is wrong. Before you edit again, write that premise in one sentence, check it against the check's output and the code it judges, and aim the next fix at what the check shows. If the turn ends unresolved, give the person that sentence.` : ''
 
