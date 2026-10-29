@@ -339,7 +339,7 @@ test('CI re-runs the behavioral commands from the base config and blocks on a fa
 
 test('CI runs a behavioral command that is also a full command once, not twice', () => {
   const marker = path.join(os.tmpdir(), `rig-ci-once-${process.pid}-${Math.random().toString(36).slice(2)}.txt`)
-  const bump = `node -e "require('fs').appendFileSync('${marker}','x')"`
+  const bump = `node -e "require('fs').appendFileSync('${marker.replaceAll('\\', '/')}','x')"`
   sensors({ full: { test: bump }, behavioral: { run: bump } })
   gitIn(repo, 'add', '.')
   gitIn(repo, 'commit', '-qm', 'cfg')

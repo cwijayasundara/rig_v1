@@ -205,7 +205,7 @@ test('push judges the commits the remote lacks, including a direct push to trunk
 
 test('push runs a {changed-lines} sensor only when the pushed commit is the working tree, so its line numbers are the ones on disk', () => {
   const m = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rig-mut-')), 'ran.txt')
-  const echo = `node -e "require('fs').appendFileSync('${m}', process.argv.slice(1).join(' ') + '\\n')" {changed-lines:js}`
+  const echo = `node -e "require('fs').appendFileSync('${m.replaceAll('\\', '/')}', process.argv.slice(1).join(' ') + '\\n')" {changed-lines:js}`
   stage('.rig/sensors.json', registry({ extra: { sensors: [{ id: 'mutation-diff', cmd: echo, cadence: 'ci', blocks: true, guide: 'Kill the survivors.' }] } }))
   stage('src/a.js', 'export const a = 1\n')
   gitIn(repo, 'commit', '-qm', 'base', '--no-verify')
@@ -528,7 +528,7 @@ test('a failing full command still blocks at push; only a budget overrun is soft
 test('pre-push skips the full commands for a change verified on exactly this tree', () => {
   const OK = 'node -e "process.exit(0)"'
   const m = path.join(os.tmpdir(), `rig-push-${process.pid}-${Math.random().toString(36).slice(2)}.txt`)
-  const bump = `node -e "require('fs').appendFileSync('${m}','x')"`
+  const bump = `node -e "require('fs').appendFileSync('${m.replaceAll('\\', '/')}','x')"`
   cfg({ fast: { test: OK }, full: { mark: bump }, quality: { lint: { cmd: bump, count: 'exit' } } })
   gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'cfg')
   const base = gitIn(repo, 'rev-parse', 'HEAD')
@@ -550,7 +550,7 @@ test('pre-push skips the full commands for a change verified on exactly this tre
 test('pre-push does not skip when an untracked file was in the stamped tree, even with status.showUntrackedFiles=no', () => {
   const OK = 'node -e "process.exit(0)"'
   const m = path.join(os.tmpdir(), `rig-push-${process.pid}-${Math.random().toString(36).slice(2)}.txt`)
-  const bump = `node -e "require('fs').appendFileSync('${m}','x')"`
+  const bump = `node -e "require('fs').appendFileSync('${m.replaceAll('\\', '/')}','x')"`
   gitIn(repo, 'config', 'status.showUntrackedFiles', 'no')
   cfg({ fast: { test: OK }, full: { mark: bump }, quality: { lint: { cmd: bump, count: 'exit' } } })
   gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'cfg')

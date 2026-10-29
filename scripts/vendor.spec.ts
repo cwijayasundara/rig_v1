@@ -402,7 +402,7 @@ test('vendor --standalone writes a manifest of the harness files', () => {
   assert.equal(m.files['.rig/bin/sdlc.ts'], sha('.rig/bin/sdlc.ts'))
   for (const f of ['.claude/skills/rig-start/SKILL.md', '.rig/mod/hooks/dashboard.tsx', '.rig/githooks/pre-commit']) assert.equal(m.files[f], sha(f), f)
   for (const f of ['.claude/settings.json', 'CLAUDE.md', 'README.md', '.claude-plugin/marketplace.json', '.rig/bin/MANIFEST.json']) assert.ok(!(f in m.files), `${f} is not hashed`)
-  assert.equal(fs.statSync(path.join(repo, '.rig/githooks/pre-commit')).mode & 0o777, 0o755)
+  if (process.platform !== 'win32') assert.equal(fs.statSync(path.join(repo, '.rig/githooks/pre-commit')).mode & 0o777, 0o755)
 })
 
 test('plain vendor (not standalone) manifest lists only .rig/bin and .rig/githooks files', () => {

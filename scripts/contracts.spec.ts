@@ -112,7 +112,7 @@ import os from 'node:os'
 
 // Each command appends its name to a marker outside the repo, so the turn diff never sees it.
 const marker = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rig-c-')), 'ran.txt')
-const mark = (file: string, name: string, exit = 0) => `node -e "require('fs').appendFileSync('${file}', '${name}\\n'); process.exit(${exit})"`
+const mark = (file: string, name: string, exit = 0) => `node -e "require('fs').appendFileSync('${file.replaceAll('\\', '/')}', '${name}\\n'); process.exit(${exit})"`
 const ran = (file: string) => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8').trim().split('\n') : [])
 
 test('at commit, validate runs first and a failing validate skips run', () => {
