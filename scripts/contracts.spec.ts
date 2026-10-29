@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { makeRepo, sdlc, hook, write, gitIn, fromOld } from './testkit.ts'
+import { pathToFileURL } from 'node:url'
 
 let repo: string
 beforeEach(() => { repo = makeRepo(); sdlc(repo, ['init']) })
@@ -27,7 +28,7 @@ const commitCheck = () => { gitIn(repo, 'add', '.'); return sdlc(repo, ['check',
 // The approval's state, read through lifecycle.ts.
 const designState = () => {
   const lib = path.resolve(import.meta.dirname, 'lifecycle.ts')
-  const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', `import { approvalState } from ${JSON.stringify(lib)}; console.log(approvalState('demo'))`], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo } })
+  const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', `import { approvalState } from ${JSON.stringify(pathToFileURL(lib).href)}; console.log(approvalState('demo'))`], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo } })
   return r.stdout.trim()
 }
 

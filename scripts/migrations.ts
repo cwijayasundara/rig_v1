@@ -37,7 +37,7 @@ const dropPrdApproval: Migration = {
   since: '0.7.0',
   applies: root => prdApprovals(root).length > 0,
   run(root) {
-    return prdApprovals(root).map(f => { fs.rmSync(f); return `${path.relative(root, f)} removed: the chart approval now covers prd.md, source.md and conversion.md` })
+    return prdApprovals(root).map(f => { fs.rmSync(f); return `${path.relative(root, f).split(path.sep).join('/')} removed: the chart approval now covers prd.md, source.md and conversion.md` })
   },
 }
 

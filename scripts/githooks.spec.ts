@@ -6,6 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { makeRepo, sdlc, hook, write, gitIn, fromOld, registry } from './testkit.ts'
+const WIN = process.platform === 'win32' // Windows has no exec bits and no /bin/sh
 
 const SECRET = 'const apikey = "abcdefghijklmnop12345678"\n'
 let repo: string
@@ -138,7 +139,7 @@ test('hooks install needs the vendored checker, writes executable scripts and se
   assert.equal(early.code, 1)
   assert.match(early.stderr, /vendor/)
   assert.equal(sdlc(repo, ['vendor']).code, 0)
-  for (const n of ['pre-commit', 'pre-push']) assert.ok(fs.statSync(path.join(repo, '.rig/githooks', n)).mode & 0o111, `${n} is executable after vendor`)
+  if (!WIN) for (const n of ['pre-commit', 'pre-push']) assert.ok(fs.statSync(path.join(repo, '.rig/githooks', n)).mode & 0o111, `${n} is executable after vendor`)
   const r = sdlc(repo, ['hooks', 'install'])
   assert.equal(r.code, 0, r.stderr)
   assert.equal(gitIn(repo, 'config', '--local', 'core.hooksPath'), '.rig/githooks')
@@ -171,7 +172,7 @@ test('with hooks installed, git commit refuses a staged secret (also from a subd
   assert.equal(gitIn(repo, 'log', '-1', '--format=%s'), 'ok')
 })
 
-test('a hook that cannot find node warns and lets the commit through', () => {
+test('a hook that cannot find node warns and lets the commit through', { skip: WIN && 'no /bin/sh or which on Windows' }, () => {
   sdlc(repo, ['vendor'])
   sdlc(repo, ['hooks', 'install'])
   const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-path-'))
@@ -454,7 +455,7 @@ test('hooks state sees any config scope and reads ./ and trailing-slash spelling
   assert.equal(sdlc(repo, ['hooks', 'install'], { env }).code, 1, 'a global hooksPath is not silently shadowed')
 })
 
-test('install rewrites a hook script only when its content or mode differs', () => {
+test('install rewrites a hook script only when its content or mode differs', { skip: WIN && 'no exec bits on Windows' }, () => {
   sdlc(repo, ['vendor'])
   const file = path.join(repo, '.rig/githooks/pre-commit')
   const before = fs.statSync(file).mtimeMs

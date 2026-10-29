@@ -11,6 +11,8 @@ jobs:
         node: ['22.18', '24']
     runs-on: ${{ matrix.os }}
     steps:
+      # the specs build git repos of their own: no CRLF conversion in them either (Windows runners default autocrlf to true)
+      - run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -27,6 +29,8 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
+      # the specs build git repos of their own: no CRLF conversion in them either (Windows runners default autocrlf to true)
+      - run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:

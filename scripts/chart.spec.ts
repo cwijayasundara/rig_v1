@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { makeRepo, sdlc, write, gitIn, IMPL_OK } from './testkit.ts'
+import { pathToFileURL } from 'node:url'
 
 let repo: string
 beforeEach(() => { repo = makeRepo(); sdlc(repo, ['init']) })
@@ -12,7 +13,7 @@ beforeEach(() => { repo = makeRepo(); sdlc(repo, ['init']) })
 const LIB = path.resolve(import.meta.dirname, 'chart.ts')
 // Runs `code` with `C` bound to chart.ts inside the test repo and returns its JSON result.
 const call = (code: string): unknown => {
-  const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', `import * as C from ${JSON.stringify(LIB)}; const v = await (async () => { ${code} })(); console.log(JSON.stringify(v ?? null))`],
+  const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', `import * as C from ${JSON.stringify(pathToFileURL(LIB).href)}; const v = await (async () => { ${code} })(); console.log(JSON.stringify(v ?? null))`],
     { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo, NODE_TEST_CONTEXT: '' } })
   assert.equal(r.status, 0, r.stderr)
   return JSON.parse(r.stdout.trim().split('\n').at(-1) ?? 'null')
