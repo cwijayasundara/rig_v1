@@ -11,7 +11,7 @@ export const TYPES = ['feature', 'bugfix', 'refactor', 'chore'] as const
 type ChangeType = typeof TYPES[number]
 export type Status = 'spec' | 'plan' | 'approve' | 'build' | 'pr' | 'review' | 'shipped'
 export type Approval = { by: string; at: string; hashes: Record<string, string>; contracts: Record<string, string> }
-type Verify = { at: string; tree: string | null; base: string | null; pass: boolean; blocks: string[] }
+type Verify = { at: string; from?: string; tree: string | null; base: string | null; pass: boolean; blocks: string[] }
 
 const ACTIVE = path.join(SDLC, 'state', 'active')
 const APPROVED = ['spec.md', 'plan.md']

@@ -6,7 +6,8 @@ import { execFileSync } from 'node:child_process'
 import { ROOT, CHANGES, WAIVERS, waiverLive, exists, isTrunk, trunkName, read, readJsonl, out, fail, git, checkSlug, optString, ensureGitignore, skillRef, defaultBase, type Args, type Waiver } from './core.ts'
 import { frozenFindings, frozenFor } from './contracts.ts'
 import { loadConfig } from './check.ts'
-import { ghBin, section } from './model.ts'
+import { ghBin, section, isTest } from './model.ts'
+import type { RunRow } from './runs.ts'
 import { treeStamp } from './stamp.ts'
 import { activeSlug, setActive, approvalState, verifyFresh, isShipped, changeDir } from './lifecycle.ts'
 import { prBody } from './prbody.ts'
@@ -86,7 +87,9 @@ export function cmdPr(args: Args): void {
     const c = (name: string): string => read(path.join(CHANGES, slug, name))
     let verify: (Parameters<typeof prBody>[0]['verify'] & { base?: string }) | null = null
     try { verify = JSON.parse(c('verify.json')) } catch { /* no verify.json: the body says so */ }
-    fs.writeFileSync(path.join(CHANGES, slug, 'pr-body.md'), prBody({ intent: c('intent.md'), spec: c('spec.md'), plan: c('plan.md'), verify, outline: c('pr-outline.md'), review: c('review.md'), amendments: c('amendments.md'), risk: riskOf(branchDiff(verify?.base ?? defaultBase() ?? 'HEAD').filter(d => ships(slug)(d.file)), [slug], loadConfig().registry, parseAccess(read(archPath)), false) }))
+    const diff = branchDiff(verify?.base ?? defaultBase() ?? 'HEAD'), { registry } = loadConfig()
+    const tests = diff.filter(d => d.status !== 'D' && !d.binary && isTest(d.file, registry.paths)).map(d => read(path.join(ROOT, d.file))).join('\n')
+    fs.writeFileSync(path.join(CHANGES, slug, 'pr-body.md'), prBody({ intent: c('intent.md'), spec: c('spec.md'), plan: c('plan.md'), verify, outline: c('pr-outline.md'), review: c('review.md'), amendments: c('amendments.md'), runs: readJsonl<RunRow>(path.join(CHANGES, slug, 'evidence', 'runs.jsonl')), tests, risk: riskOf(diff.filter(d => ships(slug)(d.file)), [slug], registry, parseAccess(read(archPath)), false) }))
   }
   // The merge ships this change: write the sprint plan as it will read then, so nothing regenerates dirty afterwards.
   // Another change of the sprint in flight would find the plan changed under it, so the plan waits for the last one.

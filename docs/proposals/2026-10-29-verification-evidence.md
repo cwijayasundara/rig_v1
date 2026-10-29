@@ -97,6 +97,13 @@ which sensors are not given today); a timed-out call does not count toward `--ma
 passing on the head tree, the e2e stage summary, and mutation-diff survivors. The review brief asks the reviewer to flag a
 B-number with no evidence. Builds on the queued "red-proof failure content" item.
 
+Built 2026-10-29 (`feat/pr-evidence`): `## Evidence` now carries, from `evidence/runs.jsonl` and never from a model, the red
+run's failure lines on the base (flagged "weak red" when the only failure is a missing import or a collection error), the
+latest head-tree result of each check by sensor id (runs now record `sensor`), and the behaviours no test of the change
+names. The reviewer-brief part was dropped: the untested-behaviour line is deterministic, so no model has to spot it. On
+shop_app's cart-storage records it flags the red proof as weak: the base run failed on `ModuleNotFoundError: No module named
+'cart.errors'`, not on a behaviour. Making a weak red block is the queued "red-proof failure content" item, not this one.
+
 ### 3. Live run in shop_app
 
 `/rig-upgrade`, then a change with `risk.enforce` on, so tiers and the breaker produce data before any tier-0 merge.
