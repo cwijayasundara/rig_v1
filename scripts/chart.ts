@@ -35,6 +35,21 @@ const allIntents = (): Charted[] => sprintsOnDisk().flatMap(n => {
   return exists(dir) ? fs.readdirSync(dir).filter(f => f.endsWith('.md') && !local(f)).sort().map(f => { const file = path.join(dir, f), i = parseIntent(f.slice(0, -3), read(file)); return { ...i, declared: i.sprint, sprint: n, file } }) : []
 })
 export const intentsOf = (n: number): Charted[] => allIntents().filter(i => i.sprint === n)
+// Whether /rig:start has nothing left to ask about a charted intent: every behaviour cites a requirement, nothing is open, no
+// carried item waits and the non-goals are written. The reasons name what is missing.
+export function intentSettled(slug: string): { settled: boolean; why: string[] } {
+  const i = allIntents().find(x => x.slug === slug)
+  if (!i) return { settled: false, why: ['not a charted intent'] }
+  const text = read(i.file).replace(/<!--[\s\S]*?-->/g, '')
+  const why = [
+    ...(i.behaviours.length ? [] : ['no behaviours']),
+    ...i.behaviours.filter(b => !b.reqs.length && !b.rules.length).map(b => `${b.id} cites no requirement`),
+    ...openQuestions(text).map(q => `open: ${q}`),
+    ...carriedIds(i.file).map(c => `carried ${c}`),
+    ...(section(text, 'Non-goals').trim() ? [] : ['no non-goals']),
+  ]
+  return { settled: !why.length, why }
+}
 export const intentOf = (slug: string): Intent | null => allIntents().find(i => i.slug === slug) ?? null
 
 // The sprint's design doc. `design:` in architecture.md frontmatter names the newest one (a repo-relative posix path, or `none`, or the template's

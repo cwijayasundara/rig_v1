@@ -44,7 +44,7 @@ import { cmdAutonomy, initAutonomy } from './autonomy.ts'
 import { cmdRisk, cmdWeight } from './risk.ts'
 import { protect } from './protect.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'
-import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, nextChart, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, waiveChartFinding, changeRequirements, PRD_RE, isConverted, conversionRefusal } from './chart.ts'
+import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, intentSettled, nextChart, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, waiveChartFinding, changeRequirements, PRD_RE, isConverted, conversionRefusal } from './chart.ts'
 import { journey, journeyText } from './journey.ts'
 import { TYPES, changeDir, newChange, setActive, activeSlug, isShipped, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
 
@@ -92,6 +92,9 @@ function cmdInit(args: Args): void {
   out(me ? `approvals and waivers are recorded as "${me}" (git user.name); change it with: git config user.name "<name>"` : 'no user name found: set one with `git config user.name "<name>"` so approvals say who approved')
 }
 
+// Tells /rig:start whether the charted intent leaves anything to ask (F2 of the 2026-10-29 feedback proposal).
+const settledLine = (slug: string): string => { const s = intentSettled(slug); return s.settled ? `settled: yes (the intent answers everything ${skillRef('start')} would ask)` : `settled: no (${s.why.join('; ')})` }
+
 function cmdNew(args: Args): void {
   const slug = args.pos[0] ?? ''
   if (!SLUG_RE.test(slug)) fail(`usage: new <kebab-slug> [--type ${TYPES.join('|')}] [--title "..."] [--source .rig/product/sprints/sprint-<N>/intents/<slug>.md] [--full] [--from-diff]`)
@@ -123,7 +126,7 @@ function cmdNew(args: Args): void {
     fs.writeFileSync(file, read(file).replace('\n---\n# ', `\nfrom-diff: ${captured.base}\n---\n# `))
     fs.writeFileSync(path.join(changeDir(slug), 'spec.md'), `# Spec: ${title}\n\n## Behaviours\n\n## Blast radius\n${[...new Set(captured.diffs.flatMap(d => (d.from ? [d.from, d.file] : [d.file])))].map(f => `- ${f.replace(/ /g, '?')}`).join('\n')}\n\n## Out of scope\n\n## Open questions\nnone\n`)
   }
-  out(`created .rig/changes/${slug}/intent.md (type ${type}); ${slug} is the active change${intent ? `; spec.md starts with the ${intent.behaviours.length} behaviour(s) of the intent` : ''}${reqs ? `; requirements.md holds the PRD rows it cites` : ''}`)
+  out(`created .rig/changes/${slug}/intent.md (type ${type}); ${slug} is the active change${intent ? `; spec.md starts with the ${intent.behaviours.length} behaviour(s) of the intent` : ''}${reqs ? `; requirements.md holds the PRD rows it cites` : ''}${intent ? `\n${settledLine(slug)}` : ''}`)
   if (captured) out([`captured ${captured.diffs.length} file(s) changed since ${captured.base.slice(0, 7)} (spec.md's blast radius starts with them):`, ...captured.diffs.map(d => `  ${d.file} +${d.added.length} -${d.removed.length}`), ...(captured.warning ? [`WARNING: ${captured.warning}`] : [])].join('\n'))
 }
 
