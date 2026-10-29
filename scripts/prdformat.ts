@@ -1,34 +1,31 @@
 // The PRD format for coding agents (spec 2026-10-26 PRD format and conversion): every rule a numbered, testable line, so the
 // requirements ledger can be generated from it and nothing rides on prose. Pure over text; no repo, no model.
-import { normalise, prdBlocks, unquoted, prdIds, type ChartFinding } from './chartcheck.ts'
+import { normalise, prdBlocks, prdLines, cells, unquoted, prdIds, type ChartFinding } from './chartcheck.ts'
 
 export type Criterion = { id: string; parent: string | null; kind: 'rule' | 'answer' | 'out-of-scope'; line: number; text: string; when?: string; by?: string; reason?: string }
 // `(out of scope: <when>, decided by <who> — <reason>)` on a criterion: kept in the PRD and the ledger, owed no behaviour or test.
 const OUT_OF_SCOPE = /\s*\(out of scope:\s*(.*?),\s*decided by\s+(.*?)\s+[—–-]+\s*(.*?)\)\s*/i
 
 // The template's sections, in order; the strict ones must be present (Data rules, NFRs and Boundaries may hold `none`).
-export const PRD_SECTIONS = ['Context and problem', 'Goals and success metrics', 'Non-goals', 'Users and scenarios', 'Functional requirements', 'Data rules',
+const PRD_SECTIONS = ['Context and problem', 'Goals and success metrics', 'Non-goals', 'Users and scenarios', 'Functional requirements', 'Data rules',
   'Non-functional requirements', 'Examples', 'Boundaries', 'Integrations and constraints', 'Decisions', 'Open questions']
 const REQUIRED = ['Functional requirements', 'Data rules', 'Non-functional requirements', 'Boundaries', 'Open questions']
 const FR_LINE = /^\s*(?:[-*]\s+)?(?:\*\*)?(?:Need|Priority|Depends on)(?:\*\*)?\s*:/i
 const CRITERION = /^\s*[-*]\s+(?:\*\*)?(AC-(\d+)\.\d+|DR-\d+)(?:\*\*)?\s*:\s*(?:\*\*)?\s*(.*)$/
 const SHAPE = (t: string): boolean => /\b(?:when|if)\b[\s\S]*\bshall\b/i.test(t) || /\bgiven\b[\s\S]*\bwhen\b[\s\S]*\bthen\b/i.test(t)
 const NFR_ROW = /^\s*\|\s*(NFR-\d+)\s*\|/
-const cells = (l: string): string[] => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim())
 
 type Line = { n: number; text: string; h2: string; fr: string | null }
 // The `##` headings outside comments and fences: a section hidden in either does not count.
 // Lines of the PRD body with their 1-based number, the `##` section and the `### FR-n` they sit under. Comments are blanked
 // line for line and fenced blocks dropped, so numbers stay those of prd.md.
 function lines(prd: string, heads: string[] = []): Line[] {
-  const text = prd.replace(/\r\n/g, '\n').replace(/<!--[\s\S]*?-->/g, c => c.replace(/[^\n]/g, ''))
-  const all = text.split('\n')
-  const fm = /^---\n[\s\S]*?\n---\n/.exec(text)
+  const { lines: all, start } = prdLines(prd)
   const out: Line[] = []
   let h2 = ''
   let fr: string | null = null
   let fence = ''
-  for (let i = fm ? fm[0].split('\n').length - 1 : 0; i < all.length; i++) {
+  for (let i = start; i < all.length; i++) {
     const l = all[i]!
     const f = /^\s*(```|~~~)/.exec(l)?.[1]
     if (fence) { if (f === fence) fence = ''; continue }
@@ -105,7 +102,7 @@ export const prdLedger = (prd: string): string => ['# Requirements (generated fr
 
 // ---------- the conversion map: every sentence of the person's original accounted for ----------
 // `- <id>[, <id>...] source.md:<line> "<quote>"` or `- context source.md:<line> "<quote>" — <reason>`.
-export type MapRow = { ids: string[]; context: boolean; line: number; quote: string; reason: string }
+type MapRow = { ids: string[]; context: boolean; line: number; quote: string; reason: string }
 const MAP_LINE = /^\s*[-*]\s+(context|[A-Z]+-[\d.]+(?:\s*,\s*[A-Z]+-[\d.]+)*)\s+source\.md:(\d+)\s+"(.*)"(?:\s+[—–]+\s*(.*))?\s*$/
 const SLACK = 3
 export const parseMap = (text: string): MapRow[] => text.replace(/\r\n/g, '\n').split('\n').flatMap(l => {

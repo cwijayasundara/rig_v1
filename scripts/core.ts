@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { isObject, SECRET_PATTERNS } from './model.ts'
+import { isObject, SECRET_PATTERNS, type Finding } from './model.ts'
 
 // ---------- types ----------
 
@@ -52,6 +52,7 @@ export const exists = (p: string): boolean => fs.existsSync(p)
 export const read = (p: string): string => (exists(p) ? fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n') : '')
 export const lines = (text: string): number => (text ? text.split('\n').length : 0)
 export const sha = (text: string): string => crypto.createHash('sha256').update(text).digest('hex').slice(0, 16)
+export const ageDays = (at: string): number => { const n = Math.floor((Date.now() - Date.parse(at)) / 86_400_000); return Number.isFinite(n) ? Math.max(0, n) : Infinity }
 export const now = (): string => new Date().toISOString()
 export const toPosix = (p: string): string => p.replace(/\\/g, '/')
 export const out = (text: string): void => {
@@ -110,6 +111,10 @@ export function readJson<T>(p: string, fallback: T): T {
   try { return JSON.parse(read(p)) as T } catch { return fallback }
 }
 
+// The blocks the quality gate gave up on (written by the Stop hook); [] when absent or unreadable.
+export const UNRESOLVED = path.join(SDLC, 'unresolved.json')
+export const readUnresolved = (): Finding[] => readJson<{ findings?: Finding[] }>(UNRESOLVED, {}).findings ?? []
+
 export function readJsonl<T>(p: string): T[] {
   return read(p)
     .split('\n')
@@ -146,12 +151,14 @@ export const optString = (args: Args, key: string): string | undefined => {
 }
 // ---------- changes ----------
 
-export function listChanges(): string[] {
-  if (!exists(CHANGES)) return []
+export function listChanges(root?: string): string[] {
+  const dir = root === undefined ? CHANGES : path.join(root, '.rig', 'changes')
+  if (!exists(dir)) return []
   return fs
-    .readdirSync(CHANGES, { withFileTypes: true })
+    .readdirSync(dir, { withFileTypes: true })
     .filter(d => d.isDirectory() && SLUG_RE.test(d.name))
     .map(d => d.name)
+    .sort()
 }
 
 // Paths are compared in POSIX form so plans written on macOS match edits made on Windows.
@@ -161,6 +168,11 @@ export function relPosix(file: string): string {
 
 export const TRUNKS = ['origin/main', 'main', 'origin/master', 'master']
 export const trunkName = (): string => git(['rev-parse', '--verify', '-q', 'main']) === null && git(['rev-parse', '--verify', '-q', 'master']) !== null ? 'master' : 'main'
+// Files differing from HEAD or untracked (not ignored), optionally only under `paths`. Names, never porcelain lines: git() trims its output, which shifted the status columns of every line after the first.
+export function dirtyFiles(paths: string[] = []): string[] {
+  const names = (args: string[]): string[] => (git([...args, ...(paths.length ? ['--', ...paths] : [])]) ?? '').split('\n').filter(Boolean)
+  return [...new Set([...names(['diff', '--name-only', 'HEAD']), ...names(['ls-files', '--others', '--exclude-standard'])])]
+}
 export const isTrunk = (name: string): boolean => ['main', 'master'].includes(name)
 export function defaultBase(): string | null {
   const head = git(['rev-parse', '--abbrev-ref', 'HEAD'])
@@ -178,7 +190,7 @@ export function scanSecrets(file: string): string[] {
   const hits: string[] = []
   text.split('\n').forEach((row, i) => {
     for (const [name, re] of SECRET_PATTERNS) {
-      if (re.test(row) && !/(?:rig|sdlc):allow-secret/.test(row)) hits.push(`${file}:${i + 1}: possible ${name}`)
+      if (re.test(row)) hits.push(`${file}:${i + 1}: possible ${name}`)
     }
   })
   return hits
@@ -205,7 +217,7 @@ export const managedSettings = (dir = MANAGED_DIR): Record<string, unknown> =>
   managedFiles(dir).reduce<Record<string, unknown>>((acc, f) => { const v: unknown = JSON.parse(fs.readFileSync(f, 'utf8')); return isObject(v) ? deepMerge(acc, v) : acc }, {})
 
 const GITIGNORED = [
-  'state/', 'maintain/seen.json', '.baseline', '.gate', 'unresolved.json', 'gates.jsonl', '.onboarding', 'changes/*/prototype/', 'changes/*/pr-outline.md', 'learn/',
+  'state/', 'maintain/seen.json', '.baseline', '.gate', 'unresolved.json', 'gates.jsonl', 'changes/*/pr-outline.md', 'learn/',
 ]
 
 // Parallel hooks (subagents) read-modify-write the same small state file: serialise them with a mkdir lock (stale after 10 s;
@@ -224,8 +236,17 @@ export function withLock<T>(file: string, fn: () => T): T {
 }
 export function writeAtomic(file: string, text: string): void {
   const tmp = `${file}.${process.pid}.tmp`
+  fs.mkdirSync(path.dirname(file), { recursive: true })
   fs.writeFileSync(tmp, text)
   fs.renameSync(tmp, file)
+}
+
+// --max-usd <dollars>: null when not given, NaN when it is not a number of at least `min`, else the amount.
+export function usdOpt(args: Args, min: number): number | null {
+  const v = args.opt['max-usd']
+  if (v === undefined) return null
+  const n = typeof v === 'string' ? Number(v) : NaN
+  return Number.isFinite(n) && n >= min ? n : NaN
 }
 
 export function ensureGitignore(): void {

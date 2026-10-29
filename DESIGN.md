@@ -28,12 +28,13 @@ The biggest lever is **bounded context**. Everything below follows from that.
 4. **Deterministic checks decide; models advise.** Sensors, red-proof and secrets are scripts at zero tokens; one advisory review per change.
 5. **Local equals CI.** One `check` entry point serves Stop, git hooks and CI. CI judges a PR with the base branch's checker and config, so a PR cannot weaken its own judge.
 6. **Bounded loops.** Stop blocks are capped; past a cap the finding goes to `unresolved.json`.
-7. **Every step ends with the next command.**
+7. **Cadence follows the model's grade.** `.rig/sensors.json` maps each model family to `continuous` or `final`. Haiku and Sonnet run in-session sensors continuously; Opus keeps only the always-on built-ins in session, and commit, CI and nightly sensors run in full for every model.
+8. **Every step ends with the next command.**
 
 ## 3. Architecture
 
 ```
-skills/      the stages, /rig:* (start plan build test pr rule init, chart testplan wiki learn app arch, plus human-only approve, waive and autonomy), prompts only
+skills/      the stages, /rig:* (start plan build test pr rule init, chart testplan wiki learn upgrade app arch, plus human-only approve, waive and autonomy), prompts only
 agents/      architect (charts a sprint); evaluator (sprint chart review; a change's diff is reviewed by a clean-context Opus reviewer agent and an Opus security agent in /rig:pr)
 hooks/       hooks.json = six settings hook events (session start, prompt submit, post-edit, stop, agent launch/done, model switch) plus the journey dashboard module, none on Bash (work in -p and CI)
 scripts/     zero-dependency Node, no build step; sdlc.ts is the CLI; check.ts is the one checker
@@ -108,8 +109,8 @@ Open: command sensors at commit and push see the working tree rather than the in
 - `/rig-approve` has not been tried in a cloud session.
 - The git hooks have not been trialled live; the live trials predate them.
 - Whether `autoCompactWindow` is honoured from project settings.
-- Windows is unsupported (the hook scripts are POSIX `sh`).
+- Windows is supported through Git for Windows bash (sensor commands run there); CI runs `windows-latest`.
 
 ## The sprint outer loop (2026-10-17)
 
-A sprint starts from a PRD. The architect and the QA lead use `/rig:chart` and `/rig:testplan` to produce traced, sized intents, the architecture and the test plan; one human approval covers them; engineers then run the single-change lifecycle per intent. The chain requirement → intent → behaviour → test case is checked by a script, not a model. Measured by trace coverage, estimate against actual, chart staleness and the chart-quality eval (`eval/chart.mjs`).
+A sprint starts from a PRD. The architect and the QA lead use `/rig:chart` (which also writes the test plan; `/rig:testplan` redoes it) to produce traced, sized intents, the architecture and the test plan; one human approval covers them; engineers then run the single-change lifecycle per intent. The chain requirement → intent → behaviour → test case is checked by a script, not a model. Measured by trace coverage, estimate against actual, chart staleness and the chart-quality eval (`eval/chart.mjs`).

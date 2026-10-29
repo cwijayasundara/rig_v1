@@ -1,11 +1,8 @@
 // The fake model: plays start, plan and build the way the skills do, from the phase's text and fixture files.
 import fs from 'node:fs'
 import path from 'node:path'
+import { must } from '../lib/checks.mjs'
 
-const must = (r, what) => {
-  if (r.status !== 0) throw new Error(`${what} failed (exit ${r.status}): ${(r.stderr || r.stdout).trim().split('\n').slice(0, 3).join(' | ')}`)
-  return r.stdout
-}
 const copy = (sb, files) => files.forEach(f => { fs.mkdirSync(path.dirname(sb.file(f.dest)), { recursive: true }); fs.copyFileSync(f.src, sb.file(f.dest)) })
 
 export function scriptedDriver(sb, phase) {

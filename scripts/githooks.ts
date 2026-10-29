@@ -27,7 +27,7 @@ const script = (name: (typeof NAMES)[number]): string => [
 
 export const HOOK_SCRIPTS = (): [rel: string, text: string][] => NAMES.map(name => [`${HOOKS_DIR}/${name}`, script(name)])
 
-export function writeHookScripts(written: string[] = []): void {
+function writeHookScripts(written: string[] = []): void {
   fs.mkdirSync(path.join(ROOT, HOOKS_DIR), { recursive: true })
   for (const [rel, text] of HOOK_SCRIPTS()) {
     const file = path.join(ROOT, rel)
@@ -39,7 +39,7 @@ export function writeHookScripts(written: string[] = []): void {
 }
 
 type HooksState = 'installed' | 'missing' | 'other'
-function hooksState(): { state: HooksState; path: string } {
+export function hooksState(): { state: HooksState; path: string } {
   // Any scope: a global or system hooksPath would otherwise be shadowed in silence. ./x and x/ are x.
   const p = git(['config', '--get', 'core.hooksPath']) ?? ''
   const norm = p.replace(/^(?:\.\/)+/, '').replace(/\/+$/, '')

@@ -3,7 +3,8 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { orderArms, nextRunAllowed, resultsAllowed, runOne } from './run.mjs'
+import { orderArms, runOne } from './run.mjs'
+import { EVAL_ALLOW, nextRunAllowed, resultsAllowed } from './lib/cli.mjs'
 import { ARMS } from './arms.mjs'
 
 test('nextRunAllowed refuses a run that could cross the total cap', () => {
@@ -33,8 +34,6 @@ test('a run that throws is recorded with its error and its spend', async () => {
   assert.match(row.error, /build/)
   assert.equal(typeof row.usd, 'number')
 })
-
-import { EVAL_ALLOW } from './run.mjs'
 
 test('final review: every eval arm may run npm and node, so bare arms can test their code like rig arms', () => {
   assert.ok(EVAL_ALLOW.includes('Bash(npm *)') && EVAL_ALLOW.includes('Bash(node *)'))

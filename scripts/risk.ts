@@ -2,7 +2,7 @@
 // own files and the config; nothing lowers it. Tier 2 suggests a second reviewer, which branch protection enforces, never rig.
 import path from 'node:path'
 import { CHANGES, ROOT, SENSORS_JSON, read, readJson, out, fail, optString, checkSlug, defaultBase, frontmatter, type Args } from './core.ts'
-import { section, matchesAny, blastRadius, type FileDiff } from './model.ts'
+import { section, bullets, matchesAny, blastRadius, type FileDiff } from './model.ts'
 import { parseRegistry, type Registry } from './registry.ts'
 import { isProtected, PROTECTED } from './sensors.ts'
 import { parseAccess, type AccessRule } from './chartcheck.ts'
@@ -14,7 +14,6 @@ export type Risk = { tier: 0 | 1 | 2; reasons: string[] }
 type RiskInput = { files: string[]; lines: number; slugs: string[]; read: (slug: string, name: string) => string; access: AccessRule[]; risk: Registry['risk']; contractGlobs: string[]; ci: boolean }
 
 const TWO = 'two reviewers, one a code owner, recommended; enforce it in branch protection'
-const bullets = (text: string): string[] => text.split('\n').map(l => l.trim()).filter(l => /^[-*]\s+\S/.test(l))
 const count = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`
 
 // A finding is open until the confirm pass closes it (` → fixed (confirmed)`): a bare ` → fixed` is the builder's own claim.

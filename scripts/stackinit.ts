@@ -17,7 +17,7 @@ const javaOk = (): boolean => spawnSync('java', ['-version'], { stdio: 'ignore' 
 // `init --stack [name]`: with no sensors.json yet, write the detected stack pack as a registry. Onboarding only: it declares
 // only while sensors.json is absent or `{}`, uncommitted, and no change exists, so it cannot launder an edit to a reviewed config.
 // An old-shape file is a reviewed harness file: print the registry that replaces it, never overwrite it here.
-export function packsFor(opt: string | true, root: string = ROOT): { packs: ReturnType<typeof loadPacks>['packs']; found: string[] } {
+function packsFor(opt: string | true, root: string = ROOT): { packs: ReturnType<typeof loadPacks>['packs']; found: string[] } {
   const { packs } = loadPacks(PACKS_DIR)
   return { packs, found: typeof opt === 'string' ? [opt] : detectStacks(root, packs) }
 }

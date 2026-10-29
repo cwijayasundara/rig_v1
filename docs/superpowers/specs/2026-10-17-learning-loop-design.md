@@ -1,6 +1,6 @@
 # Learning loop: design
 
-Status: draft for approval, 2026-10-17. Goal item 6 in `docs/GOAL.md`. Nothing is built. The person asked for the design without a
+Status: built and merged (`/rig:learn`). Goal item 6 in `docs/GOAL.md`. The person asked for the design without a
 question round, so the calls below are mine and are marked **[my call]**.
 
 ## Intent

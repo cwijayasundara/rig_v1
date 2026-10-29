@@ -173,7 +173,7 @@ export function changeRequirements(slug: string): string | null {
   const i = intentOf(slug)
   const n = i?.sprint ?? null
   if (!i || n === null || !exists(ledgerPath(n))) return null
-  const text = read(ledgerPath(n)).replace(/\r\n/g, '\n')
+  const text = read(ledgerPath(n))
   const ids = new Set(i.behaviours.flatMap(b => b.rules))
   const rows = new Set(parseLedger(text).filter(r => ((r.kind === 'rule' || r.kind === 'answer') && i.prd.includes(parentOf(r.id) ?? '')) || ids.has(r.id) || (r.alias !== null && ids.has(r.alias))).map(r => r.id))
   const lines = text.split('\n').filter(l => { const id = /^\s*[-*]\s+(\S+)/.exec(l)?.[1]; return id !== undefined && rows.has(id) })

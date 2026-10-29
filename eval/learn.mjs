@@ -8,9 +8,10 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { resultsAllowed, arg, mean } from './lib/cli.mjs'
+import { resultsAllowed, claudeJson, arg, mean } from './lib/cli.mjs'
 import { claudeRunner } from '../scripts/wikigen.ts'
 import { cleanClaudeEnv } from '../scripts/model.ts'
+import { stageFixture, commitAll } from './lib/fixture.mjs'
 import { formatLesson } from '../scripts/learnfile.ts'
 
 const FIX = path.join(import.meta.dirname, 'fixtures/learn')
@@ -56,22 +57,17 @@ export function renderLearnTable(rows) {
 const git = (dir, ...args) => spawnSync('git', ['-c', 'user.email=e@e', '-c', 'user.name=eval', ...args], { cwd: dir, encoding: 'utf8' }).stdout ?? ''
 
 function stage(name) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `rig-eval-learn-${name}-`))
-  fs.cpSync(path.join(FIX, 'repo'), dir, { recursive: true })
-  git(dir, 'init', '-q', '-b', 'main')
-  git(dir, 'add', '-A')
-  git(dir, 'commit', '-qm', 'fixture')
+  const dir = stageFixture(`rig-eval-learn-${name}-`, [path.join(FIX, 'repo')])
+  commitAll(dir, 'fixture')
   return dir
 }
 
 // The agent reads CLAUDE.md (project settings only: no user hooks or plugins) and may use only file tools.
 function implement(dir, prompt, model) {
   const tools = 'Read,Edit,Write,Grep,Glob'
-  const c = spawnSync(process.env.RIG_CLAUDE || 'claude', ['-p', prompt, '--output-format', 'json', '--model', model, '--tools', tools, '--allowedTools', tools, '--setting-sources', 'project', '--disable-slash-commands', '--no-session-persistence', '--max-turns', '15'], { cwd: dir, env: cleanClaudeEnv(), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 600_000 })
-  let j = {}
-  try { j = JSON.parse(c.stdout) } catch { /* an unreadable result is a failed run */ }
-  const u = j.usage ?? {}
-  return { failed: c.status !== 0 || j.is_error === true || typeof j.result !== 'string' && j.total_cost_usd === undefined, usd: j.total_cost_usd ?? 0, tokens: (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.output_tokens ?? 0) }
+  const { c, j, usd, tokens } = claudeJson({ dir, prompt, model, tools, sources: 'project' }) // an unreadable result is a failed run
+  const r = j ?? {}
+  return { failed: c.status !== 0 || r.is_error === true || typeof r.result !== 'string' && r.total_cost_usd === undefined, usd, tokens }
 }
 
 // The scripted evaluator: it writes the review.md and pr.md a real change would leave, so `learn mine` sees the same evidence.
@@ -86,7 +82,7 @@ function recordChange(dir, slug, recurred) {
 
 // The dream step, applied automatically (an eval only: in real use a person applies the proposal).
 function dream(dir, model) {
-  spawnSync('node', ['--disable-warning=ExperimentalWarning', SDLC_TS, 'learn', 'mine'], { cwd: dir, env: { ...cleanEnv(), CLAUDE_PROJECT_DIR: dir } })
+  spawnSync('node', ['--disable-warning=ExperimentalWarning', SDLC_TS, 'learn', 'mine'], { cwd: dir, env: { ...cleanClaudeEnv(), CLAUDE_PROJECT_DIR: dir } })
   let candidates = []
   try { candidates = JSON.parse(fs.readFileSync(path.join(dir, '.rig/learn/candidates.json'), 'utf8')).candidates } catch { return 0 }
   const c = candidates.find(x => x.key === KEY)

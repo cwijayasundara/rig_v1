@@ -2,7 +2,7 @@
 // and claim review call a model, through a Runner. Staleness is a warning: no subcommand fails because a page is stale.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, out, fail, gitIn, writeAtomic, skillRef, type Args } from './core.ts'
+import { ROOT, out, fail, gitIn, writeAtomic, usdOpt, skillRef, type Args } from './core.ts'
 import { claudeRunner, planConfig, buildPage, reviewPage, estimateUsd, type Runner } from './wikigen.ts'
 import { parseWikiConfig, slugOf, snapshot, wikiStatus, type WikiConfig, type WikiPage, type WikiState } from './wikistate.ts'
 import { validatePage, pageCitations, type PageEnv } from './wikivalidate.ts'
@@ -15,7 +15,6 @@ const SOURCE_EXT = /\.(?:[cm]?[jt]sx?|py|go|rs|java|kt|rb|cs|php|swift|c|cc|cpp|
 const SKIPPED = /^(?:\.rig|\.claude|\.github|node_modules)\//
 const MAX_SOURCE_CHARS = 120_000
 
-const put = (file: string, text: string): void => { fs.mkdirSync(path.dirname(file), { recursive: true }); writeAtomic(file, text) }
 const ok = (text: string): WikiResult => ({ code: 0, text })
 const bad = (text: string, code = 1): WikiResult => ({ code, text })
 
@@ -94,10 +93,8 @@ function indexText(config: WikiConfig, state: WikiState): string {
 const money = (n: number): string => `$${n.toFixed(4)}`
 
 function maxUsd(args: Args): number | null | string {
-  const v = args.opt['max-usd']
-  if (v === undefined) return null
-  const n = Number(v)
-  return typeof v === 'string' && Number.isFinite(n) && n >= 0 ? n : '--max-usd needs a number of dollars'
+  const n = usdOpt(args, 0)
+  return n === null || !Number.isNaN(n) ? n : '--max-usd needs a number of dollars'
 }
 
 // Builds the given pages. `hintFor` adds what changed to a refresh; a page that cannot be built keeps its old file.
@@ -132,12 +129,12 @@ function buildPages(root: string, config: WikiConfig, pages: WikiPage[], args: A
       continue
     }
     const slug = slugOf(page.title)
-    put(path.join(root, DIR, `${slug}.md`), r.text)
+    writeAtomic(path.join(root, DIR, `${slug}.md`), r.text)
     state.pages[slug] = snapshot(r.text, e.read, commit)
     lines.push(`${page.title}: written${r.dropped ? `, ${r.dropped} unsupported claim(s) dropped` : ''}${r.findings.length ? `; ${r.findings[0]!.message}` : ''}`)
   }
-  put(path.join(root, DIR, 'state.json'), JSON.stringify(state, null, 2) + '\n')
-  put(path.join(root, DIR, 'index.md'), indexText(config, state))
+  writeAtomic(path.join(root, DIR, 'state.json'), JSON.stringify(state, null, 2) + '\n')
+  writeAtomic(path.join(root, DIR, 'index.md'), indexText(config, state))
   lines.push(`cost: ${money(usd)}`)
   return { code: failed ? 1 : 0, text: lines.join('\n') }
 }
@@ -146,7 +143,7 @@ function cmdInit(root: string, run: Runner): WikiResult {
   if (fs.existsSync(path.join(root, CONFIG))) return bad(`${CONFIG} already exists; edit it, then run \`wiki build\``)
   const r = planConfig(sourceFiles(root), run)
   if (typeof r.config === 'string') return bad(`the planner's wiki.json is not usable: ${r.config}`)
-  put(path.join(root, CONFIG), JSON.stringify(r.config, null, 2) + '\n')
+  writeAtomic(path.join(root, CONFIG), JSON.stringify(r.config, null, 2) + '\n')
   return ok(`wrote ${CONFIG} with ${r.config.pages.length} page(s) (cost ${money(r.usd)}). Edit it, then run: wiki build`)
 }
 
@@ -200,7 +197,7 @@ function cmdSync(root: string, args: Args, run: Runner): WikiResult {
   if (planned.code !== 0) return soft(planned)
   // Marks the config as built from the repo's own sprints, so the journey still reads the repo as greenfield (journey.ts repoKind).
   const file = path.join(root, CONFIG)
-  put(file, JSON.stringify({ origin: 'sync', ...JSON.parse(fs.readFileSync(file, 'utf8')) }, null, 2) + '\n')
+  writeAtomic(file, JSON.stringify({ origin: 'sync', ...JSON.parse(fs.readFileSync(file, 'utf8')) }, null, 2) + '\n')
   const built = cmdBuild(root, args, run)
   return soft({ code: built.code, text: `${planned.text}\n${built.text}` })
 }

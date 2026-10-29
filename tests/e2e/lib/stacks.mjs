@@ -2,7 +2,7 @@
 // passes a good staged edit and blocks a broken one on the pack's core sensor. A stack whose toolchain cannot run is skipped.
 import fs from 'node:fs'
 import path from 'node:path'
-import { Checks } from './checks.mjs'
+import { Checks, json } from './checks.mjs'
 
 export const FIXTURES = path.join(import.meta.dirname, '../fixtures/stacks')
 // Every fixture language takes a // line comment.
@@ -31,8 +31,6 @@ export function probe(run, cmd, args) {
   if (r.status !== 0) return { ok: false, why: `${cmd} ${args.join(' ')} exited ${r.status}: ${((r.stderr || r.stdout || '').trim().split('\n')[0])}` }
   return { ok: true, why: '' }
 }
-
-const json = t => { try { return JSON.parse(t) } catch { return null } }
 
 export async function runStack(sb, s) {
   const c = new Checks(`stack ${s.stack}`)

@@ -23,7 +23,7 @@ Work moves through an optional outer loop (a sprint) and an inner loop (one chan
 
 ```
 ┌─ CHART · per sprint, optional ─────────────────────────────────────────────────────┐
-│ PRD ─► /rig:chart <N> ─► /rig:testplan <N> ─► {{ /rig:approve chart-<N> }} ─► ready │
+│ PRD ─► /rig:chart <N> ─► {{ /rig:approve chart-<N> }} ─► ready                      │
 │        intents (≤ 2 engineer-days each), architecture, ADRs, test plan, all traced │
 └────────────────────────────────────────────────────────────────────────────────────┘
                                          │ one intent at a time (or any ad-hoc task)
@@ -43,7 +43,7 @@ Work moves through an optional outer loop (a sprint) and an inner loop (one chan
  GOVERNANCE: human gates, sensors, git hooks and CI, the same in every loop
 ```
 
-- **Chart** turns a sprint's PRD into the work that feeds Build. The architect runs `/rig:chart <N>` and gets intents (each at most two engineer-days, with a brief), an updated `architecture.md` and ADRs. The QA lead runs `/rig:testplan <N>` and gets the test plan, the cases and the data. Every intent, behaviour and case traces to a PRD requirement, which `sdlc.ts chart check <N>` checks with no model call. A person approves the whole set once with `/rig:approve chart-<N>`. `sdlc.ts ready` then lists the intents whose dependencies have shipped.
+- **Chart** turns a sprint's PRD into the work that feeds Build. The architect runs `/rig:chart <N>` and gets intents (each at most two engineer-days, with a brief), an updated `architecture.md` and ADRs. The same run writes the test plan, the cases and the data; `/rig:testplan <N>` redoes them after a PRD or intent change. Every intent, behaviour and case traces to a PRD requirement, which `sdlc.ts chart check <N>` checks with no model call. A person approves the whole set once with `/rig:approve chart-<N>`. `sdlc.ts ready` then lists the intents whose dependencies have shipped.
 - **The design conversation.** `/rig:start` runs the superpowers brainstorm (`superpowers:brainstorming`) as a conversation with a person; `/rig:chart` runs it in one batch of at most 4 questions and goes on to the architect, so the chart approval is its one review; the sprint design doc is a chart file named by `architecture.md`'s `design:` line and is frozen by the chart approval. There are two human gates: the chart approval and the per-change approval, which refuses a plan outside `spec.md`'s blast radius. `sdlc queue next` names the next ready intent, and the autonomy rung (`/rig:autonomy`) sets how far the session goes alone: rung 0, a person starts each intent; rung 1, the session opens the next intent's brainstorm; rung 2, unattended after approve, with the merge still manual; rung 3 (only a person sets it), also a tier-0 PR by an author in `humanApproval.trusted` passes `rig-check` with no person while `risk.enforce` is on and the revert breaker holds.
 - **Build** takes one change at a time from `/rig:start` to a merged PR. A person approves the spec and plan once. `/rig:pr` refuses without that approval and a fresh, passing `verify.json`.
 - **Run** deploys behind a production gate, which the platform team installs as a managed hook.
@@ -79,7 +79,7 @@ The step-by-step guides are under [User guide](#user-guide).
 |---|---|---|
 | Product owner / BA | Writes `.rig/product/brief.md` and `.rig/product/sprints/sprint-<N>/prd.md` | Reviews the chart branch |
 | Architect | `/rig:chart <N>` | `/rig:approve chart-<N>` (a person, after review) |
-| QA lead | `/rig:testplan <N>` | Reviews the chart branch |
+| QA lead | Reviews the test plan that `/rig:chart` writes; `/rig:testplan <N>` redoes it | Reviews the chart branch |
 | Engineer | `/rig:start`, `/rig:plan`, `/rig:build`, `/rig:test`, `/rig:pr` | `/rig:approve <slug>` for each change; `/rig:waive` |
 | Reviewer / code owner | Reviews PRs | Approves any PR that adds or edits an `approval.json`, or adds waiver rows |
 | Platform team | Managed settings, CI required checks, CODEOWNERS, the production gate | Owns the harness itself (`/rig:rule`, `/rig:learn` proposals) |
@@ -119,7 +119,7 @@ As of 2026-10-21. `.claude-plugin/plugin.json` says **0.6.0**; the last git tag 
 | Git hooks: `pre-commit`, `pre-push`, wired at session start | Covered by tests that drive real `git`. There is no bypass guard: CI plus branch protection is the boundary | DESIGN §9, [SECURITY.md](SECURITY.md) |
 | Harness readiness plan (docs/proposals/2026-10-21-harness-readiness-consolidated.md): inert-sensor self-test, CI least-privilege spec, `sdlc arch`, promotion ladder, scope check, golden slices, journeys, clean-context review, Maintain, CI evals, ablation, `rig readiness`, waiver owner and age | Built and merged; every item has specs | `npm test`; evals under `eval/results/` |
 | Whether rig beats a bare model | **Not shown.** On the `links` task rig matched bare Haiku (3/3 each) at about 25x the cost. The harder `rules` task is built and dry-run clean; its live run has not happened | `eval/results/2026-10-21-links2.md`, docs/superpowers/specs/2026-10-21-harder-eval-design.md |
-| Windows | **Not supported.** The hook scripts are POSIX `sh` and the Windows CI jobs are red | SECURITY.md |
+| Windows | Supported through Git for Windows bash. CI runs `windows-latest` and is green (efecbc9) | SECURITY.md |
 
 **Quality gates on `main`:** `npm test` (the spec files, the e2e unit tests and the scripted e2e phases; run it for the current count), `npm run typecheck` and `claude plugin validate`.
 
@@ -216,7 +216,7 @@ A change's status comes from which of its files exist: spec, plan, approve, buil
 | `/rig:test` | After the build: run `verify` and record `verify.json`. | mostly zero-token |
 | `/rig:pr` | Ship: a clean-context Opus reviewer agent (diff and intent only) and an Opus security agent on the delta, builder triage, fixes, then one commit, push and PR. | tokens |
 | `/rig:chart <N>` | Architect: the sprint's PRD becomes intents, architecture and ADRs on branch `rig/chart-<N>`. | tokens |
-| `/rig:testplan <N>` | QA lead: the sprint's test plan, cases and data. | tokens |
+| `/rig:testplan <N>` | QA lead: redo the sprint's test plan after a PRD or intent change. Chart already writes it. | tokens |
 | `/rig:wiki init \| build \| status \| refresh \| verify` | Build and keep the code wiki current. `status` is free and only warns. | tokens, bounded by `--max-usd` |
 | `/rig:upgrade [--force]` | Run from the newer plugin (not vendored into standalone repos): shows the plan, asks about files you changed, applies on `chore/rig-upgrade-<version>` and stops for review. Nothing is pushed. | tokens, small |
 | `/rig:learn [--max-usd <N>]` | At sprint close: mine recurring review findings and waivers into proposed lessons and rule promotions. | tokens |
@@ -230,7 +230,7 @@ A change's status comes from which of its files exist: spec, plan, approve, buil
 | `/rig:approve chart-<N>` | A sprint's PRD, intents, architecture, ADRs, test plan and the contract files its intents name, as written. Refused while a blocking finding stands; goes stale when any of them changes. |
 | `/rig:waive <sensor> <file\|*> <reason>` | One sensor finding on the active change. |
 
-**The script underneath** (`node .rig/bin/sdlc.ts <cmd>`): `stamp`, `init`, `new`, `activate`, `status`, `approve`, `chart check|report <N>`, `prd check|map|ledger|status <N>`, `ready`, `start-brief`, `pr`, `carry <slug>`, `run`, `verify`, `secrets`, `hook <event>`, `diff`, `baseline`, `check`, `check-file`, `sync`, `vendor`, `upgrade [--json|--diff <file>]`, `hooks`, `waive`, `sensors`, `wiki`, `learn mine|replay|check|status|reverts|review-eval --max-usd <n>`, `report`, `arch`, `queue`, `app`, `slice`, `maintain`, `readiness`, `autonomy`, `risk [<slug>] [--base <ref>] [--json]`, `weight [<slug>] [--json]` (light or full planning, from the blast radius), `new <slug> ... [--full] [--from-diff]`. Skills and CI call these, and so can you.
+**The script underneath** (`node .rig/bin/sdlc.ts <cmd>`): `stamp`, `init`, `new`, `activate`, `status`, `approve`, `chart check|report|plan <N>`, `prd check|map|ledger|status <N>`, `ready`, `start-brief`, `pr`, `carry <slug>`, `run`, `verify`, `hook <event>`, `diff`, `baseline`, `check`, `check-file`, `sync`, `vendor`, `upgrade [--json|--diff <file>]`, `hooks`, `waive`, `sensors`, `wiki`, `learn mine|replay|check|proposal|status|reverts|review-eval --max-usd <n>`, `report`, `arch`, `queue`, `app`, `slice`, `maintain`, `readiness`, `autonomy`, `risk [<slug>] [--base <ref>] [--json]`, `weight [<slug>] [--json]` (light or full planning, from the blast radius), `new <slug> ... [--full] [--from-diff]`. Skills and CI call these, and so can you.
 
 ### Sensors, policy and guides
 
@@ -272,7 +272,7 @@ Computational sensors run at zero tokens and only one inferential review runs pe
 
 The harness lives in each repo it runs on, so a repo never depends on the plugin and you install nothing globally. You need the plugin only to initialise a repo and to upgrade it, and you load it per project.
 
-**Requirements:** Node 22.18 or later, `git`, a POSIX shell, and Claude Code 2.1.251 or later. macOS and Linux are supported; Windows is not. `/rig:pr` and the CI approval check use the GitHub CLI `gh`, which is optional otherwise.
+**Requirements:** Node 22.18 or later, `git`, a POSIX shell (Git for Windows bash on Windows), and Claude Code 2.1.251 or later. macOS, Linux and Windows are supported; CI runs all three. `/rig:pr` and the CI approval check use the GitHub CLI `gh`, which is optional otherwise.
 
 1. **Load the plugin for this project only.** Start Claude Code from the project root with the plugin directory:
 
@@ -315,35 +315,11 @@ Path A (greenfield) and path B (brownfield) differ only in the first hour; after
 
 ### Path A: greenfield, one change at a time
 
-An empty repo has two ways in. You can start from the first feature (steps 1 to 5 below), or start from a **sprint-wise PRD**, which activates the outer loop ([chart](#path-c-a-sprint-from-a-prd-greenfield-or-brownfield)) so that a whole sprint is broken into traced intents before any code is written. Either way the change itself runs the same lifecycle, and you can mix them: the PRD for the planned work, plain `/rig:start` for a one-off fix.
+An empty repo has two ways in. You can start from the first feature (steps 1 to 5 below), or start from a **sprint-wise PRD**, which activates the outer loop ([chart](#path-c-a-sprint-from-a-prd-greenfield-or-brownfield)). Either way the change itself runs the same lifecycle, and you can mix them: the PRD for the planned work, plain `/rig:start` for a one-off fix.
 
-#### Start from a sprint PRD (activates the outer loop)
+#### Start from a sprint PRD
 
-```
- empty repo ──► /rig:init greenfield "<stack and goal>"      skeleton + sensors, commit
-                 ▼
-        product owner + BA write  brief.md  and  sprints/sprint-0/prd.md        (FR-n / NFR-n ids)
-                 ▼
- architect  /rig:chart 0     ─► intents (≤ 2 days each) + architecture.md + ADRs, checked by script
- QA lead    /rig:testplan 0  ─► plan.md + cases.md + data/, every case traced to a requirement
-                 ▼                                    all on branch rig/chart-0
-        architect + QA lead + PO review ─► {{ /rig:approve chart-0 }} ─► merge
-                 ▼
-        sdlc.ts ready ─► /rig:start .rig/product/sprints/sprint-<N>/intents/<slug>.md ─► plan ─► build ─► test ─► pr
-                 ▼
-        sprint 1: PRD again (same FR ids, "Changes since last sprint") ─► chart 1 ─► …
-```
-
-1. **Init with the goal.** `/rig:init greenfield "<stack and goal from the PRD>"`, then commit `README.md`, `.rig/`, `.claude/` and `CLAUDE.md`. `/rig:chart` refuses to run until `.rig/sensors.json` exists.
-2. **Write the inputs.** The product owner and BA write `.rig/product/brief.md` ([`templates/brief.md`](templates/brief.md)) and `.rig/product/sprints/sprint-0/prd.md` ([`templates/prd-format.md`](templates/prd-format.md)). Give every requirement an id (`FR-1`, `NFR-1`) with Given/When/Then acceptance criteria, set `engineers:` in the frontmatter to the number of people building in parallel, and leave `## Open questions` as `none` when they are settled. Ids stay stable across sprints.
-3. **Chart sprint 0.** The architect runs `/rig:chart 0`. The `architect` agent (Sonnet) writes `.rig/product/sprints/sprint-<N>/intents/<slug>.md` files, each at most 2 engineer-days with a `prd:` list, `depends:` and numbered behaviours, plus the first `architecture.md` and ADRs. Sprint 0 always has a `walking-skeleton` intent that every other intent depends on, so the first merge proves the build, test and deploy path end to end. A script (`sdlc.ts chart check 0`, no model call) blocks any intent that traces to no requirement, any requirement with no intent, and any intent over 2 days; the architect gets one fix round. The result is committed on `rig/chart-0`.
-4. **Test plan.** The QA lead runs `/rig:testplan 0`. A Sonnet agent writes `plan.md`, `cases.md` and synthetic `data/`; every requirement gets at least one case, and a case for a boundary intent reuses that intent's contract examples.
-5. **Approve once.** The architect, QA lead and product owner review the branch. One of them types `/rig:approve chart-0` themselves; it is refused while any blocking finding stands, and it goes stale if the PRD, architecture, ADRs, test plan or an intent is edited afterwards. Merge the branch.
-6. **Build the intents.** `node .rig/bin/sdlc.ts ready` lists the intents whose dependencies have shipped. Each engineer runs `/rig:start .rig/product/sprints/sprint-<N>/intents/<slug>.md` in their own checkout, then `/rig:plan` (the mini design), the approval, `/rig:build`, `/rig:test` and `/rig:pr`. The intent's behaviours arrive in `spec.md` with the same B-numbers, so the hidden acceptance is known up front. Start the `walking-skeleton` first; the rest can run in parallel.
-7. **Watch and close.** `node .rig/bin/sdlc.ts chart report 0` shows requirement-to-intent-to-case-to-test progress at any time. When the sprint ends, run `/rig:wiki refresh --max-usd <N>` and `/rig:learn`.
-8. **Next sprint.** Write `sprints/sprint-1/prd.md` with the same requirement ids and a `## Changes since last sprint` section, then run `/rig:chart 1`. The architect now updates the existing `architecture.md` instead of starting one.
-
-Small work during a sprint (a hotfix, a chore) still goes straight to `/rig:start` without a chart.
+See [path C](#path-c-a-sprint-from-a-prd-greenfield-or-brownfield): init the empty repo with the stack and goal, then chart sprint 0.
 
 #### Start from the first feature (no PRD)
 
@@ -389,7 +365,7 @@ Small work during a sprint (a hotfix, a chore) still goes straight to `/rig:star
 ```
  /rig:init (A or B first) ─► write brief.md + sprints/sprint-<N>/prd.md
      ▼
- /rig:chart <N>  ─► /rig:testplan <N>      on branch rig/chart-<N>
+ /rig:chart <N>                            on branch rig/chart-<N>
      ▼
  architect, QA lead and product owner review the branch ─► {{ /rig:approve chart-<N> }} ─► merge
      ▼
@@ -399,7 +375,7 @@ Small work during a sprint (a hotfix, a chore) still goes straight to `/rig:star
 1. **Init first.** `/rig:chart` stops if `.rig/sensors.json` is missing. For an empty repo, init greenfield with the stack and goal from the PRD.
 2. **Write the inputs.** The product owner and BA write `.rig/product/brief.md` and `.rig/product/sprints/sprint-<N>/prd.md` from [`templates/prd-format.md`](templates/prd-format.md), giving each requirement an FR or NFR id.
 3. **Chart.** The architect runs `/rig:chart <N>`. The `architect` agent (Sonnet) writes the intents, each at most 2 engineer-days with `depends:` and a `prd:` list, plus `architecture.md` and the ADRs. Then `chart check <N>` runs with one fix round, and the result is committed on `rig/chart-<N>`.
-4. **Test plan.** The QA lead runs `/rig:testplan <N>` and gets the plan, the cases and the data, each case traced to a requirement.
+4. **Test plan.** Chart also writes the plan, the cases and the data, each case traced to a requirement. After a PRD or intent change, the QA lead runs `/rig:testplan <N>` to redo it.
 5. **Approve once.** After review, a person runs `/rig:approve chart-<N>`. The approval is refused while a blocking finding stands, and goes stale on any edit. Merge the branch.
 6. **Build the intents.** `node .rig/bin/sdlc.ts ready` lists the intents whose dependencies have shipped. Each engineer runs `/rig:start .rig/product/sprints/sprint-<N>/intents/<slug>.md` in their own checkout. The intent's behaviours carry into `spec.md` with the same B-numbers, and from there the change follows path A or B.
 7. **Close the sprint.** Run `/rig:wiki refresh --max-usd <N>` and `/rig:learn`, then apply the learn proposal in a PR.

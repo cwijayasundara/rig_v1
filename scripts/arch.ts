@@ -205,26 +205,25 @@ export function cmdArch(args: Args): void {
       tool = null
     }
     const rec: Record_ = { by: ownerOrFail(args, 'layer approvals'), at: new Date().toISOString(), blockHash: sha(raw.block), analyser: tool?.analyser ?? null, def: raw.def, layers: deriveLayering(raw.def) }
-    const gen = (rel: string, text: string): void => { fs.mkdirSync(path.dirname(path.join(ROOT, rel)), { recursive: true }); writeAtomic(path.join(ROOT, rel), text) }
     const oldCfg = tool ? read(path.join(ROOT, tool.config)) : ''
     const hadRecord = readRecord() !== null
     const oldKeys = new Set(keysOf(readJson<unknown>(path.join(ROOT, KNOWN), [])))
     let known: unknown = []
-    const undo = (): void => { if (!tool) return; if (oldCfg) gen(tool.config, oldCfg); else fs.rmSync(path.join(ROOT, tool.config), { force: true }) }
+    const undo = (): void => { if (!tool) return; if (oldCfg) writeAtomic(path.join(ROOT, tool.config), oldCfg); else fs.rmSync(path.join(ROOT, tool.config), { force: true }) }
     const taken = (r: { missing: boolean; failed: string | null }): boolean => {
       if (r.failed) { undo(); fail(`approval refused: ${tool?.analyser} failed (${r.failed}); fix the analyser or the block and re-run approve`) }
        if (r.missing && tool) notes.push(`${tool.analyser} is not installed, so no baseline was taken and the commit check will fail until it is: ${tool.install}, then re-run approve`); return !r.missing }
     if (tool?.analyser === 'dependency-cruiser') {
-      gen(tool.config, renderDepcruise(raw.def))
+      writeAtomic(path.join(ROOT, tool.config), renderDepcruise(raw.def))
       const r = baselineRun(tool, raw.def)
       if (taken(r)) { try { known = JSON.parse(r.text) } catch { notes.push('the baseline could not be read; re-run approve') } }
     } else if (tool?.analyser === 'import-linter') {
       const ini = renderImportLinter(raw.def)
       if (!ini) notes.push('a layer glob does not map to one Python package, so only the edit-time sensor enforces; use layers under one src/<package>/')
       else {
-        gen(tool.config, ini)
+        writeAtomic(path.join(ROOT, tool.config), ini)
         const r = baselineRun(tool, raw.def)
-        if (taken(r)) { known = pythonViolations(r.text, raw.def); gen(tool.config, renderImportLinter(raw.def, known as Record<string, string[]>) as string) }
+        if (taken(r)) { known = pythonViolations(r.text, raw.def); writeAtomic(path.join(ROOT, tool.config), renderImportLinter(raw.def, known as Record<string, string[]>) as string) }
       }
     } else notes.push(`no analyser data for stack "${stack || 'unknown'}": only the edit-time sensor enforces`)
     const grown = keysOf(known).filter(k => !oldKeys.has(k))
@@ -232,8 +231,8 @@ export function cmdArch(args: Args): void {
       undo()
       fail(`approval refused: ${grown.length} violation(s) are not in the previous baseline, so approving would grow it. Fix them first (a renamed layer also looks new: pass --rebaseline to accept them):\n${grown.slice(0, 5).map(g => `  ${g}`).join('\n')}`)
     }
-    gen(KNOWN, JSON.stringify(known, null, 2) + '\n')
-    gen(APPROVED, JSON.stringify(rec, null, 2) + '\n')
+    writeAtomic(path.join(ROOT, KNOWN), JSON.stringify(known, null, 2) + '\n')
+    writeAtomic(path.join(ROOT, APPROVED), JSON.stringify(rec, null, 2) + '\n')
     sanctionWrites([APPROVED, KNOWN, ...(tool ? [tool.config] : [])])
     return out([`layers approved by ${rec.by}: ${rec.layers.length} layer rule(s) enforced; ${keysOf(known).length} existing violation(s) baselined`, ...notes,
       'The "layers" command sensor runs the analyser at commit. A repo initialised before arch existed needs the pack\'s current "layers" command from templates/stacks/.'].join('\n'))

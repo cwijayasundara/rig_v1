@@ -2,11 +2,10 @@
 // this tree is committed on sdlc/<slug>, pushed, and gets a PR, or stays local-only without a remote.
 import fs from 'node:fs'
 import path from 'node:path'
-import { execFileSync } from 'node:child_process'
-import { ROOT, CHANGES, WAIVERS, waiverLive, exists, isTrunk, trunkName, read, readJsonl, out, fail, git, checkSlug, optString, ensureGitignore, skillRef, defaultBase, type Args, type Waiver } from './core.ts'
+import { ROOT, CHANGES, WAIVERS, waiverLive, exists, isTrunk, trunkName, read, readJsonl, out, fail, git, checkSlug, optString, ensureGitignore, dirtyFiles, skillRef, defaultBase, type Args, type Waiver } from './core.ts'
 import { frozenFindings, frozenFor } from './contracts.ts'
 import { loadConfig } from './check.ts'
-import { ghBin, section, isTest } from './model.ts'
+import { gh as ghRun, section, isTest } from './model.ts'
 import type { RunRow } from './runs.ts'
 import { treeStamp } from './stamp.ts'
 import { activeSlug, setActive, approvalState, verifyFresh, isShipped, changeDir } from './lifecycle.ts'
@@ -25,7 +24,7 @@ const URL_RE = /^https?:\/\//
 
 function openPr(slug: string, branch: string, title: string): string | null {
   const body = path.join(CHANGES, slug, 'pr-body.md')
-  const gh = (argv: string[]): string => execFileSync(ghBin(), argv, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 })
+  const gh = (argv: string[]): string => ghRun(argv, ROOT)
   try { gh(['pr', 'create', '--title', title, '--body-file', body]) } catch (e) {
     const x = e as { stdout?: unknown; stderr?: unknown }
     // The PR already exists (a rerun, or opened by hand): report its url.
@@ -40,10 +39,6 @@ const SHARED = ['.rig/waivers.jsonl', '.rig/autonomy.json', '.rig/.gitignore', '
 const SHARED_DIRS = ['.rig/guides/', '.rig/wiki/']
 // Only the sprint approval rides along by pattern; the plan, the carried files, the backlog and the additions ship when this run wrote them.
 const SHARED_RE = /^\.rig\/product\/sprints\/sprint-\d+\/approval\.json$/
-function dirtyFiles(): string[] {
-  const dirty = [...(git(['diff', '--name-only', 'HEAD']) ?? '').split('\n'), ...(git(['ls-files', '--others', '--exclude-standard']) ?? '').split('\n')].filter(Boolean)
-  return [...new Set(dirty)]
-}
 const changeFiles = (slug: string, wrote: string[]): string[] => dirtyFiles().filter(f => ships(slug)(f) || wrote.includes(f))
 
 // What a PR for this change carries under .rig/: its own record and the shared files; the rest of .rig/ stays local.

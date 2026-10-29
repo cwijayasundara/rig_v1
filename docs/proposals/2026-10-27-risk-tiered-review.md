@@ -1,6 +1,6 @@
 # Risk-tiered review: people read only the changes that need them
 
-Status: agreed 2026-10-27 (decisions at the end). Not built.
+Status: agreed 2026-10-27 (decisions at the end). Built and merged 2026-10-27.
 
 ## The ask
 

@@ -12,6 +12,8 @@ const gone = (...rels: string[]): void => { for (const r of rels) assert.ok(!fs.
 // The usage line lists every command: a removed one is not in it.
 const commands = (): string[] => /usage: sdlc\.ts <([^>]+)>/.exec(sdlc(makeRepo(), []).stderr)?.[1]?.split('|') ?? []
 
+const SKILLS = ['app', 'approve', 'arch', 'autonomy', 'build', 'chart', 'init', 'learn', 'plan', 'pr', 'rule', 'start', 'test', 'testplan', 'upgrade', 'waive', 'wiki']
+
 test('4a: the rig-brain plugin is gone', () => {
   gone('brain', 'scripts/brainsource.ts')
   assert.deepEqual((JSON.parse(read('.claude-plugin/marketplace.json')) as { plugins: { name: string }[] }).plugins.map(p => p.name), ['rig'])
@@ -87,7 +89,7 @@ test('4a: the review workflow, the rig-spec CI template and three non-lifecycle 
   const ci = fs.readdirSync(path.join(ROOT, 'templates')).filter(f => /^rig-.*\.yml$/.test(f))
   assert.deepEqual(ci, ['rig-check.yml'])
   const kept = fs.readdirSync(path.join(ROOT, 'skills')).sort()
-  assert.deepEqual(kept, ['app', 'approve', 'arch', 'autonomy', 'build', 'chart', 'init', 'learn', 'plan', 'pr', 'rule', 'start', 'test', 'testplan', 'upgrade', 'waive', 'wiki'])
+  assert.deepEqual(kept, SKILLS)
 })
 
 test('5a: the scripted e2e suite runs in npm test and in CI again', () => {
@@ -120,7 +122,7 @@ test('every next step the lifecycle names is a skill that exists', () => {
 })
 
 test('4b: seven workflow skills, the chart and testplan skills and the three human gates, and two agents', () => {
-  assert.deepEqual(fs.readdirSync(path.join(ROOT, 'skills')).sort(), ['app', 'approve', 'arch', 'autonomy', 'build', 'chart', 'init', 'learn', 'plan', 'pr', 'rule', 'start', 'test', 'testplan', 'upgrade', 'waive', 'wiki'])
+  assert.deepEqual(fs.readdirSync(path.join(ROOT, 'skills')).sort(), SKILLS)
   assert.deepEqual(fs.readdirSync(path.join(ROOT, 'agents')), ['architect.md', 'evaluator.md'])
   gone('templates/design-format.md')
   for (const s of ['start', 'plan', 'build', 'test', 'pr']) assert.doesNotMatch(read(`skills/${s}/SKILL.md`), /tier|ratchet|slice|next --json|rig:(scout|implementer|reviewer|architect)/i, s)

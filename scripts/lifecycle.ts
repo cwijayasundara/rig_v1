@@ -3,7 +3,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { ROOT, SENSORS_PATH, SDLC, CHANGES, read, readJson, exists, isTrunk, trunkName, sha, now, git, defaultBase, frontmatter, skillRef as k } from './core.ts'
-import { openQuestions, globToRegex, planFiles, blastRadius, type Finding } from './model.ts'
+import { openQuestions, normPath, globToRegex, planFiles, blastRadius, type Finding } from './model.ts'
 import { parseRegistry, contractGlobs } from './registry.ts'
 import { carriedIds } from './carry.ts'
 
@@ -73,7 +73,6 @@ export function approvalRefusal(slug: string): string | null {
   return outside.length ? `plan touches a file outside the blast radius: ${outside.join(', ')} (add it to spec.md ## Blast radius or drop it from plan.md ## Files)` : null
 }
 // Plan paths that neither equal a radius entry nor sit under a radius directory (an entry ending in /, or a bare directory path) or glob.
-const normPath = (p: string): string => p.trim().replace(/\\/g, '/').replace(/^(\.\/)+/, '').replace(/:$/, '')
 export function outsideRadius(planPaths: string[], radius: string[]): string[] {
   const entries = radius.map(normPath)
   const inside = (p: string): boolean => entries.some(r => r === p || p.startsWith(r.endsWith('/') ? r : `${r}/`) || (r.includes('*') && globToRegex(r).test(p)))

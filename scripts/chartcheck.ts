@@ -19,7 +19,7 @@ export type ChartFinding = { rule: string; severity: 'block' | 'report'; where: 
 
 const REQ = /\bN?FR-\d+\b/g
 // A requirements-ledger id (FR-4.2, NFR-1.1, G-3) or a PRD acceptance-criterion alias (AC-4.1).
-export const RULE_ID = /\b(?:N?FR-\d+\.\d+|G-\d+|DR-\d+|AC-\d+(?:\.\d+)*)\b/g
+const RULE_ID = /\b(?:N?FR-\d+\.\d+|G-\d+|DR-\d+|AC-\d+(?:\.\d+)*)\b/g
 // The FR or NFR a ledger id belongs to: AC-4.1 and FR-4.2 to FR-4, NFR-2 (or NFR-2.1) to NFR-2; a data rule or G-n to none.
 export const parentOf = (id: string): string | null => /^AC-(\d+)\./.exec(id) ? `FR-${/^AC-(\d+)\./.exec(id)![1]}` : /^(N?FR-\d+)(?:\.\d+)?$/.exec(id)?.[1] ?? null
 const SPRINT_DAYS = 10
@@ -30,6 +30,16 @@ const listField = (text: string, key: string): string[] =>
   fmList(text, key).map(s => s.replace(/\.md$/, '')).filter(s => /^[A-Za-z0-9][\w.-]*$/.test(s))
 // Template prompts are HTML comments: they are never content.
 export const uncomment = (text: string): string => text.replace(/<!--[\s\S]*?-->/g, '')
+// A table row's trimmed cells, outer pipes dropped.
+export const cells = (l: string): string[] => l.trim().replace(/^\|+/, '').replace(/\|+$/, '').split('|').map(c => c.trim())
+// Comments gone, and a `#` line inside a fence (a tree, a shell snippet) cannot end its section.
+const fencedText = (raw: string): string => uncomment(raw.replace(/\r\n/g, '\n')).replace(/^(```|~~~)[^\n]*\n[\s\S]*?^\1/gm, b => b.replace(/^#/gm, '\u200b#'))
+// A PRD with comments blanked line for line (numbers stay those of prd.md), split into lines, and the index its body starts at (after the frontmatter).
+export function prdLines(prd: string): { lines: string[]; start: number } {
+  const text = prd.replace(/\r\n/g, '\n').replace(/<!--[\s\S]*?-->/g, c => c.replace(/[^\n]/g, ''))
+  const fm = /^---\n[\s\S]*?\n---\n/.exec(text)
+  return { lines: text.split('\n'), start: fm ? fm[0].split('\n').length - 1 : 0 }
+}
 export const escapes = (p: string): boolean => path.isAbsolute(p) || p.split(/[\\/]/).includes('..')
 const whole = (v: string | undefined): number | null => (/^\d{1,4}$/.test(v ?? '') ? Number(v) : null)
 
@@ -100,8 +110,8 @@ export function parseCases(text: string): TestCase[] {
 // ---------- the requirements ledger (spec 2026-10-26 PRD fidelity) ----------
 // sprint-N/requirements.md quotes every in-scope sentence of the PRD copy word for word, so a dropped rule is a blocking finding
 // rather than a judgement call: `- <id>[ (<alias>)] [<kind>] prd.md:<line> "<quote>"[ — <reason>]`.
-export type LedgerKind = 'rule' | 'context' | 'answer' | 'out-of-scope'
-export type LedgerRow = { id: string; alias: string | null; kind: LedgerKind; when: string; by: string; line: number; quote: string; reason: string }
+type LedgerKind = 'rule' | 'context' | 'answer' | 'out-of-scope'
+type LedgerRow = { id: string; alias: string | null; kind: LedgerKind; when: string; by: string; line: number; quote: string; reason: string }
 type LedgerLine = LedgerRow | { bad: string } | { unknownKind: string; row: LedgerRow }
 
 // Sections that hold motivation, not requirements; every other section, including ones the person invented, is in scope.
@@ -127,17 +137,14 @@ function readLedgerLine(l: string): LedgerLine | null {
 const ledgerLines = (text: string): LedgerLine[] => uncomment(text.replace(/\r\n/g, '\n')).split('\n').flatMap(l => { const r = readLedgerLine(l); return r ? [r] : [] })
 export const parseLedger = (text: string): LedgerRow[] => ledgerLines(text).flatMap(r => ('id' in r ? [r] : 'row' in r ? [r.row] : []))
 
-// The PRD's in-scope blocks with their first line: a bullet (with its indented continuation lines), a paragraph, or a table body
+// The PRD's in-scope blocks with their first line and last line (`end`): a bullet (with its indented continuation lines), a paragraph, or a table body
 // row (cells joined by " | "). Headings, frontmatter, HTML comments, fenced blocks and table headers are never units; comments
 // are blanked line for line so the numbers stay those of prd.md.
-export const prdUnits = (prd: string): { line: number; text: string }[] => prdBlocks(prd).map(({ line, text }) => ({ line, text }))
 // `allSections`: a person's original PRD, where every section counts (the conversion map accounts for all of it).
 export function prdBlocks(prd: string, o: { allSections?: boolean } = {}): { line: number; end: number; text: string }[] {
-  const text = prd.replace(/\r\n/g, '\n').replace(/<!--[\s\S]*?-->/g, c => c.replace(/[^\n]/g, ''))
-  const lines = text.split('\n')
-  const fm = /^---\n[\s\S]*?\n---\n/.exec(text)
+  const { lines, start } = prdLines(prd)
   const out: { line: number; text: string; end: number }[] = []
-  let i = fm ? fm[0].split('\n').length - 1 : 0
+  let i = start
   let excluded = false
   const isSep = (l: string | undefined): boolean => /^\s*\|[\s|:-]+\|?\s*$/.test(l ?? '') && /-/.test(l ?? '')
   const bullet = /^\s*(?:[-*+]|\d+[.)])\s+/
@@ -152,7 +159,7 @@ export function prdBlocks(prd: string, o: { allSections?: boolean } = {}): { lin
     if (/^\s*\|/.test(l)) {
       i++
       if (isSep(l) || isSep(lines[i])) continue
-      body = l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim()).join(' | ')
+      body = cells(l).join(' | ')
     } else if (bullet.test(l)) {
       const parts = [l.replace(bullet, '')]
       i++
@@ -321,10 +328,10 @@ const asciiDiagram = (body: string): boolean =>
 // a key flow, a tactic for every NFR the PRD defines, and this sprint's row in the history. Pure over text.
 export function architectureProblems(arch: string, prd: string, sprint: number): ChartFinding[] {
   // A `#` line inside a fence (a tree, a shell snippet) must not end its section.
-  const text = uncomment(arch.replace(/\r\n/g, '\n')).replace(/^(```|~~~)[^\n]*\n[\s\S]*?^\1/gm, b => b.replace(/^#/gm, '\u200b#'))
+  const text = fencedText(arch)
   const out: ChartFinding[] = []
   const add = (rule: string, message: string): number => out.push({ rule, severity: 'block', where: 'architecture', message: `architecture.md ${message}` })
-  const rows = (name: string): string[][] => section(text, name).split('\n').filter(l => /^\s*\|/.test(l) && !/^\s*\|[\s|:-]*$/.test(l)).map(l => l.trim().replace(/^\|+/, '').replace(/\|+$/, '').split('|').map(c => c.trim()))
+  const rows = (name: string): string[][] => tableRows(text, name)
   const stack = rows('Technology stack')
   for (const need of ['Language', 'Framework']) if (!stack.some(r => r[0]?.toLowerCase() === need.toLowerCase() && r[1])) add('arch-stack', `## Technology stack has no ${need} row with a Choice: name the real ${need.toLowerCase()} from the PRD ("none (standard library)" when there is no framework)`)
   if (!/^```mermaid/m.test(section(text, 'Architecture diagram'))) add('arch-diagram', 'has no mermaid diagram under ## Architecture diagram: draw the modules, the external systems and the dependency direction')
@@ -340,7 +347,7 @@ export function architectureProblems(arch: string, prd: string, sprint: number):
 }
 
 const tableRows = (text: string, name: string): string[][] =>
-  section(text, name).split('\n').filter(l => /^\s*\|/.test(l) && !/^\s*\|[\s|:-]*$/.test(l)).map(l => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim()))
+  section(text, name).split('\n').filter(l => /^\s*\|/.test(l) && !/^\s*\|[\s|:-]*$/.test(l)).map(cells)
 // Backticks dropped and inner spaces collapsed, so `mobile  app` in a row and mobile app in a case are one name.
 const norm = (s: string): string => s.replace(/`/g, '').replace(/\s+/g, ' ').trim()
 const names = (cell: string): string[] => cell.split(',').map(s => norm(s).toLowerCase()).filter(Boolean)
@@ -378,7 +385,7 @@ export function accessProblems(rules: AccessRule[], slugs: string[], cases: Test
 export function implementationPlanProblems(plan: string, intents: Intent[]): ChartFinding[] {
   const out: ChartFinding[] = []
   const add = (rule: string, where: string, message: string, severity: 'block' | 'report' = 'block'): number => out.push({ rule, severity, where, message: `implementation-plan.md ${message}` })
-  const text = uncomment(plan.replace(/\r\n/g, '\n')).replace(/^(```|~~~)[^\n]*\n[\s\S]*?^\1/gm, b => b.replace(/^#/gm, '\u200b#'))
+  const text = fencedText(plan)
   const by = new Map(intents.map(t => [t.slug, t]))
   const sections = new Map<string, string>()
   // `### <slug>` under `## Intents`; a heading may say more after the slug (`### cart-model (wave 2)`).
@@ -395,8 +402,7 @@ export function implementationPlanProblems(plan: string, intents: Intent[]): Cha
     const missing = [...known].filter(b => !cited.has(b))
     if (missing.length) add('impl-behaviour', t.slug, `### ${t.slug} has no task for ${missing.join(', ')}: every behaviour gets a failing test first`)
   }
-  const lanes = section(text, 'Allocation').split('\n').filter(l => /^\s*\|/.test(l) && !/^\s*\|[\s|:-]*$/.test(l)).slice(1)
-    .map(l => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim()))
+  const lanes = tableRows(text, 'Allocation').slice(1)
   if (!lanes.length) { add('impl-allocation', 'sprint', 'has no `## Allocation` table: one row per lane, its intents in build order'); return out }
   const placed = new Map<string, number>()
   for (const [i, row] of lanes.entries()) {

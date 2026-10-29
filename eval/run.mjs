@@ -28,8 +28,6 @@ export function orderArms(arms, seed, n) {
   return arms.map(a => [rand(), a]).sort((a, b) => a[0] - b[0]).map(([, a]) => a)
 }
 
-export { EVAL_ALLOW, nextRunAllowed, resultsAllowed } from './lib/cli.mjs'
-
 const PHASES = { links: [S2, S3, S7], rules: [S2, S3, S7, S8, S9] }
 const failing = (driver, failAt) => (failAt ? { ...driver, [failAt]: async () => { throw new Error(`injected failure at ${failAt}`) } } : driver)
 

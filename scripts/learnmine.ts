@@ -1,8 +1,7 @@
 // Mining committed evidence for the learning loop (design 2026-10-17): review findings (the /rig:pr reviewer and its security pass) under ## Findings in review.md and waivers. Zero tokens.
 // Only a key seen in at least two distinct changes is a candidate; one occurrence is never a lesson.
-import fs from 'node:fs'
 import path from 'node:path'
-import { read, readJsonl, gitIn, SLUG_RE, skillRef, type Waiver } from './core.ts'
+import { read, readJsonl, gitIn, listChanges, skillRef, type Waiver } from './core.ts'
 import { escapeRe } from './model.ts'
 import type { Lesson } from './learnfile.ts'
 
@@ -28,8 +27,6 @@ const WAIVED_AFTER = 3
 const CATEGORY = /\[category: ([a-z-]+)\]/g
 
 const changesDir = (root: string): string => path.join(root, '.rig', 'changes')
-const slugsOf = (root: string): string[] =>
-  fs.existsSync(changesDir(root)) ? fs.readdirSync(changesDir(root), { withFileTypes: true }).filter(d => d.isDirectory() && SLUG_RE.test(d.name)).map(d => d.name).sort() : []
 const reviewOf = (root: string, slug: string): string => read(path.join(changesDir(root), slug, 'review.md'))
 export const waiversOf = (root: string): Waiver[] => readJsonl<Waiver>(path.join(root, '.rig', 'waivers.jsonl')).filter(w => typeof w.slug === 'string' && typeof w.sensor === 'string')
 
@@ -59,7 +56,7 @@ export function mineCandidates(root: string): Candidate[] {
 export function shippedChanges(root: string): Shipped[] {
   const waivers = waiversOf(root)
   const out: Shipped[] = []
-  for (const slug of slugsOf(root)) {
+  for (const slug of listChanges(root)) {
     const log = gitIn(root, ['log', '--diff-filter=A', '--format=%cI', '--', `.rig/changes/${slug}/pr.md`])
     const date = log?.split('\n').filter(Boolean).pop()?.slice(0, 10)
     if (!date) continue

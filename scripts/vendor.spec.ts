@@ -1,4 +1,4 @@
-// Standalone mode: `vendor --standalone` (alias --cloud) copies the whole harness into a project, so it needs no plugin.
+// Standalone mode: `vendor --standalone` copies the whole harness into a project, so it needs no plugin.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
@@ -21,11 +21,11 @@ const vendored = (repo: string, args: string[], input?: string, human = '') => {
   return { code: r.status, stdout: r.stdout, stderr: r.stderr }
 }
 
-test('vendor --cloud writes project skills, agents and hooks with no plugin references left', () => {
+test('vendor --standalone writes project skills, agents and hooks with no plugin references left', () => {
   const repo = makeRepo()
   sdlc(repo, ['init'])
   write(repo, '.claude/settings.json', JSON.stringify({ model: 'claude-sonnet-5-5', hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo mine' }] }] } }))
-  assert.equal(sdlc(repo, ['vendor', '--cloud']).code, 0)
+  assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
   const skills = walk(path.join(repo, '.claude/skills')).filter(f => f.endsWith('SKILL.md'))
   const agents = walk(path.join(repo, '.claude/agents'))
   assert.ok(skills.some(f => f.endsWith('rig-start/SKILL.md')) && skills.length === 16, `${skills.length} skills`)
@@ -44,27 +44,27 @@ test('vendor --cloud writes project skills, agents and hooks with no plugin refe
   const stop = JSON.stringify(settings.hooks.Stop)
   assert.match(stop, /echo mine/, 'the project\'s own hooks are kept')
   assert.match(stop, /\$CLAUDE_PROJECT_DIR\/\.rig\/bin\/sdlc\.ts\\?" hook stop/)
-  assert.equal(sdlc(repo, ['vendor', '--cloud']).code, 0)
+  assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
   const again = JSON.parse(fs.readFileSync(path.join(repo, '.claude/settings.json'), 'utf8'))
   assert.equal(again.hooks.Stop.length, settings.hooks.Stop.length, 're-running replaces sdlc hooks instead of duplicating them')
 })
 
-test('vendor --cloud rewrites the CLAUDE.md routing line to the vendored command and leaves the rest alone', () => {
+test('vendor --standalone rewrites the CLAUDE.md routing line to the vendored command and leaves the rest alone', () => {
   const repo = makeRepo()
   sdlc(repo, ['init'])
   const claude = '# App\n\nsdlc routes all work in this repo: start with /rig:start; use superpowers skills only when an sdlc skill names one.\n\nSee /rig:plan notes.\n'
   write(repo, 'CLAUDE.md', claude)
-  assert.equal(sdlc(repo, ['vendor', '--cloud']).code, 0)
+  assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
   assert.equal(fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8'), claude.replace('start with /rig:start;', 'start with /rig-start;'))
 })
 
-test('vendor --cloud names the vendored /rig-x commands in the README rig block and its template, and leaves the rest alone', () => {
+test('vendor --standalone names the vendored /rig-x commands in the README rig block and its template, and leaves the rest alone', () => {
   // 2026-10-25 shop_app run: CLAUDE.md said /rig-start but the README block said /rig:start, which a standalone copy does not answer to.
   const repo = makeRepo()
   sdlc(repo, ['init'])
   const block = '<!-- rig:begin (written by /rig:init) -->\nStart with `/rig:start "<idea>"`, then `/rig:approve <slug>`.\n<!-- rig:end -->'
   write(repo, 'README.md', `# App\n\nRun /rig:start outside the block.\n\n${block}\n`)
-  assert.equal(sdlc(repo, ['vendor', '--cloud']).code, 0)
+  assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
   const readme = fs.readFileSync(path.join(repo, 'README.md'), 'utf8')
   assert.match(readme, /Run \/rig:start outside the block/, 'text outside the markers is untouched')
   assert.match(readme, /Start with `\/rig-start "<idea>"`, then `\/rig-approve <slug>`/)
@@ -74,13 +74,13 @@ test('vendor --cloud names the vendored /rig-x commands in the README rig block 
   assert.doesNotMatch(tpl, /\/rig:[a-z]/)
 })
 
-test('vendor --cloud names the /rig-x commands in the docs/prd README and template init wrote', () => {
+test('vendor --standalone names the /rig-x commands in the docs/prd README and template init wrote', () => {
   // init --stack writes docs/prd/ before init --full vendors, so its copies still say /rig:chart until vendor routes them.
   const repo = makeRepo()
   sdlc(repo, ['init'])
   write(repo, 'docs/prd/README.md', 'Run `/rig:chart <n> @docs/prd/sprint-<n>/prd.md`.\n')
   write(repo, 'docs/prd/prd-template.md', 'converted by /rig:chart\n')
-  assert.equal(sdlc(repo, ['vendor', '--cloud']).code, 0)
+  assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
   for (const f of ['docs/prd/README.md', 'docs/prd/prd-template.md']) {
     const text = fs.readFileSync(path.join(repo, f), 'utf8')
     assert.match(text, /\/rig-chart/, f)
@@ -91,7 +91,7 @@ test('vendor --cloud names the /rig-x commands in the docs/prd README and templa
 test('the vendored copy points its skills at .rig/bin and the session start names the active change', () => {
   const repo = makeRepo()
   sdlc(repo, ['init'])
-  sdlc(repo, ['vendor', '--cloud'])
+  sdlc(repo, ['vendor', '--standalone'])
   vendored(repo, ['new', 'small-thing', '--type', 'chore'])
   // A vendored skill is registered under its folder name, so the vendored checker names it /rig-start (2026-10-16 pilot).
   assert.match(vendored(repo, ['status']).stdout, /next: \/rig-start small-thing/)
@@ -395,7 +395,7 @@ test('every module a script imports is vendored', () => {
 test('vendor --standalone writes a manifest of the harness files', () => {
   const repo = makeRepo()
   sdlc(repo, ['init'])
-  assert.equal(sdlc(repo, ['vendor', '--cloud']).code, 0)
+  assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
   const m = JSON.parse(fs.readFileSync(path.join(repo, '.rig/bin/MANIFEST.json'), 'utf8')) as { version: string; files: Record<string, string> }
   assert.equal(m.version, fs.readFileSync(path.join(repo, '.rig/bin/VERSION'), 'utf8').trim())
   const sha = (f: string): string => crypto.createHash('sha256').update(fs.readFileSync(path.join(repo, f), 'utf8')).digest('hex').slice(0, 16)
@@ -436,15 +436,15 @@ test('init on a current install is unchanged', () => {
   assert.doesNotMatch(r.stdout, /upgrade/)
 })
 
-test('a plain vendor after vendor --cloud keeps the standalone manifest entries, and a second --cloud is byte-identical', () => {
+test('a plain vendor after vendor --standalone keeps the standalone manifest entries, and a second --standalone is byte-identical', () => {
   const repo = makeRepo()
-  assert.equal(sdlc(repo, ['vendor', '--cloud']).code, 0)
+  assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
   const file = path.join(repo, '.rig/bin/MANIFEST.json')
   const first = fs.readFileSync(file, 'utf8')
   const keys = Object.keys(JSON.parse(first).files)
   assert.ok(keys.some(k => k.startsWith('.claude/skills/rig-')) && keys.some(k => k.startsWith('.claude/agents/rig-')))
   assert.equal(sdlc(repo, ['vendor']).code, 0)
   assert.equal(Object.keys(JSON.parse(fs.readFileSync(file, 'utf8')).files).length, keys.length)
-  assert.equal(sdlc(repo, ['vendor', '--cloud']).code, 0)
+  assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
   assert.equal(fs.readFileSync(file, 'utf8'), first)
 })

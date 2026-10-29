@@ -2,16 +2,13 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
-import { execFileSync } from 'node:child_process'
+import { makeRepo, gitIn } from './testkit.ts'
 import { changeHistory, breaker, type ChangeRow } from './reverts.ts'
 
 function repo(): { dir: string; git: (...a: string[]) => string; ship: (slug: string, body: string | null, subject?: string) => string } {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-reverts-'))
-  const git = (...a: string[]): string => execFileSync('git', a, { cwd: dir, encoding: 'utf8' }).trim()
-  git('init', '-q', '-b', 'main'); git('config', 'user.email', 'e@x'); git('config', 'user.name', 't')
-  fs.writeFileSync(path.join(dir, 'README.md'), 'x\n'); git('add', '-A'); git('commit', '-qm', 'init')
+  const dir = makeRepo()
+  const git = (...a: string[]): string => gitIn(dir, ...a)
   const ship = (slug: string, body: string | null, subject = `ship ${slug}`): string => {
     const d = path.join(dir, '.rig', 'changes', slug)
     fs.mkdirSync(d, { recursive: true })

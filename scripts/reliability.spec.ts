@@ -5,9 +5,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
-import { makeRepo, sdlc, hook, write } from './testkit.ts'
+import { makeRepo, sdlc, hook, write, SCRIPT } from './testkit.ts'
 
-const SCRIPT = path.join(import.meta.dirname, 'sdlc.ts')
 const runHook = (repo: string, name: string, input: object): Promise<void> => new Promise(resolve => {
   const p = spawn('node', ['--disable-warning=ExperimentalWarning', SCRIPT, 'hook', name], { cwd: repo, env: { ...process.env, CLAUDE_PROJECT_DIR: repo }, stdio: ['pipe', 'ignore', 'ignore'] })
   p.on('close', () => resolve())

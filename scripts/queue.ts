@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { ROOT, SLUG_RE, exists, read, out, fail, git, skillRef, type Args } from './core.ts'
-import { planFiles } from './model.ts'
+import { planFiles, normPath } from './model.ts'
 import { activeSlug, status } from './lifecycle.ts'
 import { loadConfig } from './check.ts'
 import { treeStamp } from './stamp.ts'
@@ -31,15 +31,14 @@ export function worktrees(): { dir: string; branch: string }[] {
 }
 
 // Two plans overlap on a file when one names it, or names a directory holding it (with or without a trailing slash).
-const norm = (p: string): string => p.trim().replace(/\\/g, '/').replace(/^(\.\/)+/, '')
-const holds = (a: string, b: string): boolean => { const x = norm(a).replace(/\/$/, ''), y = norm(b).replace(/\/$/, ''); return x === y || y.startsWith(`${x}/`) || x.startsWith(`${y}/`) }
+const holds = (a: string, b: string): boolean => { const x = normPath(a).replace(/\/$/, ''), y = normPath(b).replace(/\/$/, ''); return x === y || y.startsWith(`${x}/`) || x.startsWith(`${y}/`) }
 export function overlaps(rows: { slug: string; worktree: string; files: string[] }[]): Overlap[] {
   const found = new Map<string, Set<string>>()
   // By position, not by slug: two instances may both create a change with the same name.
   for (const [i, x] of rows.entries()) for (const y of rows.slice(i + 1)) {
     if (x.worktree === y.worktree) continue
     for (const f of x.files) for (const g of y.files) if (holds(f, g)) {
-      const key = norm(f).length >= norm(g).length ? norm(f) : norm(g)
+      const key = normPath(f).length >= normPath(g).length ? normPath(f) : normPath(g)
       found.set(key, (found.get(key) ?? new Set()).add(`${x.slug} (${path.basename(x.worktree)})`).add(`${y.slug} (${path.basename(y.worktree)})`))
     }
   }
