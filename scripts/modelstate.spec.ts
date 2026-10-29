@@ -133,3 +133,16 @@ test('transcriptContext sums the last assistant usage', () => {
   assert.equal(transcriptContext(path.join(d, 'none.jsonl')), null)
   assert.equal(transcriptContext(undefined), null)
 })
+
+test('the context and model are read back only to the last compaction, and never from a <synthetic> row', () => {
+  const f = path.join(tmp(), 't.jsonl')
+  const a = (model: string, read: number): string => line({ type: 'assistant', message: { model, usage: { input_tokens: 1, cache_read_input_tokens: read } } })
+  const boundary = line({ type: 'system', subtype: 'compact_boundary' })
+  fs.writeFileSync(f, a('claude-opus-5-5', 150000) + boundary)
+  assert.equal(transcriptContext(f), null)
+  fs.writeFileSync(f, a('claude-opus-5-5', 150000) + boundary + a('claude-opus-5-5', 20000))
+  assert.equal(transcriptContext(f), 20001)
+  fs.writeFileSync(f, a('claude-sonnet-5-5', 60000) + a('<synthetic>', 0))
+  assert.equal(transcriptContext(f), 60001)
+  assert.equal(transcriptModel(f), 'claude-sonnet-5-5')
+})

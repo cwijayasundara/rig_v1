@@ -53,18 +53,18 @@ export function maskSecrets(text: string): string {
 export const section = (text: string, heading: string): string =>
   new RegExp(`^##\\s+${heading}\\s*\\n([\\s\\S]*?)(?=^##\\s|(?![\\s\\S]))`, 'm').exec(text)?.[1] ?? ''
 
-// The paths a section lists: each bullet is split on commas, a segment counts by its first token (backticked or bare, after an optional
-// "Create:"-style label, punctuation stripped) when that token looks like a path (a / or an extension), so prose ("No existing test ...",
-// "which this change ...") is skipped. A non-bullet line counts only when the whole line is one path.
-const isPathLike = (t: string): boolean => /\/|\.\w+$/.test(t)
+// The paths a section lists: a bullet is split on commas and spaces and every path-like token counts (a / or a short extension, after an
+// optional "Create:"-style label, punctuation stripped; e.g. and i.e. do not), so prose ("No existing test ...") is skipped; over-matching is
+// caught by approve --check. A backticked token leading its comma segment counts as written. A non-bullet line counts only when its first
+// token is a path and nothing but a parenthesis or a dash follows it.
+const isPathLike = (t: string): boolean => /\/|\.[A-Za-z0-9]{1,5}$/.test(t) && !/^(e\.g|i\.e|etc)$/i.test(t)
 const bulletPaths = (body: string): string[] => body.split('\n').flatMap(l => {
   const b = /^\s*[-*]\s+(.*)$/.exec(l)
-  if (!b) { const t = /^\s*`([^`\s]+)`\s*$/.exec(l)?.[1] ?? l.trim(); return t && !/\s/.test(t) && (isPathLike(t) || t !== l.trim()) ? [t] : [] }
-  return (b[1] ?? '').replace(/^[A-Za-z]+:\s+/, '').split(',').flatMap(seg => {
-    const m = /^\s*\(?\s*(?:`([^`\s]+)`|([^`\s]+))/.exec(seg)
-    const t = m?.[1] ?? (m?.[2] ?? '').replace(/[.,;:)]+$/, '')
-    return t && (m?.[1] || isPathLike(t)) ? [t] : []
-  })
+  if (!b) { const m = /^\s*(?:`([^`\s]+)`|([^`\s]+))(.*)$/.exec(l), t = m?.[1] ?? (m?.[2] ?? '').replace(/[.,;:)]+$/, ''), rest = (m?.[3] ?? '').trim(); return t && (!rest || /^(\(|—|–|- )/.test(rest)) && (m?.[1] || isPathLike(t)) ? [t] : [] }
+  return (b[1] ?? '').replace(/^[A-Za-z]+:\s+/, '').split(',').flatMap(seg => seg.trim().split(/\s+/).flatMap((raw, i) => {
+    const bt = /^\(?`([^`\s]+)`/.exec(raw)?.[1], t = bt ?? raw.replace(/^\(/, '').replace(/[.,;:)]+$/, '')
+    return t && (bt ? i === 0 || isPathLike(t) : isPathLike(t)) ? [t] : []
+  }))
 })
 
 // The files a plan says it will touch (its ## Files section), as pr.ts reads them.
@@ -79,6 +79,7 @@ export const blastRadius = (spec: string): string[] | null => (/^##\s+Blast radi
 // Questions an artifact still leaves open: entries under `## Open questions` other than "none", and any
 // "Q<n> ... still open / is open / unresolved" line elsewhere. Approval needs none, so a build never stalls on one.
 export function openQuestions(text: string): string[] {
+  text = text.replace(/<!--[\s\S]*?-->/g, '')
   const listed = section(text, 'Open questions').split('\n').map(l => l.replace(/^\s*[-*]\s*/, '').trim()).filter(l => l && !/^none\.?$/i.test(l))
   const prose = text.split('\n').filter(l => /\bQ\d+\b.*\b(?:still open|is open|unresolved)\b/i.test(l)).map(l => l.trim())
   return [...new Set([...listed, ...prose])]

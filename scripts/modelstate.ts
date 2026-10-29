@@ -49,7 +49,7 @@ export function recordResolved(file: string, id: string, resolved: string): void
 }
 
 // The last assistant message of a Claude Code transcript (JSONL) that satisfies `want`, read from the file's tail only.
-function lastAssistant<T>(transcriptPath: string | undefined, key: string, want: (m: Record<string, unknown>) => T | null): T | null {
+function lastAssistant<T>(transcriptPath: string | undefined, key: string, want: (m: Record<string, unknown>) => T | null, stopAtCompact = false): T | null {
   if (!transcriptPath) return null
   let text: string
   try {
@@ -63,21 +63,22 @@ function lastAssistant<T>(transcriptPath: string | undefined, key: string, want:
     } finally { fs.closeSync(fd) }
   } catch { return null }
   for (const l of text.split('\n').reverse()) {
+    if (stopAtCompact && l.includes('"compact_boundary"')) return null
     if (!l.includes(key)) continue
     try {
       const v = JSON.parse(l) as { type?: string; message?: Record<string, unknown> }
-      const got = v.type === 'assistant' && v.message ? want(v.message) : null
+      const got = v.type === 'assistant' && v.message && v.message.model !== '<synthetic>' ? want(v.message) : null
       if (got !== null) return got
     } catch { /* the first line of a tail is usually cut */ }
   }
   return null
 }
 export const transcriptModel = (transcriptPath: string | undefined): string | null => lastAssistant(transcriptPath, '"model"', m => (typeof m.model === 'string' && m.model ? m.model : null))
-// Tokens the last assistant message read: input plus cache read plus cache creation. How full the context is.
+// Tokens the last assistant message read: input plus cache read plus cache creation. How full the context is; a compaction resets it.
 export const transcriptContext = (transcriptPath: string | undefined): number | null => lastAssistant(transcriptPath, '"usage"', m => {
   const u = m.usage as Record<string, unknown> | undefined
   return u ? ['input_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens'].reduce((n, k) => n + (typeof u[k] === 'number' ? u[k] : 0), 0) : null
-})
+}, true)
 
 export function pinnedModel(root: string): string | null {
   for (const f of ['.claude/settings.local.json', '.claude/settings.json']) {
