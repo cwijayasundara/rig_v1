@@ -66,7 +66,7 @@ export function approvalRefusal(slug: string): string | null {
   const open = APPROVED.flatMap(n => openQuestions(read(file(slug, n))).map(q => `${n}: ${q}`))
   if (open.length) return `resolve the open question(s) first: answer each, or record the default under ## Decisions, and leave "## Open questions" as none:\n${open.map(q => `  - ${q}`).join('\n')}`
   const source = frontmatter(read(file(slug, 'intent.md'))).data.source
-  const unsettled = source ? carriedIds(read(path.join(ROOT, source))).filter(id => !new RegExp(`\\b${id}\\b`).test(read(file(slug, 'spec.md')))) : []
+  const unsettled = source ? carriedIds(path.join(ROOT, source)).filter(id => !new RegExp(`\\b${id}\\b`).test(read(file(slug, 'spec.md')))) : []
   if (unsettled.length) return `carried item(s) not settled in spec.md: ${unsettled.join(', ')} (put each in a behaviour or under ## Out of scope with the person's reason)`
   const radius = blastRadius(read(file(slug, 'spec.md')))
   const outside = radius ? outsideRadius(planFiles(read(file(slug, 'plan.md'))), radius) : []

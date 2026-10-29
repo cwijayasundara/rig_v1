@@ -238,7 +238,7 @@ export function chartReport(n: number): string {
     `chart-${n}: ${chartState(n).state}`,
     `requirements ${ids.length}: with an intent ${ids.filter(id => intents.some(i => i.prd.includes(id))).length}, with a test case ${ids.filter(id => inCase(id).length).length}`,
     `intents ${intents.length} (${days} engineer-days): started ${started}, shipped ${shipped}`,
-    `carried in ${intents.reduce((c, i) => c + carriedIds(read(i.file)).length, 0)}, added during changes ${intents.reduce((c, i) => c + section(read(i.file), 'Added during the change').split('\n').filter(l => /^\s*[-*]\s/.test(l)).length, 0)}, backlog open ${read(path.join(PRODUCT, 'backlog.md')).split('\n').filter(l => /^\s*[-*]\s+\[open\]/.test(l)).length}`,
+    `carried in ${intents.reduce((c, i) => c + carriedIds(i.file).length, 0)}, added during changes ${intents.reduce((c, i) => c + section(read(i.file), 'Added during the change').split('\n').filter(l => /^\s*[-*]\s/.test(l)).length, 0)}, backlog open ${read(path.join(PRODUCT, 'backlog.md')).split('\n').filter(l => /^\s*[-*]\s+\[open\]/.test(l)).length}`,
     ...chain,
   ].join('\n')
 }
