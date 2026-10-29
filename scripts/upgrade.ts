@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { ROOT, SDLC, SENSORS_PATH, IS_VENDORED, PLUGIN_ROOT, skillRef, exists, read, out, fail, sha, git, sanctionWrites, type Args } from './core.ts'
+import { ROOT, SDLC, SENSORS_PATH, IS_VENDORED, PLUGIN_ROOT, skillRef, exists, read, out, fail, sha, git, sanctionWrites, ensureGitignore, type Args } from './core.ts'
 import { isObject } from './model.ts'
 import { isRegistryShape } from './registry.ts'
 import { loadPacks, PACKS_DIR } from './stackpacks.ts'
@@ -189,6 +189,10 @@ function applyUpgrade(args: Args): void {
     const files = Object.fromEntries([...plan.next].map(([rel, text]) => [rel, sha(text)]).sort(([a], [b]) => (a as string).localeCompare(b as string, 'en')))
     put(MANIFEST, JSON.stringify({ version: plan.to, files }, null, 2) + '\n')
   }
+  // An older .rig/.gitignore lacks the entries later versions added (changes/*/pr-outline.md stayed untracked in shop_app, 2026-10-28).
+  const ignoreBefore = read(path.join(SDLC, '.gitignore'))
+  ensureGitignore()
+  if (read(path.join(SDLC, '.gitignore')) !== ignoreBefore) written.push('.rig/.gitignore')
   sanctionWrites(written)
   out(`upgrade ${plan.from || 'unversioned'} -> ${plan.to} applied on ${branch}\n${written.length} files written${notes.length ? '\n' + notes.join('\n') : ''}`)
   if (isRegistryShape(read(SENSORS_PATH))) {

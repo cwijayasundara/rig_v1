@@ -253,6 +253,6 @@ test('pr leaves no uncommitted file and ships the sprint plan as it will read af
 test('a local-only pr names the merge and the next ready intent, and starts nothing', () => {
   sprintShip()
   const r = prA()
-  assert.match(r.stdout, /Next: merge sdlc\/alpha into main, then \/rig[:-]start \.rig\/product\/sprints\/sprint-1\/intents\/beta\.md/)
+  assert.match(r.stdout, /Next: merge sdlc\/alpha into main, then \/rig[:-]start beta\b/)
   assert.ok(!fs.existsSync(path.join(repo, '.rig/changes/beta')))
 })

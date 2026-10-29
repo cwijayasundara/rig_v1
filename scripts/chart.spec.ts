@@ -612,7 +612,7 @@ test('chart plan writes plan.md with waves, a text graph, a Mermaid graph and wh
   assert.match(text, /\[implementation-plan\.md\]\(implementation-plan\.md\)\. Unassigned: alpha, beta, gamma/)
   assert.match(text, /alpha ○ ready\n└─ beta ✖ blocked\n   └─ gamma ✖ blocked  \(also after: alpha\)/)
   assert.match(text, /graph LR[\s\S]*n_alpha --> n_beta[\s\S]*n_beta --> n_gamma/)
-  assert.match(text, /## Next up\n\n[\s\S]*- `\/rig:start \.rig\/product\/sprints\/sprint-1\/intents\/alpha\.md`/)
+  assert.match(text, /## Next up\n\n[\s\S]*- `\/rig:start alpha`/)
 })
 
 test('regenerating the plan does not make an approved chart stale', () => {

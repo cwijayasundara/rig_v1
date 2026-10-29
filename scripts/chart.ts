@@ -253,7 +253,7 @@ export function planRows(n: number, assumeShipped?: string | string[]): PlanRow[
   }))
 }
 export function sprintPlan(n: number, assumeShipped?: string | string[]): string {
-  return planText(n, planRows(n, assumeShipped), { chart: chartState(n).state, startCmd: slug => `${skillRef('start')} ${intentRel(n, slug)}` })
+  return planText(n, planRows(n, assumeShipped), { chart: chartState(n).state, startCmd: slug => `${skillRef('start')} ${slug}` })
 }
 export function writePlan(n: number, assumeShipped?: string | string[]): string {
   fs.mkdirSync(sprintDir(n), { recursive: true })
@@ -264,5 +264,5 @@ export function writePlan(n: number, assumeShipped?: string | string[]): string 
 export function readyAfter(slug: string): string[] {
   const n = intentOf(slug)?.sprint
   if (typeof n !== 'number') return []
-  return planRows(n, slug).filter(r => r.status === 'ready').map(r => `${skillRef('start')} ${intentRel(n, r.slug)}`)
+  return planRows(n, slug).filter(r => r.status === 'ready').map(r => `${skillRef('start')} ${r.slug}`)
 }

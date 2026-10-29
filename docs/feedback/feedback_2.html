@@ -1,0 +1,68 @@
+my observations after running the 2 sprints with the new RIG:
+superpowers plugin should be suggested during /rig:init. If rejected during init it should not throw errors (skill not found), just warnings
+/rig:chart could work with one argument or even without arguments. It should be able to check which sprint number is next and if a new prd document was added. It works almost this way most of the time but it is model's initiative.
+Probably needs some housekeeping:
+PR deliberately excludes pr-outline.md from commits since its content gets embedded into pr-body.md, which is why those files pile up untracked. These are just leftover scratch files the harness doesn't clean up.
+Dashboard shows: next run /rig-start .rig/product/sprints/sprint-1/intents/remove-items.md - long path instead of only slug
+/rig:start asks a lot of questions - see report:
+"
+Sprint 0–1 Session Report
+Claude Code sessions in this repo, 28–29 October 2026: what each built, how long it took and what it cost.
+
+9
+Sessions
+9h 50m
+Wall time
+3h 18m
+Active time
+$34.54
+Estimated cost
+Sprint 0
+28 October 2026 · 6 sessions · 4h 27m wall · 1h 56m active · $20.12
+
+What was built	Wall time	Active time	Models	Est. cost	/rig-start questions	Bugs
+/rig:init	2m	2m	Sonnet 5.5	$0.44	—	
+chart-0, sprint-0-greenfield.md added	36m	24m	Opus 5.5
++ Sonnet 5.5	$6.10	—	
+walking-skeleton *	52m	19m	Sonnet 5.5
++ Opus 5.5	$2.64	4	
+widen-lint *	25m	17m	Sonnet 5.5
++ Opus 5.5	$1.73	2	
+cart-store	1h 50m	12m	Sonnet 5.5
++ Opus 5.5	$3.34	5	
+Two cart commands run at the same time lose items, and both can report the same new id (20 parallel adds left 8 items).
+PRD said "ids are never reused" and nothing about concurrency; chart answered "last-writer-wins" (ADR 0002), and the intent said "do not add file locking".
+A symlinked CART_FILE is replaced by a regular file, so the link's target stops being updated.
+PRD said "write to a temp file, then rename"; chart (ADR 0002) kept the rename as is, and no spec or review covered a symlinked cart file.
+add-item	23m	23m	Sonnet 5.5
++ Opus 5.5	$2.45	3	
+list-items †	19m	19m	Sonnet 5.5
++ Opus 5.5	$3.42	4	
+Total (6 sessions, 7 slugs)	4h 27m	1h 56m		$20.12	18	2
+* Split estimate. walking-skeleton and widen-lint ran in one session (1h 17m wall, 36m active, $4.37). It is split at the walking-skeleton merge into main (15:20 CET). Each API call is costed to the slug whose window it falls in, and each counted active-time gap to the slug of the event that ends it. Rounding is balanced so the two rows add up exactly to the session totals.
+† The list-items session stayed open overnight. Its wall time counts only the two stretches of work: the build through the merge on 28 October (15m) and the deletion of leftover pr-outline.md files the next morning (4m). The raw first-to-last span is 14h 53m.
+Six sessions with no commit in history are excluded ($3.19 in all): three /rig:init attempts before the one that stuck (one a discarded Python scaffold), and three list-items false starts while the superpowers plugin was installed, then disabled.
+Sessions that only ran /clear (no cost) are excluded.
+Bugs come from the adversarial test run against both PRDs (29 October), keeping only findings as severe as the shopping_cart_app_v1_b1 report's bugs or worse. That report's three loader bugs (reused, duplicate and negative ids) do not occur here: src/store.js rejects each as a corrupt file (exit 3). Each bug is placed on the slug that wrote the code, with the step where it most likely got in.
+Bugs 1 and 2 are rig:chart, in src/store.js save() (commit 2bd872f). For bug 1, the chart answered the concurrency question as "last-writer-wins for this single-user local CLI; revisit if concurrent use appears" (sprint 0 prd.md, ADR 0002: "last rename wins; accepted"). The build met its spec. The PRD's "ids are never reused" still breaks from the user's side. For bug 2, the cart-store review hardened the temp path against a planted symlink but never considered the cart file itself being a symlink.
+Sprint 1
+29 October 2026 · 3 sessions · 5h 23m wall · 1h 22m active · $14.42
+
+What was built	Wall time	Active time	Models	Est. cost	/rig-start questions	Bugs
+chart-1, sprint-1-brownfield.md added	2h 47m	41m	Sonnet 5.5
++ Opus 5.5	$8.76	—	
+remove-items	2h 21m	26m	Sonnet 5.5
++ Opus 5.5	$3.68	2	
+update-item	15m	15m	Sonnet 5.5	$1.98	0	
+cart update 2 --name --json renames the item to --json and exits 0 (also --help, --version).
+PRD said only "--name <s>"; chart wrote "the next argument is always its value (--name --qty gives --qty)" and tested it only where a stray positional then fails.
+Total (3 sessions)	5h 23m	1h 22m		$14.42	2	1
+Sessions that only ran /clear are excluded.
+Bug 3 is rig:chart, built in update-item (commit 39712f1, src/cli/args.js). It started in sprint 0: the add-item code review (amendment A1) made --price and --qty take the next argument whatever it is, which is harmless there because --json then fails as a price or qty. The sprint 1 chart extended this to --name, where any text is a valid name. The chart review noted that "no behaviour states either outcome" (chart-review.md), so B24 and B25 were added. B25 covers only --name --qty 3, which fails because 3 is left over. A boolean option after --name leaves nothing over, so the update succeeds. The build met its spec.
+Method
+Wall time runs from a session's first event to its last. Active time adds up only gaps of 5 minutes or less between events, so idle time is excluded.
+Cost is an estimate computed from transcript token counts, subagents included, at list prices per million tokens. Sonnet 5.5: $2 input, $10 output, $0.20 cache read, $2.50 cache write. Opus 5.5: $4 input, $20 output, $0.20 cache read, $5 cache write.
+/rig-start questions counts the clarifying questions put to the person while /rig-start (or /rig:start) ran, from the command to the next slash command or skill. A question is one asked with the question tool or one numbered question in a message; a question asked in text and then again with the tool counts once. The opening "say a number" pick of the intent is not counted. — marks rows where /rig-start did not run.
+Slugs come from the sdlc/* and rig/* branches in git history, matched to sessions by commit time.
+The sessions that produced this report (the first version and this update) are excluded."
+about /rig:start asking more questions - a total of 20 questions were asked over the 2 sprints. During the previous test of the two sprints only 1 (one) question was asked. Looks like decision making shifted from BA to developer
