@@ -1,8 +1,10 @@
-// Six finished changes on the shop, five with one seeded defect (the last is unrequested behaviour, an `unmapped` finding) and one clean control, for the clean-context review eval (2.2).
+// Finished changes on the shop for the review eval: easy seeded defects (2.2), hard ones (`hard: true`: cross-file, a missed edge case,
+// a weakened test, stale state) and clean controls, some baited to invite findings against hypothetical concerns (verification evidence 1b).
 // Each case lists the files it changes as edits over the shop base (tests/e2e/fixtures/shop + remove), the change's intent, spec and plan,
 // the builder's notes (the rationale a builder holds in its own context, which is what a same-context review inherits), and how a finding
-// is matched to the defect: it must name the defect's file and match `re`.
+// is matched to the defect: it must name one of the defect's files (`file`, a string or a list) and match `re`.
 const edit = (from, to) => text => { if (!text.includes(from)) throw new Error(`seed edit did not apply: ${from.slice(0, 40)}`); return text.replace(from, to) }
+const all = (...edits) => text => edits.reduce((t, e) => e(t), text)
 
 export const CASES = [
   {
@@ -60,5 +62,74 @@ export const CASES = [
     newFiles: { 'test/has.test.js': "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\nimport { Catalog } from '../src/catalog/products.js'\n\ntest('B9 has tells whether a SKU is in the catalog', () => {\n  const c = new Catalog()\n  c.add({ sku: 'TEA-001', name: 'Green tea', priceCents: 450 })\n  assert.equal(c.has('TEA-001'), true)\n  assert.equal(c.has('NOPE-999'), false)\n})\n" },
     notes: 'Added Catalog.has to avoid duplicate lookups, with a test, and clear() while I was there: handy for tests.',
     defects: [{ id: 'unmapped-clear', file: 'src/catalog/products.js', re: /\[category: unmapped\][^\n]*\bclear\b/i }],
+  },
+  {
+    id: 'case-insensitive-sku', slug: 'sku-any-case', hard: true,
+    intent: 'Shoppers type SKUs in any case; accept them.',
+    spec: '## Behaviours\n- B2: the cart sums quantities and prices from the catalog; adding a SKU again adds to its quantity.\n- B5: the cart removes a whole line and throws for an absent SKU.\n- B10: catalog lookups ignore the case of the SKU.',
+    plan: '## Files\n- src/catalog/products.js\n- test/sku-case.test.js\n\n## Tests\n- B10: test/sku-case.test.js\n\n## Contracts\nnone',
+    edits: { 'src/catalog/products.js': edit('    const p = this.#products.get(sku)', '    const p = this.#products.get(String(sku).toUpperCase())') },
+    newFiles: { 'test/sku-case.test.js': "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\nimport { Catalog } from '../src/catalog/products.js'\n\ntest('B10 catalog lookups ignore SKU case', () => {\n  const c = new Catalog()\n  c.add({ sku: 'TEA-001', name: 'Green tea', priceCents: 450 })\n  assert.equal(c.get('tea-001').sku, 'TEA-001')\n})\n" },
+    notes: 'Lookups now upper-case the SKU, so the cart accepts any case through catalog.get. Small, contained change in the catalog.',
+    // The cart keys its lines by the SKU as typed: 'tea-001' then 'TEA-001' makes two lines (B2), and remove('TEA-001') misses 'tea-001' (B5).
+    defects: [{ id: 'cart-lines-keyed-by-raw-sku', file: ['src/cart/cart.js', 'src/catalog/products.js'], re: /duplicate|separate|two lines|second line|B2|B5|remove|normali[sz]|keyed|as typed|original case/i }],
+  },
+  {
+    id: 'set-qty-edges', slug: 'cart-set-qty', hard: true,
+    intent: 'Let shoppers change a line quantity in place.',
+    spec: '## Behaviours\n- B10: Cart.setQty(sku, qty) sets a line\'s quantity; qty 0 removes the line; an absent SKU, a negative or a non-integer qty throws.',
+    plan: '## Files\n- src/cart/cart.js\n- test/set-qty.test.js\n\n## Tests\n- B10: test/set-qty.test.js\n\n## Contracts\nnone',
+    edits: { 'src/cart/cart.js': edit('  remove(sku) {', '  setQty(sku, qty) {\n    if (!this.#lines.has(sku)) throw new Error(`sku not in cart: ${sku}`)\n    this.#lines.set(sku, qty)\n  }\n\n  remove(sku) {') },
+    newFiles: { 'test/set-qty.test.js': "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\nimport { Catalog } from '../src/catalog/products.js'\nimport { Cart } from '../src/cart/cart.js'\n\ntest('B10 setQty sets a line quantity and throws for an absent SKU', () => {\n  const c = new Catalog()\n  c.add({ sku: 'TEA-001', name: 'Green tea', priceCents: 450 })\n  const cart = new Cart(c)\n  cart.add('TEA-001')\n  cart.setQty('TEA-001', 5)\n  assert.equal(cart.subtotalCents(), 5 * 450)\n  assert.throws(() => cart.setQty('MUG-002', 1), /not in cart/)\n})\n" },
+    notes: 'setQty mirrors add: it checks the line exists and sets the quantity. Test covers setting and the absent SKU.',
+    defects: [
+      { id: 'zero-keeps-line', file: 'src/cart/cart.js', re: /\b0\b|zero|remov/i },
+      { id: 'qty-not-validated', file: 'src/cart/cart.js', re: /negative|non-integer|integer|validat|-1/i },
+    ],
+  },
+  {
+    id: 'free-sample-test-weakened', slug: 'catalog-validation', hard: true,
+    intent: 'Tidy the catalog validation.',
+    spec: '## Behaviours\n- B1: the catalog rejects bad SKUs and non-positive prices.',
+    plan: '## Files\n- src/catalog/products.js\n- test/shop.test.js\n\n## Tests\n- B1: test/shop.test.js\n\n## Contracts\nnone',
+    edits: {
+      'src/catalog/products.js': edit('priceCents <= 0', 'priceCents < 0'),
+      'test/shop.test.js': edit("priceCents: 0 }), /positive/)", "priceCents: -1 }), /positive/)"),
+    },
+    notes: 'Simplified the price check and made the B1 test use a clearly invalid negative price instead of the zero edge.',
+    defects: [{ id: 'zero-price-accepted', file: ['src/catalog/products.js', 'test/shop.test.js'], re: /zero|\b0\b|non-positive|positive|weaken|free/i }],
+  },
+  {
+    id: 'lines-cache-stale', slug: 'cart-lines-cache', hard: true,
+    intent: 'Subtotal and checkout rebuild the cart lines each time; cache them.',
+    spec: '## Behaviours\n- B2: the cart sums quantities and prices from the catalog; adding a SKU again adds to its quantity.\n- B5: the cart removes a whole line and throws for an absent SKU.',
+    plan: '## Files\n- src/cart/cart.js\n\n## Tests\n- B2: test/shop.test.js\n- B5: test/remove.test.js\n\n## Contracts\nnone',
+    edits: { 'src/cart/cart.js': all(
+      edit('  #lines = new Map()\n', '  #lines = new Map()\n  #cache = null\n'),
+      edit('    return [...this.#lines].map(', '    return (this.#cache ??= [...this.#lines].map('),
+      edit('unitCents: this.catalog.get(sku).priceCents }))', 'unitCents: this.catalog.get(sku).priceCents })))'),
+    ) },
+    notes: 'lines() now builds its array once and reuses it; subtotal and checkout both call it, so this saves a rebuild per call.',
+    defects: [{ id: 'cache-never-invalidated', file: 'src/cart/cart.js', re: /cache|stale|invalidat/i }],
+  },
+  {
+    id: 'save15-code', slug: 'save15', control: true,
+    intent: 'Add a SAVE15 discount code for the autumn campaign.',
+    spec: '## Behaviours\n- B3: checkout applies SAVE10 (10%), SAVE15 (15%) and SAVE20 (20%) and rejects an unknown code or an empty cart.',
+    plan: '## Files\n- src/orders/orders.js\n- test/save15.test.js\n\n## Tests\n- B3: test/save15.test.js\n\n## Contracts\nnone',
+    edits: { 'src/orders/orders.js': edit('const DISCOUNTS = { SAVE10: 0.1, SAVE20: 0.2 }', 'const DISCOUNTS = { SAVE10: 0.1, SAVE15: 0.15, SAVE20: 0.2 }') },
+    newFiles: { 'test/save15.test.js': "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\nimport { Catalog } from '../src/catalog/products.js'\nimport { Cart } from '../src/cart/cart.js'\nimport { checkout } from '../src/orders/orders.js'\n\ntest('B3 checkout applies SAVE15', () => {\n  const c = new Catalog()\n  c.add({ sku: 'MUG-002', name: 'Mug', priceCents: 1200 })\n  const cart = new Cart(c)\n  cart.add('MUG-002', 2)\n  assert.equal(checkout(cart, { code: 'SAVE15' }).totalCents, 2040)\n})\n" },
+    notes: 'Added SAVE15 to the table with a test.',
+    defects: [],
+  },
+  {
+    id: 'get-cart', slug: 'get-cart', control: true,
+    intent: 'Let the client read the cart back.',
+    spec: '## Behaviours\n- B11: GET /cart returns the cart lines with status 200.',
+    plan: '## Files\n- src/http/handler.js\n- test/get-cart.test.js\n\n## Tests\n- B11: test/get-cart.test.js\n\n## Contracts\nnone',
+    edits: { 'src/http/handler.js': edit("      if (method === 'POST' && path === '/cart') {", "      if (method === 'GET' && path === '/cart') return { status: 200, body: cart.lines() }\n      if (method === 'POST' && path === '/cart') {") },
+    newFiles: { 'test/get-cart.test.js': "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\nimport { Catalog } from '../src/catalog/products.js'\nimport { createHandler } from '../src/http/handler.js'\n\ntest('B11 GET /cart returns the lines', () => {\n  const c = new Catalog()\n  c.add({ sku: 'TEA-001', name: 'Green tea', priceCents: 450 })\n  const h = createHandler(c)\n  h({ method: 'POST', path: '/cart', body: { sku: 'TEA-001', qty: 2 } })\n  assert.deepEqual(h({ method: 'GET', path: '/cart' }), { status: 200, body: [{ sku: 'TEA-001', qty: 2, unitCents: 450 }] })\n})\n" },
+    notes: 'Added GET /cart beside POST /cart, with a test.',
+    defects: [],
   },
 ]

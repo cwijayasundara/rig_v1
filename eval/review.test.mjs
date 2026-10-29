@@ -20,14 +20,40 @@ function ctxFor(c) {
   return { dir, diff: git('diff', 'main'), changed: git('diff', '--name-only', 'main').split('\n').filter(Boolean) }
 }
 
-test('every case applies to the shop base and changes the files it says it changes; one case is the clean control', () => {
-  assert.equal(CASES.filter(c => c.control).length, 1)
+test('every case applies to the shop base, and each defect names a file the change touches or one beside it; three clean controls, four hard cases', () => {
+  assert.equal(CASES.filter(c => c.control).length, 3)
+  assert.equal(CASES.filter(c => c.hard).length, 4)
   for (const c of CASES) {
     const ctx = ctxFor(c)
     assert.ok(ctx.diff.length > 0, c.id)
-    for (const d of c.defects) assert.ok(ctx.changed.includes(d.file), `${c.id} changes ${d.file}`)
+    for (const d of c.defects) {
+      const files = [d.file].flat()
+      assert.ok(files.some(f => ctx.changed.includes(f)), `${c.id} changes one of ${files}`)
+      for (const f of files) assert.ok(fs.existsSync(path.join(ctx.dir, f)), `${c.id}: ${f} exists`)
+    }
     fs.rmSync(ctx.dir, { recursive: true, force: true })
   }
+})
+
+test('the whole suite passes on every control and every hard case: a control is correct, and a hard defect gets past the tests', () => {
+  for (const c of CASES.filter(x => x.control || x.hard)) {
+    const ctx = ctxFor(c)
+    execFileSync(process.execPath, ['--test', 'test/'], { cwd: ctx.dir, stdio: 'pipe' })
+    fs.rmSync(ctx.dir, { recursive: true, force: true })
+  }
+})
+
+test('the stale-cache case really is stale, and the cross-file case puts the defect in a file the change does not touch', () => {
+  const stale = ctxFor(CASES.find(x => x.id === 'lines-cache-stale'))
+  const probe = "import { Catalog } from './src/catalog/products.js'; import { Cart } from './src/cart/cart.js'; const c = new Catalog(); c.add({ sku: 'TEA-001', name: 't', priceCents: 450 }); const k = new Cart(c); k.add('TEA-001'); k.lines(); k.add('TEA-001'); process.stdout.write(String(k.subtotalCents()))"
+  assert.equal(execFileSync(process.execPath, ['--input-type=module', '-e', probe], { cwd: stale.dir, encoding: 'utf8' }), '450', 'the second add is lost behind the cache')
+  fs.rmSync(stale.dir, { recursive: true, force: true })
+  const c = CASES.find(x => x.id === 'case-insensitive-sku'), ctx = ctxFor(c)
+  assert.ok(!ctx.changed.includes('src/cart/cart.js'))
+  const prompt = buildPrompt(c, 'clean', ctx)
+  assert.match(prompt, /## Other source files \(unchanged\)[\s\S]*### src\/cart\/cart\.js/, 'the reviewer sees the caller it must reason about')
+  assert.deepEqual(scoreReview('## Findings\n- [severity: high] [category: correctness] src/cart/cart.js:13: lines are keyed by the SKU as typed, so tea-001 and TEA-001 make two lines (B2). → normalise\n', c.defects).caught, ['cart-lines-keyed-by-raw-sku'])
+  fs.rmSync(ctx.dir, { recursive: true, force: true })
 })
 
 test('the two arms see the same change and differ only in who the reviewer is and the builder\'s notes', () => {
@@ -69,6 +95,15 @@ test('summarize reports recall and false findings per arm, and the table names b
   assert.match(md, /\| clean context \| 2 \| 100% /)
   assert.match(md, /\| same context \(with builder notes\) \| 2 \| 0% /)
   assert.deepEqual(ARMS, ['clean', 'same'])
+})
+
+test('with two models the rows group by arm and model, and hard recall counts only the hard cases', () => {
+  const row = (model, c, caught) => ({ case: c, arm: 'clean', model, control: false, hard: c === 'h', defects: 1, caught, findings: caught.length, extra: 0, usd: 0.1 })
+  const rows = [row('sonnet', 'e', ['x']), row('sonnet', 'h', []), row('opus', 'e', ['x']), row('opus', 'h', ['y'])]
+  const s = summarize(rows)
+  assert.deepEqual(Object.keys(s).sort(), ['clean opus', 'clean sonnet'])
+  assert.deepEqual([s['clean sonnet'].recall, s['clean sonnet'].hardRecall, s['clean opus'].hardRecall], [0.5, 0, 1])
+  assert.match(renderMarkdown(rows, { date: 'd', files: ['f'] }), /\| clean context, sonnet \| 2 \| 50% \| 0% \|/)
 })
 
 test('the unrequested-behaviour case adds clear() beside has(), and an unmapped finding naming it catches it', () => {
