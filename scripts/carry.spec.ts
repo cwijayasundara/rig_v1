@@ -4,6 +4,7 @@ import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { makeRepo, sdlc, write, gitIn, verified, ARCH_OK, IMPL_OK } from './testkit.ts'
 import { reviewItems } from './carry.ts'
 import { openQuestions } from './model.ts'
@@ -134,6 +135,15 @@ test('the sprint plan is left alone while another change of the sprint is in fli
   assert.equal(rd(`${SP}/plan.md`), before)
 })
 
+test('a change whose PR is already open does not hold the plan back: both show done', () => {
+  shipStore()
+  start('ops')
+  write(repo, '.rig/changes/ops/pr.md', '---\nstate: local-only\nbranch: sdlc/ops\n---\nfeat: ops\n')
+  assert.equal(prStore().code, 0)
+  assert.match(rd(`${SP}/plan.md`), /\| store \|[^\n]*\| done \|/)
+  assert.match(rd(`${SP}/plan.md`), /\| ops \|[^\n]*\| done \|/)
+})
+
 test('pr commits only what this run wrote: an uncommitted owner edit on another intent stays uncommitted', () => {
   shipStore()
   const f = `${SP}/intents/cli.md`
@@ -152,3 +162,37 @@ test('reviewItems: the file is the token with a slash, else one that exists; pla
   const r = reviewItems('### Deferred\n1. src/a.py: x\n* y\n### Unverifiable\n- z\n')
   assert.deepEqual(r.map(i => [i.section, i.text]), [['Deferred', 'src/a.py: x'], ['Deferred', 'y'], ['Unverifiable', 'z']])
 })
+
+test('recording an addition keeps the intent hash when the file has no trailing newline or ends with a blank line', () => {
+  shipStore(REVIEW, B9)
+  const f = `${SP}/intents/store.md`, lib = path.resolve(import.meta.dirname, 'carry.ts'), pristine = rd(f)
+  for (const end of ['', '\n\n']) {
+    const base = pristine.replace(/\s*$/, end)
+    write(repo, f, base)
+    const strip = spawnSyncNode(`import fs from 'node:fs'; import { recordAdditions, stripGenerated } from ${JSON.stringify(lib)}; recordAdditions('store'); process.stdout.write(stripGenerated(fs.readFileSync(${JSON.stringify(path.join(repo, f))}, 'utf8')))`)
+    assert.match(rd(f), /## Added during the change[\s\S]*B9/)
+    assert.equal(strip, base, `ending ${JSON.stringify(end)}`)
+  }
+})
+
+test('a rerun after a rolled-back commit still ships the carried files and the backlog', () => {
+  shipStore()
+  const lib = path.resolve(import.meta.dirname, 'carry.ts')
+  const run = () => JSON.parse(spawnSyncNode(`import { routeReview } from ${JSON.stringify(lib)}; process.stdout.write(JSON.stringify(routeReview('store').files))`))
+  const first = run(), second = run()
+  assert.ok(first.length >= 2, String(first))
+  assert.deepEqual(second.sort(), first.sort(), 'the second run names the files that already hold its lines')
+})
+
+test('reviewItems: a slash word such as and/or is not the file when a real path is named', () => {
+  write(repo, 'src/pr.ts', '')
+  const lib = path.resolve(import.meta.dirname, 'carry.ts')
+  const file = spawnSyncNode(`import { reviewItems } from ${JSON.stringify(lib)}; process.stdout.write(String(reviewItems('## Deferred\\n- pr.ts: add retry and/or backoff in src/pr.ts\\n')[0]?.file))`)
+  assert.equal(file, 'src/pr.ts')
+})
+
+function spawnSyncNode(code: string): string {
+  const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', code], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo } })
+  assert.equal(r.status, 0, r.stderr)
+  return r.stdout
+}

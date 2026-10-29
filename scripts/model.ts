@@ -57,7 +57,7 @@ export const section = (text: string, heading: string): string =>
 // optional "Create:"-style label, punctuation stripped; e.g. and i.e. do not), so prose ("No existing test ...") is skipped; over-matching is
 // caught by approve --check. A backticked token leading its comma segment counts as written. A non-bullet line counts only when its first
 // token is a path and nothing but a parenthesis or a dash follows it.
-const isPathLike = (t: string): boolean => /\/|\.[A-Za-z0-9]{1,5}$/.test(t) && !/^(e\.g|i\.e|etc)$/i.test(t)
+const isPathLike = (t: string): boolean => /\/|\.[A-Za-z][A-Za-z0-9]{0,4}$/.test(t) && !/^(e\.g|i\.e|etc)$/i.test(t)
 const bulletPaths = (body: string): string[] => body.split('\n').flatMap(l => {
   const b = /^\s*[-*]\s+(.*)$/.exec(l)
   if (!b) { const m = /^\s*(?:`([^`\s]+)`|([^`\s]+))(.*)$/.exec(l), t = m?.[1] ?? (m?.[2] ?? '').replace(/[.,;:)]+$/, ''), rest = (m?.[3] ?? '').trim(); return t && (!rest || /^(\(|—|–|- )/.test(rest)) && (m?.[1] || isPathLike(t)) ? [t] : [] }

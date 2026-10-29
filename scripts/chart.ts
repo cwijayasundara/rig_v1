@@ -245,17 +245,17 @@ export function chartReport(n: number): string {
 
 // The sprint plan view: waves and graphs generated from the intents' `depends:` lines (see plan.ts), written beside the PRD. Not a chart
 // file, so regenerating it never makes an approved chart stale.
-export function planRows(n: number, assumeShipped?: string): PlanRow[] {
-  const shipped = (x: string): boolean => x === assumeShipped || isShipped(x)
+export function planRows(n: number, assumeShipped?: string | string[]): PlanRow[] {
+  const shipped = (x: string): boolean => [assumeShipped].flat().includes(x) || isShipped(x)
   return intentsOf(n).map(i => ({
     slug: i.slug, depends: i.depends, estimateDays: i.estimateDays, owner: i.owner,
     status: shipped(i.slug) ? 'done' : exists(changeDir(i.slug)) ? 'active' : i.depends.every(shipped) ? 'ready' : 'blocked',
   }))
 }
-export function sprintPlan(n: number, assumeShipped?: string): string {
+export function sprintPlan(n: number, assumeShipped?: string | string[]): string {
   return planText(n, planRows(n, assumeShipped), { chart: chartState(n).state, startCmd: slug => `${skillRef('start')} ${intentRel(n, slug)}` })
 }
-export function writePlan(n: number, assumeShipped?: string): string {
+export function writePlan(n: number, assumeShipped?: string | string[]): string {
   fs.mkdirSync(sprintDir(n), { recursive: true })
   fs.writeFileSync(planPath(n), sprintPlan(n, assumeShipped))
   return `${sprintRel(n)}/plan.md`

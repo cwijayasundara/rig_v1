@@ -140,6 +140,7 @@ test('planFiles takes every path on a bullet, and a bare line only when the path
   assert.deepEqual(f('- src/cart.py, e.g. the save path'), ['src/cart.py'])
   assert.deepEqual(f('src/a.py (new)'), ['src/a.py'])
   assert.deepEqual(f('`models.py` gets the Item class only.'), [])
+  assert.deepEqual(f('- src/server.ts: bump to 1.2'), ['src/server.ts'], 'a version number is not a path')
 })
 
 test('openQuestions ignores HTML comments', () => {

@@ -90,8 +90,10 @@ export function cmdPr(args: Args): void {
   }
   // The merge ships this change: write the sprint plan as it will read then, so nothing regenerates dirty afterwards.
   // Another change of the sprint in flight would find the plan changed under it, so the plan waits for the last one.
-  const sprint = intentOf(slug)?.sprint, busy = typeof sprint === 'number' && intentsOf(sprint).some(i => i.slug !== slug && exists(changeDir(i.slug)) && !isShipped(i.slug))
-  const wrote = typeof sprint === 'number' && !busy ? [writePlan(sprint, slug)] : []
+  // A change whose PR is open (a local pr.md) counts as shipped too, so the last PR of a sprint still writes the plan.
+  const sprint = intentOf(slug)?.sprint, others = typeof sprint === 'number' ? intentsOf(sprint).filter(i => i.slug !== slug && exists(changeDir(i.slug)) && !isShipped(i.slug)) : []
+  const prOpen = others.filter(i => exists(path.join(changeDir(i.slug), 'pr.md'))).map(i => i.slug), busy = others.length > prOpen.length
+  const wrote = typeof sprint === 'number' && !busy ? [writePlan(sprint, [slug, ...prOpen])] : []
   // Review items and additions are written into the carried files, the backlog and the intent before the commit; the PR carries just those.
   wrote.push(...routeReview(slug).files, ...recordAdditions(slug).files)
   const files = changeFiles(slug, wrote)
