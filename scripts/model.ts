@@ -1,4 +1,5 @@
-// The pure data model for sensors: diffs, globs, config, rules and findings. No fs, git or process access.
+// The pure data model for sensors: diffs, globs, config, rules and findings. No fs or git access (the gh helpers run the gh binary).
+import { execFileSync } from 'node:child_process'
 import type { Paths } from './registry.ts'
 export type Line = { n: number; text: string }
 type FileStatus = 'A' | 'M' | 'D' | 'R'
@@ -295,4 +296,9 @@ export function formatFindings(findings: Finding[], max = 40): string {
   return [...shown, `  … ${total - shown.length} more (run sdlc.ts check to see all)`, ...tail].join('\n')
 }
 // RIG_GH names the gh binary (the evals runner's RIG_CLAUDE precedent): a caller whose PATH is rebuilt by its shell (a headless agent session) can still point the harness at the gh it means.
+export const bullets = (text: string): string[] => text.split('\n').map(l => l.trim()).filter(l => /^[-*]\s+\S/.test(l))
+// A path as plans and radii spell it: posix slashes, no leading ./, no trailing colon.
+export const normPath = (p: string): string => p.trim().replace(/\\/g, '/').replace(/^(\.\/)+/, '').replace(/:$/, '')
 export const ghBin = (): string => process.env.RIG_GH || 'gh'
+export const gh = (argv: string[], cwd?: string): string => execFileSync(ghBin(), argv, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 })
+export const ghPages = (route: string): unknown[] => (JSON.parse(gh(['api', '--paginate', '--slurp', route])) as unknown[]).flat()

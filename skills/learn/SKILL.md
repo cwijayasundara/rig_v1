@@ -1,7 +1,6 @@
 ---
 name: learn
 description: Consolidate what the harness has learned. Mines recurring review findings, waivers and the person's repeated corrections, proposes delta edits to .rig/lessons.md and rule promotions for a person to apply. Never edits lessons or rules itself.
-argument-hint: '[--max-usd <N>]'
 model: sonnet
 effort: medium
 allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts learn *), Read, Grep, Glob, Write(.rig/learn/**)
@@ -20,7 +19,5 @@ allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_R
    - `LAYER <id>: <why>` for a coupling, responsibility or abstraction finding: write the layer edge as a `rig-layers` block in `.rig/learn/layers-<id>.md` (see `/rig:arch`), then run `S learn replay --layers .rig/learn/layers-<id>.md --earned <slug>,<slug>`. List it only on `replay: pass`.
    - `PROMOTE <id>: <rule id>` for a lesson a regex over added lines can catch: save the rule as `.rig/learn/rule-<id>.json` (`{id, pattern, paths, message, why, action}`, `warn` unless costly), then run `S learn replay .rig/learn/rule-<id>.json --earned <slug>,<slug>`. List it only on `replay: pass`; otherwise say why it failed and keep the lesson as prose.
 4. **Hand over.** Run `S learn proposal`: every `PROMOTE` and `LAYER` line needs a passing replay of exactly the file it names, and it fails the line otherwise. Never edit `.rig/lessons.md`, `.rig/lessons-archive.md`, `.rig/rules.json` or `CLAUDE.md`: a person applies the proposal through a PR. The first time, ask them to add `@.rig/lessons.md` to `CLAUDE.md` so the active lessons load each session. After they apply it, `S learn check` must pass.
-
-Respect `--max-usd`: stop and say so if the work would exceed it.
 
 End with the candidates found, the lines proposed, and `Next: apply .rig/learn/proposal.md in a PR (you), then S learn check`.

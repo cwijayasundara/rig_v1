@@ -1,17 +1,16 @@
 // `init --protect [--dry]`: make rig-check and ai-review required checks on the trunk (proposal 2026-10-27 A1, set up at init). It only adds
 // to branch protection that already exists, never creates or replaces it; without protection, gh or a remote it prints the commands instead.
 // --dry (the --quick and --defaults lane) never calls a write route.
-import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { git, ROOT } from './core.ts'
-import { ghBin } from './model.ts'
+import { gh as ghRun } from './model.ts'
 
 const CHECKS = ['rig-check', 'ai-review']
 const SECRETS = ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY']
 
 const gh = (args: string[]): { ok: boolean; out: string } => {
-  try { return { ok: true, out: execFileSync(ghBin(), args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 }) } } catch (e) { return { ok: false, out: String((e as { stderr?: string }).stderr ?? (e as Error).message) } }
+  try { return { ok: true, out: ghRun(args) } } catch (e) { return { ok: false, out: String((e as { stderr?: string }).stderr ?? (e as Error).message) } }
 }
 
 // The remote's default branch when git knows it (origin/HEAD), else main or master, else main.

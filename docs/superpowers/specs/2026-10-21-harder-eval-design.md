@@ -1,6 +1,6 @@
 # A harder paired eval: the `rules` variant
 
-Status: design for approval. Nothing is built and no money is spent until a person approves it.
+Status: built (`eval --variant rules`); the live run has not happened, and a person starts it.
 
 ## Why
 

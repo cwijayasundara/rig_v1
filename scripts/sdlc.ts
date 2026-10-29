@@ -7,10 +7,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { waiverLive, whoami, ownerOrFail,
-  ROOT, SDLC, CHANGES, SLUG_RE, SOFT_HOOK_FAILURE, exists, read, now, defaultBase, isTrunk, trunkName, toPosix, out, fail, git, parseArgs, optString, listChanges, scanSecrets, checkSlug,
+  ROOT, SDLC, CHANGES, SLUG_RE, SOFT_HOOK_FAILURE, exists, read, now, defaultBase, isTrunk, trunkName, toPosix, out, fail, git, parseArgs, optString, listChanges, ageDays, dirtyFiles, readUnresolved, checkSlug,
   WAIVERS, readJsonl, type Waiver, ensureGitignore, PLUGIN_ROOT, IS_VENDORED, skillRef, sanctionWrites, readGate, type Args,
 } from './core.ts'
-import { formatFindings, SENSOR_NAMES, type Finding } from './model.ts'
+import { formatFindings, SENSOR_NAMES } from './model.ts'
 import { readBaseline, branchDiff, turnDiff, type Snapshot } from './diffs.ts'
 import { cmdHook } from './hooks.ts'
 import { cmdCheck, cmdCheckFile, loadConfig } from './check.ts'
@@ -22,7 +22,7 @@ import { cmdBaseline } from './initbaseline.ts'
 import { cmdVerify } from './verify.ts'
 import { cmdHooks, cmdCheckPush } from './githooks.ts'
 import { cmdPr } from './pr.ts'
-import { cmdCarry } from './carry.ts'
+import { cmdCarry, reviewItems } from './carry.ts'
 import { treeStamp } from './stamp.ts'
 import { declareStack } from './stackinit.ts'
 import { cmdSync } from './sync.ts'
@@ -45,12 +45,11 @@ import { protect } from './protect.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'
 import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, waiveChartFinding, changeRequirements, PRD_RE, isConverted, conversionRefusal } from './chart.ts'
 import { journey, journeyText } from './journey.ts'
-import { TYPES, toType, changeDir, newChange, setActive, activeSlug, isShipped, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
+import { TYPES, changeDir, newChange, setActive, activeSlug, isShipped, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
 
 // ---------- commands ----------
 
 // NaN (a missing or unreadable date) is treated as infinitely old, so it can never hide from the stale check.
-const ageDays = (at: string): number => { const n = Math.floor((Date.now() - Date.parse(at)) / 86_400_000); return Number.isFinite(n) ? Math.max(0, n) : Infinity }
 const STALE_WAIVER_DAYS = 30
 const MAX_WAIVER_DAYS = 180
 const expiryText = (w: Waiver): string => (!w.expires ? 'no expiry' : !waiverLive(w) ? 'expired' : `expires in ${Math.max(1, Math.ceil((Date.parse(w.expires) - Date.now()) / 86_400_000))}d`)
@@ -96,8 +95,8 @@ function cmdNew(args: Args): void {
   const slug = args.pos[0] ?? ''
   if (!SLUG_RE.test(slug)) fail(`usage: new <kebab-slug> [--type ${TYPES.join('|')}] [--title "..."] [--source .rig/product/sprints/sprint-<N>/intents/<slug>.md] [--full] [--from-diff]`)
   const raw = optString(args, 'type') ?? 'feature'
-  // The four types, plus the older names toType folds in (greenfield, incident, migration, spike).
-  if (![...TYPES, 'greenfield', 'incident', 'migration', 'spike'].includes(raw)) fail(`usage: new <slug> [--type ${TYPES.join('|')}] [--title "..."]`)
+  const type = TYPES.find(t => t === raw)
+  if (!type) fail(`usage: new <slug> [--type ${TYPES.join('|')}] [--title "..."]`)
   if (exists(changeDir(slug))) fail(`${slug} already exists: ${skillRef('start')} ${slug} continues it`)
   const source = optString(args, 'source')
   const captured = args.opt['from-diff'] === true ? capturedWork() : null
@@ -114,7 +113,7 @@ function cmdNew(args: Args): void {
   ensureGitignore()
   const intent = source ? intentOf(slug) : null
   const title = optString(args, 'title') ?? (source ? /^#\s+(.+)$/m.exec(read(path.resolve(ROOT, source)))?.[1] : undefined) ?? slug
-  newChange(slug, toType(raw), title, source && toPosix(path.relative(ROOT, path.resolve(ROOT, source))), args.opt.full === true)
+  newChange(slug, type, title, source && toPosix(path.relative(ROOT, path.resolve(ROOT, source))), args.opt.full === true)
   if (intent) fs.writeFileSync(path.join(changeDir(slug), 'spec.md'), `# Spec: ${title}\n\n## Behaviours\n${intent.behaviours.map(b => { const ids = [...new Set([...b.reqs, ...b.rules])]; return `- ${b.id}${ids.length ? ` (${ids.join(', ')})` : ''}: ${b.text}` }).join('\n')}\n\n## Out of scope\n\n## Open questions\nnone\n`)
   const reqs = intent ? changeRequirements(slug) : null
   if (reqs) fs.writeFileSync(path.join(changeDir(slug), 'requirements.md'), reqs)
@@ -123,7 +122,7 @@ function cmdNew(args: Args): void {
     fs.writeFileSync(file, read(file).replace('\n---\n# ', `\nfrom-diff: ${captured.base}\n---\n# `))
     fs.writeFileSync(path.join(changeDir(slug), 'spec.md'), `# Spec: ${title}\n\n## Behaviours\n\n## Blast radius\n${[...new Set(captured.diffs.flatMap(d => (d.from ? [d.from, d.file] : [d.file])))].map(f => `- ${f.replace(/ /g, '?')}`).join('\n')}\n\n## Out of scope\n\n## Open questions\nnone\n`)
   }
-  out(`created .rig/changes/${slug}/intent.md (type ${toType(raw)}); ${slug} is the active change${intent ? `; spec.md starts with the ${intent.behaviours.length} behaviour(s) of the intent` : ''}${reqs ? `; requirements.md holds the PRD rows it cites` : ''}`)
+  out(`created .rig/changes/${slug}/intent.md (type ${type}); ${slug} is the active change${intent ? `; spec.md starts with the ${intent.behaviours.length} behaviour(s) of the intent` : ''}${reqs ? `; requirements.md holds the PRD rows it cites` : ''}`)
   if (captured) out([`captured ${captured.diffs.length} file(s) changed since ${captured.base.slice(0, 7)} (spec.md's blast radius starts with them):`, ...captured.diffs.map(d => `  ${d.file} +${d.added.length} -${d.removed.length}`), ...(captured.warning ? [`WARNING: ${captured.warning}`] : [])].join('\n'))
 }
 
@@ -235,7 +234,7 @@ function approveChart(n: number, args: Args): void {
   if (!open.length && !/^verdict:\s*pass\s*$/m.test(read(reviewPath(n)).split('\n')[0] ?? '') && !chartReview(n)?.length) fail(`chart-${n}'s chart-review.md says changes-needed but lists no finding rig can read: write each as a \`- \` line under \`## Findings\``)
   if (open.length) fail(`chart-${n} has ${open.length} review finding(s) not confirmed fixed:\n${open.map(f => `  ${f.n}. ${f.text}${f.status === 'claimed' ? ' (marked fixed, never confirmed)' : ''}`).join('\n')}\nFix them and re-run the chart's confirm pass, or waive one with ${skillRef('waive')} chart-${n} <finding number> <reason>`)
   // The reviewer's Deferred list is for the person to decide; approval is where it is seen (shop_app 2026-10-27: a whitespace-sku question sat there undecided).
-  const deferred = (/^#{2,3}[ \t]+Deferred\b[^\n]*\n([\s\S]*?)(?=^#{2,3}[ \t]|(?![\s\S]))/m.exec(read(reviewPath(n)))?.[1] ?? '').replace(/^\s*\n/, '').split(/\n(?=[-*]\s)/).filter(c => /^[-*]\s/.test(c)).filter(c => !/→\s*(?:fixed|waived|dropped|carried|taken)\b/i.test(c)).map(c => c.replace(/^[-*]\s+/, '').replace(/\s*\n\s*/g, ' ').trim()).filter(c => c && !/^(none|nothing|no (items?|deferred|findings?)|no .*\b(found|noted|recorded)\b)\.?$/i.test(c))
+  const deferred = reviewItems(read(reviewPath(n))).filter(i => i.section === 'Deferred' && !/^no .*\b(found|noted)\b/i.test(i.text)).map(i => i.text) // "No X found." is a reviewer's empty-list sentence
   const by = ownerOrFail(args, 'approvals')
   writeChartApproval(n, by)
   // A sensors.json with edits of its own is not swept into the approval commit: the person commits it.
@@ -257,9 +256,7 @@ const approvalRel = (n: number): string => `${sprintRel(n)}/approval.json`
 function commitApproval(n: number, sensors = false): boolean | null {
   if (git(['rev-parse', '--is-inside-work-tree']) !== 'true') return false
   const want = [approvalRel(n), `${sprintRel(n)}/plan.md`, ARCH_REL, ...(sensors ? ['.rig/sensors.json'] : []), ...chartFiles(n)].filter((f, i, a) => a.indexOf(f) === i && exists(path.join(ROOT, f)))
-  // Names, never porcelain lines: git() trims its output, which shifted the status columns of every line after the first.
-  const names = (args: string[]): string[] => (git([...args, '--', ...want]) ?? '').split('\n').filter(Boolean)
-  const dirty = [...new Set([...names(['diff', '--name-only', 'HEAD']), ...names(['ls-files', '--others', '--exclude-standard'])])]
+  const dirty = dirtyFiles(want)
   if (!dirty.length) return false
   if (git(['add', '--', ...dirty]) === null) return null
   return git(['commit', '-q', '-m', `chore: approve chart-${n}`, '--', ...dirty]) === null ? null : true
@@ -312,7 +309,7 @@ function cmdReady(args: Args): void {
 // The opening of /rig:start: the branch warning and the intents ready to build, so the skill does not need the model to ask for them.
 function cmdStartBrief(): void {
   const branch = git(['branch', '--show-current']) ?? ''
-  const base = git(['rev-parse', '--verify', '-q', 'main']) === null && git(['rev-parse', '--verify', '-q', 'master']) !== null ? 'master' : 'main'
+  const base = trunkName()
   const lines: string[] = []
   if (/^rig\/chart-\d+$/.test(branch)) lines.push(`WARNING: you are on the chart branch ${branch}. Merge it into ${base} first and start the change from ${base}; a change built on an unmerged chart branch ships the chart with it (shop_app 2026-10-27: sdlc/cart-core sat on rig/chart-1).`)
   else if (branch && branch !== base) lines.push(`WARNING: you are on branch ${branch}, not ${base}. The previous change may not be merged yet; a new change starts from this branch.`)
@@ -321,13 +318,6 @@ function cmdStartBrief(): void {
   if (plans.length) lines.push(`build order (waves and dependency graph): ${plans.join(', ')}`)
   lines.push(ready.length ? `ready intents:\n${ready.map(i => `  ${readyRow(i)}`).join('\n')}` : 'no intents are ready')
   out(lines.join('\n'))
-}
-
-function cmdSecrets(args: Args): void {
-  const hits = args.pos.flatMap(scanSecrets)
-  if (!hits.length) return out('no secrets found')
-  process.stderr.write(hits.join('\n') + '\n')
-  process.exitCode = 2
 }
 
 // ---------- main ----------
@@ -354,12 +344,11 @@ function cmdRun(): void {
 }
 
 function cmdDiff(args: Args): void {
-  const trunk = args.opt.trunk ? defaultBase() ?? 'HEAD' : null
   const base = optString(args, 'base')
-  if (!base && !trunk && !args.opt.turn) fail('usage: diff (--turn | --trunk | --base <ref>) [--json]')
-  const snap = base || trunk ? null : readBaseline()
-  if (!base && !trunk && !snap) return out('no turn baseline yet (run a prompt first)')
-  const diffs = trunk ? branchDiff(trunk) : base ? branchDiff(git(['merge-base', 'HEAD', base]) ?? base) : turnDiff(snap as Snapshot)
+  if (!base && !args.opt.turn) fail('usage: diff (--turn | --base <ref>) [--json]')
+  const snap = base ? null : readBaseline()
+  if (!base && !snap) return out('no turn baseline yet (run a prompt first)')
+  const diffs = base ? branchDiff(git(['merge-base', 'HEAD', base]) ?? base) : turnDiff(snap as Snapshot)
   if (args.opt.json) return out(JSON.stringify(diffs))
   out(diffs.map(d => `${d.status} ${d.file} (+${d.added.length} -${d.removed.length})`).join('\n') || 'no changes')
 }
@@ -393,9 +382,6 @@ function waiveChart(n: number, args: Args): void {
   out(`waived chart-${n} finding ${f.n}: ${reason.join(' ')} (by ${by})`)
 }
 
-const unresolvedFindings = (): Finding[] => {
-  try { return (JSON.parse(read(path.join(SDLC, 'unresolved.json'))) as { findings: Finding[] }).findings } catch { return [] }
-}
 
 function sensorStatus(): { blocks: number; warns: number; bySensor: Record<string, number>; unresolved: number; knownRed: number; waivers: number; inert: Inert[]; layers: string } | null {
   if (!exists(SDLC)) return null
@@ -403,7 +389,7 @@ function sensorStatus(): { blocks: number; warns: number; bySensor: Record<strin
   const slug = activeSlug()
   const { registry, rules } = loadConfig()
   return {
-    blocks: last?.blocks ?? 0, warns: last?.warns ?? 0, bySensor: last?.bySensor ?? {}, unresolved: unresolvedFindings().length,
+    blocks: last?.blocks ?? 0, warns: last?.warns ?? 0, bySensor: last?.bySensor ?? {}, unresolved: readUnresolved().length,
     knownRed: registry.knownRed.length, inert: inertSensors(registry, rules.length, draftApps()), layers: layerStateText(layerState()),
     waivers: readJsonl<Waiver>(WAIVERS).filter(w => w.slug === slug).length,
   }
@@ -414,7 +400,7 @@ function cmdSensors(): void {
   if (!s) return out('sdlc not initialised here')
   const { registry } = loadConfig()
   const slug = activeSlug()
-  const unresolved = unresolvedFindings()
+  const unresolved = readUnresolved()
   const waivers = readJsonl<Waiver>(WAIVERS).filter(w => w.slug === slug)
   out([
     `last gate: ${s.blocks} block(s), ${s.warns} warning(s)${Object.keys(s.bySensor).length ? ' · ' + Object.entries(s.bySensor).map(([k, v]) => `${k} ${v}`).join(', ') : ''}`,
@@ -456,7 +442,6 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   pr: cmdPr, carry: cmdCarry,
   run: () => cmdRun(),
   verify: cmdVerify,
-  secrets: cmdSecrets,
   hook: cmdHook,
   diff: cmdDiff,
   baseline: () => cmdBaseline(),

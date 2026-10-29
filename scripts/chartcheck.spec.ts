@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import fs from 'node:fs'
 import path from 'node:path'
 import assert from 'node:assert/strict'
-import { designIntents, prdIds, parseIntent, parseCases, traceReport, intentSpecProblems, parkedDecisions, parseAccess, accessProblems, implementationPlanProblems, parseLedger, prdUnits, ledgerProblems, normalise, parseReview, openFindings, sharedScopeProblems, type Intent, type TestCase } from './chartcheck.ts'
+import { designIntents, prdIds, parseIntent, parseCases, traceReport, intentSpecProblems, parkedDecisions, parseAccess, accessProblems, implementationPlanProblems, parseLedger, prdBlocks, ledgerProblems, normalise, parseReview, openFindings, sharedScopeProblems, type Intent, type TestCase } from './chartcheck.ts'
 
 const PRD = '---\nsprint: 1\nengineers: 1\n---\n# Sprint 1\n\n### FR-1: add\n### FR-2: remove\n| NFR-1 | fast |\n\nMentioned only in prose: FR-9.\n\n## Open questions\nnone\n'
 const intent = (slug: string, o: { prd?: string; depends?: string; days?: string; kind?: string; behaviours?: string; iface?: string; open?: string } = {}): string =>
@@ -348,6 +348,7 @@ const OK_BEHAVIOURS = '- B1 (FR-4, FR-4.1): the first id is 1\n- B2 (FR-4, G-1):
 const ledger = (o: { prd?: string; ledger?: string | null; behaviours?: string; cases?: TestCase[] | null; required?: boolean } = {}) =>
   ledgerProblems({ prd: o.prd ?? IDS_PRD, ledger: o.ledger === undefined ? LEDGER_OK : o.ledger, intents: idsIntent(o.behaviours ?? OK_BEHAVIOURS), cases: o.cases ?? null, required: o.required ?? true })
 
+const prdUnits = (prd: string): { line: number; text: string }[] => prdBlocks(prd).map(({ line, text }) => ({ line, text }))
 test('prdUnits: bullets and paragraphs of in-scope sections with their line, never the excluded sections or headings', () => {
   assert.deepEqual(prdUnits(IDS_PRD), [{ line: 15, text: 'Each item has an integer id starting at 1.' }, { line: 19, text: 'Ids are never reused. They survive a restart.' }])
 })

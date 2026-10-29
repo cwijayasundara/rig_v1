@@ -199,7 +199,7 @@ test('a non-numeric --budget-ms is a usage error', () => {
   assert.match(r.stderr, /budget-ms/)
 })
 
-test('approving impact without an impact.json fails', () => {
+test('approving a subject that no longer exists (impact) fails', () => {
   sdlc(repo, ['new', 'ev', '--type', 'feature'])
   write(repo, '.rig/changes/ev/plan.md', '## Files\n- a\n')
   assert.notEqual(sdlc(repo, ['approve', 'ev', 'impact'], { env: { SDLC_HUMAN: '1' } }).code, 0)

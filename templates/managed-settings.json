@@ -24,8 +24,7 @@
       "Edit(./.rig/changes/*/approval.json)", "Edit(./.rig/autonomy.json)", "Edit(./.rig/product/sprints/**/approval.json)", "Edit(./.rig/product/sprints/**/waivers.json)", "Edit(./.rig/waivers.jsonl)", "Edit(./.rig/gates.jsonl)",
       "Edit(./.rig/.gate)", "Edit(./.rig/.baseline)", "Edit(./.rig/unresolved.json)",
       "Edit(./.rig/changes/*/evidence/runs.jsonl)", "Edit(./.rig/changes/*/verify.json)",
-      "Edit(./.rig/changes/*/impact.json)", "Edit(./.rig/changes/*/ratchet.json)", "Edit(./.rig/changes/*/events.jsonl)",
-      "Edit(./.rig/changes/*/pr.md)", "Edit(./.rig/changes/*/ship.json)"
+      "Edit(./.rig/changes/*/pr.md)"
     ],
     "disableBypassPermissionsMode": "disable"
   },

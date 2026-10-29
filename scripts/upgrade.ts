@@ -7,7 +7,7 @@ import { ROOT, SDLC, SENSORS_PATH, IS_VENDORED, PLUGIN_ROOT, skillRef, exists, r
 import { isObject } from './model.ts'
 import { isRegistryShape } from './registry.ts'
 import { loadPacks, PACKS_DIR } from './stackpacks.ts'
-import { harnessFiles, readManifest, isHarnessPath, mergeProjectFiles, MANIFEST, pluginVersion, older, type Manifest } from './vendor.ts'
+import { harnessFiles, readManifest, isHarnessPath, mergeProjectFiles, MANIFEST, pluginVersion, versionGuards, type Manifest } from './vendor.ts'
 import { pendingMigrations, runMigrations, type Migration } from './migrations.ts'
 import { cmdSync } from './sync.ts'
 import { cmdBaseline } from './initbaseline.ts'
@@ -68,10 +68,7 @@ export type Plan = {
 export function upgradeGates(args: Args): void {
   if (IS_VENDORED) fail('run upgrade from the sdlc plugin, not from a project copy')
   if (!exists(SDLC)) fail(`no .rig/ here: run ${skillRef('init')} first`)
-  const have = read(path.join(SDLC, 'bin', 'VERSION')).trim()
-  const next = pluginVersion()
-  if (have && older(next, have) && !args.opt.force) fail(`.rig/bin is ${have}, newer than this plugin (${next}); upgrade the plugin first, or pass --force to downgrade`)
-  try { if (read(path.join(ROOT, '.claude', 'settings.json'))) JSON.parse(read(path.join(ROOT, '.claude', 'settings.json'))) } catch { fail('.claude/settings.json is not plain JSON (comments or trailing commas?); fix it first so upgrading does not leave a half-written tree') }
+  versionGuards('upgrading', args)
 }
 
 // Reads disk and the plugin; writes nothing.

@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { isRegistryShape } from './registry.ts'
 import { detectedPackText } from './stackinit.ts'
+import { older } from './vendor.ts'
 
 export type Migration = { id: string; since: string; applies: (root: string) => boolean; run: (root: string) => string[] }
 
@@ -43,13 +44,6 @@ const dropPrdApproval: Migration = {
 
 export const MIGRATIONS: Migration[] = [preRegistrySensors, dropPrdApproval]
 
-const parts = (v: string): number[] => (v || '0.0.0').split('.').map(n => parseInt(n, 10) || 0)
-const cmp = (a: string, b: string): number => {
-  const [x, y] = [parts(a), parts(b)]
-  for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) - (y[i] ?? 0)
-  return 0
-}
-
-export const pendingMigrations = (installed: string, next: string): Migration[] => MIGRATIONS.filter(m => cmp(installed, m.since) < 0 && cmp(m.since, next) <= 0)
+export const pendingMigrations = (installed: string, next: string): Migration[] => MIGRATIONS.filter(m => older(installed || '0.0.0', m.since) && !older(next, m.since))
 
 export const runMigrations = (list: Migration[], root: string): string[] => list.flatMap(m => m.run(root))

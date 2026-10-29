@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { Checks } from '../lib/checks.mjs'
+import { Checks, must } from '../lib/checks.mjs'
 import { assertOnboarding } from '../assert/onboarding.mjs'
 
 const ROUTING = 'sdlc routes all work in this repo: start with /rig:start; use superpowers skills only when an sdlc skill names one.'
@@ -8,10 +8,6 @@ const ROUTING = 'sdlc routes all work in this repo: start with /rig:start; use s
 // The live S0 prompt describes the project, not the feature: the shop arrives later, as its own change from the brief.
 export const SCAFFOLD_PROMPT = 'Node.js 22 ESM project named shop-app, no dependencies, tests with node --test, an npm start script that runs src/server.js. Scaffold ONLY the empty skeleton and one passing smoke test. Do not implement any shop behaviour: that arrives later as its own change. Copy nothing into scripts/; the contract tool is provided.'
 
-const must = (r, what) => {
-  if (r.status !== 0) throw new Error(`${what} failed (exit ${r.status}): ${(r.stderr || r.stdout).trim().split('\n').slice(0, 3).join(' | ')}`)
-  return r.stdout
-}
 
 // The registry S0 declares: the unit suite, plus the built-ins every registry gets (spec §3).
 export const REGISTRY = {

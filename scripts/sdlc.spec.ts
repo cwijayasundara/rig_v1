@@ -4,34 +4,16 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { spawnSync, execFileSync } from 'node:child_process'
-
-import { ARCH_OK, IMPL_OK } from './testkit.ts'
-const SCRIPT = path.resolve(import.meta.dirname, 'sdlc.ts')
+import { spawnSync } from 'node:child_process'
+import { ARCH_OK, IMPL_OK, SCRIPT, sdlc, hook as hookIn, write as writeIn, gitIn, makeRepo } from './testkit.ts'
 let repo: string
 
-function run(args: string[], { input, env = {} }: { input?: string; env?: Record<string, string> } = {}) {
-  const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', SCRIPT, ...args], { cwd: repo, input, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo, SDLC_HUMAN: '', ...env } })
-  return { code: r.status, stdout: r.stdout, stderr: r.stderr }
-}
+const run = (args: string[], o: { input?: string; env?: Record<string, string> } = {}) => sdlc(repo, args, o)
+const hook = (name: string, payload: unknown) => hookIn(repo, name, payload)
+const write = (rel: string, text: string) => writeIn(repo, rel, text)
+const git = (...args: string[]) => void gitIn(repo, ...args)
 
-const hook = (name: string, payload: unknown) => run(['hook', name], { input: JSON.stringify(payload) })
-const write = (rel: string, text: string) => {
-  fs.mkdirSync(path.dirname(path.join(repo, rel)), { recursive: true })
-  fs.writeFileSync(path.join(repo, rel), text)
-}
-const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, stdio: 'ignore' })
-
-
-beforeEach(() => {
-  repo = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-test-'))
-  git('init', '-q', '-b', 'main')
-  git('config', 'user.email', 't@example.com')
-  git('config', 'user.name', 'Tester')
-  write('README.md', 'hi\n')
-  git('add', '.')
-  git('commit', '-qm', 'init')
-})
+beforeEach(() => { repo = makeRepo() })
 
 test('new creates intent and makes the change active; status prints next command', () => {
   assert.equal(run(['new', 'add-login', '--type', 'feature']).code, 0)
@@ -44,7 +26,7 @@ test('new creates intent and makes the change active; status prints next command
 test('new writes .rig/.gitignore even when .rig already exists', () => {
   fs.mkdirSync(path.join(repo, '.rig'))
   run(['new', 'x-change', '--type', 'chore'])
-  assert.equal(fs.readFileSync(path.join(repo, '.rig/.gitignore'), 'utf8'), 'state/\nmaintain/seen.json\n.baseline\n.gate\nunresolved.json\ngates.jsonl\n.onboarding\nchanges/*/prototype/\nchanges/*/pr-outline.md\nlearn/\n')
+  assert.equal(fs.readFileSync(path.join(repo, '.rig/.gitignore'), 'utf8'), 'state/\nmaintain/seen.json\n.baseline\n.gate\nunresolved.json\ngates.jsonl\nchanges/*/pr-outline.md\nlearn/\n')
 })
 
 test('hooks are silent in repos that never opted in', () => {

@@ -9,7 +9,7 @@ import { sha } from './core.ts'
 const status = (repo: string): string => gitIn(repo, 'status', '--porcelain', '-uall')
 const vendored = (): string => {
   const repo = makeRepo()
-  assert.equal(sdlc(repo, ['vendor', '--cloud']).code, 0)
+  assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
   return repo
 }
 const manifestPath = (repo: string): string => path.join(repo, '.rig/bin/MANIFEST.json')

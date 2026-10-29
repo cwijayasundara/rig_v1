@@ -114,12 +114,10 @@ test('a waiver naming no-x-y does not count against the promoted rule no-x', () 
 test('a tagged line under ## Dismissed or ## Deferred is not a kept finding', async () => {
   const { mineCandidates } = await import('./learnmine.ts')
   const fs = await import('node:fs')
-  const os = await import('node:os')
   const path = await import('node:path')
-  const { execFileSync } = await import('node:child_process')
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-lm-'))
-  const git = (...a: string[]): void => { execFileSync('git', a, { cwd: root, stdio: 'ignore' }) }
-  git('init', '-q', '-b', 'main'); git('config', 'user.email', 't@e'); git('config', 'user.name', 'T')
+  const { makeRepo, gitIn } = await import('./testkit.ts')
+  const root = makeRepo()
+  const git = (...a: string[]): void => { gitIn(root, ...a) }
   for (const slug of ['aa-one', 'bb-two']) {
     fs.mkdirSync(path.join(root, '.rig/changes', slug), { recursive: true })
     fs.writeFileSync(path.join(root, '.rig/changes', slug, 'pr.md'), '# PR\n')

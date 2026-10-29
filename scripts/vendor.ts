@@ -1,5 +1,5 @@
 // Copies the harness into a project. Plain `vendor` copies the checker CI runs (.rig/bin). `vendor --standalone`
-// (alias --cloud) also writes the skills, agents and hooks into .claude/, so the repo needs no plugin, cloud sessions included.
+// also writes the skills, agents and hooks into .claude/, so the repo needs no plugin, cloud sessions included.
 import fs from 'node:fs'
 import path from 'node:path'
 import { ROOT, SDLC, PLUGIN_ROOT, IS_VENDORED, read, out, fail, sanctionWrites, sha, type Args } from './core.ts'
@@ -174,15 +174,21 @@ export const older = (a: string, b: string): boolean => {
   return false
 }
 
-export function cmdVendor(args: Args): void {
-  if (IS_VENDORED) fail('run vendor from the sdlc plugin, not from a project copy')
-  if (older(process.versions.node, '22.18.0')) fail(`rig needs Node >= 22.18 (this is ${process.versions.node}); on an older Node its hooks fail silently and every gate is off`)
+// The refusals vendor and upgrade share: a newer install than this plugin, and settings.json that is not plain JSON.
+export function versionGuards(verb: string, args: Args): void {
   const have = read(path.join(SDLC, 'bin', 'VERSION')).trim()
   const next = pluginVersion()
   if (have && older(next, have) && !args.opt.force) fail(`.rig/bin is ${have}, newer than this plugin (${next}); upgrade the plugin first, or pass --force to downgrade`)
-  try { if (read(path.join(ROOT, '.claude', 'settings.json'))) JSON.parse(read(path.join(ROOT, '.claude', 'settings.json'))) } catch { fail('.claude/settings.json is not plain JSON (comments or trailing commas?); fix it first so vendoring does not leave a half-written tree') }
+  try { if (read(path.join(ROOT, '.claude', 'settings.json'))) JSON.parse(read(path.join(ROOT, '.claude', 'settings.json'))) } catch { fail(`.claude/settings.json is not plain JSON (comments or trailing commas?); fix it first so ${verb} does not leave a half-written tree`) }
+}
+
+export function cmdVendor(args: Args): void {
+  if (IS_VENDORED) fail('run vendor from the sdlc plugin, not from a project copy')
+  if (older(process.versions.node, '22.18.0')) fail(`rig needs Node >= 22.18 (this is ${process.versions.node}); on an older Node its hooks fail silently and every gate is off`)
+  versionGuards('vendoring', args)
+  const next = pluginVersion()
   const written: string[] = []
-  const standalone = Boolean(args.opt.standalone || args.opt.cloud)
+  const standalone = Boolean(args.opt.standalone)
   const files = harnessFiles(standalone)
   if (standalone) fs.rmSync(path.join(ROOT, '.rig', 'mod'), { recursive: true, force: true })
   for (const [rel, text] of files) {
@@ -190,7 +196,7 @@ export function cmdVendor(args: Args): void {
     if (rel.startsWith('.rig/githooks/')) fs.chmodSync(path.join(ROOT, rel), 0o755)
   }
   if (standalone) mergeProjectFiles(written)
-  // A plain vendor owns only the .rig/bin files: it keeps the standalone entries an earlier `vendor --cloud` recorded.
+  // A plain vendor owns only the .rig/bin files: it keeps the standalone entries an earlier `vendor --standalone` recorded.
   const kept = standalone ? {} : readManifest()?.files ?? {}
   const hashes = Object.fromEntries([...Object.entries(kept), ...[...files].map(([rel, text]): [string, string] => [rel, sha(text)])].sort(([a], [b]) => a.localeCompare(b, 'en')))
   writeFile(MANIFEST, JSON.stringify({ version: next, files: hashes }, null, 2) + '\n', written)

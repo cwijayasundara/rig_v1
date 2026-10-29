@@ -1,12 +1,11 @@
 // Orchestrates sensors at a firing point (stop, ship, ci): one set of checks everywhere, so local == CI.
 import fs from 'node:fs'
-import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { waiverLive,
   ROOT, SDLC, CHANGES, WAIVERS, SENSORS_JSON, BUDGET_MS, readJson, exists, read, out, fail, git, toPosix, optString, readJsonl, defaultBase, checkSlug, skillRef,
   type Args, type Waiver,
 } from './core.ts'
-import { parseRules, formatFindings, warnLines, matchesAny, isTest, isSource, ghBin, planFiles, type FileDiff, type Finding, type Rule } from './model.ts'
+import { parseRules, formatFindings, warnLines, matchesAny, isTest, isSource, ghPages, planFiles, type FileDiff, type Finding, type Rule } from './model.ts'
 import { withoutFixtures, testTamper, suppressions, layering, size, secretsInDiff, rulesSensor, harnessTamper, isProtected, behaviourIds, behaviourText, missingBehaviours } from './sensors.ts'
 import { readBaseline, snapshot, turnDiff, fileDiff, branchDiff, showAt, fileLines, stagedDiff, showStaged } from './diffs.ts'
 import { runCommand, recordRun, normCmd } from './runs.ts'
@@ -257,7 +256,7 @@ export function runChecks(i: CheckInput): CheckResult {
   return result
 }
 
-// The cheap per-file subset, for PostToolUse and the mod's per-edit notices.
+// The cheap per-file subset, for the PostToolUse hook.
 export function editFindings(rel: string): Finding[] {
   const snap = readBaseline()
   if (!snap) return []
@@ -317,7 +316,6 @@ function humanRowsAdded(base: string): string[] {
 // The one path where a PR merges with no person (proposal 2026-10-27 B2, C2). Every input is the base's or GitHub's, never the PR's,
 // and every lookup that fails refuses: the unattended path fails closed.
 type Who = { number: number; author: string; sender: string; repo: string; headSha: string; sameRepo: boolean }
-const ghPages = (route: string): unknown[] => (JSON.parse(execFileSync(ghBin(), ['api', '--paginate', '--slurp', route], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 })) as unknown[]).flat()
 type Pull = { number?: number; user?: { login?: string }; head?: { sha?: string; repo?: { full_name?: string } } }
 type Event = { repository?: { full_name?: string }; sender?: { login?: string }; pull_request?: Pull; merge_group?: { head_ref?: string } }
 
@@ -360,22 +358,17 @@ function tierZeroRefusal(ref: string, config: Registry, who: Who | null): string
 function independentApproval(selfApprovers: string[], workflowEdited: boolean): string | null {
   const eventPath = process.env.GITHUB_EVENT_PATH
   if (!eventPath || !fs.existsSync(eventPath)) return 'cannot verify a reviewer outside a GitHub pull_request run'
-  let pr: { number?: number; user?: { login?: string }; head?: { sha?: string } } = {}, repo = ''
-  try { const ev = JSON.parse(fs.readFileSync(eventPath, 'utf8')) as { pull_request?: typeof pr; repository?: { full_name?: string } }; pr = ev.pull_request ?? {}; repo = ev.repository?.full_name ?? '' } catch { return 'the pull_request event payload is unreadable' }
-  if (!pr.number || !repo || !pr.head?.sha) return 'the pull_request event has no number, repository or head commit'
-  const gh = (route: string): unknown[] => (JSON.parse(execFileSync(ghBin(), ['api', '--paginate', '--slurp', route], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 })) as unknown[]).flat()
-  let reviews: { user?: { login?: string }; state?: string; commit_id?: string; author_association?: string }[]
-  try { reviews = gh(`repos/${repo}/pulls/${pr.number}/reviews?per_page=100`) as typeof reviews } catch { return 'could not read the PR reviews (the job needs pull-requests: read and GH_TOKEN)' }
+  const who = whoIs()
+  if (!who) return 'the pull_request event is unreadable or has no number, repository or head commit'
+  let reviews: Parameters<typeof approvedBySomeoneElse>[0]
+  try { reviews = ghPages(`repos/${who.repo}/pulls/${who.number}/reviews?per_page=100`) as typeof reviews } catch { return 'could not read the PR reviews (the job needs pull-requests: read and GH_TOKEN)' }
   // a pull_request checkout is a merge commit (head is its 2nd parent); a workflow re-run reuses an old event
-  if (![git(['rev-parse', 'HEAD']), git(['rev-parse', 'HEAD^2'])].includes(pr.head.sha)) return `the event's head ${pr.head.sha.slice(0, 7)} is not the checked-out commit (a re-run on a stale event?)`
-  const latest = new Map<string, (typeof reviews)[number]>()
-  for (const r of reviews) if (r.user?.login && r.state !== 'COMMENTED') latest.set(r.user.login, r)
-  const ok = [...latest].some(([login, r]) => login !== pr.user?.login && r.state === 'APPROVED' && r.commit_id === pr.head?.sha && ['OWNER', 'MEMBER', 'COLLABORATOR'].includes(r.author_association ?? ''))
-  if (ok) return null
-  const none = `no approving review of ${pr.head.sha.slice(0, 7)} from someone other than ${pr.user?.login ?? 'the author'}`
-  if (!pr.user?.login || !selfApprovers.includes(pr.user.login.toLowerCase())) return none
+  if (![git(['rev-parse', 'HEAD']), git(['rev-parse', 'HEAD^2'])].includes(who.headSha)) return `the event's head ${who.headSha.slice(0, 7)} is not the checked-out commit (a re-run on a stale event?)`
+  if (approvedBySomeoneElse(reviews, who.author, who.headSha)) return null
+  const none = `no approving review of ${who.headSha.slice(0, 7)} from someone other than ${who.author || 'the author'}`
+  if (!who.author || !selfApprovers.includes(who.author)) return none
   if (workflowEdited) return `${none}; this PR edits .github/workflows, which the lead override will not judge (the workflow is read from the PR)`
-  const refused = leadOverride(gh, repo, pr.head.sha, selfApprovers)
+  const refused = leadOverride(ghPages, who.repo, who.headSha, selfApprovers)
   return refused === null ? null : `${none}; ${refused}`
 }
 

@@ -9,7 +9,6 @@ import { parseRegistry } from './registry.ts'
 
 export type Autonomy = { rung: 0 | 1 | 2 | 3; since: string; deferred: string[]; history: { at: string; by: string; from: number; to: number; why: string }[] }
 
-export const AUTONOMY = path.join(SDLC, 'autonomy.json')
 const EMPTY = (): Autonomy => ({ rung: 0, since: '', deferred: [], history: [] })
 const CLEAN_SHIPS = 3
 const BLOCKING = /\[category: (?:security|contract|design|unmapped)\]/
@@ -46,7 +45,7 @@ export function initAutonomy(root = ROOT): void {
   writeAutonomy({ rung: 1, since: now(), deferred: [], history: [] }, root)
 }
 
-export function setRung(to: Autonomy['rung'], why: string, by: string, root = ROOT): Autonomy {
+function setRung(to: Autonomy['rung'], why: string, by: string, root = ROOT): Autonomy {
   const a = readAutonomy(root)
   const at = now()
   const next: Autonomy = { ...a, rung: to, since: at, history: [...a.history, { at, by, from: a.rung, to, why }] }
@@ -78,7 +77,7 @@ export function proposeRung(root = ROOT): { to: number; why: string } | null {
   return null
 }
 
-export function autonomyText(a: Autonomy, p: ReturnType<typeof proposeRung>, malformed = false): string {
+function autonomyText(a: Autonomy, p: ReturnType<typeof proposeRung>, malformed = false): string {
   const lines = [`autonomy rung ${a.rung}${a.since ? ` since ${a.since}` : ''}${malformed ? ' (malformed .rig/autonomy.json: read as rung 0; fix it with `autonomy set <0|1|2|3> --why "<text>"`)' : ''}`]
   if (a.rung === 3) lines.push('rung 3: rig-check also lets a tier-0 PR by a trusted author merge without a person, while risk.enforce is on and the revert breaker holds')
   if (a.deferred.length) lines.push(`deferred: ${a.deferred.join(', ')}`)

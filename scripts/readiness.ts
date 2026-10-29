@@ -7,6 +7,7 @@ import { parseRegistry, type Registry } from './registry.ts'
 import { layerState } from './arch.ts'
 import { appStates } from './app.ts'
 import { loadRatchets } from './counts.ts'
+import { hooksState } from './githooks.ts'
 
 export type Criterion = { id: string; level: 1 | 2 | 3 | 4; what: string; fix: string; ok: boolean }
 export const GATE = 0.8
@@ -15,10 +16,7 @@ export function criteria(): Criterion[] {
   const reg: Registry = parseRegistry(read(SENSORS_PATH)).registry
   const has = (id: string): boolean => reg.sensors.some(s => s.id === id && s.cmd && s.enabled)
   const claude = read(path.join(ROOT, 'CLAUDE.md'))
-  // The hooks sit in core.hooksPath when rig installed them there, else in .git/hooks.
-  // In a linked worktree .git is a file, so ask git where the hooks are.
-  const hooksDir = git(['config', 'core.hooksPath']), gitHooks = git(['rev-parse', '--git-path', 'hooks'])
-  const hooks = [hooksDir ? path.resolve(ROOT, hooksDir) : '', gitHooks ? path.resolve(ROOT, gitHooks) : ''].filter(Boolean).some(d => ['pre-commit', 'pre-push'].some(h => read(path.join(d, h)).includes('sdlc')))
+  const hooks = hooksState().state === 'installed'
   const waivers = readJsonl<Waiver>(WAIVERS)
   // Existence alone would let an empty file satisfy a criterion: these need content.
   const filled = (rel: string): boolean => read(path.join(ROOT, rel)).trim().length > 0

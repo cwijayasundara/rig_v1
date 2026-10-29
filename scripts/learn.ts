@@ -2,7 +2,7 @@
 // and writes only under .rig/learn/. The model-facing step is the /rig:learn skill; a person applies every change to the lessons and the rules.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SDLC, WAIVERS, ensureGitignore, out, fail, read, listChanges, readJsonl, writeAtomic, sha, type Args, type Waiver } from './core.ts'
+import { ROOT, SDLC, WAIVERS, ensureGitignore, out, fail, read, listChanges, readJsonl, writeAtomic, usdOpt, sha, type Args, type Waiver } from './core.ts'
 import { parseLessons, checkLessons, type Lesson } from './learnfile.ts'
 import { mineCandidates, shippedChanges, lessonStatus } from './learnmine.ts'
 import { replayRule, replayLayers } from './learnreplay.ts'
@@ -135,8 +135,8 @@ export function cmdLearn(args: Args): void {
   if (sub === 'replay') return replay(args)
   if (sub === 'status') return status()
   if (sub === 'review-eval') {
-    const raw = args.opt['max-usd'], maxUsd = typeof raw === 'string' ? Number(raw) : NaN
-    if (!(Number.isFinite(maxUsd) && maxUsd > 0)) fail('learn review-eval costs money: pass --max-usd <dollars> (a positive number), the most this run may spend')
+    const maxUsd = usdOpt(args, Number.MIN_VALUE) // any positive amount
+    if (maxUsd === null || Number.isNaN(maxUsd)) fail('learn review-eval costs money: pass --max-usd <dollars> (a positive number), the most this run may spend')
     const model = typeof args.opt.model === 'string' ? args.opt.model : undefined
     const prior = readJsonl<{ brief: string; model: string; caught: number; cases: number; at: string }>(EVAL_LOG(ROOT))
     const r = reviewEval(ROOT, { maxUsd, model })

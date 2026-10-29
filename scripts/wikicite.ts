@@ -1,5 +1,5 @@
 // Wiki citations (wiki design 2026-10-17): the forms a page may cite, the declaration a citation names, and its hash. Pure over text.
-import { createHash } from 'node:crypto'
+import { sha } from './core.ts'
 import { escapeRe } from './model.ts'
 
 export type Cite = { kind: 'code'; path: string; symbol?: string } | { kind: 'why'; type: 'adr' | 'commit' | 'pr'; ref: string }
@@ -96,7 +96,7 @@ export function normalise(text: string): string {
   return out.replace(/\s+/g, ' ').trim()
 }
 
-export const hashText = (text: string): string => createHash('sha256').update(normalise(text)).digest('hex').slice(0, 16)
+export const hashText = (text: string): string => sha(normalise(text))
 
 
 // Declaration heads for a name: keyword declarations, and a method head (`name(...) {` at the start of a line).

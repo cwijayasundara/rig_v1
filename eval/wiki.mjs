@@ -5,11 +5,10 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { spawnSync } from 'node:child_process'
-import { resultsAllowed, arg, mean } from './lib/cli.mjs'
+import { resultsAllowed, claudeJson, arg, mean } from './lib/cli.mjs'
 import { wikiCommand } from '../scripts/wiki.ts'
 import { claudeRunner } from '../scripts/wikigen.ts'
-import { cleanClaudeEnv } from '../scripts/model.ts'
+import { stageFixture, commitAll } from './lib/fixture.mjs'
 import { bodyLines } from '../scripts/wikivalidate.ts'
 
 const FIX = path.join(import.meta.dirname, 'fixtures/wiki')
@@ -39,8 +38,7 @@ export function renderWikiTable(rows) {
 
 // A throwaway git repo holding the fixture code, with the built wiki copied in for the wiki arm.
 function stage(name, base, withWiki) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `rig-eval-wiki-${name}-`))
-  fs.cpSync(path.join(FIX, 'repo'), dir, { recursive: true })
+  const dir = stageFixture(`rig-eval-wiki-${name}-`, [path.join(FIX, 'repo')])
   if (withWiki) fs.cpSync(path.join(base, '.rig'), path.join(dir, '.rig'), { recursive: true })
   return dir
 }
@@ -48,13 +46,10 @@ function stage(name, base, withWiki) {
 // A result the model got wrong (or ran out of turns on) scores as a wrong answer; a CLI that is missing, hung or printed no JSON
 // is a broken eval, never a "no lift" verdict.
 export function ask(dir, prompt, model) {
-  const bin = process.env.RIG_CLAUDE || 'claude'
-  const c = spawnSync(bin, ['-p', prompt, '--output-format', 'json', '--model', model, '--tools', 'Read,Grep,Glob', '--allowedTools', 'Read,Grep,Glob', '--setting-sources', 'user', '--disable-slash-commands', '--no-session-persistence', '--max-turns', '15'], { cwd: dir, env: cleanClaudeEnv(), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 600_000 })
+  const { bin, c, j, usd, tokens } = claudeJson({ dir, prompt, model, tools: 'Read,Grep,Glob', sources: 'user' })
   if (c.error) throw new Error(`${bin} did not finish: ${c.error.message}`)
-  let j
-  try { j = JSON.parse(c.stdout) } catch { throw new Error(`${bin} exited ${c.status} with no JSON result: ${(c.stderr || c.stdout || '').trim().split('\n').slice(-2).join(' ')}`) }
-  const u = j.usage ?? {}
-  return { answer: typeof j.result === 'string' ? j.result : '', usd: j.total_cost_usd ?? 0, tokens: (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.output_tokens ?? 0) }
+  if (!j) throw new Error(`${bin} exited ${c.status} with no JSON result: ${(c.stderr || c.stdout || '').trim().split('\n').slice(-2).join(' ')}`)
+  return { answer: typeof j.result === 'string' ? j.result : '', usd, tokens }
 }
 
 // The dry replay: native answers three questions in full, the wiki five. It exercises the pipeline, not a model.
@@ -64,9 +59,7 @@ function buildWiki(model) {
   const dir = stage('build', null, false)
   fs.mkdirSync(path.join(dir, '.rig'), { recursive: true })
   fs.copyFileSync(path.join(FIX, 'wiki.json'), path.join(dir, '.rig/wiki.json'))
-  spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: dir })
-  spawnSync('git', ['add', '-A'], { cwd: dir })
-  spawnSync('git', ['-c', 'user.email=e@e', '-c', 'user.name=eval', 'commit', '-qm', 'fixture'], { cwd: dir })
+  commitAll(dir, 'fixture')
   const run = claudeRunner(model)
   const built = wikiCommand(dir, { pos: ['build'], opt: {} }, run)
   const verified = wikiCommand(dir, { pos: ['verify'], opt: {} }, run)

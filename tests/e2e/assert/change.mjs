@@ -2,8 +2,8 @@
 // red before green, a passing verify on the PR tree, the PR, and what CI will see.
 import fs from 'node:fs'
 import { createHash } from 'node:crypto'
+import { json } from '../lib/checks.mjs'
 
-const json = t => { try { return JSON.parse(t) } catch { return null } }
 const digest = t => createHash('sha256').update(t.replace(/\s+$/, '')).digest('hex').slice(0, 16)
 
 export async function assertChange(c, sb, slug, phase) {

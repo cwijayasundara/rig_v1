@@ -12,6 +12,7 @@ import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { CASES as SHOP_CASES } from './review/cases.mjs'
 import { CART_CASES } from './review/cart-cases.mjs'
+import { stageFixture, commitAll } from './lib/fixture.mjs'
 import { resultsAllowed, arg, readJsonl } from './lib/cli.mjs'
 import { claudeRunner } from '../scripts/wikigen.ts'
 
@@ -30,11 +31,9 @@ export const baseOf = c => BASES[c.base ?? 'shop']
 
 // The base committed as main; the case is applied on top and diffed.
 export function repoFor(c) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-review-'))
+  const dir = stageFixture('rig-review-', baseOf(c).from)
   const git = (...a) => execFileSync('git', a, { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' })
-  for (const from of baseOf(c).from) fs.cpSync(from, dir, { recursive: true })
-  git('init', '-q', '-b', 'main'); git('config', 'user.email', 'e@x'); git('config', 'user.name', 'eval')
-  git('add', '-A'); git('commit', '-qm', 'base')
+  commitAll(dir, 'base')
   for (const [file, apply] of Object.entries(c.edits ?? {})) fs.writeFileSync(path.join(dir, file), apply(fs.readFileSync(path.join(dir, file), 'utf8')))
   for (const [file, text] of Object.entries(c.newFiles ?? {})) { fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true }); fs.writeFileSync(path.join(dir, file), text) }
   git('add', '-N', '.')

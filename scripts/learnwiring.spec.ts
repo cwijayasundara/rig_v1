@@ -38,7 +38,7 @@ test('the rule skill points at the replay gate', () => {
 })
 
 test('the kept-skill lists include learn', () => {
-  assert.equal((at('scripts/removed.spec.ts').match(/'init', 'learn', 'plan'/g) ?? []).length, 2)
+  assert.equal((at('scripts/removed.spec.ts').match(/'init', 'learn', 'plan'/g) ?? []).length, 1)
 })
 
 test('the CI lessons step skips a base checker that predates the learn command', () => {

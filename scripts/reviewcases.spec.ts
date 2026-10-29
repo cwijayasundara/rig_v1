@@ -4,13 +4,13 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { execFileSync } from 'node:child_process'
+import { gitIn } from './testkit.ts'
 import { writeCandidates, readCases, scoreFindings, casePrompt, reviewEval, type ReviewCase } from './reviewcases.ts'
 import { spawnSync } from 'node:child_process'
 
 function shop(): { dir: string; git: (...a: string[]) => string; ship: (slug: string) => string } {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-cases-'))
-  const git = (...a: string[]): string => execFileSync('git', a, { cwd: dir, encoding: 'utf8' }).trim()
+  const git = (...a: string[]): string => gitIn(dir, ...a)
   git('init', '-q', '-b', 'main'); git('config', 'user.email', 'e@x'); git('config', 'user.name', 't')
   fs.mkdirSync(path.join(dir, 'src')); fs.writeFileSync(path.join(dir, 'src/cart.js'), 'export const total = xs => xs.reduce((a, b) => a + b, 0)\n')
   git('add', '-A'); git('commit', '-qm', 'init')

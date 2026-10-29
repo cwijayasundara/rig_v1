@@ -11,7 +11,7 @@ import { spawnSync } from 'node:child_process'
 import { createSandbox, installedPlugins } from '../tests/e2e/lib/sandbox.mjs'
 import { createSessions } from '../tests/e2e/driver/live.mjs'
 import { totals } from '../tests/e2e/assert/process.mjs'
-import { resultsAllowed, EVAL_ALLOW, arg, readJsonl } from './lib/cli.mjs'
+import { resultsAllowed, nextRunAllowed, EVAL_ALLOW, arg, readJsonl } from './lib/cli.mjs'
 
 const FX = path.resolve(import.meta.dirname, '../tests/e2e/fixtures/journeys')
 export const PROMPT = '/rig-app journeys-shop. The person confirms these three journeys, so do not ask: (1) a shopper sees the two products at GET /products; (2) a shopper adds 2 of TEA-001 with POST /cart; (3) POST /checkout then totals 900 cents. The app starts with `npm start` and prints `listening on <port>`. Write the app definition, the driver and the feature map, run the driver with `app run`, then stop for the person to approve it. In this unattended session run each command as its own Bash call (no cd, pipes, redirects, && or ;).'
@@ -76,7 +76,7 @@ if (process.argv[1] === import.meta.filename) {
   fs.mkdirSync(path.dirname(results), { recursive: true })
   let spent = 0
   for (let n = 1; n <= runs; n++) {
-    if (!dry && spent + capRun > capTotal) { console.log(`stopped at the cap: $${spent.toFixed(2)} of $${capTotal}`); break }
+    if (!dry && !nextRunAllowed(spent, capRun, capTotal)) { console.log(`stopped at the cap: $${spent.toFixed(2)} of $${capTotal}`); break }
     const row = { run: n, model, at: new Date().toISOString() }
     try {
       const sb = setup(out, `app-${n}`)

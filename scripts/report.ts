@@ -2,7 +2,7 @@
 // no network, no model, no money. It never reports a PR count as a result, only as the denominator. What git cannot tell it
 // (CI outcomes, review time, findings fixed without a person) is listed as unavailable instead of being guessed.
 import path from 'node:path'
-import { ROOT, out, readJson, readJsonl, gitIn, type Args } from './core.ts'
+import { ROOT, ageDays, out, readJson, readJsonl, gitIn, type Args } from './core.ts'
 import { mineCandidates, shippedChanges } from './learnmine.ts'
 import type { RunRow } from './runs.ts'
 import { changeHistory } from './reverts.ts'
@@ -47,7 +47,7 @@ export function buildReport(root: string, since: string | null = null): Report {
   const slugs = new Set(shipped.map(c => c.slug))
   const all = readJsonl<{ slug: string; by?: string; at?: string }>(path.join(root, '.rig', 'waivers.jsonl'))
   const waivers = all.filter(w => slugs.has(w.slug)).length
-  const ages = all.map(w => { const n = Math.floor((Date.now() - Date.parse(w.at ?? '')) / 86_400_000); return Number.isFinite(n) ? n : Infinity })
+  const ages = all.map(w => ageDays(w.at ?? ''))
   const classes = mineCandidates(root).map(c => ({ ...c, changes: c.changes.filter(s => slugs.has(s)) })).filter(c => c.changes.length >= 2)
   return {
     merged: merges.length, shipped: shipped.length, since,
