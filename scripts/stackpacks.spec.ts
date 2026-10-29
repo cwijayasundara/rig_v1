@@ -43,6 +43,7 @@ test('every pack has a blocking sast sensor: Semgrep on the change\'s own source
     assert.equal(s?.blocks, true, p.stack)
     assert.match(s?.cmd ?? '', /semgrep scan --config p\/default --error --metrics=off [^;]*\{changed\}/, `${p.stack} scans only the changed source and sends no metrics`)
     assert.match(s?.cmd ?? '', /if semgrep --version[\s\S]*\$CI[\s\S]*exit 1/, `${p.stack} treats a broken Semgrep as missing and fails in CI`)
+    assert.match(s?.cmd ?? '', /s=\$\?; \[ \$s -le 1 \] \|\| \[ -n \\?"\$CI\\?" \] && exit \$s;/, `${p.stack} blocks on findings, and on a scan error only in CI (offline locally is not a finding)`)
   }
   const ci = fs.readFileSync(path.join(PACKS_DIR, '..', 'rig-check.yml'), 'utf8')
   assert.ok(ci.indexOf('pipx install semgrep==') > 0 && ci.indexOf('pipx install semgrep==') < ci.indexOf('- name: sdlc check'), 'CI installs a pinned Semgrep before the sensors run')

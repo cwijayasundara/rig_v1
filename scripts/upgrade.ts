@@ -37,14 +37,18 @@ export function classify(base: Record<string, string> | null, disk: Map<string, 
 const idOf = (s: unknown): string | null => (isObject(s) && typeof s.id === 'string' ? s.id : null)
 
 // Pack sensors whose id the team's registry lacks. Ids only: the team's commands are never compared or edited. Data only, never writes.
-export function proposeSensors(sensorsJson: string, packs: ReturnType<typeof loadPacks>['packs']): { stack: string; sensors: Record<string, unknown>[] } | null {
+// A sensor whose tool CI must install (Semgrep) is held back while the team's workflow lacks it: it would fail every PR in CI.
+const CI_TOOL = /\bsemgrep\b/
+export function proposeSensors(sensorsJson: string, packs: ReturnType<typeof loadPacks>['packs'], workflow: string | null = null): { stack: string; sensors: Record<string, unknown>[]; held: string[] } | null {
   if (!isRegistryShape(sensorsJson)) return null
   const reg = JSON.parse(sensorsJson) as { stack?: unknown; sensors: unknown[] }
   const pack = packs.find(p => p.stack === reg.stack)
   if (!pack) return null
   const have = new Set(reg.sensors.map(idOf))
-  const sensors = pack.sensors.filter((s): s is Record<string, unknown> => isObject(s) && !have.has(idOf(s)))
-  return sensors.length ? { stack: pack.stack, sensors } : null
+  const missing = pack.sensors.filter((s): s is Record<string, unknown> => isObject(s) && !have.has(idOf(s)))
+  const ciLacks = (s: Record<string, unknown>) => workflow !== null && CI_TOOL.test(String(s.cmd ?? '')) && !CI_TOOL.test(workflow)
+  const sensors = missing.filter(s => !ciLacks(s)), held = missing.filter(ciLacks).map(s => String(s.id))
+  return sensors.length || held.length ? { stack: pack.stack, sensors, held } : null
 }
 
 type Proposals = ReturnType<typeof proposeSensors>
@@ -93,7 +97,7 @@ export function buildPlan(): Plan {
   const sensors = read(SENSORS_PATH)
   const wf = read(path.join(ROOT, WORKFLOW))
   const workflow: Plan['workflow'] = !wf ? 'absent' : wf === read(path.join(PLUGIN_ROOT, 'templates', 'rig-check.yml')) ? 'same' : 'differs'
-  return { workflow, from, to, standalone, files, next, disk, manifest, migrations: pendingMigrations(from, to).filter(m => m.applies(ROOT)), ignoredManifestKeys, proposals: sensors ? proposeSensors(sensors, loadPacks(PACKS_DIR).packs) : null }
+  return { workflow, from, to, standalone, files, next, disk, manifest, migrations: pendingMigrations(from, to).filter(m => m.applies(ROOT)), ignoredManifestKeys, proposals: sensors ? proposeSensors(sensors, loadPacks(PACKS_DIR).packs, wf || null) : null }
 }
 
 const countsOf = (files: Map<string, Verdict>): Record<Verdict, number> => {
@@ -219,6 +223,7 @@ export function cmdUpgrade(args: Args): void {
   if (conflicts.length) lines.push('conflicts (edited here and changed upstream; when applying you choose mine, new or later for each):', ...conflicts.map(rel => `  ${rel}`))
   if (plan.migrations.length) lines.push('migrations:', ...plan.migrations.map(m => `  ${m.id}`))
   if (plan.proposals) lines.push(`proposed ${plan.proposals.stack} sensors (not applied):`, ...plan.proposals.sensors.map(s => `  ${String(s.id)}`))
+  if (plan.proposals?.held.length) lines.push(`held back until ${WORKFLOW} installs their tool (merge the template's step first): ${plan.proposals.held.join(', ')}`)
   if (plan.workflow === 'differs') lines.push(`${WORKFLOW} differs from the plugin's template (newer: ai-review and security review on every PR, the merge queue, checks: read for the tier-0 path); apply writes ${WORKFLOW}.rig-new beside it to merge by hand, never over it`)
   if (plan.ignoredManifestKeys.length) lines.push(`ignored ${plan.ignoredManifestKeys.length} manifest entries outside the harness`)
   if (isCurrent(plan)) lines.push('already current')

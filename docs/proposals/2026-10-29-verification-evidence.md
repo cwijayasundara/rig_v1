@@ -83,6 +83,14 @@ raise-after-commit in shop_app `storage.py` (`_fsync_directory` after `os.replac
 and Sonnet in 6. Decision: seeded single-bug recall no longer separates the models, so stop making seeded cases harder.
 Next eval step, if any: score pre-existing bugs in the code around a diff. Item 2 goes ahead now.
 
+Branch review (Opus, 2026-10-29) fixes: the e2e-stacks CI job installs Semgrep (with `CI=true` the sast sensor blocked
+every stack's good edit); `/rig:upgrade` holds `sast` back while the team's workflow does not install Semgrep; outside CI
+a Semgrep scan error other than findings (offline, rules not loaded) prints the "CI scans this change" line instead of
+blocking; the cart pytest checks skip by name; the dry runner is handed its case; the per-case table counts defects for
+multi-defect cases; the spending cap stops the loop and still prints the summary. Known limit, not fixed: `{changed}` is
+whole files, so a pre-existing Semgrep finding in a touched file blocks the change (`--baseline-commit` needs the PR's base,
+which sensors are not given today); a timed-out call does not count toward `--max-usd`.
+
 ### 2. Evidence, not claims, in the PR body
 
 `prbody.ts` `## Evidence` lists per B-number: the test that failed before the change and its failure line, the same test

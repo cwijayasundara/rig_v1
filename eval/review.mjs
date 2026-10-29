@@ -95,7 +95,7 @@ const label = g => { const [arm, model] = g.split(' '); return model ? `${LABEL[
 export function renderMarkdown(rows, { date, files }) {
   const s = summarize(rows), { key, names } = groups(rows), pct = v => (v === null ? '–' : `${Math.round(v * 100)}%`)
   const cases = CASES.filter(c => rows.some(r => r.case === c.id))
-  const byCase = cases.map(c => `| ${c.id}${c.control ? ' (clean)' : c.hard ? ' (hard)' : ''} | ${names.map(g => { const rs = rows.filter(r => r.case === c.id && key(r) === g && !r.failed); return c.control ? `${rs.reduce((n, r) => n + r.findings, 0)} finding(s) in ${rs.length} runs` : `${rs.filter(r => r.caught.length).length}/${rs.length}` }).join(' | ')} |`)
+  const byCase = cases.map(c => `| ${c.id}${c.control ? ' (clean)' : c.hard ? ' (hard)' : ''} | ${names.map(g => { const rs = rows.filter(r => r.case === c.id && key(r) === g && !r.failed); return c.control ? `${rs.reduce((n, r) => n + r.findings, 0)} finding(s) in ${rs.length} runs` : c.defects.length > 1 ? `${rs.reduce((n, r) => n + r.caught.length, 0)}/${rs.length * c.defects.length} defects` : `${rs.filter(r => r.caught.length).length}/${rs.length}` }).join(' | ')} |`)
   return [`# Eval results ${date}: review eval`, '',
     `Question: which reviewer catches more seeded defects, hard ones included, and raises fewer findings on correct changes? Source: ${files.join(', ')}. No tools; the prompt carries the change and the whole source tree.`, '',
     '| reviewer | runs | defects caught | hard defects caught | extra findings per defect run | findings on the clean changes | USD |', '|---|---|---|---|---|---|---|',
@@ -113,20 +113,19 @@ if (process.argv[1] === import.meta.filename) {
   const refusal = resultsAllowed(results, dry)
   if (refusal) { console.error(refusal); process.exit(2) }
   // The dry runner "reviews" like a clean reviewer that misses every hard case and what the builder's notes explain away: plumbing, not a measurement.
-  const dryRunner = ({ prompt }) => {
-    const c = CASES.find(x => prompt.includes(`## intent.md\n${x.intent}`))
+  const dryRunner = ({ prompt, case: c }) => {
     const blind = prompt.includes('## Your build notes')
     return { text: !c || c.control || c.hard || blind ? 'verdict: pass\n## Findings\n' : `verdict: changes-needed\n## Findings\n- [severity: high] [category: correctness] ${[c.defects[0].file].flat()[0]}:1: ${c.id} ${c.defects[0].re.source.split('|')[0]}. Fails when: used. → fix\n`, usd: 0 }
   }
   const runners = Object.fromEntries(models.map(m => [m, dry ? dryRunner : claudeRunner(m)]))
   fs.mkdirSync(path.dirname(results), { recursive: true })
   let spent = 0
-  for (let n = 1; n <= runs; n++) for (const c of CASES.filter(x => !only || (x.base ?? 'shop') === only)) {
+  runs: for (let n = 1; n <= runs; n++) for (const c of CASES.filter(x => !only || (x.base ?? 'shop') === only)) {
     const repo = repoFor(c)
     for (const model of models) for (const arm of arms) {
-      if (!dry && spent >= maxUsd) { console.log(`stopped at the cap: $${spent.toFixed(2)} of $${maxUsd}`); process.exit(0) }
+      if (!dry && spent >= maxUsd) { console.log(`stopped at the cap: $${spent.toFixed(2)} of $${maxUsd}`); fs.rmSync(repo.dir, { recursive: true, force: true }); break runs }
       const row = { case: c.id, arm, model, run: n, control: Boolean(c.control), hard: Boolean(c.hard), defects: c.defects.length, at: new Date().toISOString() }
-      try { const r = runners[model]({ role: 'review', prompt: buildPrompt(c, arm, repo) }); spent += r.usd; Object.assign(row, scoreReview(r.text, c.defects), { usd: r.usd, text: r.text }) } catch (e) { Object.assign(row, { failed: true, error: String(e.message).split('\n')[0] }) }
+      try { const r = runners[model]({ role: 'review', prompt: buildPrompt(c, arm, repo), case: c }); spent += r.usd; Object.assign(row, scoreReview(r.text, c.defects), { usd: r.usd, text: r.text }) } catch (e) { Object.assign(row, { failed: true, error: String(e.message).split('\n')[0] }) }
       fs.appendFileSync(results, JSON.stringify(row) + '\n')
       console.log(`${c.id} ${arm} ${model} #${n}: ${row.failed ? `failed (${row.error})` : `caught ${row.caught.length}/${row.defects}, ${row.findings} finding(s), $${(row.usd ?? 0).toFixed(3)}`}`)
     }

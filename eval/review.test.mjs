@@ -6,8 +6,15 @@ import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { CASES, buildPrompt, scoreReview, summarize, renderMarkdown, ARMS, repoFor as ctxFor, baseOf } from './review.mjs'
 
-// The cart cases run pytest; a machine without it skips that part rather than failing the suite.
-const pytest = (() => { try { execFileSync('python3', ['-m', 'pytest', '--version'], { stdio: 'pipe' }); return true } catch { return false } })()
+// The cart cases run Python and pytest; a machine without them skips those tests, by name, rather than failing the suite.
+const has = (...cmd) => { try { execFileSync(cmd[0], cmd.slice(1), { stdio: 'pipe' }); return true } catch { return false } }
+const python = has('python3', '--version'), pytest = python && has('python3', '-m', 'pytest', '--version')
+const suitePasses = c => {
+  const ctx = ctxFor(c)
+  const [cmd, ...args] = baseOf(c).run
+  try { execFileSync(cmd === 'node' ? process.execPath : cmd, args, { cwd: ctx.dir, stdio: 'pipe', encoding: 'utf8' }) } catch (e) { assert.fail(`${c.id}: ${e.stdout}`) }
+  fs.rmSync(ctx.dir, { recursive: true, force: true })
+}
 
 test('every case applies to the shop base, and each defect names a file the change touches or one beside it; five clean controls, ten hard cases', () => {
   assert.equal(CASES.filter(c => c.control).length, 5)
@@ -25,13 +32,12 @@ test('every case applies to the shop base, and each defect names a file the chan
   }
 })
 
-test('the whole suite passes on every control and every hard case: a control is correct, and a hard defect gets past the tests', () => {
-  for (const c of CASES.filter(x => (x.control || x.hard) && (pytest || x.base !== 'cart'))) {
-    const ctx = ctxFor(c)
-    const [cmd, ...args] = baseOf(c).run
-    try { execFileSync(cmd === 'node' ? process.execPath : cmd, args, { cwd: ctx.dir, stdio: 'pipe', encoding: 'utf8' }) } catch (e) { assert.fail(`${c.id}: ${e.stdout}`) }
-    fs.rmSync(ctx.dir, { recursive: true, force: true })
-  }
+test('the whole suite passes on every shop control and hard case: a control is correct, and a hard defect gets past the tests', () => {
+  for (const c of CASES.filter(x => (x.control || x.hard) && x.base !== 'cart')) suitePasses(c)
+})
+
+test('the whole pytest suite passes on every cart control and hard case', { skip: !pytest && 'no pytest' }, () => {
+  for (const c of CASES.filter(x => (x.control || x.hard) && x.base === 'cart')) suitePasses(c)
 })
 
 test('the stale-cache case really is stale, and the cross-file case puts the defect in a file the change does not touch', () => {
@@ -116,6 +122,15 @@ test('a run keeps each review\'s text in its row, so a catch can be read and not
   const rows = fs.readFileSync(out, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l))
   assert.equal(rows.length, CASES.length)
   assert.ok(rows.every(r => typeof r.text === 'string' && /^verdict: /.test(r.text)))
+  // The dry reviewer is handed the case itself (cart cases share one intent): easy cases get caught, controls and hard cases never.
+  assert.ok(rows.some(r => r.caught.length), 'some easy case is caught')
+  assert.ok(rows.every(r => !(r.control || r.hard) || !r.caught.length))
+})
+
+test('the per-case table counts defects, not runs, for a case with more than one defect', () => {
+  const row = (caught, run) => ({ case: 'set-qty-edges', arm: 'clean', model: 'm', run, control: false, hard: true, defects: 2, caught, findings: caught.length, extra: 0, usd: 0 })
+  const md = renderMarkdown([row(['zero-keeps-line'], 1), row(['zero-keeps-line', 'qty-not-validated'], 2)], { date: 'd', files: ['f'] })
+  assert.match(md, /\| set-qty-edges \(hard\) \| 3\/4 defects \|/)
 })
 
 test('the cart cases are real code: shop_app\'s cart-cli change, a diff of a few hundred lines, with the Python source and tests beside it', { skip: !pytest && 'no pytest' }, () => {
@@ -129,7 +144,7 @@ test('the cart cases are real code: shop_app\'s cart-cli change, a diff of a few
   fs.rmSync(ctx.dir, { recursive: true, force: true })
 })
 
-test('every seeded cart defect is a real bug: its probe prints something other than on the correct cart-cli', { skip: !pytest && 'no pytest' }, () => {
+test('every seeded cart defect is a real bug: its probe prints something other than on the correct cart-cli', { skip: !python && 'no python3' }, () => {
   const prelude = 'import json, os, sys, tempfile\nfrom pathlib import Path\nsys.path.insert(0, "src")\nfrom cart.cli import main\nfrom cart.models import Cart\nT = Path(tempfile.mkdtemp())\nos.environ.pop("CART_FILE", None)\n'
   const ok = ctxFor(CASES.find(x => x.id === 'cli-ok'))
   const run = (dir, probe) => execFileSync('python3', ['-c', prelude + probe], { cwd: dir, encoding: 'utf8', stdio: 'pipe' }).trim()
