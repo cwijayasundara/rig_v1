@@ -19,7 +19,7 @@ test('portable also covers a root with a trailing slash, a path ending a sentenc
 // The command lands in the committed evidence and the PR body, so an inline token in it is masked like the output.
 test('a recorded command is masked like its output', () => {
   const key = 'AKIA' + 'IOSFODNN7EXAMPLE'
-  const row = runCommand(`KEY=${key} true`)
+  const row = runCommand(`echo ${key}`) // runs in sh and in cmd.exe alike
   assert.equal(row.cmd, '[masked by sdlc]')
   assert.equal(row.exit, 0)
 })
