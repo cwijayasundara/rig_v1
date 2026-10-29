@@ -34,6 +34,7 @@ import { cmdQueue, conflictsFor } from './queue.ts'
 import { intentScope } from './scope.ts'
 import { prdFormatProblems, prdLedger, conversionProblems } from './prdformat.ts'
 import { parseLedger, parseIntent } from './chartcheck.ts'
+import { superpowersWarning } from './superpowers.ts'
 import { ARCH_REL, intentsDir, intentRelOf, prdRel, sprintRel, prdPath, reviewPath, ledgerPath, sourcePath, conversionPath } from './product.ts'
 import { cmdSlice } from './slice.ts'
 import { registerContracts } from './contracts.ts'
@@ -43,7 +44,7 @@ import { cmdAutonomy, initAutonomy } from './autonomy.ts'
 import { cmdRisk, cmdWeight } from './risk.ts'
 import { protect } from './protect.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'
-import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, waiveChartFinding, changeRequirements, PRD_RE, isConverted, conversionRefusal } from './chart.ts'
+import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, nextChart, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, waiveChartFinding, changeRequirements, PRD_RE, isConverted, conversionRefusal } from './chart.ts'
 import { journey, journeyText } from './journey.ts'
 import { TYPES, changeDir, newChange, setActive, activeSlug, isShipped, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
 
@@ -264,7 +265,11 @@ function commitApproval(n: number, sensors = false): boolean | null {
 
 function cmdChart(args: Args): void {
   const [sub, num] = args.pos
-  if ((sub !== 'check' && sub !== 'report' && sub !== 'plan') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: chart (check [--cases] [--json] | report | plan [--print]) <sprint number>')
+  if (sub === 'next') {
+    const next = nextChart()
+    return out(args.opt.json ? JSON.stringify(next) : `${next.sprint === null ? 'sprint: ask' : `sprint ${next.sprint}`}${next.prd ? ` ${next.prd}` : ''} (${next.why})${next.candidates.length > 1 ? `\n${next.candidates.map(c => `  sprint ${c.sprint}: ${c.prd}`).join('\n')}` : ''}`)
+  }
+  if ((sub !== 'check' && sub !== 'report' && sub !== 'plan') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: chart next [--json] | chart (check [--cases] [--json] | report | plan [--print]) <sprint number>')
   const n = Number(num)
   needPrd(n)
   if (sub === 'plan') return out(args.opt.print ? sprintPlan(n) : `wrote ${writePlan(n)}`)
@@ -313,6 +318,8 @@ function cmdStartBrief(): void {
   const lines: string[] = []
   if (/^rig\/chart-\d+$/.test(branch)) lines.push(`WARNING: you are on the chart branch ${branch}. Merge it into ${base} first and start the change from ${base}; a change built on an unmerged chart branch ships the chart with it (shop_app 2026-10-27: sdlc/cart-core sat on rig/chart-1).`)
   else if (branch && branch !== base) lines.push(`WARNING: you are on branch ${branch}, not ${base}. The previous change may not be merged yet; a new change starts from this branch.`)
+  const sp = superpowersWarning()
+  if (sp) lines.push(sp)
   const ready = readyIntents()
   const plans = sprintsKnown().filter(n => exists(prdPath(n)) && planRows(n).some(r => r.status !== 'done')).map(n => writePlan(n))
   if (plans.length) lines.push(`build order (waves and dependency graph): ${plans.join(', ')}`)
@@ -439,6 +446,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   prd: cmdPrd,
   ready: cmdReady,
   'start-brief': () => cmdStartBrief(),
+  superpowers: () => out(superpowersWarning() || 'superpowers: ok'),
   pr: cmdPr, carry: cmdCarry,
   run: () => cmdRun(),
   verify: cmdVerify,

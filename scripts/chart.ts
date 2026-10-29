@@ -217,6 +217,26 @@ export function intentReady(slug: string): { ready: boolean; why: string[] } {
 export function sprintsKnown(): number[] {
   return [...new Set([...sprintsOnDisk(), ...allIntents().map(i => i.sprint)])].sort((a, b) => a - b)
 }
+
+// What /rig:chart works on when given no argument: the PRDs of sprints with no intents yet, from the sprint folder or docs/prd
+// (sprint-<N>/prd.md, sprint-<N>-<title>/prd.md, sprint-<N>.md, sprint-<N>-<title>.md). One candidate is the answer; several are a question.
+export type NextChart = { sprint: number | null; prd: string | null; candidates: { sprint: number; prd: string }[]; why: string }
+export function nextChart(): NextChart {
+  const found = new Map<number, string>()
+  for (const n of sprintsOnDisk()) if (exists(prdPath(n))) found.set(n, `${sprintRel(n)}/prd.md`)
+  const docs = path.join(ROOT, 'docs', 'prd')
+  for (const e of exists(docs) ? fs.readdirSync(docs, { withFileTypes: true }) : []) {
+    const m = /^sprint-(\d{1,4})(?:-.+?)?(\.md)?$/.exec(e.name)
+    const n = Number(m?.[1])
+    const rel = e.isDirectory() ? `docs/prd/${e.name}/prd.md` : m?.[2] ? `docs/prd/${e.name}` : null
+    if (m && rel && exists(path.join(ROOT, rel)) && !found.has(n)) found.set(n, rel)
+  }
+  const candidates = [...found].filter(([n]) => !intentsOf(n).length).sort(([a], [b]) => a - b).map(([sprint, prd]) => ({ sprint, prd }))
+  if (candidates.length === 1) return { sprint: candidates[0]!.sprint, prd: candidates[0]!.prd, candidates, why: 'the one PRD with no intents yet' }
+  if (candidates.length) return { sprint: null, prd: null, candidates, why: `${candidates.length} PRDs have no intents yet: ask which one` }
+  const known = sprintsKnown()
+  return { sprint: known.length ? Math.max(...known) + 1 : 0, prd: null, candidates, why: 'no PRD without intents: the next sprint number, but no PRD to chart; ask for its path' }
+}
 export const sprintIntents = (n: number): string[] => intentsOf(n).map(i => i.slug)
 
 // Every intent that can start now.

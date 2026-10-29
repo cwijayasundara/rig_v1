@@ -18,7 +18,7 @@ test('chart skill: the draft is converted only when a path is given, and a missi
 })
 
 test('chart skill: argument-hint accepts any PRD path', () => {
-  assert.match(skill, /argument-hint: '<sprint number \| [^']*PRD path/)
+  assert.match(skill, /argument-hint: '\[sprint number \| [^']*PRD path/)
 })
 
 // A live run of `/rig-chart 1 docs/prd/shopping-cart-app-prd.md` stopped: the argument had no `sprint N:` prefix, so the
