@@ -28,3 +28,12 @@ test('proposeSensors: old shape, unparseable, unknown stack and a covered regist
   const ids = packs.find(p => p.stack === 'node')!.sensors.map(s => (s as { id: string }).id)
   assert.equal(proposeSensors(team(ids.map(id => ({ id }))), packs), null)
 })
+test('proposeSensors: a sensor CI must install a tool for (Semgrep) is held back while the team workflow lacks it', () => {
+  const ids = packs.find(p => p.stack === 'node')!.sensors.map(s => (s as { id: string }).id).filter(i => i !== 'sast')
+  const reg = team(ids.map(id => ({ id })))
+  const proposed = (wf: string | null) => proposeSensors(reg, packs, wf)
+  assert.deepEqual(proposed('jobs: {}')?.held, ['sast'], 'an old workflow: held, and named')
+  assert.ok(!proposed('jobs: {}')?.sensors.some(s => s.id === 'sast'), 'held sensors cannot be added')
+  assert.deepEqual(proposed('run: pipx install semgrep==1.182.1')?.sensors.map(s => s.id), ['sast'])
+  assert.deepEqual(proposed(null)?.sensors.map(s => s.id), ['sast'], 'no workflow: nothing in CI to break')
+})

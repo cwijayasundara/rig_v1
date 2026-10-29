@@ -116,6 +116,9 @@ jobs:
             if [ -z "$TOKEN" ]; then echo "::error::consumer $repo needs the SDLC_CONSUMERS_TOKEN secret (contents:read)"; exit 1; fi
             git -c http.extraheader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 | tr -d '\n')" clone --depth 1 "https://github.com/${repo}.git" "$dir"
           done
+      - name: Install Semgrep for the sast sensor
+        # the sast sensor fails in CI when Semgrep does not run, so a PR is never passed unscanned; pinned so a rules engine update is a reviewed change
+        run: pipx install semgrep==1.182.1
       - name: sdlc check
         env:
           CLAUDE_PROJECT_DIR: ${{ github.workspace }}

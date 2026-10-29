@@ -65,4 +65,6 @@ jobs:
           dotnet-version: '8.0.x'
       - uses: dtolnay/rust-toolchain@stable
       - run: npm ci || npm install
+      # every pack's sast sensor runs Semgrep at commit, and CI=true makes a missing Semgrep block
+      - run: pipx install semgrep==1.182.1
       - run: npm run test:e2e:stacks -- --require all
