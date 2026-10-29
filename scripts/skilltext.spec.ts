@@ -61,13 +61,13 @@ test('start asks its foreseen questions in one batch and settles carried items',
   const start = text('skills/start/SKILL.md')
   assert.doesNotMatch(start, /ask one question at a time/)
   assert.match(start, /one `AskUserQuestion` batch/)
-  assert.match(start, /## Carried in/)
+  assert.match(start, /carried\/<slug>\.md/)
 })
 
 test('pr tells the builder to tag a review item for the intent that owns it, inside the blast radius it is fixed', () => {
   const t = text('skills/pr/SKILL.md')
   assert.match(t, /→ carry: <slug>/)
-  assert.match(t, /inside the blast radius/)
+  assert.match(t, /cites a file `plan\.md` lists/)
 })
 
 test('build and the review brief look at raises after the commit point', () => {
@@ -81,7 +81,7 @@ test('chart reads the backlog at its gap pass', () => {
 
 // Person's rule 2026-10-28: every Sonnet output in rig is evaluated by Opus.
 test('no skill evaluates with sonnet', () => {
-  const files = [...fs.readdirSync(path.join(root, 'skills')).map(d => `skills/${d}/SKILL.md`), ...fs.readdirSync(path.join(root, 'templates')).filter(f => /brief/.test(f)).map(f => `templates/${f}`)].filter(f => fs.existsSync(path.join(root, f)))
+  const files = [...fs.readdirSync(path.join(root, 'skills')).map(d => `skills/${d}/SKILL.md`), ...fs.readdirSync(path.join(root, 'templates')).filter(f => /brief|\.yml$/.test(f)).map(f => `templates/${f}`)].filter(f => fs.existsSync(path.join(root, f)))
   assert.ok(files.length > 10)
   for (const f of files) for (const sentence of text(f).split(/(?<=[.:;])\s+|\n/)) {
     if (/review|confirm|evaluat/i.test(sentence)) assert.doesNotMatch(sentence, /model: sonnet|model `sonnet`/, `${f}: ${sentence.slice(0, 120)}`)
@@ -93,4 +93,25 @@ test('testplan and plan hand their output to the Opus evaluator once', () => {
   const plan = text('skills/plan/SKILL.md')
   assert.match(plan, /rig:evaluator|rig-evaluator/)
   assert.match(plan, /spec\.md and plan\.md/)
+})
+
+test('the evaluator has change plan and test plan modes, and the skills name the mode and the output file', () => {
+  const ev = text('agents/evaluator.md')
+  assert.match(ev, /## Change plan mode/)
+  assert.match(ev, /plan-review\.md/)
+  assert.match(ev, /## Test plan mode/)
+  assert.match(ev, /testplan-review\.md/)
+  assert.doesNotMatch(ev, /security-review/)
+  assert.match(text('skills/plan/SKILL.md'), /change plan mode[^\n]*plan-review\.md/)
+  assert.match(text('skills/testplan/SKILL.md'), /test plan mode[^\n]*testplan-review\.md/)
+})
+
+test('CI reviews run on opus, and a re-chart keeps the generated sections', () => {
+  assert.doesNotMatch(text('templates/rig-check.yml'), /--model sonnet/)
+  assert.match(text('skills/chart/SKILL.md'), /Added during the change[^\n]*carried\/[^\n]*verbatim/)
+  assert.match(text('agents/architect.md'), /Added during the change[^\n]*carried\/[^\n]*verbatim/)
+})
+
+test('the pr skill fixes only Deferred items in the wave, never Unverifiable', () => {
+  assert.match(text('skills/pr/SKILL.md'), /Each Deferred item \(never an Unverifiable one\) that cites a file `plan\.md` lists/)
 })

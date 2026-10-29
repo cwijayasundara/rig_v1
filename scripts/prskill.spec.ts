@@ -50,12 +50,12 @@ test('pr skill keeps the review.md categories, the security agent and a single c
   assert.doesNotMatch(t, /fix\(review\)|docs\(review\)/)
 })
 
-test('evaluator is chart-only', () => {
+test('evaluator reviews charts, change plans and test plans, never a diff', () => {
   const ev = repoText('agents/evaluator.md')
   assert.match(ev, /## Chart mode|^You review a sprint chart/m)
   assert.doesNotMatch(ev, /git diff <base>/)
   assert.doesNotMatch(ev, /\*\*Security:\*\*|\*\*Correctness:\*\*|\*\*Design:\*\*|\*\*Contracts:\*\*/)
-  assert.doesNotMatch(ev, /`?spec\.md`?|(?<!implementation-)plan\.md/, 'it reads a chart, not a change (the sprint implementation-plan.md is a chart file)')
+  assert.doesNotMatch(ev.split('## Change plan mode')[0] ?? '', /`?spec\.md`?|(?<!implementation-)plan\.md/, 'chart mode reads a chart, not a change (the sprint implementation-plan.md is a chart file)')
 })
 
 test('init writes a Review block into CLAUDE.md, and REVIEW.md defers to it', () => {
