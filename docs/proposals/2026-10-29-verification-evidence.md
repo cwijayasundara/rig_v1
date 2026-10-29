@@ -65,8 +65,15 @@ eval to decide anything.
 
 Result (2026-10-29, `eval/results/2026-10-29-review.md`): gate not met. Sonnet and Opus both caught 100% of the hard
 cases and raised 0 findings on the three clean controls; Opus cost twice as much. The cases are too small and too
-spec-explicit. Next for item 1: rows keep the review text (done), then cases from a real codebase of thousands of lines,
-defects inside a multi-file diff of a few hundred lines, defects no B-line names, and reverts mined from shop_app.
+spec-explicit. Rows now keep the review text.
+
+Real-code cases (built 2026-10-29, `eval/review/cart-cases.mjs`, `--base cart`): shop_app at 26f1105 (about 900 lines of
+Python with tests; smaller than the "thousands" first planned, but real agent-written code) and its next change, cart-cli,
+with its real intent and 15-behaviour spec. A correct cart-cli (262-line diff) and a handler refactor are the controls; six
+cases each seed one bug the builder's tests still pass: except-clause order (B13/B14, tests loosened to `!= 0`), `environ or
+os.environ` reading the real environment, `--file ""` silently ignored, trimming in the CLI, a catch-all `except
+Exception`, and an optional subcommand that crashes. A spec runs a Python probe per case to prove each bug is real.
+shop_app has no reverts yet, so none are mined.
 
 ### 2. Evidence, not claims, in the PR body
 

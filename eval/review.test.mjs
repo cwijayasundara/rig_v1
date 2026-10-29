@@ -4,25 +4,15 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { CASES } from './review/cases.mjs'
-import { buildPrompt, scoreReview, summarize, renderMarkdown, ARMS } from './review.mjs'
+import { CASES, buildPrompt, scoreReview, summarize, renderMarkdown, ARMS, repoFor as ctxFor, baseOf } from './review.mjs'
 
-const FX = path.resolve(import.meta.dirname, '../tests/e2e/fixtures')
-function ctxFor(c) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-review-test-'))
-  const git = (...a) => execFileSync('git', a, { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' })
-  fs.cpSync(path.join(FX, 'shop'), dir, { recursive: true })
-  fs.cpSync(path.join(FX, 'remove'), dir, { recursive: true })
-  git('init', '-q', '-b', 'main'); git('config', 'user.email', 'e@x'); git('config', 'user.name', 'e'); git('add', '-A'); git('commit', '-qm', 'b')
-  for (const [f, ap] of Object.entries(c.edits ?? {})) fs.writeFileSync(path.join(dir, f), ap(fs.readFileSync(path.join(dir, f), 'utf8')))
-  for (const [f, t] of Object.entries(c.newFiles ?? {})) { fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true }); fs.writeFileSync(path.join(dir, f), t) }
-  git('add', '-N', '.')
-  return { dir, diff: git('diff', 'main'), changed: git('diff', '--name-only', 'main').split('\n').filter(Boolean) }
-}
+// The cart cases run pytest; a machine without it skips that part rather than failing the suite.
+const pytest = (() => { try { execFileSync('python3', ['-m', 'pytest', '--version'], { stdio: 'pipe' }); return true } catch { return false } })()
 
-test('every case applies to the shop base, and each defect names a file the change touches or one beside it; three clean controls, four hard cases', () => {
-  assert.equal(CASES.filter(c => c.control).length, 3)
-  assert.equal(CASES.filter(c => c.hard).length, 4)
+test('every case applies to the shop base, and each defect names a file the change touches or one beside it; five clean controls, ten hard cases', () => {
+  assert.equal(CASES.filter(c => c.control).length, 5)
+  assert.equal(CASES.filter(c => c.hard).length, 10)
+  assert.equal(new Set(CASES.map(c => c.id)).size, CASES.length, 'case ids are unique')
   for (const c of CASES) {
     const ctx = ctxFor(c)
     assert.ok(ctx.diff.length > 0, c.id)
@@ -36,9 +26,10 @@ test('every case applies to the shop base, and each defect names a file the chan
 })
 
 test('the whole suite passes on every control and every hard case: a control is correct, and a hard defect gets past the tests', () => {
-  for (const c of CASES.filter(x => x.control || x.hard)) {
+  for (const c of CASES.filter(x => (x.control || x.hard) && (pytest || x.base !== 'cart'))) {
     const ctx = ctxFor(c)
-    execFileSync(process.execPath, ['--test', 'test/'], { cwd: ctx.dir, stdio: 'pipe' })
+    const [cmd, ...args] = baseOf(c).run
+    try { execFileSync(cmd === 'node' ? process.execPath : cmd, args, { cwd: ctx.dir, stdio: 'pipe', encoding: 'utf8' }) } catch (e) { assert.fail(`${c.id}: ${e.stdout}`) }
     fs.rmSync(ctx.dir, { recursive: true, force: true })
   }
 })
@@ -125,4 +116,31 @@ test('a run keeps each review\'s text in its row, so a catch can be read and not
   const rows = fs.readFileSync(out, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l))
   assert.equal(rows.length, CASES.length)
   assert.ok(rows.every(r => typeof r.text === 'string' && /^verdict: /.test(r.text)))
+})
+
+test('the cart cases are real code: shop_app\'s cart-cli change, a diff of a few hundred lines, with the Python source and tests beside it', { skip: !pytest && 'no pytest' }, () => {
+  const c = CASES.find(x => x.id === 'cli-environ-falsy'), ctx = ctxFor(c)
+  assert.deepEqual(ctx.changed.sort(), ['src/cart/cli.py', 'tests/test_cli.py', 'tests/test_smoke.py'])
+  assert.ok(ctx.diff.split('\n').length > 200, `diff is ${ctx.diff.split('\n').length} lines`)
+  const prompt = buildPrompt(c, 'clean', ctx)
+  for (const f of ['src/cart/models.py', 'src/cart/storage.py', 'tests/test_cart.py (existing)']) assert.ok(prompt.includes(`### ${f}`), f)
+  assert.doesNotMatch(prompt, /### tests\/test_cli\.py \(existing\)/, 'a changed test is shown once, as changed')
+  assert.match(prompt, /B15 \(FR-5, AC-5\.11\)/, 'the real cart-cli spec')
+  fs.rmSync(ctx.dir, { recursive: true, force: true })
+})
+
+test('every seeded cart defect is a real bug: its probe prints something other than on the correct cart-cli', { skip: !pytest && 'no pytest' }, () => {
+  const prelude = 'import json, os, sys, tempfile\nfrom pathlib import Path\nsys.path.insert(0, "src")\nfrom cart.cli import main\nfrom cart.models import Cart\nT = Path(tempfile.mkdtemp())\nos.environ.pop("CART_FILE", None)\n'
+  const ok = ctxFor(CASES.find(x => x.id === 'cli-ok'))
+  const run = (dir, probe) => execFileSync('python3', ['-c', prelude + probe], { cwd: dir, encoding: 'utf8', stdio: 'pipe' }).trim()
+  const seeded = CASES.filter(x => x.base === 'cart' && !x.control)
+  assert.equal(seeded.length, 6)
+  for (const c of seeded) {
+    assert.ok(c.probe, `${c.id} has a probe`)
+    const ctx = ctxFor(c)
+    const bad = run(ctx.dir, c.probe), good = run(ok.dir, c.probe)
+    assert.notEqual(bad, good, `${c.id}: ${bad}`)
+    fs.rmSync(ctx.dir, { recursive: true, force: true })
+  }
+  fs.rmSync(ok.dir, { recursive: true, force: true })
 })

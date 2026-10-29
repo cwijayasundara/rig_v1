@@ -3,13 +3,15 @@
 // Both arms get the same review brief, the same diff, intent, spec, plan and the files the change touches, and no tools; only the builder's
 // notes differ. A finding counts as catching a defect when it names the defect's file and matches its pattern: never a model's judgement.
 // Hard cases and baited clean controls (verification evidence 1) make it discriminate; --models scores several reviewers on the same cases.
-// node eval/review.mjs [--runs 3] [--models claude-sonnet-5-5[,claude-opus-5-5]] [--arms clean,same] [--max-usd 8] [--results FILE] [--dry]
+// --base cart runs only the cases on real code (shop_app's cart-cli, eval/review/cart-cases.mjs); --base shop only the toy shop.
+// node eval/review.mjs [--runs 3] [--models claude-sonnet-5-5[,claude-opus-5-5]] [--arms clean,same] [--base shop|cart] [--max-usd 8] [--results FILE] [--dry]
 // A live run costs money and a person starts it. --dry replays a fake runner at $0 and writes nothing under eval/results.
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { CASES } from './review/cases.mjs'
+import { CASES as SHOP_CASES } from './review/cases.mjs'
+import { CART_CASES } from './review/cart-cases.mjs'
 import { resultsAllowed, arg, readJsonl } from './lib/cli.mjs'
 import { claudeRunner } from '../scripts/wikigen.ts'
 
@@ -18,12 +20,19 @@ const FX = path.join(ROOT, 'tests/e2e/fixtures')
 export const ARMS = ['clean', 'same']
 const FINDING = /^\s*-\s*\[severity:\s*(critical|high|medium)\]/i
 
-// The shop with its two changes merged, committed as main; the case is applied on top and diffed.
-function repoFor(c) {
+export const CASES = [...SHOP_CASES, ...CART_CASES]
+// What a case is applied over: the toy shop with its two changes merged, or shop_app at 26f1105 (real code, Python).
+export const BASES = {
+  shop: { from: [path.join(FX, 'shop'), path.join(FX, 'remove')], tests: 'test', ext: '.js', run: ['node', '--test', 'test/'] },
+  cart: { from: [path.join(ROOT, 'eval/fixtures/review-cart')], tests: 'tests', ext: '.py', run: ['python3', '-m', 'pytest', '-q', '-p', 'no:cacheprovider'] },
+}
+export const baseOf = c => BASES[c.base ?? 'shop']
+
+// The base committed as main; the case is applied on top and diffed.
+export function repoFor(c) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-review-'))
   const git = (...a) => execFileSync('git', a, { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' })
-  fs.cpSync(path.join(FX, 'shop'), dir, { recursive: true })
-  fs.cpSync(path.join(FX, 'remove'), dir, { recursive: true })
+  for (const from of baseOf(c).from) fs.cpSync(from, dir, { recursive: true })
   git('init', '-q', '-b', 'main'); git('config', 'user.email', 'e@x'); git('config', 'user.name', 'eval')
   git('add', '-A'); git('commit', '-qm', 'base')
   for (const [file, apply] of Object.entries(c.edits ?? {})) fs.writeFileSync(path.join(dir, file), apply(fs.readFileSync(path.join(dir, file), 'utf8')))
@@ -38,9 +47,10 @@ export function buildPrompt(c, arm, { diff, dir, changed }) {
     .replace(/You may read files[^\n]*\n/, '').replace(/<base>/g, 'main').replace(/<slug>/g, c.slug)
   const files = changed.map(f => `### ${f}\n\`\`\`\n${fs.readFileSync(path.join(dir, f), 'utf8')}\`\`\``)
   // The rest of the source, as a reviewer with tools would read it: a cross-file defect sits in a file the change does not touch.
-  const others = fs.readdirSync(path.join(dir, 'src'), { recursive: true }).map(f => `src/${f}`).filter(f => f.endsWith('.js') && !changed.includes(f)).sort()
+  const { tests: tdir, ext } = baseOf(c)
+  const others = fs.readdirSync(path.join(dir, 'src'), { recursive: true }).map(f => `src/${f}`).filter(f => f.endsWith(ext) && !changed.includes(f)).sort()
     .map(f => `### ${f}\n\`\`\`\n${fs.readFileSync(path.join(dir, f), 'utf8')}\`\`\``)
-  const tests = fs.readdirSync(path.join(dir, 'test')).filter(f => !changed.includes(`test/${f}`)).map(f => `### test/${f} (existing)\n\`\`\`\n${fs.readFileSync(path.join(dir, 'test', f), 'utf8')}\`\`\``)
+  const tests = fs.readdirSync(path.join(dir, tdir)).filter(f => f.endsWith(ext) && !changed.includes(`${tdir}/${f}`)).sort().map(f => `### ${tdir}/${f} (existing)\n\`\`\`\n${fs.readFileSync(path.join(dir, tdir, f), 'utf8')}\`\`\``)
   // The one difference between the arms besides the notes: who the reviewer is. The same-context reviewer is the builder, reviewing before shipping.
   const role = arm === 'same' ? brief.replace(/^You are a code reviewer who has never seen[^\n]*/, 'You are the engineer who built this change, reviewing it before it ships. You review it from the delta, the intent and your own build notes.') : brief
   return [role, `## intent.md\n${c.intent}`, `## spec.md\n${c.spec}`, `## plan.md\n${c.plan}`, `## The delta (git diff main)\n\`\`\`diff\n${diff}\`\`\``, '## Files the change touches, in full', ...files, '## Other source files (unchanged)', ...others, '## Existing tests', ...tests,
@@ -96,7 +106,8 @@ export function renderMarkdown(rows, { date, files }) {
 if (process.argv[1] === import.meta.filename) {
   const dry = process.argv.includes('--dry')
   const runs = Number(arg('runs', 3)), maxUsd = Number(arg('max-usd', 8))
-  const models = arg('models', arg('model', 'claude-sonnet-5-5')).split(','), arms = arg('arms', ARMS.join(',')).split(',')
+  const models = arg('models', arg('model', 'claude-sonnet-5-5')).split(','), arms = arg('arms', ARMS.join(',')).split(','), only = arg('base', null)
+  if (only && !BASES[only]) { console.error(`--base takes ${Object.keys(BASES).join(', ')}`); process.exit(2) }
   if (arms.some(a => !ARMS.includes(a))) { console.error(`--arms takes ${ARMS.join(', ')}`); process.exit(2) }
   const results = path.resolve(arg('results', dry ? path.join(os.tmpdir(), `rig-review-${Date.now()}.jsonl`) : path.join(ROOT, 'eval/results', `${new Date().toISOString().slice(0, 10)}-review.jsonl`)))
   const refusal = resultsAllowed(results, dry)
@@ -110,7 +121,7 @@ if (process.argv[1] === import.meta.filename) {
   const runners = Object.fromEntries(models.map(m => [m, dry ? dryRunner : claudeRunner(m)]))
   fs.mkdirSync(path.dirname(results), { recursive: true })
   let spent = 0
-  for (let n = 1; n <= runs; n++) for (const c of CASES) {
+  for (let n = 1; n <= runs; n++) for (const c of CASES.filter(x => !only || (x.base ?? 'shop') === only)) {
     const repo = repoFor(c)
     for (const model of models) for (const arm of arms) {
       if (!dry && spent >= maxUsd) { console.log(`stopped at the cap: $${spent.toFixed(2)} of $${maxUsd}`); process.exit(0) }
