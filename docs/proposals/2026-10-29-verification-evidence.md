@@ -1,6 +1,6 @@
 # Verification evidence: measure the reviewer, show the proof, add a non-model layer
 
-Status: agreed 2026-10-29 (decisions at the end). Item 1 built (live run pending) and item 4 built, on `feat/verification-evidence`.
+Status: agreed 2026-10-29 (decisions at the end). Item 1 built and run twice (results in eval/results/2026-10-29-review.md) and item 4 built, on `feat/verification-evidence`.
 
 ## The ask
 
@@ -74,6 +74,14 @@ cases each seed one bug the builder's tests still pass: except-clause order (B13
 os.environ` reading the real environment, `--file ""` silently ignored, trimming in the CLI, a catch-all `except
 Exception`, and an optional subcommand that crashes. A spec runs a Python probe per case to prove each bug is real.
 shop_app has no reverts yet, so none are mined.
+
+Result of the real-code run (2026-10-29, second section of `eval/results/2026-10-29-review.md`, $5.36): every catch audited
+from the review text is the seeded bug. Five of six cases were caught in every run by both models; `--file ""` was seen in
+all 6 reviews but filed as a finding only once (Opus), the rest deferred, because the spec is silent on empty values. One
+marginal false finding (Sonnet, 1 of 6 clean runs). The gap that showed was outside the scoring: an unseeded
+raise-after-commit in shop_app `storage.py` (`_fsync_directory` after `os.replace`), which Opus raised in 17 of 24 reviews
+and Sonnet in 6. Decision: seeded single-bug recall no longer separates the models, so stop making seeded cases harder.
+Next eval step, if any: score pre-existing bugs in the code around a diff. Item 2 goes ahead now.
 
 ### 2. Evidence, not claims, in the PR body
 
