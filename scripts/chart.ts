@@ -47,6 +47,7 @@ export function intentSettled(slug: string): { settled: boolean; why: string[] }
     ...openQuestions(text).map(q => `open: ${q}`),
     ...carriedIds(i.file).map(c => `carried ${c}`),
     ...(section(text, 'Non-goals').trim() ? [] : ['no non-goals']),
+    ...(/^kind:\s*boundary/m.test(text) && !/Contract:/.test(text) ? ['a boundary with no Contract'] : []),
   ]
   return { settled: !why.length, why }
 }
@@ -240,7 +241,8 @@ export function nextChart(): NextChart {
   const found = new Map<number, string>()
   for (const n of sprintsOnDisk()) if (exists(prdPath(n))) found.set(n, `${sprintRel(n)}/prd.md`)
   const docs = path.join(ROOT, 'docs', 'prd')
-  for (const e of exists(docs) ? fs.readdirSync(docs, { withFileTypes: true }) : []) {
+  const rank = (e: fs.Dirent): number => (/^sprint-\d+(\.md)?$/.test(e.name) ? 0 : 2) + (e.isDirectory() ? 0 : 1)
+  for (const e of (exists(docs) ? fs.readdirSync(docs, { withFileTypes: true }) : []).sort((a, b) => rank(a) - rank(b))) {
     const m = /^sprint-(\d{1,4})(?:-.+?)?(\.md)?$/.exec(e.name)
     const n = Number(m?.[1])
     const rel = e.isDirectory() ? `docs/prd/${e.name}/prd.md` : m?.[2] ? `docs/prd/${e.name}` : null

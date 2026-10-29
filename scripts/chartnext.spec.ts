@@ -36,3 +36,10 @@ test('chart next: with no PRD to chart it names the next sprint number and no pa
   assert.equal(after.sprint, 1)
   assert.equal(after.prd, null)
 })
+
+test('chart next: when one sprint has two PRD shapes, the plain name wins over a titled one', () => {
+  const repo = makeRepo()
+  write(repo, 'docs/prd/sprint-1-cart.md', '# PRD\n')
+  write(repo, 'docs/prd/sprint-1.md', '# PRD\n')
+  assert.equal(next(repo).prd, 'docs/prd/sprint-1.md')
+})

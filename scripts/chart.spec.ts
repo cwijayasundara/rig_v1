@@ -327,6 +327,12 @@ test('new --source says whether the intent is settled, and what is missing when 
   assert.match(bare.stdout, /settled: no \(no non-goals\)/)
 })
 
+test('activate prints the settled line again, so a resumed charted change is not questioned afresh', () => {
+  startable()
+  assert.equal(sdlc(repo, ['new', 'alpha', '--source', SRC]).code, 0)
+  assert.match(sdlc(repo, ['activate', 'alpha']).stdout, /settled: no \(no non-goals\)/)
+})
+
 test('new --source: non-goals, cited behaviours and nothing open or carried is settled; a carried item is not', () => {
   cleanChart()
   write(repo, SRC, intent(1).replace('## Interfaces', '## Non-goals\nDo not add locking.\n\n## Interfaces'))

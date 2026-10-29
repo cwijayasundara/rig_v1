@@ -18,5 +18,6 @@ opposite (for example "last writer wins").
 | Option parsing | An option that takes a value, given another option (`--name --json`) or nothing, fails with a message naming the option; it never takes the other option as its value. A flag no command knows fails the same way. |
 | Failure exit codes | Success is 0, a usage error is 2, any other failure is 1 unless the PRD lists codes; each failure writes one line to stderr and nothing to stdout. |
 
-A question has the recommended option first, which is the default above. At most 8 such questions per sprint, in batches of at
-most 4; an item past the cap is decided by its default and marked `(default at chart)`.
+A question has the recommended option first: the default above, or the PRD's own wording when it states the opposite. At most 8
+such questions per sprint, in batches of at most 4; an item past the cap goes under the intent's `## Open questions`, which
+makes the intent unsettled so `/rig:start` asks it.

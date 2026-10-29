@@ -49,3 +49,22 @@ test('start, plan, chart and init tell the model what to do without superpowers'
   assert.match(skill('chart'), /Run `S superpowers`: on a `WARNING`/)
   assert.match(skill('init'), /\*\*Superpowers\.\*\*/)
 })
+
+test('superpowers: user settings disable it, the project overrides the user, the local file overrides the project', () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'sp-repo-'))
+  const h = home([{ scope: 'user' }])
+  write(h, 'settings.json', JSON.stringify({ enabledPlugins: { [SUPERPOWERS]: false } }))
+  assert.equal(superpowersState(repo, h), 'disabled')
+  write(repo, '.claude/settings.json', JSON.stringify({ enabledPlugins: { [SUPERPOWERS]: true } }))
+  assert.equal(superpowersState(repo, h), 'ok')
+  write(repo, '.claude/settings.json', JSON.stringify({ enabledPlugins: { [SUPERPOWERS]: false } }))
+  write(repo, '.claude/settings.local.json', JSON.stringify({ enabledPlugins: { [SUPERPOWERS]: true } }))
+  assert.equal(superpowersState(repo, h), 'ok')
+})
+
+test('superpowers: a project install matches the repo through symlinks', () => {
+  const real = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'sp-real-')))
+  const link = `${real}-link`
+  fs.symlinkSync(real, link)
+  assert.equal(superpowersState(link, home([{ scope: 'project', projectPath: real }])), 'ok')
+})

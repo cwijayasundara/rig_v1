@@ -153,7 +153,7 @@ function cmdActivate(args: Args): void {
   const slug = checkSlug(args.pos[0] ?? '')
   if (!exists(changeDir(slug))) fail(`no such change: ${slug}`)
   setActive(slug)
-  out(`active change: ${slug}`)
+  out(`active change: ${slug}${intentOf(slug) ? `\n${settledLine(slug)}` : ''}`)
 }
 
 const notInitialised = (json: boolean): void => out(json ? JSON.stringify({ initialised: false }) : `rig not initialised here: run ${skillRef('init')}`)

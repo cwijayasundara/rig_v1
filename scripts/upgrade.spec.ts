@@ -191,7 +191,7 @@ test('apply without a decision for a conflict refuses and writes nothing', () =>
   const bad = sdlc(repo, ['upgrade', '--apply', '--decide', JSON.stringify({ [CORE]: 'maybe' })])
   assert.equal(bad.code, 1)
   assert.equal(sdlc(repo, ['upgrade', '--apply', '--decide', JSON.stringify({ 'nope.txt': 'new' })]).code, 1)
-  assert.equal(gitIn(repo, 'status', '--porcelain', '--', '.rig/.gitignore'), '')
+  assert.equal(status(repo), '')
 })
 
 test('apply refuses a dirty tree', () => {
@@ -224,7 +224,7 @@ test('apply on a current install creates no branch', () => {
   assert.equal(r.code, 0, r.stderr)
   assert.match(r.stdout, /already current/)
   assert.equal(gitIn(repo, 'branch', '--list', 'chore/*'), '')
-  assert.equal(gitIn(repo, 'status', '--porcelain', '--', '.rig/.gitignore'), '')
+  assert.equal(status(repo), '')
 })
 
 test('apply with only unapplied sensor proposals creates no branch and names them', () => {
@@ -339,7 +339,7 @@ test('plugin mode with a registry-shaped sensors.json has no migration and bare 
   assert.equal(r.code, 0, r.stderr)
   assert.match(r.stdout, /already current/)
   assert.equal(gitIn(repo, 'branch', '--list', 'chore/*'), '')
-  assert.equal(gitIn(repo, 'status', '--porcelain', '--', '.rig/.gitignore'), '')
+  assert.equal(status(repo), '')
 })
 
 test('plugin mode: an empty {} sensors.json is absent, an old-shape one gets the migration', () => {
@@ -454,4 +454,17 @@ test('apply adds the ignore entries a newer version needs and commits them with 
   assert.equal(r.code, 0, r.stderr)
   assert.match(fs.readFileSync(path.join(repo, '.rig/.gitignore'), 'utf8'), /^changes\/\*\/pr-outline\.md$/m)
   assert.equal(gitIn(repo, 'status', '--porcelain', '--', '.rig/.gitignore'), '')
+})
+
+test('an install that is otherwise current still gets the missing ignore entries, and a file with no final newline keeps its last entry', () => {
+  const repo = committed()
+  write(repo, '.rig/.gitignore', 'state/\nlearn/')
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', 'old ignore')
+  const r = sdlc(repo, ['upgrade', '--apply'])
+  assert.equal(r.code, 0, r.stderr)
+  assert.doesNotMatch(r.stdout, /already current/)
+  const text = fs.readFileSync(path.join(repo, '.rig/.gitignore'), 'utf8')
+  assert.match(text, /^learn\/$/m)
+  assert.match(text, /^changes\/\*\/pr-outline\.md$/m)
 })

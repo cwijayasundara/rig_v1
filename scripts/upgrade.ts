@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { ROOT, SDLC, SENSORS_PATH, IS_VENDORED, PLUGIN_ROOT, skillRef, exists, read, out, fail, sha, git, sanctionWrites, ensureGitignore, type Args } from './core.ts'
+import { ROOT, SDLC, SENSORS_PATH, IS_VENDORED, PLUGIN_ROOT, skillRef, exists, read, out, fail, sha, git, sanctionWrites, ensureGitignore, gitignoreMissing, type Args } from './core.ts'
 import { isObject } from './model.ts'
 import { isRegistryShape } from './registry.ts'
 import { loadPacks, PACKS_DIR } from './stackpacks.ts'
@@ -143,7 +143,7 @@ function applyUpgrade(args: Args): void {
   const unknown = wanted.filter(id => !plan.proposals?.sensors.some(s => s.id === id))
   if (unknown.length) fail(`--add-sensors: not a proposed sensor: ${unknown.join(', ')}`)
   // Proposals are work only when the person picked some: otherwise a bare --apply would leave an empty branch.
-  const current = isCurrent(plan) && !wanted.length
+  const current = isCurrent(plan) && !wanted.length && !(exists(path.join(SDLC, '.gitignore')) && gitignoreMissing().length)
   if (current) {
     const ids = plan.proposals?.sensors.map(s => String(s.id)) ?? []
     return out(`already current: nothing to apply, no branch created${ids.length ? `\n${ids.length} sensors proposed (${ids.join(', ')}); re-run with --add-sensors <id,id> to add them` : ''}`)
