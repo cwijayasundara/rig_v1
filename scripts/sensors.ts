@@ -18,7 +18,7 @@ export const TAMPER_PATTERNS: { id: string; re: RegExp; what: string }[] = [
 
 export const SUPPRESSIONS: RegExp[] = [
   /eslint-disable/, /@ts-(?:ignore|expect-error|nocheck)\b/, /#\s*type:\s*ignore/, /#\s*noqa\b/, /pylint:\s*disable/, // -- the detector's own patterns
-  /\/\/\s*nolint\b/, /@SuppressWarnings\b/, /rubocop:disable/, /#\s*pragma:\s*no\s*cover/, /istanbul\s+ignore/, // -- the detector's own patterns
+  /\/\/\s*nolint\b/, /@SuppressWarnings\b/, /rubocop:disable/, /#\s*pragma:\s*no\s*cover/, /istanbul\s+ignore/, /\bnosemgrep\b/, // -- the detector's own patterns
 ]
 
 const REASONED = /(?:\s--\s*|\bbecause\b\s*)\S/i

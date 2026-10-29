@@ -36,6 +36,18 @@ test('a mutation-diff sensor runs before every PR on the change\'s own lines and
   }
 })
 
+test('every pack has a blocking sast sensor: Semgrep on the change\'s own source, no metrics, failing in CI when Semgrep does not run', () => {
+  for (const p of loadPacks(PACKS_DIR).packs) {
+    const s = packRegistry(p).sensors.find(x => x.id === 'sast')
+    assert.equal(s?.cadence, 'commit', p.stack)
+    assert.equal(s?.blocks, true, p.stack)
+    assert.match(s?.cmd ?? '', /semgrep scan --config p\/default --error --metrics=off [^;]*\{changed\}/, `${p.stack} scans only the changed source and sends no metrics`)
+    assert.match(s?.cmd ?? '', /if semgrep --version[\s\S]*\$CI[\s\S]*exit 1/, `${p.stack} treats a broken Semgrep as missing and fails in CI`)
+  }
+  const ci = fs.readFileSync(path.join(PACKS_DIR, '..', 'rig-check.yml'), 'utf8')
+  assert.ok(ci.indexOf('pipx install semgrep==') > 0 && ci.indexOf('pipx install semgrep==') < ci.indexOf('- name: sdlc check'), 'CI installs a pinned Semgrep before the sensors run')
+})
+
 test('a pack may not declare built-ins, must name its file and must have markers', () => {
   const ok = { stack: 'x', markers: ['x.toml'], paths: {}, contracts: { files: [], validate: '', run: '' }, sensors: [] }
   assert.deepEqual(parsePack(JSON.stringify(ok), 'x.json').errors, [])

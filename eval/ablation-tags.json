@@ -86,6 +86,12 @@
     "ablatable": true
   },
   {
+    "id": "sensor:sast",
+    "kind": "sensor",
+    "weakness": "models write injectable, unsafe-input or weak-crypto code that tests and a model reviewer both pass",
+    "ablatable": true
+  },
+  {
     "id": "sensor:duplication",
     "kind": "sensor",
     "weakness": "models copy code instead of reusing it",

@@ -1,6 +1,6 @@
 # Verification evidence: measure the reviewer, show the proof, add a non-model layer
 
-Status: agreed 2026-10-29 (decisions at the end). Item 1 in progress on `feat/verification-evidence`.
+Status: agreed 2026-10-29 (decisions at the end). Item 1 built (live run pending) and item 4 built, on `feat/verification-evidence`.
 
 ## The ask
 
@@ -75,11 +75,18 @@ B-number with no evidence. Builds on the queued "red-proof failure content" item
 
 ### 4. Semgrep as the non-model layer
 
-A `sast` sensor in every stack pack, guarded like `layers`:
-`if command -v semgrep >/dev/null; then semgrep scan --config p/default --error --metrics=off --quiet {files}; else echo 'sast: semgrep not installed'; fi`
-at `commit` cadence, blocking on findings. `rig-check.yml` installs Semgrep and runs the same scan on the PR diff, so a
-PR cannot skip it locally. `--metrics=off` keeps code and usage data off Semgrep's servers; `p/default` needs network at
-scan time (a team may pin a local ruleset instead). Findings feed the reviewer's context, not a second model opinion.
+A `sast` sensor in every stack pack, at `commit` cadence (so also in CI), blocking:
+`semgrep scan --config p/default --error --metrics=off --disable-version-check --quiet {changed}`.
+
+- `{changed}` scans only the change's own source files, so old code never blocks a change and no baseline is needed.
+- The guard is `semgrep --version`, not `command -v`: a broken install (seen on the owner's machine: a Python dependency
+  clash) crashes with exit 1, the same code as a finding. Locally a Semgrep that does not run is skipped with a message;
+  in CI (`$CI` set) it fails, so a PR is never passed unscanned.
+- `rig-check.yml` runs `pipx install semgrep==1.182.1` before the sensors; the pin makes a rules-engine update a reviewed change.
+- `--metrics=off` keeps usage data off Semgrep's servers; `p/default` is fetched from the registry at scan time (a team may
+  point `--config` at a local ruleset instead).
+- Existing repos get it from `/rig:upgrade`, which proposes any pack sensor the repo's `sensors.json` lacks.
+- A `nosemgrep` comment is a suppression: the `suppression` sensor blocks it unless it carries a reason, like `eslint-disable`.
 
 ## Not copied
 

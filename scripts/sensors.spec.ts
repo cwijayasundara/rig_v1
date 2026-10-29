@@ -76,7 +76,7 @@ test('rewritten snapshots warn', () => {
 })
 
 test('suppression comments block unless they carry a reason', () => {
-  for (const line of ['// eslint-disable-next-line no-console', 'x = y  # type: ignore', 'import os  # noqa', '// @ts-ignore', '//nolint', '@SuppressWarnings("unchecked")', '# rubocop:disable Metrics/AbcSize']) {
+  for (const line of ['// eslint-disable-next-line no-console', 'x = y  # type: ignore', 'import os  # noqa', '// @ts-ignore', '//nolint', '@SuppressWarnings("unchecked")', '# rubocop:disable Metrics/AbcSize', 'exec(cmd) // nosemgrep: javascript.lang.security.detect-child-process']) {
     assert.equal(blocks(suppressions([fd('src/a.ts', [line])], reg())).length, 1, line)
   }
   assert.equal(suppressions([fd('src/a.ts', ['// eslint-disable-next-line no-console -- the CLI prints by design'])], reg()).length, 0)
