@@ -119,7 +119,7 @@ export function runSensors(r: Registry, at: Cadence, slug: string | null, budget
     }
     const row = runCommand(cmd, { timeoutMs: Math.min(left, s.timeoutMs ?? left) })
     left -= row.ms
-    if (slug) recordRun(slug, { ...row, source: at === 'turn' ? 'gate' : 'ship' })
+    if (slug) recordRun(slug, { ...row, sensor: s.id, source: at === 'turn' ? 'gate' : 'ship' })
     if (row.exit === 0) {
       if (known) cleared.push(s.id)
       if (s.ratchet) findings.push(...ratchetFinding(s, s.ratchet, lastNumber(row.tail), r.ratchets ?? {}, ratchetWrite))
@@ -182,7 +182,7 @@ function proofOnBase(slug: string, config: Registry, diffs: FileDiff[], base: st
   if (!cmd) return [{ sensor: 'red-proof', severity: 'warn', message: `no unit sensor (${id}) to run the new tests on the base`, fix: 'add a command sensor with id "unit", or set red-proof options.sensor' }]
   const tree = withBaseTree(base, tmp => {
     const sanity = runCommand(cmd, { cwd: tmp, timeoutMs: left() })
-    recordRun(slug, { ...sanity, source: 'ship' })
+    recordRun(slug, { ...sanity, sensor: 'red-proof', source: 'ship' })
     if (sanity.exit !== 0 || sanity.timedOut) return block("can't establish red: the tests fail on the base even without the new tests", 'make the test command pass from a clean checkout of the base (dependencies, fixtures), or the person waives red-proof')
     for (const t of overlay) {
       fs.mkdirSync(path.dirname(path.join(tmp, t)), { recursive: true })
@@ -190,7 +190,7 @@ function proofOnBase(slug: string, config: Registry, diffs: FileDiff[], base: st
     }
     const run = runCommand(cmd, { cwd: tmp, timeoutMs: left() })
     if (run.timedOut) return block('proof timed out: the tests did not finish on the base within the budget', 'make the test command faster, or the person waives red-proof')
-    recordRun(slug, mode === 'red' ? { ...run, expectFail: true, source: 'ship' } : { ...run, source: 'ship' })
+    recordRun(slug, mode === 'red' ? { ...run, sensor: 'red-proof', expectFail: true, source: 'ship' } : { ...run, sensor: 'red-proof', source: 'ship' })
     if (mode === 'red' && run.exit === 0) return block('the new tests already pass on the base: they prove nothing about this change', 'write a test that fails without the change, then make it pass')
     if (mode === 'green' && run.exit !== 0) return block("the refactor's tests fail on the base: they do not describe the behaviour being preserved", 'write characterization tests that pass on the old code first, then refactor under them')
     return []
