@@ -31,7 +31,7 @@ const listField = (text: string, key: string): string[] =>
 // Template prompts are HTML comments: they are never content.
 export const uncomment = (text: string): string => text.replace(/<!--[\s\S]*?-->/g, '')
 // A table row's trimmed cells, outer pipes dropped.
-export const cells = (l: string): string[] => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim())
+export const cells = (l: string): string[] => l.trim().replace(/^\|+/, '').replace(/\|+$/, '').split('|').map(c => c.trim())
 // Comments gone, and a `#` line inside a fence (a tree, a shell snippet) cannot end its section.
 const fencedText = (raw: string): string => uncomment(raw.replace(/\r\n/g, '\n')).replace(/^(```|~~~)[^\n]*\n[\s\S]*?^\1/gm, b => b.replace(/^#/gm, '\u200b#'))
 // A PRD with comments blanked line for line (numbers stay those of prd.md), split into lines, and the index its body starts at (after the frontmatter).

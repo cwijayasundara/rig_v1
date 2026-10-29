@@ -22,7 +22,7 @@ import { cmdBaseline } from './initbaseline.ts'
 import { cmdVerify } from './verify.ts'
 import { cmdHooks, cmdCheckPush } from './githooks.ts'
 import { cmdPr } from './pr.ts'
-import { cmdCarry, reviewItems } from './carry.ts'
+import { cmdCarry } from './carry.ts'
 import { treeStamp } from './stamp.ts'
 import { declareStack } from './stackinit.ts'
 import { cmdSync } from './sync.ts'
@@ -234,7 +234,7 @@ function approveChart(n: number, args: Args): void {
   if (!open.length && !/^verdict:\s*pass\s*$/m.test(read(reviewPath(n)).split('\n')[0] ?? '') && !chartReview(n)?.length) fail(`chart-${n}'s chart-review.md says changes-needed but lists no finding rig can read: write each as a \`- \` line under \`## Findings\``)
   if (open.length) fail(`chart-${n} has ${open.length} review finding(s) not confirmed fixed:\n${open.map(f => `  ${f.n}. ${f.text}${f.status === 'claimed' ? ' (marked fixed, never confirmed)' : ''}`).join('\n')}\nFix them and re-run the chart's confirm pass, or waive one with ${skillRef('waive')} chart-${n} <finding number> <reason>`)
   // The reviewer's Deferred list is for the person to decide; approval is where it is seen (shop_app 2026-10-27: a whitespace-sku question sat there undecided).
-  const deferred = reviewItems(read(reviewPath(n))).filter(i => i.section === 'Deferred' && !/^no .*\b(found|noted)\b/i.test(i.text)).map(i => i.text) // "No X found." is a reviewer's empty-list sentence
+  const deferred = (/^#{2,3}[ \t]+Deferred\b[^\n]*\n([\s\S]*?)(?=^#{2,3}[ \t]|(?![\s\S]))/m.exec(read(reviewPath(n)))?.[1] ?? '').replace(/^\s*\n/, '').split(/\n(?=[-*]\s)/).filter(c => /^[-*]\s/.test(c)).filter(c => !/→\s*(?:fixed|waived|dropped|carried|taken)\b/i.test(c)).map(c => c.replace(/^[-*]\s+/, '').replace(/\s*\n\s*/g, ' ').trim()).filter(c => c && !/^(none|nothing|no (items?|deferred|findings?)|no .*\b(found|noted|recorded)\b)\.?$/i.test(c))
   const by = ownerOrFail(args, 'approvals')
   writeChartApproval(n, by)
   // A sensors.json with edits of its own is not swept into the approval commit: the person commits it.

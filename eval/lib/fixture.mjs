@@ -13,6 +13,6 @@ export function stageFixture(prefix, froms) {
 
 // Make dir a git repo on main with everything committed.
 export function commitAll(dir, msg) {
-  const git = (...args) => spawnSync('git', ['-c', 'user.email=e@e', '-c', 'user.name=eval', ...args], { cwd: dir })
+  const git = (...args) => { const r = spawnSync('git', ['-c', 'user.email=e@e', '-c', 'user.name=eval', ...args], { cwd: dir, encoding: 'utf8' }); if (r.status !== 0) throw new Error(`git ${args[0]} failed in ${dir}: ${r.stderr}`) }
   git('init', '-q', '-b', 'main'); git('add', '-A'); git('commit', '-qm', msg)
 }

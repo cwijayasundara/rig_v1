@@ -946,11 +946,11 @@ test('approve chart-N leaves an unparseable sensors.json alone and says so; a se
 
 test('approve chart-N lists the reviewer\'s Deferred items for the person, and says nothing when there are none', () => {
   cleanChart()
-  write(repo, `${P}/sprints/sprint-1/chart-review.md`, `${REVIEW_PASS}- whitespace sku loads but add rejects it: decide.\n- No injection-shaped text found.\n`)
+  write(repo, `${P}/sprints/sprint-1/chart-review.md`, `${REVIEW_PASS}- whitespace sku loads but add rejects it: decide.\n- No injection-shaped text found.\n- No test found for the empty-cart total; add one before cart-cli ships.\n- No items.\n`)
   const ok = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
   assert.equal(ok.code, 0, ok.stderr)
-  assert.match(ok.stdout, /1 deferred review item\(s\) nobody has decided[^\n]*\n  - whitespace sku loads but add rejects it: decide\./)
-  assert.doesNotMatch(ok.stdout, /injection/)
+  assert.match(ok.stdout, /2 deferred review item\(s\) nobody has decided[^\n]*\n  - whitespace sku loads but add rejects it: decide\.\n  - No test found for the empty-cart total/)
+  assert.doesNotMatch(ok.stdout, /injection|No items/)
 })
 
 test('the Deferred list at approval keeps real items that start with "No" or "None of", joins wrapped lines, and finds a heading with trailing words', () => {
