@@ -51,7 +51,7 @@ export function runCommand(cmd: string, opts: { cwd?: string; timeoutMs?: number
   const text = `${r.stderr ?? ''}${r.stdout ?? ''}`.replace(/\r\n/g, '\n').trimEnd()
   const ms = Date.now() - started
   const timedOut = (r.status === TIMED_OUT && ms >= timeoutMs) || (r.error as NodeJS.ErrnoException | undefined)?.code === 'ETIMEDOUT'
-  const row: RunRow = { at: now(), cmd, exit: r.status ?? TIMED_OUT, ms, tail: portable(maskSecrets(text.split('\n').slice(-TAIL_LINES).join('\n'))) }
+  const row: RunRow = { at: now(), cmd: maskSecrets(cmd), exit: r.status ?? TIMED_OUT, ms, tail: portable(maskSecrets(text.split('\n').slice(-TAIL_LINES).join('\n'))) }
   if (opts.cwd && opts.cwd !== ROOT) row.cwd = portable(opts.cwd)
   if (timedOut) row.timedOut = true
   return row
