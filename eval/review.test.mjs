@@ -118,3 +118,11 @@ test('the unrequested-behaviour case adds clear() beside has(), and an unmapped 
   assert.deepEqual(scoreReview(wrong, c.defects).caught, [], 'only an unmapped finding about clear() is the catch')
   assert.deepEqual(scoreReview('verdict: pass\n## Findings\n## Unverifiable\n- src/catalog/products.js clear() → settle by: a test\n', c.defects).caught, [])
 })
+
+test('a run keeps each review\'s text in its row, so a catch can be read and not only pattern-matched', () => {
+  const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rig-review-dry-')), 'r.jsonl')
+  execFileSync(process.execPath, ['--disable-warning=ExperimentalWarning', path.resolve(import.meta.dirname, 'review.mjs'), '--dry', '--runs', '1', '--arms', 'clean', '--results', out], { stdio: 'pipe' })
+  const rows = fs.readFileSync(out, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l))
+  assert.equal(rows.length, CASES.length)
+  assert.ok(rows.every(r => typeof r.text === 'string' && /^verdict: /.test(r.text)))
+})

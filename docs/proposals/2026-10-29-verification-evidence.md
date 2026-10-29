@@ -63,6 +63,11 @@ Gate: a live run (a person starts it: 12 cases x 2 models x 3 runs = 72 calls, r
 least one arm. If both models catch every hard case, the cases are still too easy: make them harder before using the
 eval to decide anything.
 
+Result (2026-10-29, `eval/results/2026-10-29-review.md`): gate not met. Sonnet and Opus both caught 100% of the hard
+cases and raised 0 findings on the three clean controls; Opus cost twice as much. The cases are too small and too
+spec-explicit. Next for item 1: rows keep the review text (done), then cases from a real codebase of thousands of lines,
+defects inside a multi-file diff of a few hundred lines, defects no B-line names, and reverts mined from shop_app.
+
 ### 2. Evidence, not claims, in the PR body
 
 `prbody.ts` `## Evidence` lists per B-number: the test that failed before the change and its failure line, the same test

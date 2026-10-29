@@ -115,7 +115,7 @@ if (process.argv[1] === import.meta.filename) {
     for (const model of models) for (const arm of arms) {
       if (!dry && spent >= maxUsd) { console.log(`stopped at the cap: $${spent.toFixed(2)} of $${maxUsd}`); process.exit(0) }
       const row = { case: c.id, arm, model, run: n, control: Boolean(c.control), hard: Boolean(c.hard), defects: c.defects.length, at: new Date().toISOString() }
-      try { const r = runners[model]({ role: 'review', prompt: buildPrompt(c, arm, repo) }); spent += r.usd; Object.assign(row, scoreReview(r.text, c.defects), { usd: r.usd }) } catch (e) { Object.assign(row, { failed: true, error: String(e.message).split('\n')[0] }) }
+      try { const r = runners[model]({ role: 'review', prompt: buildPrompt(c, arm, repo) }); spent += r.usd; Object.assign(row, scoreReview(r.text, c.defects), { usd: r.usd, text: r.text }) } catch (e) { Object.assign(row, { failed: true, error: String(e.message).split('\n')[0] }) }
       fs.appendFileSync(results, JSON.stringify(row) + '\n')
       console.log(`${c.id} ${arm} ${model} #${n}: ${row.failed ? `failed (${row.error})` : `caught ${row.caught.length}/${row.defects}, ${row.findings} finding(s), $${(row.usd ?? 0).toFixed(3)}`}`)
     }
