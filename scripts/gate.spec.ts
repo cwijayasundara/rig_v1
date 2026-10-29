@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { makeRepo, sdlc, hook, write, gitIn, fromOld, registry } from './testkit.ts'
+import { pathToFileURL } from 'node:url'
 
 let repo: string
 beforeEach(() => {
@@ -95,7 +96,7 @@ test('contract files registered by sdlc in the turn are not harness-tamper', () 
   gitIn(repo, 'commit', '-qm', 'cfg')
   hook(repo, 'prompt-submit', {})
   const lib = path.resolve(import.meta.dirname, 'contracts.ts')
-  spawnSync('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', `import { registerContracts } from ${JSON.stringify(lib)}; registerContracts(['docs/contracts/cart.md'])`], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo } })
+  spawnSync('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', `import { registerContracts } from ${JSON.stringify(pathToFileURL(lib).href)}; registerContracts(['docs/contracts/cart.md'])`], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo } })
   assert.match(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8'), /docs\/contracts\/cart\.md/)
   assert.doesNotMatch(stop().stdout, /harness-tamper/)
 })

@@ -2,13 +2,15 @@
 // The contract a driver of ANY language meets is the same: exit 0 when every journey held and 1 when one did not, write evidence under
 // $RIG_VERIFY_STATE/evidence.json as {"ok": true, "steps": [{"name": ..., "ok": true}, ...]} with at least one step (an exit 0 with no evidence
 // counts as a failed run), and stop only the processes it started (never by name).
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
 const STATE = process.env.RIG_VERIFY_STATE ?? path.join(process.cwd(), '.rig/state/verify/app')
 const started = new Set()
 const sleep = ms => new Promise(r => setTimeout(r, ms))
+// A process group on POSIX; on Windows the pid is the shell, so the whole tree goes (the app under it would outlive it and hold its pipes).
+const kill = (pid, sig) => { if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore' }); else process.kill(-pid, sig) }
 
 // Starts the app in its own process group, with PORT=0 so two runs never collide, and waits for a ready line whose first capture group is the port.
 export async function launch(cmd, { cwd = process.cwd(), env = {}, ready = /listening on (\d+)/, timeoutMs = 30_000 } = {}) {
@@ -31,14 +33,14 @@ export async function launch(cmd, { cwd = process.cwd(), env = {}, ready = /list
 export async function stopAll() {
   for (const child of started) {
     for (const sig of ['SIGTERM', 'SIGKILL']) {
-      try { process.kill(process.platform === 'win32' ? child.pid : -child.pid, sig) } catch { break }
+      try { kill(child.pid, sig) } catch { break }
       await sleep(sig === 'SIGTERM' ? 300 : 0)
     }
   }
   started.clear()
   fs.rmSync(path.join(STATE, 'pids'), { force: true })
 }
-process.on('exit', () => { for (const c of started) { try { process.kill(process.platform === 'win32' ? c.pid : -c.pid, 'SIGKILL') } catch { /* gone */ } } })
+process.on('exit', () => { for (const c of started) { try { kill(c.pid, 'SIGKILL') } catch { /* gone */ } } })
 
 // verify('shop', async ({ launch, step }) => { ... }): the steps run in order; the first failed one stops the run, evidence is written either way.
 export async function verify(app, fn) {

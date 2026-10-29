@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { makeRepo, sdlc, hook, write, gitIn } from './testkit.ts'
+import { pathToFileURL } from 'node:url'
 
 let repo: string
 let n = 0
@@ -55,7 +56,7 @@ test('a registry freezes contracts.files', () => {
   registry({ sensors: [], contracts: { files: ['api/**'] } })
   write(repo, 'api/openapi.yaml', 'openapi: 3.1.0\n')
   const core = path.resolve(import.meta.dirname, 'lifecycle.ts')
-  const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', `import { contractFiles } from ${JSON.stringify(core)}; console.log(JSON.stringify(contractFiles()))`], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo } })
+  const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', `import { contractFiles } from ${JSON.stringify(pathToFileURL(core).href)}; console.log(JSON.stringify(contractFiles()))`], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo } })
   assert.deepEqual(JSON.parse(r.stdout), ['api/openapi.yaml'], r.stderr)
 })
 
@@ -178,7 +179,7 @@ test('contract commands with no files freeze .rig/contracts, as the check config
   registry({ sensors: [], contracts: { validate: 'v' } })
   write(repo, '.rig/contracts/api.yaml', 'openapi: 3.1.0\n')
   const core = path.resolve(import.meta.dirname, 'lifecycle.ts')
-  const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', `import { contractFiles } from ${JSON.stringify(core)}; console.log(JSON.stringify(contractFiles()))`], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo } })
+  const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', `import { contractFiles } from ${JSON.stringify(pathToFileURL(core).href)}; console.log(JSON.stringify(contractFiles()))`], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo } })
   assert.deepEqual(JSON.parse(r.stdout), ['.rig/contracts/api.yaml'], r.stderr)
 })
 

@@ -11,7 +11,7 @@ beforeEach(() => { repo = makeRepo(); sdlc(repo, ['init']) })
 const commit = (text: string) => { write(repo, '.rig/sensors.json', text); gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'cfg') }
 const turn = (rel = 'src/a.js') => { hook(repo, 'prompt-submit', {}); write(repo, rel, `export const a = ${Math.random()}\n`); return hook(repo, 'stop', { session_id: 's1' }) }
 const marker = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rig-4c-')), 'ran.txt')
-const mark = (file: string, name: string, exit = 0) => `node -e "require('fs').appendFileSync('${file}', '${name}\\n'); process.exit(${exit})"`
+const mark = (file: string, name: string, exit = 0) => `node -e "require('fs').appendFileSync('${file.replaceAll('\\', '/')}', '${name}\\n'); process.exit(${exit})"`
 const ran = (file: string) => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8').trim().split('\n') : [])
 
 test('an old-shape sensors.json is one clear config error at Stop, commit and status', () => {
@@ -46,7 +46,7 @@ test('blocks:false warns; a failing knownRed sensor warns; a passing one leaves 
 
 test('a {files} sensor runs on the whole repo at turn, and on the touched file at edit', () => {
   const m = marker()
-  const echo = `node -e "require('fs').appendFileSync('${m}', process.argv.slice(1).join(' ') + '\\n')" {files}`
+  const echo = `node -e "require('fs').appendFileSync('${m.replaceAll('\\', '/')}', process.argv.slice(1).join(' ') + '\\n')" {files}`
   commit(registry({ extra: { sensors: [{ id: 'lint', cmd: echo, cadence: 'edit', blocks: true, count: 'exit', guide: 'Lint passes.' }] } }))
   hook(repo, 'prompt-submit', {})
   write(repo, 'src/a.js', 'export const a = 1\n')
@@ -71,7 +71,7 @@ test('red-proof with no unit sensor warns and skips', () => {
 
 test('a ci sensor with {changed-lines} gets the lines this branch added to source files, never tests or deleted files', () => {
   const m = marker()
-  const echo = `node -e "require('fs').appendFileSync('${m}', process.argv.slice(1).join(' ') + '\\n')" {changed-lines:js}`
+  const echo = `node -e "require('fs').appendFileSync('${m.replaceAll('\\', '/')}', process.argv.slice(1).join(' ') + '\\n')" {changed-lines:js}`
   write(repo, 'src/a.js', 'export const a = 1\nexport const b = 2\n')
   write(repo, 'src/gone.js', 'x\n')
   commit(registry({ extra: { sensors: [{ id: 'mutation-diff', cmd: echo, cadence: 'ci', blocks: true, guide: 'Kill the survivors.' }] } }))

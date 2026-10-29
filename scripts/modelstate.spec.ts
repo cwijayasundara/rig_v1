@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { readModelState, recordSessionModel, recordLaunch, recordResolved, transcriptModel, transcriptContext, pinnedModel, sessionModel, modelRoleFindings, latestAgents } from './modelstate.ts'
 import { defaultRegistry } from './registry.ts'
+import { pathToFileURL } from 'node:url'
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'rig-model-'))
 const line = (v: unknown) => JSON.stringify(v) + '\n'
@@ -96,7 +97,7 @@ test('parallel launch records are all kept', async () => {
   const state = path.join(tmp(), 'model.json')
   const mod = path.resolve(import.meta.dirname, 'modelstate.ts')
   const run = (tag: string) => new Promise<void>(done => {
-    const code = `import { recordLaunch } from ${JSON.stringify(mod)}; for (let i = 0; i < 15; i++) recordLaunch(${JSON.stringify(state)}, { session: 's', id: '${tag}' + i, agent: 'x', requested: null, resolved: null, at: 'now' })`
+    const code = `import { recordLaunch } from ${JSON.stringify(pathToFileURL(mod).href)}; for (let i = 0; i < 15; i++) recordLaunch(${JSON.stringify(state)}, { session: 's', id: '${tag}' + i, agent: 'x', requested: null, resolved: null, at: 'now' })`
     spawn('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', code], { stdio: 'ignore' }).on('exit', () => done())
   })
   await Promise.all([run('a'), run('b'), run('c')])

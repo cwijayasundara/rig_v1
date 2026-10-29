@@ -270,7 +270,7 @@ test('apply adds chosen sensors to sensors.json and leaves other sensors byte-id
   assert.equal(after.sensors.at(-1)!.id, pick)
 })
 
-test('hook scripts stay mode 755', () => {
+test('hook scripts stay mode 755', { skip: process.platform === 'win32' && 'no exec bits on Windows' }, () => {
   const repo = committed()
   const hooks = Object.keys(manifestOf(repo).files).filter(f => f.startsWith('.rig/githooks/'))
   assert.ok(hooks.length > 0)

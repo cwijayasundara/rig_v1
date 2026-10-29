@@ -19,7 +19,7 @@ test('a failing commit sensor fails verify and is recorded in verify.json', () =
 
 test('a ci-cadence sensor runs at verify; a nightly one does not', () => {
   const mark = path.join(repo, '..', `ran-${path.basename(repo)}.txt`)
-  const cmd = (name: string) => `node -e "require('fs').appendFileSync('${mark}', '${name}\\n')"`
+  const cmd = (name: string) => `node -e "require('fs').appendFileSync('${mark.replaceAll('\\', '/')}', '${name}\\n')"`
   write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [
     { id: 'audit', cmd: cmd('ci'), cadence: 'ci', blocks: false, count: 'exit', guide: 'No vulnerable deps.' },
     { id: 'mutation', cmd: cmd('nightly'), cadence: 'nightly', blocks: false, count: 'exit', guide: 'Tests catch mutants.' },
@@ -31,7 +31,7 @@ test('a ci-cadence sensor runs at verify; a nightly one does not', () => {
 
 test('contracts validate before they run at verify; a failing validate skips run', () => {
   const mark = path.join(repo, '..', `c-${path.basename(repo)}.txt`)
-  const cmd = (name: string, exit: number) => `node -e "require('fs').appendFileSync('${mark}', '${name}\\n'); process.exit(${exit})"`
+  const cmd = (name: string, exit: number) => `node -e "require('fs').appendFileSync('${mark.replaceAll('\\', '/')}', '${name}\\n'); process.exit(${exit})"`
   write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], contracts: { files: ['api/**'], validate: cmd('validate', 1), run: cmd('run', 0) } }))
   approvedChange(repo, 'demo')
   assert.equal(sdlc(repo, ['verify', 'demo']).code, 1)

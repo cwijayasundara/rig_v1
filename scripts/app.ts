@@ -2,6 +2,7 @@
 // exits 0 or 1; a person approves it once; from then on verify, ship and CI run it, and a failed journey blocks. The driver is any command, so
 // nothing here assumes what kind of app it is. A driver nobody has approved is a draft: not enforced, and listed as such.
 import fs from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { ROOT, SDLC, PLUGIN_ROOT, ownerOrFail, out, fail, read, readJson, BUDGET_MS, exists, sha, writeAtomic, sanctionWrites, skillRef, type Args } from './core.ts'
 import { runCommand } from './runs.ts'
@@ -67,7 +68,7 @@ const SECRETISH = /TOKEN|SECRET|PASSWORD|CREDENTIAL|API_?KEY|^SDLC_|^GH_|^GITHUB
 // killed on a timeout cannot clean up after itself.
 function reap(stateDir: string): void {
   const file = path.join(stateDir, 'pids')
-  for (const pid of read(file).split('\n').map(Number).filter(n => Number.isInteger(n) && n > 1)) { try { process.kill(process.platform === 'win32' ? pid : -pid, 'SIGKILL') } catch { /* gone */ } }
+  for (const pid of read(file).split('\n').map(Number).filter(n => Number.isInteger(n) && n > 1)) { try { if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore' }); else process.kill(-pid, 'SIGKILL') } catch { /* gone */ } }
   fs.rmSync(file, { force: true })
 }
 

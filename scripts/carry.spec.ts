@@ -8,6 +8,7 @@ import { spawnSync } from 'node:child_process'
 import { makeRepo, sdlc, write, gitIn, verified, ARCH_OK, IMPL_OK } from './testkit.ts'
 import { reviewItems } from './carry.ts'
 import { openQuestions } from './model.ts'
+import { pathToFileURL } from 'node:url'
 
 let repo: string
 beforeEach(() => { repo = makeRepo(); sdlc(repo, ['init']); write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [] })) })
@@ -169,7 +170,7 @@ test('recording an addition keeps the intent hash when the file has no trailing 
   for (const end of ['', '\n\n']) {
     const base = pristine.replace(/\s*$/, end)
     write(repo, f, base)
-    const strip = spawnSyncNode(`import fs from 'node:fs'; import { recordAdditions, stripGenerated } from ${JSON.stringify(lib)}; recordAdditions('store'); process.stdout.write(stripGenerated(fs.readFileSync(${JSON.stringify(path.join(repo, f))}, 'utf8')))`)
+    const strip = spawnSyncNode(`import fs from 'node:fs'; import { recordAdditions, stripGenerated } from ${JSON.stringify(pathToFileURL(lib).href)}; recordAdditions('store'); process.stdout.write(stripGenerated(fs.readFileSync(${JSON.stringify(path.join(repo, f))}, 'utf8')))`)
     assert.match(rd(f), /## Added during the change[\s\S]*B9/)
     assert.equal(strip, base, `ending ${JSON.stringify(end)}`)
   }
@@ -178,7 +179,7 @@ test('recording an addition keeps the intent hash when the file has no trailing 
 test('a rerun after a rolled-back commit still ships the carried files and the backlog', () => {
   shipStore()
   const lib = path.resolve(import.meta.dirname, 'carry.ts')
-  const run = () => JSON.parse(spawnSyncNode(`import { routeReview } from ${JSON.stringify(lib)}; process.stdout.write(JSON.stringify(routeReview('store').files))`))
+  const run = () => JSON.parse(spawnSyncNode(`import { routeReview } from ${JSON.stringify(pathToFileURL(lib).href)}; process.stdout.write(JSON.stringify(routeReview('store').files))`))
   const first = run(), second = run()
   assert.ok(first.length >= 2, String(first))
   assert.deepEqual(second.sort(), first.sort(), 'the second run names the files that already hold its lines')
@@ -187,7 +188,7 @@ test('a rerun after a rolled-back commit still ships the carried files and the b
 test('reviewItems: a slash word such as and/or is not the file when a real path is named', () => {
   write(repo, 'src/pr.ts', '')
   const lib = path.resolve(import.meta.dirname, 'carry.ts')
-  const file = spawnSyncNode(`import { reviewItems } from ${JSON.stringify(lib)}; process.stdout.write(String(reviewItems('## Deferred\\n- pr.ts: add retry and/or backoff in src/pr.ts\\n')[0]?.file))`)
+  const file = spawnSyncNode(`import { reviewItems } from ${JSON.stringify(pathToFileURL(lib).href)}; process.stdout.write(String(reviewItems('## Deferred\\n- pr.ts: add retry and/or backoff in src/pr.ts\\n')[0]?.file))`)
   assert.equal(file, 'src/pr.ts')
 })
 

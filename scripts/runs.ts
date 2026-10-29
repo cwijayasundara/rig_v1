@@ -16,9 +16,9 @@ const TIMED_OUT = 124
 // the whole group on timeout (taskkill /T on Windows), so a hang can never outlive the budget.
 const WRAPPER = `
 const cp = require('node:child_process')
-const [cmd, ms] = process.argv.slice(1)
+const [cmd, ms, sh] = process.argv.slice(1)
 const win = process.platform === 'win32'
-const child = cp.spawn(cmd, { shell: true, detached: !win, stdio: ['ignore', 'inherit', 'inherit'] })
+const child = cp.spawn(cmd, { shell: sh || true, detached: !win, stdio: ['ignore', 'inherit', 'inherit'] })
 const kill = () => { try { win ? cp.spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F']) : process.kill(-child.pid, 'SIGKILL') } catch {} }
 const timer = setTimeout(() => { kill(); process.exit(${TIMED_OUT}) }, Number(ms))
 child.on('exit', code => { clearTimeout(timer); process.exit(code ?? 1) })
@@ -46,7 +46,7 @@ export function runCommand(cmd: string, opts: { cwd?: string; timeoutMs?: number
   // The PR's own test commands run here at CI; the review-lookup token is for sdlc itself, not for them.
   delete env.GH_TOKEN
   delete env.GITHUB_TOKEN
-  const r = spawnSync(process.execPath, ['-e', WRAPPER, cmd, String(timeoutMs)], { cwd: opts.cwd ?? ROOT, env, encoding: 'utf8', timeout: timeoutMs + 5_000, maxBuffer: 64 * 1024 * 1024 })
+  const r = spawnSync(process.execPath, ['-e', WRAPPER, cmd, String(timeoutMs), SHELL], { cwd: opts.cwd ?? ROOT, env, encoding: 'utf8', timeout: timeoutMs + 5_000, maxBuffer: 64 * 1024 * 1024 })
   // stderr first: a ratchet reads the last line, so the number on stdout must come last.
   const text = `${r.stderr ?? ''}${r.stdout ?? ''}`.replace(/\r\n/g, '\n').trimEnd()
   const ms = Date.now() - started
@@ -56,6 +56,10 @@ export function runCommand(cmd: string, opts: { cwd?: string; timeoutMs?: number
   if (timedOut) row.timedOut = true
   return row
 }
+
+// Commands are sh (every stack pack's are): on Windows they run in Git for Windows' bash, never cmd.exe. RIG_SHELL overrides.
+const GIT_BASH = path.join(process.env.ProgramFiles ?? 'C:\\Program Files', 'Git', 'bin', 'bash.exe')
+export const SHELL = process.platform !== 'win32' ? '' : process.env.RIG_SHELL || (fs.existsSync(GIT_BASH) ? GIT_BASH : 'bash')
 
 const runsFile = (slug: string): string => path.join(CHANGES, slug, 'evidence', 'runs.jsonl')
 

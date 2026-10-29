@@ -84,7 +84,9 @@ test('queue: a plan waiting for approval is listed for the person with the comma
   assert.match(text, /Waiting for you \(2\):[\s\S]*add-cart[\s\S]*SDLC_HUMAN=1 CLAUDE_PROJECT_DIR='[^']+' node .*approve add-cart/)
   assert.match(text, /With the model \(1\):[\s\S]*early-one/)
   assert.match(text, /Plans that touch the same file \(1\)[\s\S]*src\/http\/handler\.js: add-cart \(.*\) and add-links/)
-  assert.ok(text.includes(`cd '${fs.realpathSync(wtA)}'`) || text.includes(`cd '${wtA}'`), 'the approve command starts in that worktree')
+  // git prints the worktree path with forward slashes and long names on Windows (C:/Users/runneradmin/..., not C:\\Users\\RUNNER~1\\...)
+  const forms = [wtA, fs.realpathSync(wtA), fs.realpathSync.native(wtA)].flatMap(p => [p, p.replaceAll('\\', '/')])
+  assert.ok(forms.some(p => text.includes(`cd '${p}'`)), 'the approve command starts in that worktree')
 })
 
 test('queueText says so when nothing waits', () => {

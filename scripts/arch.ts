@@ -8,6 +8,7 @@ import { ROOT, SENSORS_PATH, PLUGIN_ROOT, ownerOrFail, out, fail, read, readJson
 import { parseRegistry } from './registry.ts'
 import { escapeRe, type Layer } from './model.ts'
 import { ARCH_REL } from './product.ts'
+import { SHELL } from './runs.ts'
 
 const APPROVED = '.rig/layers.approved.json'
 const GEN = '.rig/gen'
@@ -139,7 +140,7 @@ const roots = (d: Def): string[] => [...new Set(d.layers.map(l => l.glob.split('
 const toolOf = (stack: string): Tool | null => readJson<Tool | null>(path.join(PLUGIN_ROOT, 'templates', 'layers', `${stack}.json`), null)
 
 function baselineRun(tool: Tool, d: Def): { missing: boolean; failed: string | null; text: string } {
-  const r = spawnSync(tool.baseline.replaceAll('{roots}', roots(d).join(' ')), { cwd: ROOT, encoding: 'utf8', shell: true, maxBuffer: 64 * 1024 * 1024 })
+  const r = spawnSync(tool.baseline.replaceAll('{roots}', roots(d).join(' ')), { cwd: ROOT, encoding: 'utf8', shell: SHELL || true, maxBuffer: 64 * 1024 * 1024 })
   const err = r.stderr ?? ''
   const missing = r.status === 127 || /could not determine executable|command not found/i.test(err)
   // import-linter exits 1 for broken contracts, which is the baseline; anything else is the tool failing.
