@@ -161,6 +161,6 @@ test('the model-role guide names the /rig:pr reviewer, not the old /code-review'
   const repo = makeRepo()
   sdlc(repo, ['init', '--stack', 'node'])
   const claude = fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8')
-  assert.match(claude, /leave diff review to the \/rig:pr reviewer and \/security-review/)
+  assert.match(claude, /leave diff review to the \/rig:pr reviewer; the evaluator agent reviews charts, plans and test plans/)
   assert.doesNotMatch(claude, /\/code-review/)
 })

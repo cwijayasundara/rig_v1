@@ -13,7 +13,7 @@ exist because one week of building this repo cost $1k and 3 hours per change (`d
 | Coordinator (main thread) | the session's model, never switched mid-session | keep it under 100k context; `/compact` before it passes that |
 | Reads: code search, docs lookup, Explore | `haiku` | read-only |
 | Writes: implementer, test writer | `sonnet` | one fresh context per independent group of tasks |
-| Final review of a change's diff | `sonnet` (tier S, M) / `opus` (tier L only) | one review per change, at the end |
+| Final review of a change's diff | `opus` | one review per change, at the end; Sonnet output is always evaluated by Opus |
 | Chart reviewer (`rig:evaluator`, chart mode) | `opus` | one per chart, after the generators |
 | Design of a tier L change | `opus` | only when the person asks for it |
 

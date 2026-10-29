@@ -17,6 +17,6 @@ allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_R
    - every requirement gets at least one case; every case cites its requirement ids, an intent slug and one of its B-numbers; a contract-level case for a `kind: boundary` intent uses that intent's example files;
    - for every `## Access` row in `architecture.md` whose intent is this sprint's: one allowed and one refused case per interface (refused only, for `nobody`), with the Access column filled as `<action>: allowed <interface>` or `<action>: refused <interface>`;
    - test data is synthetic, never real personal data; a case's Data is a path under `.rig/product/sprints/sprint-<N>/testplan/` such as `data/cart.json`, or `-`.
-3. **Check.** `S chart check <N> --cases --json`. Make at most one fix round for the findings, then check again.
+3. **Check.** `S chart check <N> --cases --json`. Make at most one fix round for the findings, then check again. Then launch `rig:evaluator` in test plan mode ("review the test plan for sprint <N>"; Opus by its front matter; never pass a model override) and write its reply to `.rig/product/sprints/sprint-<N>/testplan-review.md`. It reviews the test plan against the PRD and the intents; fix its findings once.
 4. **Commit** on branch `rig/chart-<N>` (`git checkout rig/chart-<N>`, or `git checkout -b` when it does not exist): `git add .rig/product`, `git commit -m "docs: test plan for sprint <N>"`.
 5. End with the case count per level, any finding still blocking, and `Next: review the branch, then a person runs /rig:approve chart-<N>`.

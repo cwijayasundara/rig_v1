@@ -3,19 +3,21 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { ROOT, CHANGES, WAIVERS, waiverLive, exists, isTrunk, read, readJsonl, out, fail, git, checkSlug, optString, ensureGitignore, skillRef, defaultBase, type Args, type Waiver } from './core.ts'
+import { ROOT, CHANGES, WAIVERS, waiverLive, exists, isTrunk, trunkName, read, readJsonl, out, fail, git, checkSlug, optString, ensureGitignore, skillRef, defaultBase, type Args, type Waiver } from './core.ts'
 import { frozenFindings, frozenFor } from './contracts.ts'
 import { loadConfig } from './check.ts'
 import { ghBin, section } from './model.ts'
 import { treeStamp } from './stamp.ts'
-import { activeSlug, setActive, approvalState, verifyFresh } from './lifecycle.ts'
+import { activeSlug, setActive, approvalState, verifyFresh, isShipped, changeDir } from './lifecycle.ts'
 import { prBody } from './prbody.ts'
 import { riskOf } from './risk.ts'
 import { parseAccess } from './chartcheck.ts'
 import { branchDiff } from './diffs.ts'
 import { archPath } from './product.ts'
+import { intentOf, intentsOf, writePlan, readyAfter } from './chart.ts'
 import { isHarnessPath } from './vendor.ts'
 import { untestedAcs } from './actrace.ts'
+import { routeReview, recordAdditions } from './carry.ts'
 
 const ghLast = (text: string): string => text.trim().split('\n').at(-1) ?? ''
 const URL_RE = /^https?:\/\//
@@ -35,13 +37,13 @@ function openPr(slug: string, branch: string, title: string): string | null {
 // Another change's folder never rides along, so its own gate cannot fail this PR. A sprint chart approval does, so CI sees it.
 const SHARED = ['.rig/waivers.jsonl', '.rig/autonomy.json', '.rig/.gitignore', '.rig/sensors.json', '.rig/rules.json', '.rig/product/brief.md', '.rig/wiki.json']
 const SHARED_DIRS = ['.rig/guides/', '.rig/wiki/']
-// The sprint plan is regenerated as changes land (done, ready); the next change's PR carries it instead of leaving the tree dirty.
-const SHARED_RE = /^\.rig\/product\/sprints\/sprint-\d+\/(approval\.json|plan\.md)$/
+// Only the sprint approval rides along by pattern; the plan, the carried files, the backlog and the additions ship when this run wrote them.
+const SHARED_RE = /^\.rig\/product\/sprints\/sprint-\d+\/approval\.json$/
 function dirtyFiles(): string[] {
   const dirty = [...(git(['diff', '--name-only', 'HEAD']) ?? '').split('\n'), ...(git(['ls-files', '--others', '--exclude-standard']) ?? '').split('\n')].filter(Boolean)
   return [...new Set(dirty)]
 }
-const changeFiles = (slug: string): string[] => dirtyFiles().filter(ships(slug))
+const changeFiles = (slug: string, wrote: string[]): string[] => dirtyFiles().filter(f => ships(slug)(f) || wrote.includes(f))
 
 // What a PR for this change carries under .rig/: its own record and the shared files; the rest of .rig/ stays local.
 // A vendored harness file never rides along: a rig upgrade left uncommitted ended up in a feature commit (shop_app 2026-10-27).
@@ -86,7 +88,15 @@ export function cmdPr(args: Args): void {
     try { verify = JSON.parse(c('verify.json')) } catch { /* no verify.json: the body says so */ }
     fs.writeFileSync(path.join(CHANGES, slug, 'pr-body.md'), prBody({ intent: c('intent.md'), spec: c('spec.md'), plan: c('plan.md'), verify, outline: c('pr-outline.md'), review: c('review.md'), amendments: c('amendments.md'), risk: riskOf(branchDiff(verify?.base ?? defaultBase() ?? 'HEAD').filter(d => ships(slug)(d.file)), [slug], loadConfig().registry, parseAccess(read(archPath)), false) }))
   }
-  const files = changeFiles(slug)
+  // The merge ships this change: write the sprint plan as it will read then, so nothing regenerates dirty afterwards.
+  // Another change of the sprint in flight would find the plan changed under it, so the plan waits for the last one.
+  // A change whose PR is open (a local pr.md) counts as shipped too, so the last PR of a sprint still writes the plan.
+  const sprint = intentOf(slug)?.sprint, others = typeof sprint === 'number' ? intentsOf(sprint).filter(i => i.slug !== slug && exists(changeDir(i.slug)) && !isShipped(i.slug)) : []
+  const prOpen = others.filter(i => exists(path.join(changeDir(i.slug), 'pr.md'))).map(i => i.slug), busy = others.length > prOpen.length
+  const wrote = typeof sprint === 'number' && !busy ? [writePlan(sprint, [slug, ...prOpen])] : []
+  // Review items and additions are written into the carried files, the backlog and the intent before the commit; the PR carries just those.
+  wrote.push(...routeReview(slug).files, ...recordAdditions(slug).files)
+  const files = changeFiles(slug, wrote)
   const left = dirtyFiles().filter(isHarnessPath)
   if (left.length) out(`pr ${slug}: left out ${left.length} vendored harness file(s) (${left.slice(0, 3).join(', ')}${left.length > 3 ? ', ...' : ''}); they look like an uncommitted ${skillRef('upgrade')}: commit them on their own branch`)
   if (!files.length) return out(followUp ? `${slug} already has a PR (.rig/changes/${slug}/pr.md); nothing new to commit` : 'not shipping: nothing to commit')
@@ -97,7 +107,8 @@ export function cmdPr(args: Args): void {
   if (git(['commit', '-q', '--no-verify', '-m', message]) === null) { undo(false); fail('git commit failed') }
   // The review's fix wave re-activates the change so the hooks guard it; its follow-up ends it. Another active change stays.
   if (!followUp || activeSlug() === slug) setActive(null)
-  if (!remote) return out(`pr ${slug}: committed on ${branch}${followUp ? ' (follow-up)' : ''}; no origin remote, local only`)
+  const next = readyAfter(slug)
+  if (!remote) return out(`pr ${slug}: committed on ${branch}${followUp ? ' (follow-up)' : ''}; no origin remote, local only. Next: merge ${branch} into ${trunkName()}${next[0] ? `, then ${next[0]}` : ''}`)
   const retry = `gh pr create --title ${JSON.stringify(title)} --body-file .rig/changes/${slug}/pr-body.md`
   if (git(['push', '--no-verify', '-u', 'origin', branch]) === null) { undo(true); fail(`git push failed; ${followUp ? `the follow-up is committed on ${branch}: push it` : 'nothing was kept: fix the remote and rerun pr'}`) }
   if (followUp) return out(`pr ${slug}: follow-up pushed to ${branch}`)

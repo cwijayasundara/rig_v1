@@ -3,6 +3,7 @@ import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { makeRepo, sdlc, hook, write, gitIn, fromOld, registry } from './testkit.ts'
 
 let repo: string
@@ -85,6 +86,18 @@ test('a harness file changed by Bash blocks at Stop; the same change through Edi
   const warned = JSON.parse(stop().stdout) as { decision?: string; systemMessage?: string }
   assert.equal(warned.decision, undefined, 'a warning does not block')
   assert.match(warned.systemMessage ?? '', /1 warning.*harness-tamper/)
+})
+
+test('contract files registered by sdlc in the turn are not harness-tamper', () => {
+  sdlc(repo, ['new', 'xx', '--type', 'chore'])
+  write(repo, '.rig/sensors.json', fromOld({}))
+  gitIn(repo, 'add', '.')
+  gitIn(repo, 'commit', '-qm', 'cfg')
+  hook(repo, 'prompt-submit', {})
+  const lib = path.resolve(import.meta.dirname, 'contracts.ts')
+  spawnSync('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', `import { registerContracts } from ${JSON.stringify(lib)}; registerContracts(['docs/contracts/cart.md'])`], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo } })
+  assert.match(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8'), /docs\/contracts\/cart\.md/)
+  assert.doesNotMatch(stop().stdout, /harness-tamper/)
 })
 
 test('post-edit blocks a single edited file with exit 2 and records the edit', () => {
@@ -241,4 +254,21 @@ test('Stop does not continue a change that waits at a human gate or has no activ
   assert.equal(stop().stdout, '')
   sdlc(repo, ['new', 'gated', '--type', 'feature'])
   assert.equal(stop().stdout, '', 'a feature before its design approval is a person step, not an auto step')
+})
+
+// shop_app sprint 1 2026-10-28: /rig-start ran on an Opus main thread with a long context; the model-role warning only showed at a later Stop.
+test('/rig-start on a large context or another model shows a nudge', () => {
+  sdlc(repo, ['init'])
+  const t = path.join(repo, 'transcript.jsonl')
+  const row = (model: string, read: number): string => JSON.stringify({ type: 'assistant', message: { model, usage: { input_tokens: 10, cache_read_input_tokens: read, cache_creation_input_tokens: 500 } } }) + '\n'
+  const msg = (prompt: string): string => { const r = hook(repo, 'prompt-submit', { prompt, transcript_path: t }); return r.stdout ? ((JSON.parse(r.stdout) as { systemMessage?: string }).systemMessage ?? '') : '' }
+  fs.writeFileSync(t, row('claude-sonnet-5-5', 120000))
+  assert.match(msg('/rig-start x'), /~121k tokens.*\/clear/)
+  assert.match(msg('/rig:start x'), /~121k tokens/)
+  assert.doesNotMatch(msg('/rig-start x'), /\/model/)
+  fs.writeFileSync(t, row('claude-opus-5-5', 120000))
+  assert.match(msg('/rig-start x'), /\/model sonnet/)
+  assert.equal(msg('/rig-plan x'), '')
+  fs.writeFileSync(t, row('claude-sonnet-5-5', 50000))
+  assert.equal(msg('/rig-start x'), '')
 })

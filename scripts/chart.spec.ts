@@ -959,3 +959,26 @@ test('the Deferred list at approval keeps real items that start with "No" or "No
   assert.match(out, /2 deferred review item\(s\)/)
   assert.match(out, /  - No test covers B4 when qty is 0\.\n  - None of the cases cover a whitespace sku\./)
 })
+
+test('approve chart-N does not list Deferred items already resolved', () => {
+  cleanChart()
+  write(repo, `${P}/sprints/sprint-1/chart-review.md`, `${REVIEW_PASS}- a.md:1: x. → fixed (confirmed)\n- b.md:2: y → waived: z\n- c.md:3: open item\n`)
+  const ok = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
+  assert.equal(ok.code, 0, ok.stderr)
+  assert.match(ok.stdout, /1 deferred review item\(s\)/)
+  assert.match(ok.stdout, /c\.md:3/)
+  assert.doesNotMatch(ok.stdout, /a\.md:1|b\.md:2/)
+})
+
+test('approve chart-N flips a linked ADR row in architecture.md', () => {
+  cleanChart()
+  const adr = '---\nstatus: proposed\nsprint: 1\n---\n# ADR\n'
+  write(repo, `${P}/adr/0001-x.md`, adr)
+  write(repo, `${P}/adr/0002-y.md`, adr)
+  write(repo, `${P}/architecture.md`, `${ARCH_DOC()}\n## Decisions\n\n| ADR | Title | Status | Sprint |\n|---|---|---|---|\n| [0001](adr/0001-x.md) | decision | proposed | 1 |\n| 0002 | other | proposed | 1 |\n`)
+  const r = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
+  assert.equal(r.code, 0, r.stderr)
+  const arch = fs.readFileSync(path.join(repo, P, 'architecture.md'), 'utf8')
+  assert.match(arch, /\| \[0001\]\(adr\/0001-x\.md\) \| decision \| accepted \| 1 \|/)
+  assert.match(arch, /\| 0002 \| other \| accepted \| 1 \|/)
+})

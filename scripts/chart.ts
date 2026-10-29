@@ -6,6 +6,7 @@ import path from 'node:path'
 import { ROOT, exists, read, sha, now, toPosix, frontmatter, skillRef } from './core.ts'
 import { openQuestions, section } from './model.ts'
 import { changeDir, isShipped } from './lifecycle.ts'
+import { stripGenerated, carriedIds } from './carry.ts'
 import { planText, type PlanRow } from './plan.ts'
 import { prdFormatProblems, prdLedger, conversionProblems } from './prdformat.ts'
 import { PRODUCT, ARCH_REL, archPath, prdPath, intentsDir, testplanDir, approvalPath, sprintDir, sprintsOnDisk, intentRel, planPath, implPlanPath, sprintRel, ledgerPath, waiversPath, reviewPath, sourcePath, conversionPath, conversionReviewPath } from './product.ts'
@@ -33,7 +34,7 @@ const allIntents = (): Charted[] => sprintsOnDisk().flatMap(n => {
   const dir = intentsDir(n)
   return exists(dir) ? fs.readdirSync(dir).filter(f => f.endsWith('.md') && !local(f)).sort().map(f => { const file = path.join(dir, f), i = parseIntent(f.slice(0, -3), read(file)); return { ...i, declared: i.sprint, sprint: n, file } }) : []
 })
-const intentsOf = (n: number): Charted[] => allIntents().filter(i => i.sprint === n)
+export const intentsOf = (n: number): Charted[] => allIntents().filter(i => i.sprint === n)
 export const intentOf = (slug: string): Intent | null => allIntents().find(i => i.slug === slug) ?? null
 
 // The sprint's design doc. `design:` in architecture.md frontmatter names the newest one (a repo-relative posix path, or `none`, or the template's
@@ -59,9 +60,9 @@ function ownFiles(n: number): string[] {
 const sharedFiles = (): string[] => rel([archPath, ...walk(path.join(PRODUCT, 'adr')).filter(f => f.endsWith('.md'))])
 export const chartFiles = (n: number): string[] => [...new Set([...ownFiles(n), ...sharedFiles()])].sort()
 // An intent's `owner:` line is left out of its hash: who builds an intent is decided after the chart is approved, and changing it
-// is not a change to what was approved.
+// is not a change to what was approved. The same goes for the sections `sdlc pr` generates (carried items, additions).
 const INTENT_FILE = /^\.rig\/product\/sprints\/sprint-\d{1,4}\/intents\/[^/]+\.md$/
-const hashed = (p: string): string => { const t = read(path.join(ROOT, p)); return INTENT_FILE.test(p) ? t.replace(/^owner:[^\n]*\n/m, '') : t }
+const hashed = (p: string): string => { const t = read(path.join(ROOT, p)); return INTENT_FILE.test(p) ? stripGenerated(t).replace(/^owner:[^\n]*\n/m, '') : t }
 const manifest = (paths: string[]): ChartFile[] => paths.map(p => ({ path: p, sha: sha(hashed(p)) }))
 export const chartDigest = (n: number): string => sha(manifest(chartFiles(n)).map(f => `${f.path}\n${f.sha}\n`).join(''))
 
@@ -80,7 +81,7 @@ function acceptAdrs(n: number): void {
     fs.writeFileSync(f, next)
     return [/^\d+/.exec(path.basename(f))?.[0]].filter((x): x is string => Boolean(x))
   })
-  if (ids.length && exists(archPath)) fs.writeFileSync(archPath, read(archPath).replace(new RegExp(`^(\\|\\s*(?:${ids.join('|')})\\s*\\|.*\\|\\s*)proposed(\\s*\\|\\s*${n}\\s*\\|\\s*)$`, 'gm'), '$1accepted$2'))
+  if (ids.length && exists(archPath)) fs.writeFileSync(archPath, read(archPath).replace(new RegExp(`^(\\|\\s*(?:\\[(?:${ids.join('|')})\\]\\([^)]*\\)|(?:${ids.join('|')}))\\s*\\|.*\\|\\s*)proposed(\\s*\\|\\s*${n}\\s*\\|\\s*)$`, 'gm'), '$1accepted$2'))
 }
 export function writeChartApproval(n: number, by: string): void {
   acceptAdrs(n)
@@ -237,23 +238,31 @@ export function chartReport(n: number): string {
     `chart-${n}: ${chartState(n).state}`,
     `requirements ${ids.length}: with an intent ${ids.filter(id => intents.some(i => i.prd.includes(id))).length}, with a test case ${ids.filter(id => inCase(id).length).length}`,
     `intents ${intents.length} (${days} engineer-days): started ${started}, shipped ${shipped}`,
+    `carried in ${intents.reduce((c, i) => c + carriedIds(i.file).length, 0)}, added during changes ${intents.reduce((c, i) => c + section(read(i.file), 'Added during the change').split('\n').filter(l => /^\s*[-*]\s/.test(l)).length, 0)}, backlog open ${read(path.join(PRODUCT, 'backlog.md')).split('\n').filter(l => /^\s*[-*]\s+\[open\]/.test(l)).length}`,
     ...chain,
   ].join('\n')
 }
 
 // The sprint plan view: waves and graphs generated from the intents' `depends:` lines (see plan.ts), written beside the PRD. Not a chart
 // file, so regenerating it never makes an approved chart stale.
-export function planRows(n: number): PlanRow[] {
+export function planRows(n: number, assumeShipped?: string | string[]): PlanRow[] {
+  const shipped = (x: string): boolean => [assumeShipped].flat().includes(x) || isShipped(x)
   return intentsOf(n).map(i => ({
     slug: i.slug, depends: i.depends, estimateDays: i.estimateDays, owner: i.owner,
-    status: isShipped(i.slug) ? 'done' : exists(changeDir(i.slug)) ? 'active' : i.depends.every(isShipped) ? 'ready' : 'blocked',
+    status: shipped(i.slug) ? 'done' : exists(changeDir(i.slug)) ? 'active' : i.depends.every(shipped) ? 'ready' : 'blocked',
   }))
 }
-export function sprintPlan(n: number): string {
-  return planText(n, planRows(n), { chart: chartState(n).state, startCmd: slug => `${skillRef('start')} ${intentRel(n, slug)}` })
+export function sprintPlan(n: number, assumeShipped?: string | string[]): string {
+  return planText(n, planRows(n, assumeShipped), { chart: chartState(n).state, startCmd: slug => `${skillRef('start')} ${intentRel(n, slug)}` })
 }
-export function writePlan(n: number): string {
+export function writePlan(n: number, assumeShipped?: string | string[]): string {
   fs.mkdirSync(sprintDir(n), { recursive: true })
-  fs.writeFileSync(planPath(n), sprintPlan(n))
+  fs.writeFileSync(planPath(n), sprintPlan(n, assumeShipped))
   return `${sprintRel(n)}/plan.md`
+}
+// The start commands of the sprint's intents that are ready once `slug` ships; [] for an uncharted change.
+export function readyAfter(slug: string): string[] {
+  const n = intentOf(slug)?.sprint
+  if (typeof n !== 'number') return []
+  return planRows(n, slug).filter(r => r.status === 'ready').map(r => `${skillRef('start')} ${intentRel(n, r.slug)}`)
 }

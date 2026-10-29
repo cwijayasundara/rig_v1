@@ -22,6 +22,7 @@ import { cmdBaseline } from './initbaseline.ts'
 import { cmdVerify } from './verify.ts'
 import { cmdHooks, cmdCheckPush } from './githooks.ts'
 import { cmdPr } from './pr.ts'
+import { cmdCarry } from './carry.ts'
 import { treeStamp } from './stamp.ts'
 import { declareStack } from './stackinit.ts'
 import { cmdSync } from './sync.ts'
@@ -178,7 +179,19 @@ const words = (args: Args): string[] => (args.pos.length === 1 ? (args.pos[0] ??
 // What the person can type when their /rig-<cmd> slash command is not listed (a session started before the harness was vendored).
 const humanFallback = (cmd: string, usage: string): string => `! SDLC_HUMAN=1 node --disable-warning=ExperimentalWarning ${path.relative(process.cwd(), process.argv[1] ?? 'sdlc.ts')} ${cmd} ${usage}`
 
+// `approve <slug> --check`: the refusal the approval would give, without approving; needs no person.
+function approveCheck(args: Args): void {
+  const given = words(args)[0]
+  if (CHART_RE.test(given ?? '')) fail('--check is for a change plan: use approve chart-N without --check')
+  const slug = given ? checkSlug(given) : activeSlug()
+  if (!slug || !exists(changeDir(slug))) fail('usage: approve <slug> --check')
+  const refusal = approvalRefusal(slug)
+  if (refusal) fail(refusal)
+  out(`ok: ${slug} can be approved`)
+}
+
 function cmdApprove(args: Args): void {
+  if (args.opt.check) return approveCheck(args)
   if (process.env.SDLC_HUMAN !== '1') fail(`approvals are human-only: the person runs ${skillRef('approve')} <slug>. If that command is not listed, restart Claude Code, or the person types: ${humanFallback('approve', '<slug>')}`, 3)
   const given = words(args)[0] // a second word (the old stage name) is ignored
   if (!given && args.opt.ask) return out(approveTarget())
@@ -222,7 +235,7 @@ function approveChart(n: number, args: Args): void {
   if (!open.length && !/^verdict:\s*pass\s*$/m.test(read(reviewPath(n)).split('\n')[0] ?? '') && !chartReview(n)?.length) fail(`chart-${n}'s chart-review.md says changes-needed but lists no finding rig can read: write each as a \`- \` line under \`## Findings\``)
   if (open.length) fail(`chart-${n} has ${open.length} review finding(s) not confirmed fixed:\n${open.map(f => `  ${f.n}. ${f.text}${f.status === 'claimed' ? ' (marked fixed, never confirmed)' : ''}`).join('\n')}\nFix them and re-run the chart's confirm pass, or waive one with ${skillRef('waive')} chart-${n} <finding number> <reason>`)
   // The reviewer's Deferred list is for the person to decide; approval is where it is seen (shop_app 2026-10-27: a whitespace-sku question sat there undecided).
-  const deferred = (/^#{2,3}[ \t]+Deferred\b[^\n]*\n([\s\S]*?)(?=^#{2,3}[ \t]|(?![\s\S]))/m.exec(read(reviewPath(n)))?.[1] ?? '').replace(/^\s*\n/, '').split(/\n(?=[-*]\s)/).filter(c => /^[-*]\s/.test(c)).map(c => c.replace(/^[-*]\s+/, '').replace(/\s*\n\s*/g, ' ').trim()).filter(c => c && !/^(none|nothing|no (items?|deferred|findings?)|no .*\b(found|noted|recorded)\b)\.?$/i.test(c))
+  const deferred = (/^#{2,3}[ \t]+Deferred\b[^\n]*\n([\s\S]*?)(?=^#{2,3}[ \t]|(?![\s\S]))/m.exec(read(reviewPath(n)))?.[1] ?? '').replace(/^\s*\n/, '').split(/\n(?=[-*]\s)/).filter(c => /^[-*]\s/.test(c)).filter(c => !/→\s*(?:fixed|waived|dropped|carried|taken)\b/i.test(c)).map(c => c.replace(/^[-*]\s+/, '').replace(/\s*\n\s*/g, ' ').trim()).filter(c => c && !/^(none|nothing|no (items?|deferred|findings?)|no .*\b(found|noted|recorded)\b)\.?$/i.test(c))
   const by = ownerOrFail(args, 'approvals')
   writeChartApproval(n, by)
   // A sensors.json with edits of its own is not swept into the approval commit: the person commits it.
@@ -304,7 +317,7 @@ function cmdStartBrief(): void {
   if (/^rig\/chart-\d+$/.test(branch)) lines.push(`WARNING: you are on the chart branch ${branch}. Merge it into ${base} first and start the change from ${base}; a change built on an unmerged chart branch ships the chart with it (shop_app 2026-10-27: sdlc/cart-core sat on rig/chart-1).`)
   else if (branch && branch !== base) lines.push(`WARNING: you are on branch ${branch}, not ${base}. The previous change may not be merged yet; a new change starts from this branch.`)
   const ready = readyIntents()
-  const plans = sprintsKnown().filter(n => exists(prdPath(n)) && planRows(n).some(r => r.status !== 'done')).map(writePlan)
+  const plans = sprintsKnown().filter(n => exists(prdPath(n)) && planRows(n).some(r => r.status !== 'done')).map(n => writePlan(n))
   if (plans.length) lines.push(`build order (waves and dependency graph): ${plans.join(', ')}`)
   lines.push(ready.length ? `ready intents:\n${ready.map(i => `  ${readyRow(i)}`).join('\n')}` : 'no intents are ready')
   out(lines.join('\n'))
@@ -440,7 +453,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   prd: cmdPrd,
   ready: cmdReady,
   'start-brief': () => cmdStartBrief(),
-  pr: cmdPr,
+  pr: cmdPr, carry: cmdCarry,
   run: () => cmdRun(),
   verify: cmdVerify,
   secrets: cmdSecrets,

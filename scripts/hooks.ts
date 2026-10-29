@@ -16,12 +16,12 @@ import { formatFindings, isSource, isTest, matchesAny, warnRow, type Finding } f
 import { sessionNote } from './githooks.ts'
 import { treeStamp } from './stamp.ts'
 import { runCommand } from './runs.ts'
-import { policyMode, activeSensors, commandFor, contractGlobs, ALWAYS_ON, type Registry, type Mode } from './registry.ts'
+import { policyMode, modelFamily, activeSensors, commandFor, contractGlobs, ALWAYS_ON, type Registry, type Mode } from './registry.ts'
 import { contractsTouched } from './contracts.ts'
 import { syncFindings } from './sync.ts'
 import { queueNext } from './queue.ts'
 import { readAutonomy } from './autonomy.ts'
-import { recordSessionModel, recordLaunch, recordResolved, sessionModel, readModelState, modelRoleFindings } from './modelstate.ts'
+import { recordSessionModel, recordLaunch, recordResolved, sessionModel, readModelState, modelRoleFindings, transcriptModel, transcriptContext } from './modelstate.ts'
 
 const MODEL_STATE = path.join(SDLC, 'state', 'model.json')
 
@@ -180,6 +180,18 @@ function approveTyped(typedArgs: string): void {
   say(`rig: the person typed ${skillRef('approve')} and rig ${r.code === 0 ? 'recorded it' : 'refused it'}:\n${r.text}\nTell them the result in one line${r.code === 0 ? `, then continue with ${skillRef('build')} ${slug}` : ' and stop'}. Do not run ${skillRef('approve')} or sdlc.ts approve yourself.`)
 }
 
+// /rig-start on a context over 100k tokens or a main thread off the build model: say so before the work begins (shop_app sprint 1, 2026-10-28).
+const CONTEXT_NUDGE = 100_000
+function startNudge(input: HookInput): string {
+  if (!/^\s*\/rig[:-]start\b/.test(String(input.prompt ?? ''))) return ''
+  const { registry } = loadConfig(), tp = typeof input.transcript_path === 'string' ? input.transcript_path : undefined
+  const n = transcriptContext(tp), main = transcriptModel(tp), fam = (m: string): string => modelFamily(m, registry.policy)
+  return [
+    n !== null && n > CONTEXT_NUDGE ? `context is ~${Math.round(n / 1000)}k tokens: run /clear, then this command again` : '',
+    main && fam(main) !== fam(registry.models.build) ? `the main thread runs on ${main}; this repo builds on ${registry.models.build}: /model ${registry.models.build}` : '',
+  ].filter(Boolean).join('; ')
+}
+
 // Each prompt starts a turn: record the tree and reset the per-turn gate, so Stop diffs exactly this turn's changes.
 // Warnings the last turn left are handed to the agent once, here, because a passing Stop cannot show them to it.
 function hookPromptSubmit(input: HookInput = {}): void {
@@ -194,8 +206,12 @@ function hookPromptSubmit(input: HookInput = {}): void {
     if (carry && g.last) g.last.shown = true
   })
   if (typed) approveTyped(typed[1] ?? '')
-  if (carry) {
-    out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: `rig: the last turn left ${last?.warns} warning(s) that did not block. Fix them if they are yours:\n${[...carry, ...more(last)].map(r => `- ${r}`).join('\n')}` } }))
+  const nudge = startNudge(input)
+  if (carry || nudge) {
+    out(JSON.stringify({
+      ...(carry ? { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: `rig: the last turn left ${last?.warns} warning(s) that did not block. Fix them if they are yours:\n${[...carry, ...more(last)].map(r => `- ${r}`).join('\n')}` } } : {}),
+      ...(nudge ? { systemMessage: `rig: ${nudge}` } : {}),
+    }))
   }
 }
 

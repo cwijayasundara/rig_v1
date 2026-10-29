@@ -21,4 +21,6 @@ Fill `.rig/product/brief.md` too (at most 60 lines): Context and intent, Non-goa
 
 Cite only requirement ids the PRD defines; an intent no requirement asks for does not get written. Put every open question in `## Open questions` with your recommended answer and return it in your reply under "Open questions"; the caller asks the person and records each answer in the sprint PRD, so never settle a question only inside `architecture.md`.
 
+On a re-chart keep a generated `## Added during the change` section of an intent, and the sprint's `carried/` files, verbatim.
+
 Reply in 15 lines or fewer: the intents written (slug, requirements, days, dependencies), the lanes, the architecture changes, and the open questions.

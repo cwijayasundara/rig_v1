@@ -1,4 +1,4 @@
-// Review (designs 2026-10-21, native review then clean-context review): /rig:pr reviews the delta with a fresh reviewer agent and the bundled /security-review before the PR opens.
+// Review (designs 2026-10-21, native review then clean-context review): /rig:pr reviews the delta with a fresh reviewer agent and a security review agent, both on Opus, before the PR opens.
 import { test } from 'node:test'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -7,19 +7,19 @@ import assert from 'node:assert/strict'
 const repoText = (f: string): string => fs.readFileSync(path.resolve(import.meta.dirname, '..', f), 'utf8')
 const pr = (): string => repoText('skills/pr/SKILL.md')
 
-test('pr skill reviews with a clean-context agent and /security-review before sdlc.ts pr', () => {
+test('pr skill reviews with a clean-context agent and a security review agent before sdlc.ts pr', () => {
   const t = pr()
   assert.match(t, /review-brief\.md/)
-  assert.match(t, /\/security-review/)
+  assert.match(t, /The security review: launch one `Agent`/)
   const body = t.slice(t.indexOf('\n---\n', 4))
   assert.ok(body.indexOf('review-brief.md') < body.indexOf('pr <slug> --message'), 'the review comes before the PR is opened')
-  assert.match(body, /\/security-review all changes since <base>, committed and uncommitted/, 'its built-in diff misses uncommitted work')
+  assert.match(body, /review all changes since <base>, committed and uncommitted, for security/, 'the scope is spelled out: uncommitted work too')
   assert.doesNotMatch(body, /\/code-review/, 'the code pass is no longer the in-session native command')
 })
 
 test('the reviewer is a fresh agent that is given the brief and nothing else', () => {
   const t = pr()
-  assert.match(t, /launch one `Agent` \(`general-purpose`, `model: sonnet`, foreground\)/)
+  assert.match(t, /launch one `Agent` \(`general-purpose`, `model: opus`, foreground\)/)
   assert.match(t, /Give it nothing else: not the plan's reasoning, not this conversation/)
   assert.match(t, /`<base>` and `<slug>`/)
 })
@@ -41,21 +41,21 @@ test('pr skill no longer launches the evaluator', () => {
   assert.doesNotMatch(pr(), /rig:evaluator/)
 })
 
-test('pr skill keeps the review.md categories, the security fallback and a single commit', () => {
+test('pr skill keeps the review.md categories, the security agent and a single commit', () => {
   const t = pr()
   assert.match(t, /do not run `S pr`: leave review\.md for the person/, 'a check that failed twice does not ship')
   assert.match(t, /\[category:/)
   assert.match(t, /review\.md/)
-  assert.match(t, /no `origin` remote[^\n]*general-purpose/, 'security review has a fallback for a repo without a remote')
+  assert.doesNotMatch(t, /no `origin` remote/, 'the security review is an agent every time: no remote needed, no main-thread fallback')
   assert.doesNotMatch(t, /fix\(review\)|docs\(review\)/)
 })
 
-test('evaluator is chart-only', () => {
+test('evaluator reviews charts, change plans and test plans, never a diff', () => {
   const ev = repoText('agents/evaluator.md')
   assert.match(ev, /## Chart mode|^You review a sprint chart/m)
   assert.doesNotMatch(ev, /git diff <base>/)
   assert.doesNotMatch(ev, /\*\*Security:\*\*|\*\*Correctness:\*\*|\*\*Design:\*\*|\*\*Contracts:\*\*/)
-  assert.doesNotMatch(ev, /`?spec\.md`?|(?<!implementation-)plan\.md/, 'it reads a chart, not a change (the sprint implementation-plan.md is a chart file)')
+  assert.doesNotMatch(ev.split('## Change plan mode')[0] ?? '', /`?spec\.md`?|(?<!implementation-)plan\.md/, 'chart mode reads a chart, not a change (the sprint implementation-plan.md is a chart file)')
 })
 
 test('init writes a Review block into CLAUDE.md, and REVIEW.md defers to it', () => {
@@ -102,9 +102,17 @@ test('with no design doc, an unmapped finding left open names the intent line a 
 })
 
 test('the security pass checks every touched action against its ## Access row on each interface', () => {
-  assert.match(pr(), /`\/security-review all changes since <base>, committed and uncommitted, and every action in `\.rig\/product\/architecture\.md` `## Access`/)
   assert.match(pr(), /for security: [^\n]*every action in `\.rig\/product\/architecture\.md` `## Access`[^\n]*on each interface/)
   assert.match(repoText('templates/REVIEW.md'), /## Access/)
+})
+
+// Person's rule 2026-10-28: Sonnet writes, Opus evaluates.
+test('every pr evaluation runs on Opus: the code review, the security review and the confirm pass', () => {
+  const t = pr()
+  assert.equal(t.match(/launch one `Agent` \(`general-purpose`, `model: opus`, foreground\)/g)?.length, 3)
+  assert.match(t, /confirm once:[^\n]*`model: opus`/)
+  assert.doesNotMatch(t, /model: sonnet/)
+  assert.doesNotMatch(t, /ask for `\/security-review`|^\s*- `\/security-review/m, 'the main-thread /security-review runs on the session\'s Sonnet')
 })
 
 test('pr triage never defers or dismisses a finding that cites a ledger id', () => {

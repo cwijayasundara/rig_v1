@@ -98,7 +98,7 @@ test('CI reviews the delta only, with a turn cap, no lockfiles or vendored harne
   const w = parse(t) as Workflow & { concurrency?: { group?: string; 'cancel-in-progress'?: boolean } }
   assert.match(w.concurrency?.group ?? '', /pull_request\.number/)
   assert.equal(w.concurrency?.['cancel-in-progress'], true)
-  assert.equal((t.match(/claude -p --model sonnet --max-turns 25 /g) ?? []).length, 2)
+  assert.equal((t.match(/claude -p --model opus --max-turns 25 /g) ?? []).length, 2)
   assert.equal((t.match(/Review only what this diff adds or changes; read another file only to understand a changed line, and never review code the diff does not change\./g) ?? []).length, 2)
   assert.match(t, /git diff "origin\/\$BASE\.\.\.HEAD" -- \. ':\(exclude\)\*package-lock\.json'[^\n]*':\(exclude\)\.rig\/bin'/)
 })

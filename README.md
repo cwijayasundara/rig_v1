@@ -189,7 +189,7 @@ Dependencies point downward and evidence flows upward. Skills never decide anyth
  /rig:test                       sdlc.ts verify → verify.json: every commit and ci sensor,
      │                           contracts, traceability, red-proof
      ▼
- /rig:pr                         a clean-context reviewer agent + /security-review on the delta, fix, then commit on sdlc/<slug>,
+ /rig:pr                         a clean-context Opus reviewer + an Opus security agent on the delta, fix, then commit on sdlc/<slug>,
      │                           push, open the PR (or stay local-only); review.md rides in the PR
      ▼
  CI: rig-check  (base branch's checker)  ─►  merge
@@ -214,7 +214,7 @@ A change's status comes from which of its files exist: spec, plan, approve, buil
 | `/rig:plan` | Writing `plan.md` for a specced change. | tokens |
 | `/rig:build` | Approved spec and plan: build test-first. | tokens |
 | `/rig:test` | After the build: run `verify` and record `verify.json`. | mostly zero-token |
-| `/rig:pr` | Ship: a clean-context reviewer agent (diff and intent only) and native /security-review on the delta, builder triage, fixes, then one commit, push and PR. | tokens |
+| `/rig:pr` | Ship: a clean-context Opus reviewer agent (diff and intent only) and an Opus security agent on the delta, builder triage, fixes, then one commit, push and PR. | tokens |
 | `/rig:chart <N>` | Architect: the sprint's PRD becomes intents, architecture and ADRs on branch `rig/chart-<N>`. | tokens |
 | `/rig:testplan <N>` | QA lead: the sprint's test plan, cases and data. | tokens |
 | `/rig:wiki init \| build \| status \| refresh \| verify` | Build and keep the code wiki current. `status` is free and only warns. | tokens, bounded by `--max-usd` |
@@ -230,7 +230,7 @@ A change's status comes from which of its files exist: spec, plan, approve, buil
 | `/rig:approve chart-<N>` | A sprint's PRD, intents, architecture, ADRs, test plan and the contract files its intents name, as written. Refused while a blocking finding stands; goes stale when any of them changes. |
 | `/rig:waive <sensor> <file\|*> <reason>` | One sensor finding on the active change. |
 
-**The script underneath** (`node .rig/bin/sdlc.ts <cmd>`): `stamp`, `init`, `new`, `activate`, `status`, `approve`, `chart check|report <N>`, `prd check|map|ledger|status <N>`, `ready`, `start-brief`, `pr`, `run`, `verify`, `secrets`, `hook <event>`, `diff`, `baseline`, `check`, `check-file`, `sync`, `vendor`, `upgrade [--json|--diff <file>]`, `hooks`, `waive`, `sensors`, `wiki`, `learn mine|replay|check|status|reverts|review-eval --max-usd <n>`, `report`, `arch`, `queue`, `app`, `slice`, `maintain`, `readiness`, `autonomy`, `risk [<slug>] [--base <ref>] [--json]`, `weight [<slug>] [--json]` (light or full planning, from the blast radius), `new <slug> ... [--full] [--from-diff]`. Skills and CI call these, and so can you.
+**The script underneath** (`node .rig/bin/sdlc.ts <cmd>`): `stamp`, `init`, `new`, `activate`, `status`, `approve`, `chart check|report <N>`, `prd check|map|ledger|status <N>`, `ready`, `start-brief`, `pr`, `carry <slug>`, `run`, `verify`, `secrets`, `hook <event>`, `diff`, `baseline`, `check`, `check-file`, `sync`, `vendor`, `upgrade [--json|--diff <file>]`, `hooks`, `waive`, `sensors`, `wiki`, `learn mine|replay|check|status|reverts|review-eval --max-usd <n>`, `report`, `arch`, `queue`, `app`, `slice`, `maintain`, `readiness`, `autonomy`, `risk [<slug>] [--base <ref>] [--json]`, `weight [<slug>] [--json]` (light or full planning, from the blast radius), `new <slug> ... [--full] [--from-diff]`. Skills and CI call these, and so can you.
 
 ### Sensors, policy and guides
 
