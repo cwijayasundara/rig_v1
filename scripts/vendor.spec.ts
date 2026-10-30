@@ -297,6 +297,7 @@ test('init --full --workflows writes the CI files and never overwrites an existi
   sdlc(repo, ['init', '--full', '--workflows'])
   assert.ok(fs.existsSync(path.join(repo, '.github/workflows/rig-check.yml')))
   assert.ok(!fs.existsSync(path.join(repo, '.github/workflows/rig-review.yml')), 'the review workflow is gone (step 4a)')
+  assert.ok(fs.existsSync(path.join(repo, '.github/workflows/rig-maintain.yml')), 'the nightly Maintain scan is installed, off until RIG_MAINTAIN is set')
   assert.equal(fs.readFileSync(path.join(repo, 'REVIEW.md'), 'utf8'), 'mine\n')
 })
 
