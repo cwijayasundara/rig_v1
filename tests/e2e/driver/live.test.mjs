@@ -230,3 +230,26 @@ test('a result with no modelUsage: its cost is still a running total, but its us
   assert.deepEqual(s.sessions.map(x => Number(x.costUsd.toFixed(6))), [0.2, 0.3])
   assert.deepEqual([totals(s.sessions).inputTokens, totals(s.sessions).outputTokens], [400, 40])
 })
+
+// A person types /rig:plan only when there is no plan yet. /rig-start carries on into the plan in the same turn when it can, and the
+// plan skill writes plan.md and the evaluator's plan-review.md; a separate plan session after that does nothing but cost a start-up.
+const planSb = files => {
+  const prompts = []
+  return { prompts, run: (cmd, args) => { prompts.push(args[1]); return { status: 0, stdout: result(0.1), stderr: '' } }, read: rel => files[rel] ?? '' }
+}
+const planned = ['plan.md', 'plan-review.md']
+
+test('plan(): no session when start already wrote plan.md and the evaluator\'s plan-review.md', async () => {
+  const sb = planSb(Object.fromEntries(planned.map(f => [`.rig/changes/c/${f}`, 'x'])))
+  await liveDriver(sb, { id: 'PX', prompt: '/rig-start x' }, { sessions: createSessions({ sb, out: out(), capUsd: 6 }) }).plan('c')
+  assert.deepEqual(sb.prompts, [])
+})
+
+test('plan(): a session when plan.md is missing, or the plan was written but never reviewed', async () => {
+  for (const files of [{}, { '.rig/changes/c/plan.md': 'x' }]) {
+    const sb = planSb(files)
+    await liveDriver(sb, { id: 'PX', prompt: '/rig-start x' }, { sessions: createSessions({ sb, out: out(), capUsd: 6 }) }).plan('c')
+    assert.equal(sb.prompts.length, 1)
+    assert.match(sb.prompts[0], /^\/rig-plan c\./)
+  }
+})

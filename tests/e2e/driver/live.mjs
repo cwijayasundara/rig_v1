@@ -62,6 +62,9 @@ export function liveDriver(sb, phase, { sessions }) {
       return active()
     },
     async plan(slug) {
+      // /rig-start carries on into the plan in the same turn when it can; a person does not type /rig:plan over a plan that is written and reviewed.
+      const has = f => (sb.read?.(`.rig/changes/${slug}/${f}`) ?? '') !== ''
+      if (has('plan.md') && has('plan-review.md')) return
       sessions.run(`${phase.id}-plan`, `/rig-plan ${slug}. Write plan.md, then stop for the person's approval.`, { cont: true })
     },
     // The person's reply to open questions, the same words for every arm: take your recommended default and carry on.
