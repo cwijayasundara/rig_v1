@@ -156,3 +156,77 @@ test('build(): a change already in review is not re-approved', async () => {
   await d.build('c')
   assert.equal(d.reapproved, 0)
 })
+
+// `claude -p --continue` resumes the previous conversation, and the result event it prints carries that conversation's running total.
+const cumulative = (cost, models) => JSON.stringify({ type: 'result', is_error: false, total_cost_usd: cost, num_turns: 1, duration_ms: 1, permission_denials: [],
+  modelUsage: Object.fromEntries(Object.entries(models).map(([m, [usd, cacheRead, out = 0]]) => [m, { inputTokens: 0, outputTokens: out, cacheReadInputTokens: cacheRead, cacheCreationInputTokens: 0, costUSD: usd }])) })
+const sequenceSb = outputs => { const calls = []; return { calls, run: (cmd, args) => { calls.push(args); return { status: 0, stdout: outputs[calls.length - 1], stderr: '' } } } }
+
+test('a continued session is counted at what it added, not at the conversation\'s running total', () => {
+  const sb = sequenceSb([
+    cumulative(0.2, { 'claude-haiku-5-5': [0.2, 1000, 50] }),
+    cumulative(0.5, { 'claude-haiku-5-5': [0.3, 2500, 120], 'claude-opus-5-5': [0.2, 400, 30] }),
+    cumulative(0.6, { 'claude-haiku-5-5': [0.3, 2600, 130], 'claude-opus-5-5': [0.3, 900, 80] }),
+  ])
+  const s = createSessions({ sb, out: out(), capUsd: 6 })
+  s.run('start', 'x')
+  s.run('plan', 'y', { cont: true })
+  s.run('build', 'z', { cont: true })
+  assert.deepEqual(s.sessions.map(x => Number(x.costUsd.toFixed(6))), [0.2, 0.3, 0.1])
+  const t = totals(s.sessions)
+  assert.equal(Number(t.costUsd.toFixed(6)), 0.6)
+  assert.equal(t.models['claude-opus-5-5'].costUsd, 0.3)
+  assert.equal(t.models['claude-haiku-5-5'].costUsd, 0.3)
+  assert.equal(t.inputTokens, 2600 + 900)
+  assert.equal(t.outputTokens, 130 + 80)
+  assert.deepEqual(s.sessions.map(x => x.outputTokens), [50, 70 + 30, 10 + 50])
+})
+
+test('a session that does not continue starts a new total, and a continued one that reports less than before is a restart, counted whole', () => {
+  const sb = sequenceSb([
+    cumulative(0.4, { 'claude-haiku-5-5': [0.4, 4000] }),
+    cumulative(0.1, { 'claude-haiku-5-5': [0.1, 1000] }),
+    cumulative(0.3, { 'claude-haiku-5-5': [0.3, 3000] }),
+    cumulative(0.05, { 'claude-haiku-5-5': [0.05, 500] }),
+  ])
+  const s = createSessions({ sb, out: out(), capUsd: 6 })
+  s.run('a', 'x')
+  s.run('b', 'y') // not continued: a new conversation, so a's total is not taken off
+  s.run('c', 'z', { cont: true })
+  s.run('d', 'w', { cont: true }) // reports less than c's 0.3: the conversation restarted, counted whole
+  assert.deepEqual(s.sessions.map(x => Number(x.costUsd.toFixed(6))), [0.4, 0.1, 0.2, 0.05])
+})
+
+test('the spend cap and the next budget follow what was spent, not the running totals', () => {
+  const sb = sequenceSb([cumulative(1, { 'claude-haiku-5-5': [1, 100] }), cumulative(1.5, { 'claude-haiku-5-5': [1.5, 200] }), cumulative(2, { 'claude-haiku-5-5': [2, 300] })])
+  const s = createSessions({ sb, out: out(), capUsd: 3 })
+  s.run('a', 'x'); s.run('b', 'y', { cont: true })
+  const budget = args => args[args.indexOf('--max-budget-usd') + 1]
+  s.run('c', 'z', { cont: true })
+  assert.equal(budget(sb.calls[2]), '1.50') // 3 - 1.5 spent; summing the running totals would say 3 - 2.5
+})
+
+const crashed = '{"type":"assistant","message":{"content":[]}}'
+
+test('a session that crashed in the middle of a conversation does not hide the earlier ones: the next is counted against the last that reported', () => {
+  const sb = sequenceSb([cumulative(1, { 'claude-haiku-5-5': [1, 100] }), crashed, cumulative(2.5, { 'claude-haiku-5-5': [2.5, 300] })])
+  const s = createSessions({ sb, out: out(), capUsd: 20 })
+  s.run('a', 'x'); s.run('b', 'y', { cont: true }); s.run('c', 'z', { cont: true })
+  assert.deepEqual(s.sessions.map(x => Number(x.costUsd.toFixed(6))), [1, 6, 1.5]) // the crashed one is charged its whole budget
+})
+
+test('a crashed session that started a conversation ends the one before it: the next continued session is counted whole', () => {
+  const sb = sequenceSb([cumulative(0.3, { 'claude-haiku-5-5': [0.3, 100] }), crashed, cumulative(0.4, { 'claude-haiku-5-5': [0.4, 50] })]) // 0.4 is above a's 0.3, so the restart guard cannot rescue a wrong lookup
+  const s = createSessions({ sb, out: out(), capUsd: 20 })
+  s.run('a', 'x'); s.run('b', 'y'); s.run('c', 'z', { cont: true })
+  assert.equal(Number(s.sessions[2].costUsd.toFixed(6)), 0.4)
+})
+
+test('a result with no modelUsage: its cost is still a running total, but its usage is this call\'s own, so the tokens are not subtracted', () => {
+  const plain = (cost, input, output) => JSON.stringify({ type: 'result', is_error: false, total_cost_usd: cost, num_turns: 1, duration_ms: 1, permission_denials: [], usage: { input_tokens: input, output_tokens: output } })
+  const sb = sequenceSb([plain(0.2, 100, 10), plain(0.5, 300, 30)])
+  const s = createSessions({ sb, out: out(), capUsd: 6 })
+  s.run('a', 'x'); s.run('b', 'y', { cont: true })
+  assert.deepEqual(s.sessions.map(x => Number(x.costUsd.toFixed(6))), [0.2, 0.3])
+  assert.deepEqual([totals(s.sessions).inputTokens, totals(s.sessions).outputTokens], [400, 40])
+})
