@@ -2,13 +2,29 @@
 // denials, errors, and every skill and agent the model invoked.
 import fs from 'node:fs'
 
+// A gap this long between two events of one session is the machine asleep, not the model working: no tool call or response takes minutes.
+export const SLEEP_GAP_MS = 5 * 60_000
+// Blended USD per token (input, cache and output together), read off the 2026-10-30 `rules` run's completed sessions. Used only to price
+// a session that was killed before it printed a result; the figure is an estimate and the session is marked `estimated`.
+export const USD_PER_TOKEN = { haiku: 5e-8, sonnet: 9e-7, opus: 1.7e-6 }
+const rateOf = model => USD_PER_TOKEN[Object.keys(USD_PER_TOKEN).find(k => String(model).includes(k))] ?? USD_PER_TOKEN.opus
+
 export function readSession(file) {
-  const s = { file, costUsd: 0, turns: 0, ms: 0, isError: true, denials: [], skills: [], agents: [], ended: false, inputTokens: 0, outputTokens: 0, models: {} }
+  const s = { file, costUsd: 0, turns: 0, ms: 0, isError: true, denials: [], skills: [], agents: [], ended: false, inputTokens: 0, outputTokens: 0, models: {}, maxGapMs: 0, slept: false, estimated: false }
   if (!fs.existsSync(file)) return s
+  const partial = new Map() // message id -> {model, in, out}: a streamed message repeats its usage, the last one counts
+  let prevTs = null
   for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
     if (!line.trim()) continue
     let ev
     try { ev = JSON.parse(line) } catch { continue }
+    const ts = Date.parse(ev.timestamp ?? '')
+    if (Number.isFinite(ts)) { if (prevTs !== null) s.maxGapMs = Math.max(s.maxGapMs, ts - prevTs); prevTs = ts }
+    if (ev.type === 'assistant' && ev.message?.id && ev.message.usage) {
+      const u = ev.message.usage
+      partial.set(ev.message.id, { model: ev.message.model ?? '', inputTokens: (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0), outputTokens: u.output_tokens ?? 0 })
+    }
+    if (ev.type === 'assistant' && (ev.message?.content ?? []).some(c => c.type === 'text' && /computer went to sleep/i.test(c.text ?? ''))) s.slept = true
     if (ev.type === 'assistant') {
       for (const c of ev.message?.content ?? []) {
         if (c.type !== 'tool_use') continue
@@ -36,6 +52,19 @@ export function readSession(file) {
       }
       s.running = { costUsd: s.costUsd, models: s.models }
     }
+  }
+  if (s.maxGapMs > SLEEP_GAP_MS) s.slept = true
+  // No result event: the session was killed or crashed. Its tokens are in the stream; price them at the blended rate.
+  if (!s.ended && partial.size) {
+    for (const p of partial.values()) {
+      const m = (s.models[p.model] ??= { inputTokens: 0, outputTokens: 0, costUsd: 0 })
+      m.inputTokens += p.inputTokens; m.outputTokens += p.outputTokens
+      m.costUsd = Number((m.costUsd + (p.inputTokens + p.outputTokens) * rateOf(p.model)).toFixed(6))
+    }
+    s.inputTokens = Object.values(s.models).reduce((n, v) => n + v.inputTokens, 0)
+    s.outputTokens = Object.values(s.models).reduce((n, v) => n + v.outputTokens, 0)
+    s.costUsd = Number(Object.values(s.models).reduce((n, v) => n + v.costUsd, 0).toFixed(6))
+    s.estimated = true
   }
   return s
 }

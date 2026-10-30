@@ -11,9 +11,11 @@ export function summarize(rows) {
   const seen = new Set()
   const unique = rows.filter(r => { const k = `${r.arm}|${r.run}|${r.at}`; if (seen.has(k)) return false; seen.add(k); return true })
   return ARMS.map(({ id }) => {
-    const rs = unique.filter(r => r.arm === id)
+    // A run the machine slept through measured the laptop: its cost counts, its result does not.
+    const all = unique.filter(r => r.arm === id)
+    const rs = all.filter(r => !r.infra)
     return {
-      arm: id, runs: rs.length, accepted: rs.filter(r => r.accepted).length,
+      arm: id, runs: rs.length, invalid: all.length - rs.length, invalidUsd: all.filter(r => r.infra).reduce((n, r) => n + (r.usd ?? 0), 0), accepted: rs.filter(r => r.accepted).length,
       checksMean: mean(rs.map(r => r.checks ?? 0)), inMedian: median(rs.map(r => r.inputTokens ?? 0)), outMedian: median(rs.map(r => r.outputTokens ?? 0)),
       usdMean: mean(rs.map(r => r.usd ?? 0)), usdTotal: rs.reduce((n, r) => n + (r.usd ?? 0), 0), minutesMedian: median(rs.map(r => r.minutes ?? 0)),
       tamper: rs.reduce((n, r) => n + (r.tamper?.testTamper ?? 0) + (r.tamper?.suppression ?? 0), 0),
@@ -51,6 +53,7 @@ export function renderMarkdown(summary, { date, files }) {
     '|---|---|---|---|---|---|---|---|---|---|---|',
     ...rows, '',
     errs.length ? `errors: ${errs.join(', ')}` : 'errors: none', '',
+    ...(summary.some(a => a.invalid) ? [`not scored (machine slept mid-run, cost counted separately): ${summary.filter(a => a.invalid).map(a => `${a.arm} ${a.invalid} ($${a.invalidUsd.toFixed(2)})`).join(', ')}`, ''] : []),
     ...(thin.length ? [`n < 3 for ${thin.join(', ')}: direction only, not a result. Negative and null results are published as they came.`, ''] : []),
     ...mix(summary), 
     'Rule (spec §9): a sensor, guide or gate with no lift over haiku-bare after two passes is a candidate for removal. These arms measure rig as a whole and its two policies; per-component lift needs ablation arms.',

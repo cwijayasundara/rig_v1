@@ -67,8 +67,11 @@ export async function runOne(arm, n, { dry, out, capRunUsd, failAt, seed = null,
   const score = base ? await scoreRun(sb, base, { variant, judgeFrom: settled ?? base }).catch(e => ({ checks: 0, of: 3, accepted: false, layerViolations: null, error: e.message })) : { checks: 0, of: 3, accepted: false, layerViolations: null }
   const t = sessions ? totals(sessions.sessions) : { costUsd: 0, inputTokens: 0, outputTokens: 0, denials: [], models: {} }
   const commits = base ? Number(sb.git('rev-list', '--count', `${base}..HEAD`)) : 0
+  // The machine slept during a session: the run measured the laptop, not the arm. It is kept for its cost, never scored, and retried.
+  const infra = sessions?.sessions.some(x => x.slept) ? 'sleep' : null
+  const estimated = sessions?.sessions.some(x => x.estimated) ?? false
   return {
-    ...row, ...score, accepted: !row.error && score.accepted, error: row.error ?? score.error,
+    ...row, ...score, accepted: !infra && !row.error && score.accepted, error: row.error ?? score.error, ...(infra && { infra }), ...(estimated && { estimated }),
     inputTokens: t.inputTokens, outputTokens: t.outputTokens, usd: Number(t.costUsd.toFixed(4)),
     minutes: Number(((Date.now() - t0) / 60_000).toFixed(2)), sessions: sessions?.sessions.length ?? 0,
     denials: t.denials.length, models: t.models, commits,
@@ -84,6 +87,7 @@ if (process.argv[1] === import.meta.filename) {
   const runs = Number(arg('runs', 10))
   const capRunUsd = Number(arg('cap-run', 6))
   const capTotal = Number(arg('cap-total', 300))
+  const retries = Number(arg('retries', 1)) // reruns of a run the machine slept through
   fs.mkdirSync(path.dirname(results), { recursive: true })
   const variant = arg('variant', null)
   if (variant && variant !== 'links' && variant !== 'rules') { console.error('--variant must be: links or rules'); process.exit(2) }
@@ -96,10 +100,15 @@ if (process.argv[1] === import.meta.filename) {
     // The cap is checked once per round, for every arm in it, so a stop never leaves a round with some arms missing (an unpaired run).
     if (!dry && !nextRunAllowed(spent, capRunUsd * round.length, capTotal)) { console.log(`stopped before round ${n}: $${spent.toFixed(2)} spent, and a round of ${round.length} arm(s) can cost up to $${(capRunUsd * round.length).toFixed(2)} (--cap-run ${capRunUsd} x arms) against --cap-total ${capTotal}; lower --cap-run or raise --cap-total`); break }
     for (const [position, arm] of round.entries()) {
-      const row = await runOne(arm, n, { dry, out, capRunUsd, seed, position, variant })
-      spent += row.usd
-      fs.appendFileSync(results, JSON.stringify(row) + '\n')
-      console.log(`${arm.id} #${n}: ${row.accepted ? 'accepted' : 'not accepted'} ${row.checks}/${row.of}, $${row.usd}, ${row.minutes} min${row.error ? ` (${row.error})` : ''}`)
+      for (let attempt = 0; ; attempt++) {
+        const row = await runOne(arm, n, { dry, out, capRunUsd, seed, position, variant })
+        spent += row.usd
+        fs.appendFileSync(results, JSON.stringify(row) + '\n')
+        console.log(`${arm.id} #${n}: ${row.infra ? `INVALID (${row.infra}), not scored` : `${row.accepted ? 'accepted' : 'not accepted'} ${row.checks}/${row.of}`}, $${row.usd}${row.estimated ? ' (estimated)' : ''}, ${row.minutes} min${row.error ? ` (${row.error})` : ''}`)
+        if (!row.infra || attempt >= retries) break
+        if (!nextRunAllowed(spent, capRunUsd, capTotal)) { console.log(`no retry of ${arm.id} #${n}: $${spent.toFixed(2)} spent against --cap-total ${capTotal}`); break }
+        console.log(`retrying ${arm.id} #${n} (${attempt + 1} of ${retries})`)
+      }
     }
   }
   console.log(`\n${results}\nsandboxes: ${out}`)

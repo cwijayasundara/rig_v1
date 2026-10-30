@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { readSession, sinceSession, totals } from '../assert/process.mjs'
 import { PLUGIN } from '../lib/sandbox.mjs'
+import { keepAwake } from '../lib/awake.mjs'
 
 // `claude -p` never trusts the workspace, and an untrusted workspace's permissions.allow in .claude/settings.json is ignored
 // ("Ignoring N permissions.allow entries ... has not been trusted"). The template's allow rules and env (foreground subagents,
@@ -16,6 +17,7 @@ const templateSettings = ({ allow = [], env = {} } = {}) => {
 // One shared session log per run, so the spend cap covers every phase.
 export function createSessions({ sb, out, capUsd = 6, model = 'claude-haiku-5-5', allow = [], env = {} }) {
   if (!(capUsd > 0)) throw new Error(`spend cap must be a positive number of dollars, got ${capUsd}`)
+  keepAwake()
   const sessions = []
   const run = (label, prompt, { withPlugin = false, cont = false } = {}) => {
     const spent = totals(sessions).costUsd
@@ -37,8 +39,9 @@ export function createSessions({ sb, out, capUsd = 6, model = 'claude-haiku-5-5'
     }
     const s = sinceSession(readSession(file), prev)
     s.cont = cont
-    // A killed or crashed session prints no result event, so its cost is unknown: count its whole budget as spent.
-    if (!s.ended) s.costUsd = Math.max(s.costUsd, budget)
+    // A killed or crashed session prints no result event: readSession priced the tokens it streamed (an estimate), never above its budget.
+    // One that streamed nothing is unknown: count its whole budget as spent.
+    if (!s.ended) s.costUsd = s.estimated ? Math.min(s.costUsd, budget) : budget
     sessions.push(s)
     console.log(`  live ${label}: $${s.costUsd.toFixed(2)}, ${s.turns} turns, ${s.denials.length} denial(s), total $${totals(sessions).costUsd.toFixed(2)} of $${capUsd}`)
     return s
