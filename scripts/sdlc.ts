@@ -34,6 +34,7 @@ import { cmdQueue, conflictsFor } from './queue.ts'
 import { intentScope } from './scope.ts'
 import { prdFormatProblems, prdLedger, conversionProblems } from './prdformat.ts'
 import { parseLedger, parseIntent } from './chartcheck.ts'
+import { superpowersWarning } from './superpowers.ts'
 import { ARCH_REL, intentsDir, intentRelOf, prdRel, sprintRel, prdPath, reviewPath, ledgerPath, sourcePath, conversionPath } from './product.ts'
 import { cmdSlice } from './slice.ts'
 import { registerContracts } from './contracts.ts'
@@ -43,7 +44,7 @@ import { cmdAutonomy, initAutonomy } from './autonomy.ts'
 import { cmdRisk, cmdWeight } from './risk.ts'
 import { protect } from './protect.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'
-import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, waiveChartFinding, changeRequirements, PRD_RE, isConverted, conversionRefusal } from './chart.ts'
+import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, intentSettled, nextChart, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, waiveChartFinding, changeRequirements, PRD_RE, isConverted, conversionRefusal } from './chart.ts'
 import { journey, journeyText } from './journey.ts'
 import { TYPES, changeDir, newChange, setActive, activeSlug, isShipped, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
 
@@ -91,6 +92,9 @@ function cmdInit(args: Args): void {
   out(me ? `approvals and waivers are recorded as "${me}" (git user.name); change it with: git config user.name "<name>"` : 'no user name found: set one with `git config user.name "<name>"` so approvals say who approved')
 }
 
+// Tells /rig:start whether the charted intent leaves anything to ask (F2 of the 2026-10-29 feedback proposal).
+const settledLine = (slug: string): string => { const s = intentSettled(slug); return s.settled ? `settled: yes (the intent answers everything ${skillRef('start')} would ask)` : `settled: no (${s.why.join('; ')})` }
+
 function cmdNew(args: Args): void {
   const slug = args.pos[0] ?? ''
   if (!SLUG_RE.test(slug)) fail(`usage: new <kebab-slug> [--type ${TYPES.join('|')}] [--title "..."] [--source .rig/product/sprints/sprint-<N>/intents/<slug>.md] [--full] [--from-diff]`)
@@ -122,7 +126,7 @@ function cmdNew(args: Args): void {
     fs.writeFileSync(file, read(file).replace('\n---\n# ', `\nfrom-diff: ${captured.base}\n---\n# `))
     fs.writeFileSync(path.join(changeDir(slug), 'spec.md'), `# Spec: ${title}\n\n## Behaviours\n\n## Blast radius\n${[...new Set(captured.diffs.flatMap(d => (d.from ? [d.from, d.file] : [d.file])))].map(f => `- ${f.replace(/ /g, '?')}`).join('\n')}\n\n## Out of scope\n\n## Open questions\nnone\n`)
   }
-  out(`created .rig/changes/${slug}/intent.md (type ${type}); ${slug} is the active change${intent ? `; spec.md starts with the ${intent.behaviours.length} behaviour(s) of the intent` : ''}${reqs ? `; requirements.md holds the PRD rows it cites` : ''}`)
+  out(`created .rig/changes/${slug}/intent.md (type ${type}); ${slug} is the active change${intent ? `; spec.md starts with the ${intent.behaviours.length} behaviour(s) of the intent` : ''}${reqs ? `; requirements.md holds the PRD rows it cites` : ''}${intent ? `\n${settledLine(slug)}` : ''}`)
   if (captured) out([`captured ${captured.diffs.length} file(s) changed since ${captured.base.slice(0, 7)} (spec.md's blast radius starts with them):`, ...captured.diffs.map(d => `  ${d.file} +${d.added.length} -${d.removed.length}`), ...(captured.warning ? [`WARNING: ${captured.warning}`] : [])].join('\n'))
 }
 
@@ -149,7 +153,7 @@ function cmdActivate(args: Args): void {
   const slug = checkSlug(args.pos[0] ?? '')
   if (!exists(changeDir(slug))) fail(`no such change: ${slug}`)
   setActive(slug)
-  out(`active change: ${slug}`)
+  out(`active change: ${slug}${intentOf(slug) ? `\n${settledLine(slug)}` : ''}`)
 }
 
 const notInitialised = (json: boolean): void => out(json ? JSON.stringify({ initialised: false }) : `rig not initialised here: run ${skillRef('init')}`)
@@ -264,7 +268,11 @@ function commitApproval(n: number, sensors = false): boolean | null {
 
 function cmdChart(args: Args): void {
   const [sub, num] = args.pos
-  if ((sub !== 'check' && sub !== 'report' && sub !== 'plan') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: chart (check [--cases] [--json] | report | plan [--print]) <sprint number>')
+  if (sub === 'next') {
+    const next = nextChart()
+    return out(args.opt.json ? JSON.stringify(next) : `${next.sprint === null ? 'sprint: ask' : `sprint ${next.sprint}`}${next.prd ? ` ${next.prd}` : ''} (${next.why})${next.candidates.length > 1 ? `\n${next.candidates.map(c => `  sprint ${c.sprint}: ${c.prd}`).join('\n')}` : ''}`)
+  }
+  if ((sub !== 'check' && sub !== 'report' && sub !== 'plan') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: chart next [--json] | chart (check [--cases] [--json] | report | plan [--print]) <sprint number>')
   const n = Number(num)
   needPrd(n)
   if (sub === 'plan') return out(args.opt.print ? sprintPlan(n) : `wrote ${writePlan(n)}`)
@@ -313,6 +321,8 @@ function cmdStartBrief(): void {
   const lines: string[] = []
   if (/^rig\/chart-\d+$/.test(branch)) lines.push(`WARNING: you are on the chart branch ${branch}. Merge it into ${base} first and start the change from ${base}; a change built on an unmerged chart branch ships the chart with it (shop_app 2026-10-27: sdlc/cart-core sat on rig/chart-1).`)
   else if (branch && branch !== base) lines.push(`WARNING: you are on branch ${branch}, not ${base}. The previous change may not be merged yet; a new change starts from this branch.`)
+  const sp = superpowersWarning()
+  if (sp) lines.push(sp)
   const ready = readyIntents()
   const plans = sprintsKnown().filter(n => exists(prdPath(n)) && planRows(n).some(r => r.status !== 'done')).map(n => writePlan(n))
   if (plans.length) lines.push(`build order (waves and dependency graph): ${plans.join(', ')}`)
@@ -439,6 +449,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   prd: cmdPrd,
   ready: cmdReady,
   'start-brief': () => cmdStartBrief(),
+  superpowers: () => out(superpowersWarning() || 'superpowers: ok'),
   pr: cmdPr, carry: cmdCarry,
   run: () => cmdRun(),
   verify: cmdVerify,

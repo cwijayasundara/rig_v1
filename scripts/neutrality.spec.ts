@@ -23,4 +23,4 @@ test('the size cap counts non-spec scripts and holds', () => {
     .reduce((n, f) => n + fs.readFileSync(path.join(DIR, f), 'utf8').replace(/\n$/, '').split('\n').length, 0)
   assert.ok(total <= SCRIPTS_CAP, `scripts are ${total} lines (cap ${SCRIPTS_CAP})`)
 })
-const SCRIPTS_CAP = 8050 // measured 2026-10-29: Windows commands in Git bash and the app's process tree reaped with taskkill (runs.ts SHELL, app.ts reap). History: `git log -L26,26:scripts/neutrality.spec.ts`
+const SCRIPTS_CAP = 8130 // measured 2026-10-29: `chart next`, the superpowers check, the settled-intent line (intentSettled) and the review fixes to them, 8123 lines; before that Windows commands in Git bash and the app's process tree reaped with taskkill (runs.ts SHELL, app.ts reap). History: `git log -L26,26:scripts/neutrality.spec.ts`

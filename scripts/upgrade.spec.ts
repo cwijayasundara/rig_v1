@@ -444,3 +444,27 @@ test('apply leaves one commit on chore/rig-upgrade-*, without .rig-new files (sh
   assert.match(gitIn(repo, 'show', '--name-only', '--format=', 'HEAD'), /\.claude\/skills\/rig-/)
   assert.doesNotMatch(gitIn(repo, 'show', '--name-only', '--format=', 'HEAD'), /\.rig-new/)
 })
+
+// shop_app 2026-10-28: an older .rig/.gitignore lacked changes/*/pr-outline.md, so the files piled up untracked.
+test('apply adds the ignore entries a newer version needs and commits them with the upgrade', () => {
+  const repo = committed()
+  write(repo, '.rig/.gitignore', 'state/\n')
+  lag(repo, SKILL, 'old\n')
+  const r = sdlc(repo, ['upgrade', '--apply'])
+  assert.equal(r.code, 0, r.stderr)
+  assert.match(fs.readFileSync(path.join(repo, '.rig/.gitignore'), 'utf8'), /^changes\/\*\/pr-outline\.md$/m)
+  assert.equal(gitIn(repo, 'status', '--porcelain', '--', '.rig/.gitignore'), '')
+})
+
+test('an install that is otherwise current still gets the missing ignore entries, and a file with no final newline keeps its last entry', () => {
+  const repo = committed()
+  write(repo, '.rig/.gitignore', 'state/\nlearn/')
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', 'old ignore')
+  const r = sdlc(repo, ['upgrade', '--apply'])
+  assert.equal(r.code, 0, r.stderr)
+  assert.doesNotMatch(r.stdout, /already current/)
+  const text = fs.readFileSync(path.join(repo, '.rig/.gitignore'), 'utf8')
+  assert.match(text, /^learn\/$/m)
+  assert.match(text, /^changes\/\*\/pr-outline\.md$/m)
+})

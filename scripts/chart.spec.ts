@@ -320,6 +320,31 @@ test('new --source starts the change: source recorded, behaviours copied into sp
   assert.match(fs.readFileSync(path.join(repo, '.rig/changes/alpha/spec.md'), 'utf8'), /## Behaviours\n- B1 \(FR-1\): works\n/)
 })
 
+// shop_app sprint 0 (2026-10-29): /rig:start asked 18 questions about intents the chart had already specified.
+test('new --source says whether the intent is settled, and what is missing when it is not', () => {
+  startable()
+  const bare = sdlc(repo, ['new', 'alpha', '--source', SRC])
+  assert.match(bare.stdout, /settled: no \(no non-goals\)/)
+})
+
+test('activate prints the settled line again, so a resumed charted change is not questioned afresh', () => {
+  startable()
+  assert.equal(sdlc(repo, ['new', 'alpha', '--source', SRC]).code, 0)
+  assert.match(sdlc(repo, ['activate', 'alpha']).stdout, /settled: no \(no non-goals\)/)
+})
+
+test('new --source: non-goals, cited behaviours and nothing open or carried is settled; a carried item is not', () => {
+  cleanChart()
+  write(repo, SRC, intent(1).replace('## Interfaces', '## Non-goals\nDo not add locking.\n\n## Interfaces'))
+  write(repo, `${P}/sprints/sprint-1/carried/alpha.md`, '- C1: a leftover\n')
+  assert.equal(sdlc(repo, ['approve', 'chart-1'], HUMAN).code, 0)
+  assert.match(sdlc(repo, ['new', 'alpha', '--source', SRC]).stdout, /settled: no \(carried C1\)/)
+  fs.rmSync(path.join(repo, '.rig/changes/alpha'), { recursive: true })
+  fs.rmSync(path.join(repo, `${P}/sprints/sprint-1/carried`), { recursive: true })
+  assert.equal(sdlc(repo, ['approve', 'chart-1'], HUMAN).code, 0)
+  assert.match(sdlc(repo, ['new', 'alpha', '--source', SRC]).stdout, /settled: yes/)
+})
+
 test('a started change keeps going after its chart goes stale; a new start is refused', () => {
   cleanChart()
   write(repo, `${P}/sprints/sprint-1/intents/beta.md`, intent(1, { req: 'FR-1' }))
@@ -612,7 +637,7 @@ test('chart plan writes plan.md with waves, a text graph, a Mermaid graph and wh
   assert.match(text, /\[implementation-plan\.md\]\(implementation-plan\.md\)\. Unassigned: alpha, beta, gamma/)
   assert.match(text, /alpha ○ ready\n└─ beta ✖ blocked\n   └─ gamma ✖ blocked  \(also after: alpha\)/)
   assert.match(text, /graph LR[\s\S]*n_alpha --> n_beta[\s\S]*n_beta --> n_gamma/)
-  assert.match(text, /## Next up\n\n[\s\S]*- `\/rig:start \.rig\/product\/sprints\/sprint-1\/intents\/alpha\.md`/)
+  assert.match(text, /## Next up\n\n[\s\S]*- `\/rig:start alpha`/)
 })
 
 test('regenerating the plan does not make an approved chart stale', () => {

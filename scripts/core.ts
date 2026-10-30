@@ -249,12 +249,13 @@ export function usdOpt(args: Args, min: number): number | null {
   return Number.isFinite(n) && n >= min ? n : NaN
 }
 
+// The entries .rig/.gitignore lacks.
+export const gitignoreMissing = (): string[] => (exists(SDLC) ? GITIGNORED.filter(f => !new Set(read(path.join(SDLC, '.gitignore')).split('\n')).has(f)) : [])
 export function ensureGitignore(): void {
-  if (!exists(SDLC)) return
+  const missing = gitignoreMissing()
   const ignore = path.join(SDLC, '.gitignore')
-  const have = new Set(read(ignore).split('\n').filter(Boolean))
-  const missing = GITIGNORED.filter(f => !have.has(f))
-  if (missing.length) fs.appendFileSync(ignore, missing.join('\n') + '\n')
+  const text = read(ignore)
+  if (missing.length) fs.appendFileSync(ignore, `${text && !text.endsWith('\n') ? '\n' : ''}${missing.join('\n')}\n`)
 }
 
 export const WAIVERS = path.join(SDLC, 'waivers.jsonl')

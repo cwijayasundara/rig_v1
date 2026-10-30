@@ -35,6 +35,22 @@ const allIntents = (): Charted[] => sprintsOnDisk().flatMap(n => {
   return exists(dir) ? fs.readdirSync(dir).filter(f => f.endsWith('.md') && !local(f)).sort().map(f => { const file = path.join(dir, f), i = parseIntent(f.slice(0, -3), read(file)); return { ...i, declared: i.sprint, sprint: n, file } }) : []
 })
 export const intentsOf = (n: number): Charted[] => allIntents().filter(i => i.sprint === n)
+// Whether /rig:start has nothing left to ask about a charted intent: every behaviour cites a requirement, nothing is open, no
+// carried item waits and the non-goals are written. The reasons name what is missing.
+export function intentSettled(slug: string): { settled: boolean; why: string[] } {
+  const i = allIntents().find(x => x.slug === slug)
+  if (!i) return { settled: false, why: ['not a charted intent'] }
+  const text = read(i.file).replace(/<!--[\s\S]*?-->/g, '')
+  const why = [
+    ...(i.behaviours.length ? [] : ['no behaviours']),
+    ...i.behaviours.filter(b => !b.reqs.length && !b.rules.length).map(b => `${b.id} cites no requirement`),
+    ...openQuestions(text).map(q => `open: ${q}`),
+    ...carriedIds(i.file).map(c => `carried ${c}`),
+    ...(section(text, 'Non-goals').trim() ? [] : ['no non-goals']),
+    ...(/^kind:\s*boundary/m.test(text) && !/Contract:/.test(text) ? ['a boundary with no Contract'] : []),
+  ]
+  return { settled: !why.length, why }
+}
 export const intentOf = (slug: string): Intent | null => allIntents().find(i => i.slug === slug) ?? null
 
 // The sprint's design doc. `design:` in architecture.md frontmatter names the newest one (a repo-relative posix path, or `none`, or the template's
@@ -217,6 +233,27 @@ export function intentReady(slug: string): { ready: boolean; why: string[] } {
 export function sprintsKnown(): number[] {
   return [...new Set([...sprintsOnDisk(), ...allIntents().map(i => i.sprint)])].sort((a, b) => a - b)
 }
+
+// What /rig:chart works on when given no argument: the PRDs of sprints with no intents yet, from the sprint folder or docs/prd
+// (sprint-<N>/prd.md, sprint-<N>-<title>/prd.md, sprint-<N>.md, sprint-<N>-<title>.md). One candidate is the answer; several are a question.
+export type NextChart = { sprint: number | null; prd: string | null; candidates: { sprint: number; prd: string }[]; why: string }
+export function nextChart(): NextChart {
+  const found = new Map<number, string>()
+  for (const n of sprintsOnDisk()) if (exists(prdPath(n))) found.set(n, `${sprintRel(n)}/prd.md`)
+  const docs = path.join(ROOT, 'docs', 'prd')
+  const rank = (e: fs.Dirent): number => (/^sprint-\d+(\.md)?$/.test(e.name) ? 0 : 2) + (e.isDirectory() ? 0 : 1)
+  for (const e of (exists(docs) ? fs.readdirSync(docs, { withFileTypes: true }) : []).sort((a, b) => rank(a) - rank(b))) {
+    const m = /^sprint-(\d{1,4})(?:-.+?)?(\.md)?$/.exec(e.name)
+    const n = Number(m?.[1])
+    const rel = e.isDirectory() ? `docs/prd/${e.name}/prd.md` : m?.[2] ? `docs/prd/${e.name}` : null
+    if (m && rel && exists(path.join(ROOT, rel)) && !found.has(n)) found.set(n, rel)
+  }
+  const candidates = [...found].filter(([n]) => !intentsOf(n).length).sort(([a], [b]) => a - b).map(([sprint, prd]) => ({ sprint, prd }))
+  if (candidates.length === 1) return { sprint: candidates[0]!.sprint, prd: candidates[0]!.prd, candidates, why: 'the one PRD with no intents yet' }
+  if (candidates.length) return { sprint: null, prd: null, candidates, why: `${candidates.length} PRDs have no intents yet: ask which one` }
+  const known = sprintsKnown()
+  return { sprint: known.length ? Math.max(...known) + 1 : 0, prd: null, candidates, why: 'no PRD without intents: the next sprint number, but no PRD to chart; ask for its path' }
+}
 export const sprintIntents = (n: number): string[] => intentsOf(n).map(i => i.slug)
 
 // Every intent that can start now.
@@ -253,7 +290,7 @@ export function planRows(n: number, assumeShipped?: string | string[]): PlanRow[
   }))
 }
 export function sprintPlan(n: number, assumeShipped?: string | string[]): string {
-  return planText(n, planRows(n, assumeShipped), { chart: chartState(n).state, startCmd: slug => `${skillRef('start')} ${intentRel(n, slug)}` })
+  return planText(n, planRows(n, assumeShipped), { chart: chartState(n).state, startCmd: slug => `${skillRef('start')} ${slug}` })
 }
 export function writePlan(n: number, assumeShipped?: string | string[]): string {
   fs.mkdirSync(sprintDir(n), { recursive: true })
@@ -264,5 +301,5 @@ export function writePlan(n: number, assumeShipped?: string | string[]): string 
 export function readyAfter(slug: string): string[] {
   const n = intentOf(slug)?.sprint
   if (typeof n !== 'number') return []
-  return planRows(n, slug).filter(r => r.status === 'ready').map(r => `${skillRef('start')} ${intentRel(n, r.slug)}`)
+  return planRows(n, slug).filter(r => r.status === 'ready').map(r => `${skillRef('start')} ${r.slug}`)
 }
