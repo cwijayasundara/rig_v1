@@ -42,3 +42,10 @@ test('the table reports dollars per accepted task and flags a thin sample', () =
   assert.match(md, /\| haiku-rig \| 0\/1 \|[^\n]*none accepted/)
   assert.match(md, /n < 3 for haiku-rig, haiku-bare: direction only/)
 })
+
+test('a run the machine slept through is not scored: its cost is shown apart and the arm keeps only real runs', () => {
+  const s = summarize([row('haiku-rig', 1, false, 4, { infra: 'sleep' }), row('haiku-rig', 1, true, 1, { at: 'later' })])
+  const a = s.find(x => x.arm === 'haiku-rig')
+  assert.deepEqual([a.runs, a.accepted, a.invalid, a.invalidUsd], [1, 1, 1, 4])
+  assert.match(renderMarkdown(s, { date: 'd', files: ['f'] }), /not scored \(machine slept mid-run.*haiku-rig 1 \(\$4\.00\)/)
+})
