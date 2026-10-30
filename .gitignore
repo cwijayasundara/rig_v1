@@ -14,3 +14,4 @@ node_modules/
 
 # internal analysis, not part of the harness
 docs/stuff.eml
+docs/stuff.eml.gz
