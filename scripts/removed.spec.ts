@@ -87,7 +87,7 @@ test('4a: status and status --json no longer carry points or story', () => {
 test('4a: the review workflow, the rig-spec CI template and three non-lifecycle skills are gone', () => {
   gone('workflows', 'templates/rig-review.yml', 'templates/rig-spec.yml', ...['architecture', 'codebase-design', 'prototype'].map(s => `skills/${s}`))
   const ci = fs.readdirSync(path.join(ROOT, 'templates')).filter(f => /^rig-.*\.yml$/.test(f))
-  assert.deepEqual(ci, ['rig-check.yml'])
+  assert.deepEqual(ci, ['rig-check.yml', 'rig-maintain.yml'], 'the nightly Maintain scan is the one workflow added since')
   const kept = fs.readdirSync(path.join(ROOT, 'skills')).sort()
   assert.deepEqual(kept, SKILLS)
 })

@@ -120,3 +120,16 @@ test('maintain: a path with non-ASCII characters is scanned, not silently skippe
   const r = JSON.parse(sdlc(repo, ['maintain', '--json']).stdout)
   assert.deepEqual(r.proposed.filter((p: { kind: string }) => p.kind === 'dead').map((p: { files: string[] }) => p.files[0]).sort(), ['src/alpha.js', 'src/café.js'])
 })
+
+test('the nightly workflow is off by default, stops while its pull request is open, and commits seen.json although git ignores it', () => {
+  const yml = fs.readFileSync(path.join(import.meta.dirname, '..', 'templates', 'rig-maintain.yml'), 'utf8')
+  assert.match(yml, /if: vars\.RIG_MAINTAIN == 'on'/, 'off until a person sets the variable')
+  assert.match(yml, /startswith\("rig\/maintain-"\)/, 'one open maintain pull request at a time')
+  assert.match(yml, /sdlc\.ts maintain --cap 5/, 'throttled')
+  assert.match(yml, /git add -f \.rig\/maintain\/seen\.json/, 'a finding is proposed once: the dedupe memory is gitignored in a working tree')
+  assert.match(yml, /shell: bash/, 'a failed scan is not hidden by tee (pipefail)')
+  assert.match(yml, /--limit 1000/, 'the open-PR guard sees every open PR, not gh\'s default 30')
+  assert.match(yml, /\$\{\{ github\.run_id \}\}/, 'a branch name never collides with an earlier day\'s leftover')
+  assert.match(yml, /\|\| \{ git push origin --delete/, 'a pull request that cannot be created leaves no orphan branch')
+  assert.doesNotMatch(yml, /--no-verify|pull_request:|auto-merge|gh pr merge/, 'a person merges; the run triggers nothing further')
+})

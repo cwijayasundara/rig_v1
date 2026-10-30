@@ -235,7 +235,7 @@ export function installStandalone(workflows: boolean): string {
   writeFile('.claude/settings.json', JSON.stringify(merged, null, 2) + '\n', written)
   lines.push('merged templates/settings.json into .claude/settings.json (existing values kept)')
   if (workflows) {
-    for (const [from, to] of [['rig-check.yml', '.github/workflows/rig-check.yml'], ['REVIEW.md', 'REVIEW.md']] as const) {
+    for (const [from, to] of [['rig-check.yml', '.github/workflows/rig-check.yml'], ['rig-maintain.yml', '.github/workflows/rig-maintain.yml'], ['REVIEW.md', 'REVIEW.md']] as const) {
       if (fs.existsSync(path.join(ROOT, to))) lines.push(`${to} already exists; left as it is`)
       else { writeFile(to, read(path.join(PLUGIN_ROOT, 'templates', from)), written); lines.push(`wrote ${to}`) }
     }
