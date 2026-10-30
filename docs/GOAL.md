@@ -130,11 +130,10 @@ small PR); a **drift report** (stale wiki pages and `design` review findings fil
 ## Documents kept
 
 - `docs/GOAL.md` this file; `CLAUDE.md` working rules; `DESIGN.md` and `ROADMAP.md` for the shipped design.
-- Designs of what is built: `docs/superpowers/specs/2026-10-16-behavioural-harness-design.md` (registry, hooks, contracts, sync),
-  `2026-10-17-sprint-outer-loop-design.md`, `2026-10-17-wiki-design.md`.
-- Evidence: `docs/proposals/2026-10-08-why-slow-and-the-fix.md` (cost), `docs/research/` (findings, gap analysis, raw notes,
-  `sensor-catalogue.md`),
-  `docs/ai-sdlc-checklist.md` (the playbook's plays with measures), `docs/stuff.eml` (scaffold metrics digest, Sept 2026).
+- Removed 2026-10-30: all designs (`docs/superpowers/`), proposals, research (`docs/research/`) and `docs/ai-sdlc-checklist.md`. Originals are in git at
+  `81aa700`; `docs/HISTORY.md` is the readable digest (problem, evidence, decision, outcome per document) with the restore commands.
+  Paths cited in README, CHANGELOG and CLAUDE.md are the headings in `HISTORY.md`.
+- `docs/stuff.eml.gz` (gitignored; scaffold metrics digest, Sept 2026) stays local.
 - Removed 2026-10-17, in git history before this commit: the implementation plans of that date, `reports/` and the pre-rebuild audits (the useful parts are in `docs/research/`), the specs for the superseded chart workflow, e2e design and lite harness, the release-integration proposal
   (replaced by the scripted and live e2e in `tests/e2e/`), and `ai-sdlc-map.html` (a rendering of the checklist).
 
