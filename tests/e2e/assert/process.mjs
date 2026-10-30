@@ -34,9 +34,28 @@ export function readSession(file) {
         s.inputTokens = (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0)
         s.outputTokens = u.output_tokens ?? 0
       }
+      s.running = { costUsd: s.costUsd, models: s.models }
     }
   }
   return s
+}
+
+// `claude -p --continue` resumes the previous conversation, and its result event reports that conversation's running cost and
+// per-model usage, not what this call added. Take the previous session's running figures off, so summing sessions counts each
+// dollar and token once. A figure below the previous one means the conversation restarted: count it whole.
+export function sinceSession(s, prev) {
+  const before = prev?.running
+  if (!s.running || !before || s.costUsd < before.costUsd) return s
+  const perModel = Object.keys(s.models).length > 0
+  const models = Object.fromEntries(Object.entries(s.models).map(([m, v]) => {
+    const p = before.models[m] ?? { inputTokens: 0, outputTokens: 0, costUsd: 0 }
+    return [m, { inputTokens: Math.max(0, v.inputTokens - p.inputTokens), outputTokens: Math.max(0, v.outputTokens - p.outputTokens), costUsd: Number(Math.max(0, v.costUsd - p.costUsd).toFixed(6)) }]
+  }))
+  return {
+    ...s, models,
+    costUsd: s.costUsd - before.costUsd,
+    ...(perModel && { inputTokens: Object.values(models).reduce((n, v) => n + v.inputTokens, 0), outputTokens: Object.values(models).reduce((n, v) => n + v.outputTokens, 0) }),
+  }
 }
 
 export const totals = sessions => ({

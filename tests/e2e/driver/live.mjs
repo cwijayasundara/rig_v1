@@ -1,7 +1,7 @@
 // The live driver: real `claude -p` sessions running the vendored skills with the real model. Costs money; capped.
 import fs from 'node:fs'
 import path from 'node:path'
-import { readSession, totals } from '../assert/process.mjs'
+import { readSession, sinceSession, totals } from '../assert/process.mjs'
 import { PLUGIN } from '../lib/sandbox.mjs'
 
 // `claude -p` never trusts the workspace, and an untrusted workspace's permissions.allow in .claude/settings.json is ignored
@@ -29,7 +29,14 @@ export function createSessions({ sb, out, capUsd = 6, model = 'claude-haiku-5-5'
     const r = sb.run('claude', args, { timeout: 18 * 60_000 })
     fs.writeFileSync(file, r.stdout ?? '')
     if (r.status !== 0 && !r.stdout) throw new Error(`claude exited ${r.status}: ${(r.stderr ?? '').split('\n')[0]}`)
-    const s = readSession(file)
+    // The conversation this call resumes, back to its first session: the last of its sessions that printed a result (a crashed one printed none).
+    let prev = null
+    for (let i = sessions.length - 1; cont && i >= 0; i--) {
+      if (sessions[i].running) { prev = sessions[i]; break }
+      if (!sessions[i].cont) break
+    }
+    const s = sinceSession(readSession(file), prev)
+    s.cont = cont
     // A killed or crashed session prints no result event, so its cost is unknown: count its whole budget as spent.
     if (!s.ended) s.costUsd = Math.max(s.costUsd, budget)
     sessions.push(s)
