@@ -179,7 +179,7 @@ Sizes are bytes from `wc -c`. Commit hashes are from `git log`; a hash is omitte
 - **Still open:** Whether QA stays its own skill (kept). Whether `$.session.usage()` includes subagent cost (if not, label the figure "main thread"). Whether the Sonnet-architect default holds; whether the ANTHROPIC_DEFAULT_* env vars apply to subagent frontmatter was to be verified by the builder.
 
 ## superpowers/specs/2026-10-21-harder-eval-design.md  (2026-10-21, 6468 chars)
-- **Problem:** Every paired eval ended in a tie. On the `links` variant haiku-rig and haiku-bare both scored 3/3, with rig costing about 25x more and taking about 7x longer. The task was inside what Haiku does unaided, so a ceiling hid any lift, and the review eval was null for the same reason.
+- **Problem:** Every paired eval ended in a tie. On the `links` variant haiku-rig and haiku-bare both scored 3/3, with rig costing about 25x more as first reported (about 14x after the 81aa700 cost fix) and taking about 7x longer. The task was inside what Haiku does unaided, so a ceiling hid any lift, and the review eval was null for the same reason.
 - **Design:** A new eval variant `rules` (`eval --variant rules`, in `eval/variants/rules.mjs`, like `links.mjs`), adding two behaviours on top of B1-B7.
   - B8: `checkout` applies a stock check (an order for more than is in stock fails whole, nothing reserved), then a per-line quantity cap of 10, then a 10% discount on orders of 5000 cents or more, rounded half up. Stated edge cases: exactly 5000 qualifies; a failed order leaves stock and cart unchanged; the discount applies to the order total, not per line.
   - B9: adding an item already in the cart now merges quantities, reversing B3, so the old B3 test must be changed legitimately.
