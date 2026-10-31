@@ -17,6 +17,27 @@
 
 rig makes Claude Code work like a careful engineer and adds as little code of its own as it can ([docs/GOAL.md](docs/GOAL.md)). It is a **behavioural harness**. Work starts from a stated intent with numbered, testable behaviours. A person approves the plan, and the approval freezes the contracts. Deterministic sensors check every edit, turn, commit and PR. Every decision is a file committed to the repo, and every approval is a person's. rig follows [the AI-native SDLC playbook](https://claude.com/blog/the-ai-native-sdlc-playbook) and uses what Claude Code already provides (plan mode, subagents, `/code-review`, `/security-review`, worktrees) wherever it can. [DESIGN.md](DESIGN.md) gives the evidence and reasoning behind each choice.
 
+## Is it worth using?
+
+Measured on 2026-10-31 (`eval/results/2026-10-31-*.jsonl`), on small tasks that plain Claude Code already passes:
+
+| | rig + Haiku | plain Haiku | plain Sonnet |
+|---|---|---|---|
+| Cost per task | $0.087 | $0.032 | $0.212 |
+| Wall time | 8.2 min | 2.4 min | 0.9 min |
+| Passed the hidden acceptance | 3/3 | 3/3 | 3/3 |
+
+So on a task plain Claude can do, rig gives **no better code and no speed**. It costs about 3x plain Haiku and takes about 3x as long (9x plain Sonnet). Across the three tasks built to be hard, plain Haiku, low-effort Haiku and plain Sonnet failed 1 of 27 runs, and that one run left out a contract example.
+
+What the extra cost buys is a trail and a set of gates, not a better first draft:
+
+- the intent and its numbered behaviours in writing, and a plan a person approves before any code, which freezes the contracts;
+- a test that failed first, and checks that stop a failing test being "fixed" by editing the test;
+- verify evidence, the risk tier and what the checks would miss in the PR body, for the reviewer;
+- a review (Opus) only where the change is risky, so a small change is not reviewed twice for nothing.
+
+Use rig when changes need that trail: several people review each other's work, contracts or protected paths are touched, or a team needs to see why a change was made. For a solo, small, fast change, plain Claude Code is faster and cheaper. Not yet shown: a lift on a model that fails the task bare, or on work that drifts across sessions.
+
 ## The big picture
 
 Work moves through an optional outer loop (a sprint) and an inner loop (one change), on top of a code wiki and a learning loop. Greenfield and brownfield are not separate modes: they are only where you enter.
