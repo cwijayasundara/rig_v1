@@ -66,3 +66,9 @@ test('a launch that edits the sandbox adds a blocking <stage>.no-edit fail', asy
   const e = r.items.find(i => i.id === 'J1.no-edit')
   assert.equal(e.verdict, 'fail'); assert.equal(e.severity, 'block')
 })
+
+test('context is passed into the inspector prompt', async () => {
+  let seen = ''
+  await inspect({ sb: sandbox(), stage: 'J1', rubric: RUBRIC, context: 'Sprint 1 ended at commit abc123.', launch: async ({ prompt }) => { seen = prompt; return answer(RUBRIC.map(x => ok(x.id))) } })
+  assert.match(seen, /Sprint 1 ended at commit abc123\./)
+})

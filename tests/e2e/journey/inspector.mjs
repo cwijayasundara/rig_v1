@@ -36,9 +36,9 @@ export function fingerprint(sb) {
   return h.digest('hex')
 }
 
-const prompt = (stage, sb, rubric) => `You are the inspector for stage ${stage} of a rig end-to-end test. The repository is at ${sb.dir}. You may only read it (Read, Grep, Glob, and Bash for git, pytest and cat). Never edit, write or delete anything.
+const prompt = (stage, sb, rubric, context) => `You are the inspector for stage ${stage} of a rig end-to-end test. The repository is at ${sb.dir}. You may only read it (Read, Grep, Glob, and Bash for git, pytest and cat). Never edit, write or delete anything.
 
-Judge each rubric item below from what is actually in the repository. Cite evidence for every pass and fail: a path:line or command output.
+${context ? `${context}\n\n` : ''}Judge each rubric item below from what is actually in the repository. Cite evidence for every pass and fail: a path:line or command output.
 
 Rubric:
 ${rubric.map(r => `- ${r.id} [${r.severity}] ${r.text}`).join('\n')}
@@ -48,9 +48,9 @@ Answer with ONLY this JSON, one entry per rubric item, no prose:
 
 const malformed = (r, why) => ({ id: r.id, verdict: 'fail', severity: r.severity, evidence: '', note: `inspector-malformed: ${why}` })
 
-export async function inspect({ sb, stage, rubric, launch = defaultLaunch, model = INSPECTOR_MODEL }) {
+export async function inspect({ sb, stage, rubric, context = '', launch = defaultLaunch, model = INSPECTOR_MODEL }) {
   const before = fingerprint(sb)
-  const { text, costUsd = 0 } = await launch({ dir: sb.dir, prompt: prompt(stage, sb, rubric), model, tools: INSPECTOR_TOOLS })
+  const { text, costUsd = 0 } = await launch({ dir: sb.dir, prompt: prompt(stage, sb, rubric, context), model, tools: INSPECTOR_TOOLS })
   const after = fingerprint(sb)
   const problems = []
   const parsed = extractJson(text)
