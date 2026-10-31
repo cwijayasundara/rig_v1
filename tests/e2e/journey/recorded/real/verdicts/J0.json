@@ -1,0 +1,47 @@
+{
+ "stage": "J0",
+ "items": [
+  {
+   "id": "J0.1",
+   "verdict": "pass",
+   "severity": "block",
+   "evidence": "CLAUDE.md:3 'start with /rig-start'; git diff --stat 800cf1f HEAD shows 'CLAUDE.md | 66 +++' (66 lines, under 120)",
+   "note": "Exists, 66 lines, routes to /rig-start."
+  },
+  {
+   "id": "J0.2",
+   "verdict": "pass",
+   "severity": "block",
+   "evidence": ".rig/sensors.json:37 unit cmd 'pytest -q'; :23 lint 'ruff check ...'; :31 types 'mypy ...'; duplication uses jscpd (:51) and sast uses semgrep (:59), both language-agnostic",
+   "note": "Unit, lint and types sensors use Python tools."
+  },
+  {
+   "id": "J0.3",
+   "verdict": "pass",
+   "severity": "block",
+   "evidence": "git diff 800cf1f HEAD -- pyproject.toml src/library/__init__.py tests/test_smoke.py produced empty output",
+   "note": "The three skeleton files are identical to the first commit."
+  },
+  {
+   "id": "J0.4",
+   "verdict": "pass",
+   "severity": "block",
+   "evidence": "git diff --stat 800cf1f HEAD (154 files) lists only .claude/, .claude-plugin/, .github/workflows/rig-check.yml and rig-maintain.yml, .rig/, AGENTS.md, CLAUDE.md, README.md, REVIEW.md and docs/prd/README.md. Nothing under src/ or tests/. Paths such as .rig/templates/slices/python/files/src/... sit under .rig/.",
+   "note": "Only allowed paths were touched. The src/ and tests/ paths in the stat are slice templates under .rig/."
+  },
+  {
+   "id": "J0.5",
+   "verdict": "pass",
+   "severity": "warn",
+   "evidence": "CLAUDE.md:12 '`src/library/`'; :13 '`tests/`'; :21 'Test: `python3 -m pytest -q`'; :27 'src/ layout; import as library'",
+   "note": "Layout and Python test command are real and specific; no Node commands for tests."
+  },
+  {
+   "id": "J0.6",
+   "verdict": "pass",
+   "severity": "warn",
+   "evidence": "Grep of .rig/*.json for known/red found no known-red marker; .rig/sensors.json declares no known-red entries",
+   "note": "No known-red sensors are recorded, so there is nothing broken or unexplained. The semgrep command falls back with a message if the tool is absent."
+  }
+ ]
+}

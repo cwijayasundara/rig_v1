@@ -79,17 +79,13 @@ export function writeSync(registry: Registry): string {
   return `CLAUDE.md guides block written: ${renderLines(registry).length} sensor guide(s)`
 }
 
-// A standalone copy answers to /rig-start. vendor --standalone rewrites the routing line, but a model may write CLAUDE.md after vendoring
-// (2026-10-31 e2e: Haiku did), so sync repairs the line too whenever the vendored skills are present. Only that one line is touched.
+// A standalone copy answers to /rig-start; a model may write CLAUDE.md after vendoring (2026-10-31 e2e), so sync repairs the routing line.
 function standaloneRouting(): string {
-  if (!exists(path.join(ROOT, '.claude/skills/rig-start/SKILL.md'))) return ''
   const file = path.join(ROOT, CLAUDE_MD)
-  const before = read(file)
+  const before = exists(path.join(ROOT, '.claude/skills/rig-start/SKILL.md')) ? read(file) : ''
   const after = before.replace('start with /rig:start;', 'start with /rig-start;') // plugin-only: the spelling the plugin's init writes
   if (after === before) return ''
-  sanctionWrites([CLAUDE_MD])
-  fs.writeFileSync(file, after)
-  return '\nCLAUDE.md routing line names /rig-start (this is a standalone copy)'
+  sanctionWrites([CLAUDE_MD]); fs.writeFileSync(file, after); return '\nCLAUDE.md routing line names /rig-start (standalone copy)'
 }
 
 // Other agent tools read AGENTS.md, not CLAUDE.md. One source: a short pointer to CLAUDE.md, written only when the repo has no AGENTS.md of its own.
