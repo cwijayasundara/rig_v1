@@ -10,7 +10,7 @@ export const USD_PER_TOKEN = { haiku: 5e-8, sonnet: 9e-7, opus: 1.7e-6 }
 const rateOf = model => USD_PER_TOKEN[Object.keys(USD_PER_TOKEN).find(k => String(model).includes(k))] ?? USD_PER_TOKEN.opus
 
 export function readSession(file) {
-  const s = { file, costUsd: 0, turns: 0, ms: 0, isError: true, denials: [], skills: [], agents: [], ended: false, inputTokens: 0, outputTokens: 0, models: {}, maxGapMs: 0, slept: false, estimated: false }
+  const s = { file, costUsd: 0, turns: 0, ms: 0, isError: true, denials: [], skills: [], agents: [], ended: false, resultText: '', inputTokens: 0, outputTokens: 0, models: {}, maxGapMs: 0, slept: false, estimated: false }
   if (!fs.existsSync(file)) return s
   const partial = new Map() // message id -> {model, in, out}: a streamed message repeats its usage, the last one counts
   let prevTs = null
@@ -38,6 +38,7 @@ export function readSession(file) {
       s.turns = ev.num_turns ?? 0
       s.ms = ev.duration_ms ?? 0
       s.isError = Boolean(ev.is_error)
+      s.resultText = String(ev.result ?? '')
       s.denials = ev.permission_denials ?? []
       // modelUsage covers every model the session used, subagents included; usage alone is the main thread's.
       const mu = ev.modelUsage && typeof ev.modelUsage === 'object' ? ev.modelUsage : null

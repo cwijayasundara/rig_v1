@@ -46,6 +46,8 @@ export function createSessions({ sb, out, capUsd = 6, model = 'claude-haiku-5-5'
     if (!s.ended) s.costUsd = s.estimated ? Math.min(s.costUsd, budget) : budget
     sessions.push(s)
     console.log(`  live ${label}: $${s.costUsd.toFixed(2)}, ${s.turns} turns, ${s.denials.length} denial(s), total $${totals(sessions).costUsd.toFixed(2)} of $${capUsd}`)
+    // The account's own usage limit is not a rig or a harness failure and no continuation can fix it: say so, once, and stop (found by a live journey run).
+    if (s.isError && /hit your .{0,30}limit/i.test(s.resultText)) throw new Error(`usage-limit: ${s.resultText.trim()}`)
     return s
   }
   return { sessions, run }
