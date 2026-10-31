@@ -3,7 +3,9 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { orderArms, runOne, sessionTrace } from './run.mjs'
+import { orderArms, runOne, sessionTrace, phasesFor, taskOf } from './run.mjs'
+import { setupBare, BARE_PROMPT_DELTA } from './setup.mjs'
+import { createSandbox } from '../tests/e2e/lib/sandbox.mjs'
 import { EVAL_ALLOW, nextRunAllowed, resultsAllowed } from './lib/cli.mjs'
 import { ARMS } from './arms.mjs'
 
@@ -83,4 +85,29 @@ test('sessionTrace: one entry per session with its label, cost, turns, denied to
 test('sessionTrace: two model ids of one family add up under one name', () => {
   const [row] = sessionTrace([{ file: '/x/00-a.jsonl', costUsd: 1, turns: 1, denials: [], agents: [], skills: [], models: { 'claude-sonnet-5-5': { costUsd: 0.25 }, 'claude-sonnet-4-5': { costUsd: 0.5 } } }])
   assert.deepEqual(row.models, { sonnet: 0.75 })
+})
+
+// The delta variant (eval 2026-10-31): the rules task from a finished B1-B7 shop, so a rig arm pays for B8 and B9 only, not for S2, S3 and S7 as well.
+test('delta: rig arms build only B8 and B9, and the task is scored as rules', () => {
+  assert.deepEqual(phasesFor('delta').map(p => p.id), ['S8', 'S9'])
+  assert.deepEqual(phasesFor('rules').map(p => p.id), ['S2', 'S3', 'S7', 'S8', 'S9'])
+  assert.equal(taskOf('delta'), 'rules')
+  assert.equal(taskOf('links'), 'links')
+})
+
+test('delta: every arm starts with B1-B7 built and committed, and none of B8-B9', () => {
+  const sb = createSandbox({ name: 'delta-seed', out: fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-seed-')) })
+  setupBare(sb, { dry: true, variant: 'delta' })
+  for (const f of ['src/cart/cart.js', 'src/http/handler.js', 'test/links.test.js']) assert.ok(fs.existsSync(path.join(sb.dir, f)), f)
+  assert.ok(!fs.existsSync(path.join(sb.dir, 'test/rules.test.js')))
+  assert.equal(sb.git('status', '--porcelain').trim(), '', 'the seed is committed in the base')
+  assert.match(BARE_PROMPT_DELTA, /already[^.]*B1–B7[^]*B8[^]*B9/)
+})
+
+test('a dry delta run is accepted with full marks for a rig arm and a bare arm at $0', async () => {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-run-'))
+  for (const id of ['haiku-rig', 'haiku-bare']) {
+    const row = await runOne(ARMS.find(a => a.id === id), 1, { dry: true, out, capRunUsd: 6, variant: 'delta' })
+    assert.deepEqual([row.accepted, row.checks, row.of, row.rules.b8, row.rules.b9, row.usd, row.error], [true, 11, 11, 6, true, 0, undefined], JSON.stringify(row))
+  }
 })
