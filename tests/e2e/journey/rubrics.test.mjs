@@ -58,3 +58,10 @@ test('rubrics describe the slim PRDs: three sprint 1 intents, the raise_missing 
   assert.match(read('J6'), /overdue_loans/)
   for (const stale of [/--json/, /\bCLI\b/, /\bstaff\b/, /remove_book/, /FR-1\.\.FR-10/]) assert.doesNotMatch(all, stale, String(stale))
 })
+
+test('J1.1 expects the ledger to hold acceptance criteria, data rules and NFRs, with FRs covered through their ACs (the live chart writes no FR lines)', () => {
+  const line = read('J1').split('\n').find(l => l.startsWith('- J1.1'))
+  assert.match(line, /acceptance criteri/i)
+  assert.match(line, /through their (ACs|acceptance criteria)/)
+  assert.doesNotMatch(line, /FR-1\.\.FR-5 and every AC/)
+})
