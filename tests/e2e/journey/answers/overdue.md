@@ -1,0 +1,1 @@
+Overdue means the due date is before the day of the checkout attempt (due date earlier than today's date; a loan due today is not overdue). It is checked at checkout time only; no background job and no stored overdue flag.
