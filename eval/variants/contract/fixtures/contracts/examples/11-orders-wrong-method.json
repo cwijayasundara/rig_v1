@@ -1,0 +1,15 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/orders",
+    "body": {}
+  },
+  "response": {
+    "status": 405,
+    "body": {
+      "type": "https://shop.example/errors/method-not-allowed",
+      "title": "Method Not Allowed",
+      "status": 405
+    }
+  }
+}

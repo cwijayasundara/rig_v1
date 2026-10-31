@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/orders"
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "items": [
+        {
+          "id": "ORD-0001",
+          "status": "placed",
+          "version": 1
+        }
+      ],
+      "nextCursor": null
+    }
+  }
+}
