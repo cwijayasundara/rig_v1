@@ -202,3 +202,8 @@ test('contract checks: the reference passes all 17, and each plausible slip is c
     assert.ok(r[group] < ref[group], `${name}: ${group} still ${r[group]}`)
   }
 })
+
+test('the low-effort arms are the haiku arms with effort low, bare and rig', () => {
+  const low = ARMS.filter(a => a.effort === 'low')
+  assert.deepEqual(low.map(a => [a.id, a.rig, a.model]), [['haiku-low-bare', false, 'claude-haiku-5-5'], ['haiku-low-rig', true, 'claude-haiku-5-5']])
+})

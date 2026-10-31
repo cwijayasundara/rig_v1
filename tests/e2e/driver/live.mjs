@@ -15,7 +15,7 @@ const templateSettings = ({ allow = [], env = {} } = {}) => {
 }
 
 // One shared session log per run, so the spend cap covers every phase.
-export function createSessions({ sb, out, capUsd = 6, model = 'claude-haiku-5-5', allow = [], env = {} }) {
+export function createSessions({ sb, out, capUsd = 6, model = 'claude-haiku-5-5', effort = null, allow = [], env = {} }) {
   if (!(capUsd > 0)) throw new Error(`spend cap must be a positive number of dollars, got ${capUsd}`)
   keepAwake()
   const sessions = []
@@ -26,7 +26,7 @@ export function createSessions({ sb, out, capUsd = 6, model = 'claude-haiku-5-5'
     fs.mkdirSync(path.dirname(file), { recursive: true })
     const budget = Math.min(6, capUsd - spent)
     const args = ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits',
-      '--model', model, '--settings', templateSettings({ allow, env }), '--max-budget-usd', budget.toFixed(2), '--setting-sources', 'project,local',
+      '--model', model, ...(effort ? ['--effort', effort] : []), '--settings', templateSettings({ allow, env }), '--max-budget-usd', budget.toFixed(2), '--setting-sources', 'project,local',
       ...(withPlugin ? ['--plugin-dir', PLUGIN] : []), ...(cont ? ['--continue'] : [])]
     const r = sb.run('claude', args, { timeout: 18 * 60_000 })
     fs.writeFileSync(file, r.stdout ?? '')

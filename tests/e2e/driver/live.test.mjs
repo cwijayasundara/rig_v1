@@ -259,3 +259,12 @@ test('plan(): a session when plan.md is missing, or a full or contract plan was 
     assert.match(sb.prompts[0], /^\/rig-plan c\./)
   }
 })
+
+test('an effort is passed to every session as --effort, and no effort adds no flag', () => {
+  const low = fakeSb(result(0.1)), none = fakeSb(result(0.1))
+  const a = createSessions({ sb: low, out: out(), capUsd: 6, effort: 'low' })
+  a.run('a', 'x'); a.run('b', 'y', { cont: true })
+  for (const call of low.calls) assert.equal(call[call.indexOf('--effort') + 1], 'low')
+  createSessions({ sb: none, out: out(), capUsd: 6 }).run('a', 'x')
+  assert.ok(!none.calls[0].includes('--effort'))
+})

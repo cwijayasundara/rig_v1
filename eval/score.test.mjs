@@ -22,11 +22,11 @@ function shopRepo(name) {
 }
 
 test('the arms of spec §9 and the arch arm, in order, and --arms picks them', () => {
-  assert.deepEqual(ARMS.map(a => a.id), ['haiku-rig', 'haiku-bare', 'sonnet-bare', 'opus-bare', 'haiku-rig-arch', 'haiku-rig-full', 'haiku-rig-final'])
-  assert.deepEqual(ARMS.filter(a => a.rig).map(a => a.policy), ['continuous', 'continuous', 'continuous', 'final'])
+  assert.deepEqual(ARMS.map(a => a.id), ['haiku-rig', 'haiku-bare', 'sonnet-bare', 'opus-bare', 'haiku-rig-arch', 'haiku-rig-full', 'haiku-low-bare', 'haiku-low-rig', 'haiku-rig-final'])
+  assert.deepEqual(ARMS.filter(a => a.rig).map(a => a.policy), ['continuous', 'continuous', 'continuous', 'continuous', 'final'])
   assert.deepEqual(ARMS.filter(a => a.arch).map(a => a.id), ['haiku-rig-arch'], 'only one arm has approved layers')
   assert.deepEqual(ARMS.filter(a => a.full).map(a => a.id), ['haiku-rig-full'], 'only one arm asks for the full path')
-  assert.deepEqual(armsFrom('all').length, 7)
+  assert.deepEqual(armsFrom('all').length, 9)
   assert.deepEqual(armsFrom('opus-bare,haiku-rig').map(a => a.id), ['opus-bare', 'haiku-rig'])
   assert.throws(() => armsFrom('gpt-bare'), /unknown arm: gpt-bare/)
 })
