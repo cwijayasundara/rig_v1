@@ -1,0 +1,14 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/orders/ORD-9999"
+  },
+  "response": {
+    "status": 404,
+    "body": {
+      "type": "https://shop.example/errors/not-found",
+      "title": "Not Found",
+      "status": 404
+    }
+  }
+}

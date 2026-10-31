@@ -1,0 +1,133 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "shop-app",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/products": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "the catalog"
+          }
+        }
+      }
+    },
+    "/cart": {
+      "post": {
+        "responses": {
+          "201": {
+            "description": "the cart lines"
+          },
+          "400": {
+            "description": "unknown SKU or bad quantity"
+          }
+        }
+      }
+    },
+    "/checkout": {
+      "post": {
+        "responses": {
+          "201": {
+            "description": "the order"
+          },
+          "400": {
+            "description": "empty cart or unknown code"
+          }
+        }
+      }
+    },
+    "/cart/{sku}": {
+      "delete": {
+        "responses": {
+          "200": {
+            "description": "the remaining cart lines"
+          },
+          "400": {
+            "description": "the SKU is not in the cart"
+          }
+        }
+      }
+    },
+    "/products/{sku}": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "the product"
+          },
+          "404": {
+            "description": "no such product"
+          }
+        }
+      }
+    },
+    "/orders": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "a page of orders, newest first"
+          },
+          "400": {
+            "description": "invalid limit or cursor"
+          },
+          "405": {
+            "description": "method not allowed"
+          }
+        }
+      },
+      "post": {
+        "responses": {
+          "405": {
+            "description": "method not allowed"
+          }
+        }
+      }
+    },
+    "/orders/{id}": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "the order"
+          },
+          "304": {
+            "description": "not modified"
+          },
+          "404": {
+            "description": "no such order"
+          },
+          "405": {
+            "description": "method not allowed"
+          }
+        }
+      }
+    },
+    "/orders/{id}/cancel": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "the cancelled order"
+          },
+          "404": {
+            "description": "no such order"
+          },
+          "405": {
+            "description": "method not allowed"
+          },
+          "409": {
+            "description": "already cancelled"
+          },
+          "412": {
+            "description": "stale if-match"
+          },
+          "422": {
+            "description": "idempotency key used for another order"
+          },
+          "428": {
+            "description": "if-match required"
+          }
+        }
+      }
+    }
+  }
+}

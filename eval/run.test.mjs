@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { orderArms, runOne, sessionTrace, phasesFor, taskOf } from './run.mjs'
-import { setupBare, BARE_PROMPT_DELTA, BARE_PROMPT_PRICING } from './setup.mjs'
+import { setupBare, BARE_PROMPT_DELTA, BARE_PROMPT_PRICING, BARE_PROMPT_CONTRACT } from './setup.mjs'
 import { createSandbox } from '../tests/e2e/lib/sandbox.mjs'
 import { EVAL_ALLOW, nextRunAllowed, resultsAllowed } from './lib/cli.mjs'
 import { ARMS } from './arms.mjs'
@@ -151,6 +151,54 @@ test('pricing checks: the reference passes all 14, and each plausible slip is ca
   }
   for (const [name, [mutate, group]] of Object.entries(slips)) {
     const r = await pricingChecks(build(mutate))
+    assert.ok(r[group] < ref[group], `${name}: ${group} still ${r[group]}`)
+  }
+})
+
+// The contract variant (eval 2026-10-31): B13-B14, the orders over HTTP, with the wire rules in a repo document, not in the prompt.
+test('contract: rig builds B13 and B14 as two changes, from a base that has B1-B12 and the conventions document but no orders routes', () => {
+  assert.deepEqual(phasesFor('contract').map(p => p.id), ['S13', 'S14'])
+  const sb = createSandbox({ name: 'contract-seed', out: fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-seed-')) })
+  setupBare(sb, { dry: true, variant: 'contract' })
+  for (const f of ['docs/api-conventions.md', 'src/orders/orders.js', 'test/pricing.test.js', 'scripts/contract.mjs']) assert.ok(fs.existsSync(path.join(sb.dir, f)), f)
+  const handler = fs.readFileSync(path.join(sb.dir, 'src/http/handler.js'), 'utf8')
+  assert.ok(!/['"`]\/orders/.test(handler) && !fs.existsSync(path.join(sb.dir, 'test/orders-api.test.js')))
+  assert.match(BARE_PROMPT_CONTRACT, /already[^.]*B1–B12[^]*B13[^]*B14/)
+  assert.match(fs.readFileSync(path.join(sb.dir, 'BRIEF.md'), 'utf8'), /docs\/api-conventions\.md/)
+})
+
+test('a dry contract run is accepted with full marks (42 of 42) for a rig arm and a bare arm at $0', async () => {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-run-'))
+  for (const id of ['haiku-rig', 'haiku-bare']) {
+    const row = await runOne(ARMS.find(a => a.id === id), 1, { dry: true, out, capRunUsd: 6, variant: 'contract' })
+    assert.deepEqual([row.accepted, row.checks, row.of, row.contract?.b13, row.contract?.b14, row.contract?.files, row.usd, row.error], [true, 42, 42, 8, 7, 2, 0, undefined], JSON.stringify(row))
+  }
+})
+
+test('contract checks: the reference passes all 17, and each plausible slip is caught by the group that names it', async () => {
+  const { contractChecks } = await import('./variants/contract.mjs')
+  const build = mutate => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-contract-'))
+    for (const d of ['tests/e2e/fixtures/shop', 'tests/e2e/fixtures/remove', 'eval/variants/links/fixtures', 'eval/variants/rules/fixtures', 'eval/variants/pricing/fixtures', 'eval/variants/contract/seed', 'eval/variants/contract/fixtures']) fs.cpSync(path.resolve(import.meta.dirname, '..', d), dir, { recursive: true })
+    fs.mkdirSync(path.join(dir, 'scripts'), { recursive: true })
+    fs.copyFileSync(path.resolve(import.meta.dirname, '../tests/e2e/fixtures/tooling/scripts/contract.mjs'), path.join(dir, 'scripts/contract.mjs'))
+    fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'shop-app', type: 'module', scripts: { test: 'node --test', start: 'node src/server.js' } }))
+    mutate?.(dir)
+    return dir
+  }
+  const edit = (rel, from, to) => dir => { const f = path.join(dir, rel); const s = fs.readFileSync(f, 'utf8'); assert.ok(s.includes(from), `${rel} lacks ${from}`); fs.writeFileSync(f, s.replace(from, to)) }
+  const ref = contractChecks(build())
+  assert.deepEqual([ref.b13, ref.b14, ref.files, ref.failures], [8, 7, 2, []])
+  const slips = {
+    'an unquoted etag': [edit('src/http/handler.js', '`"${o.id}-v${o.version}"`', '`${o.id}-v${o.version}`'), 'b13'],
+    'a cursor that is the plain id': [edit('src/http/handler.js', "Buffer.from(items.at(-1).id).toString('base64url')", 'items.at(-1).id'), 'b13'],
+    'a server that drops the handler\'s headers': [edit('src/server.js', "'content-type': 'application/json', ...r.headers", "'content-type': 'application/json'"), 'b13'],
+    'no 428 for a missing if-match': [edit('src/http/handler.js', "    if (headers['if-match'] === undefined) return problem(428, 'precondition-required', 'Send if-match with the current etag.')\n", ''), 'b14'],
+    'a replay without its header': [edit('src/http/handler.js', ", 'idempotent-replay': 'true'", ''), 'b14'],
+    'a cancel example missing from the contract': [dir => fs.rmSync(path.join(dir, 'contracts/examples/12-cancel-needs-if-match.json')), 'files'],
+  }
+  for (const [name, [mutate, group]] of Object.entries(slips)) {
+    const r = contractChecks(build(mutate))
     assert.ok(r[group] < ref[group], `${name}: ${group} still ${r[group]}`)
   }
 })

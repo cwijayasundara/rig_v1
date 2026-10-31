@@ -1,0 +1,15 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/orders/ORD-0001/cancel",
+    "body": {}
+  },
+  "response": {
+    "status": 428,
+    "body": {
+      "type": "https://shop.example/errors/precondition-required",
+      "title": "Precondition Required",
+      "status": 428
+    }
+  }
+}
