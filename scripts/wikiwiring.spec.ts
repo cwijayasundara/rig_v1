@@ -47,9 +47,9 @@ test('the pr skill syncs the wiki before it commits, with a budget, and the comm
   const skill = at('skills/pr/SKILL.md')
   const sync = skill.search(/S wiki sync --max-usd/)
   assert.ok(sync > 0 && sync < skill.search(/Run `S pr <slug>/), 'wiki sync must come before S pr')
-  const pr = at('scripts/pr.ts')
-  assert.match(pr, /'\.rig\/wiki\/'/)
-  assert.match(pr, /'\.rig\/wiki\.json'/)
+  const ships = at('scripts/risk.ts') // what a change's PR carries, shared by S pr and S risk
+  assert.match(ships, /'\.rig\/wiki\/'/)
+  assert.match(ships, /'\.rig\/wiki\.json'/)
 })
 
 test('a repo whose wiki.json came from `wiki sync` is still greenfield for the journey', () => {

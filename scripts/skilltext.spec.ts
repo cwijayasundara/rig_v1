@@ -115,3 +115,13 @@ test('CI reviews run on opus, and a re-chart keeps the generated sections', () =
 test('the pr skill fixes only Deferred items in the wave, never Unverifiable', () => {
   assert.match(text('skills/pr/SKILL.md'), /Each Deferred item \(never an Unverifiable one\) that cites a file `plan\.md` lists/)
 })
+
+test('Opus reviews are gated on risk: plan evaluates only a full or contract plan; pr reviews by tier (0 none, 1 code review, 2 both)', () => {
+  const plan = text('skills/plan/SKILL.md'), pr = text('skills/pr/SKILL.md')
+  assert.match(plan, /Launch `rig:evaluator` once[^\n]*only when[^\n]*`full`[^\n]*## Contracts/)
+  assert.match(plan, /otherwise[^\n]*S approve <slug> --check/)
+  assert.match(pr, /S risk <slug> --pre-review --json/)
+  assert.match(pr, /tier 0: no agent review[^\n]*reviewer: none/i)
+  assert.match(pr, /tier 1: the code review only/i)
+  assert.match(pr, /tier 2: both reviews/i)
+})

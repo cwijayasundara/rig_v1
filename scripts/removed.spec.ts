@@ -125,7 +125,8 @@ test('4b: seven workflow skills, the chart and testplan skills and the three hum
   assert.deepEqual(fs.readdirSync(path.join(ROOT, 'skills')).sort(), SKILLS)
   assert.deepEqual(fs.readdirSync(path.join(ROOT, 'agents')), ['architect.md', 'evaluator.md'])
   gone('templates/design-format.md')
-  for (const s of ['start', 'plan', 'build', 'test', 'pr']) assert.doesNotMatch(read(`skills/${s}/SKILL.md`), /tier|ratchet|slice|next --json|rig:(scout|implementer|reviewer|architect)/i, s)
+  // `tier` is the old task-tier vocabulary; pr names the risk tier (`S risk`), which decides which reviews run.
+  for (const s of ['start', 'plan', 'build', 'test', 'pr']) assert.doesNotMatch(read(`skills/${s}/SKILL.md`), new RegExp(`${s === 'pr' ? 'task tier|tier [SML]\\b|' : 'tier|'}ratchet|slice|next --json|rig:(scout|implementer|reviewer|architect)`, 'i'), s)
 })
 
 test('4b: the old lifecycle modules are gone and the harness templates guard approval.json', () => {

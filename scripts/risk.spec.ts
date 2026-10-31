@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { assessRisk, reviewSignals, riskOf } from './risk.ts'
 import { defaultRegistry } from './registry.ts'
+import { makeRepo, sdlc, write, gitIn } from './testkit.ts'
 
 const clean = { 'plan.md': '# Plan\n\n## Contracts\nnone\n', 'review.md': 'verdict: pass\n## Findings\n' }
 const input = (o: Partial<Parameters<typeof assessRisk>[0]> = {}, files: Record<string, string> = clean) => ({
@@ -74,4 +75,41 @@ test('records the harness generates (evidence, wiki pages) do not count towards 
   assert.doesNotMatch(riskOf(generated as never, ['cart'], defaultRegistry(), [], false).reasons.join(), /diff of/)
   const code = [...generated, rows('src/cart.py', 450)]
   assert.match(riskOf(code as never, ['cart'], defaultRegistry(), [], false).reasons.join(), /diff of 450 lines/)
+})
+
+// Opus-gating (eval 2026-10-30: four unconditional Opus launches were ~80% of a rig run's spend): before the review exists, the tier must
+// come from the change itself, since "no review.md" would make every change tier 1.
+test('preReview: the tier ignores review-derived signals, so a small clean change is tier 0 before any review exists', () => {
+  const noReview = { 'plan.md': clean['plan.md'] }
+  assert.equal(assessRisk(input({}, noReview)).tier, 1)
+  assert.deepEqual(assessRisk(input({ preReview: true }, noReview)), { tier: 0, reasons: [] })
+})
+
+test('preReview keeps the change signals: a one-way door is tier 1, a big diff is tier 1, an access action is tier 2', () => {
+  const noReview = { 'plan.md': clean['plan.md'] }
+  assert.deepEqual(assessRisk(input({ preReview: true, lines: 401 }, noReview)).reasons, ['diff of 401 lines is over risk.maxLines (400)'])
+  assert.equal(assessRisk(input({ preReview: true }, { 'plan.md': '## Contracts\n- api.yaml\n' })).tier, 1)
+  assert.equal(assessRisk(input({ preReview: true, access: [access('cart-add')] }, noReview)).tier, 2)
+})
+
+// The CLI path: the flag reaches riskOf, takes the slug before or after it, and judges the diff the PR will carry.
+const preRepo = (): string => {
+  const repo = makeRepo()
+  assert.equal(sdlc(repo, ['new', 'cart-add']).code, 0)
+  write(repo, '.rig/changes/cart-add/plan.md', '# Plan\n\n## Contracts\nnone\n')
+  gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-q', '-m', 'base')
+  return repo
+}
+test('S risk --pre-review: a small change with no review.md is tier 0, with the slug before or after the flag', () => {
+  const repo = preRepo()
+  assert.match(sdlc(repo, ['risk', 'cart-add', '--pre-review', '--base', 'HEAD']).stdout, /^tier: 0/)
+  assert.match(sdlc(repo, ['risk', '--pre-review', 'cart-add', '--base', 'HEAD']).stdout, /^tier: 0/)
+  assert.match(sdlc(repo, ['risk', 'cart-add', '--base', 'HEAD']).stdout, /^tier: 1\n- no review\.md/)
+})
+
+test('S risk: another change\'s folder and local harness files do not count towards the diff', () => {
+  const repo = preRepo()
+  write(repo, '.rig/changes/other/spec.md', 'x\n'.repeat(900))
+  write(repo, 'src/cart.ts', 'export const a = 1\n')
+  assert.match(sdlc(repo, ['risk', 'cart-add', '--pre-review', '--base', 'HEAD']).stdout, /^tier: 0/)
 })

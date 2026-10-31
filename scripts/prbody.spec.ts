@@ -133,3 +133,10 @@ test('evidence names each behaviour no test of the change names, by the traceabi
   assert.match(evidence([], 'b1 = Basket(); b2 = Basket(); color = "#b1ff00"; B12'), /names B1, B2/, 'lowercase names and B12 are not B1')
   assert.doesNotMatch(evidence([]), /behaviour/, 'no test text given: no claim either way')
 })
+
+test('a review.md that records no agent review says so, instead of "nothing the reviewer named"', () => {
+  const skipped = 'reviewer: none\nverdict: pass\n## Findings\n\n## One thing\nNot reviewed by an agent: tier 0.\n'
+  const b = prBody({ intent, spec, plan, verify, outline: '', review: skipped, risk })
+  assert.match(b, /## What the checks would miss\n\nNo agent reviewed this change \(tier 0\)/)
+  assert.doesNotMatch(b, /nothing the reviewer named/)
+})

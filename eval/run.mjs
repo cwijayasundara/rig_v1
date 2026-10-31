@@ -31,6 +31,15 @@ export function orderArms(arms, seed, n) {
 const PHASES = { links: [S2, S3, S7], rules: [S2, S3, S7, S8, S9] }
 const failing = (driver, failAt) => (failAt ? { ...driver, [failAt]: async () => { throw new Error(`injected failure at ${failAt}`) } } : driver)
 
+// Where a run's sessions, dollars and denials went, kept in the row because the sandboxes are deleted after scoring.
+export const sessionTrace = sessions => sessions.map(s => ({
+  label: path.basename(s.file).replace(/^\d+-/, '').replace(/\.jsonl$/, ''),
+  usd: Number(s.costUsd.toFixed(4)), turns: s.turns,
+  denied: s.denials.map(d => `${d.tool_name}: ${String(d.tool_input?.command ?? d.tool_input?.file_path ?? d.tool_input?.skill ?? '').slice(0, 80)}`),
+  agents: s.agents, skills: s.skills,
+  models: s.models && Object.entries(s.models).reduce((o, [m, v]) => { const k = m.replace(/^claude-/, '').replace(/-\d.*$/, ''); o[k] = Number(((o[k] ?? 0) + v.costUsd).toFixed(4)); return o }, {}),
+}))
+
 export async function runOne(arm, n, { dry, out, capRunUsd, failAt, seed = null, position = null, variant = null }) {
   const t0 = Date.now()
   const sb = createSandbox({ name: `${arm.id}-${n}`, out })
@@ -74,7 +83,7 @@ export async function runOne(arm, n, { dry, out, capRunUsd, failAt, seed = null,
     ...row, ...score, accepted: !infra && !row.error && score.accepted, error: row.error ?? score.error, ...(infra && { infra }), ...(estimated && { estimated }),
     inputTokens: t.inputTokens, outputTokens: t.outputTokens, usd: Number(t.costUsd.toFixed(4)),
     minutes: Number(((Date.now() - t0) / 60_000).toFixed(2)), sessions: sessions?.sessions.length ?? 0,
-    denials: t.denials.length, models: t.models, commits,
+    denials: t.denials.length, models: t.models, commits, ...(sessions && { trace: sessionTrace(sessions.sessions) }),
   }
 }
 
