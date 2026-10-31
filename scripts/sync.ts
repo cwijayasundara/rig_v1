@@ -79,6 +79,19 @@ export function writeSync(registry: Registry): string {
   return `CLAUDE.md guides block written: ${renderLines(registry).length} sensor guide(s)`
 }
 
+// A standalone copy answers to /rig-start. vendor --standalone rewrites the routing line, but a model may write CLAUDE.md after vendoring
+// (2026-10-31 e2e: Haiku did), so sync repairs the line too whenever the vendored skills are present. Only that one line is touched.
+function standaloneRouting(): string {
+  if (!exists(path.join(ROOT, '.claude/skills/rig-start/SKILL.md'))) return ''
+  const file = path.join(ROOT, CLAUDE_MD)
+  const before = read(file)
+  const after = before.replace('start with /rig:start;', 'start with /rig-start;') // plugin-only: the spelling the plugin's init writes
+  if (after === before) return ''
+  sanctionWrites([CLAUDE_MD])
+  fs.writeFileSync(file, after)
+  return '\nCLAUDE.md routing line names /rig-start (this is a standalone copy)'
+}
+
 // Other agent tools read AGENTS.md, not CLAUDE.md. One source: a short pointer to CLAUDE.md, written only when the repo has no AGENTS.md of its own.
 // Whether Claude Code reads AGENTS.md natively is unverified; it reads CLAUDE.md, which can import AGENTS.md with `@AGENTS.md`.
 function agentsPointer(): string {
@@ -93,7 +106,7 @@ export function cmdSync(args: Args): void {
   const raw = read(SENSORS_PATH)
   if (!isRegistryShape(raw)) fail('rig sync needs a registry-shaped .rig/sensors.json (a "sensors" list); run init --stack on a new repo')
   const { registry, errors } = parseRegistry(raw)
-  if (!args.opt.check) return out(writeSync(registry) + agentsPointer())
+  if (!args.opt.check) return out(writeSync(registry) + standaloneRouting() + agentsPointer())
   const found = syncFindings(registry, errors, 'block')
   if (!found.length) return out('sync --check: guides match the registry')
   out(found.map(f => `[sync] ${f.severity === 'warn' ? '(warning) ' : ''}${f.message}\n  fix: ${f.fix}`).join('\n'))

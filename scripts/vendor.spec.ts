@@ -58,6 +58,28 @@ test('vendor --standalone rewrites the CLAUDE.md routing line to the vendored co
   assert.equal(fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8'), claude.replace('start with /rig:start;', 'start with /rig-start;'))
 })
 
+test('a CLAUDE.md written after vendoring still gets the /rig-start routing line when sync runs (2026-10-31 e2e: Haiku wrote CLAUDE.md after init --full)', () => {
+  const repo = makeRepo()
+  sdlc(repo, ['init'])
+  write(repo, '.rig/sensors.json', JSON.stringify({ stack: 'x', paths: { tests: ['**/*.test.ts'] }, sensors: [] }))
+  assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
+  const claude = '# App\n\nsdlc routes all work in this repo: start with /rig:start; use superpowers skills only when an sdlc skill names one.\n\nSee /rig:plan notes.\n'
+  write(repo, 'CLAUDE.md', claude)
+  assert.equal(vendored(repo, ['sync']).code, 0)
+  const after = fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8')
+  assert.match(after, /start with \/rig-start;/)
+  assert.match(after, /See \/rig:plan notes\./, 'only the routing line is rewritten')
+})
+
+test('a plugin install keeps the /rig:start routing line when sync runs', () => {
+  const repo = makeRepo()
+  sdlc(repo, ['init'])
+  write(repo, '.rig/sensors.json', JSON.stringify({ stack: 'x', paths: { tests: ['**/*.test.ts'] }, sensors: [] }))
+  write(repo, 'CLAUDE.md', '# App\n\nsdlc routes all work in this repo: start with /rig:start; use superpowers skills only when an sdlc skill names one.\n')
+  assert.equal(sdlc(repo, ['sync']).code, 0)
+  assert.match(fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8'), /start with \/rig:start;/)
+})
+
 test('vendor --standalone names the vendored /rig-x commands in the README rig block and its template, and leaves the rest alone', () => {
   // 2026-10-25 shop_app run: CLAUDE.md said /rig-start but the README block said /rig:start, which a standalone copy does not answer to.
   const repo = makeRepo()
