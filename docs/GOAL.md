@@ -5,6 +5,9 @@
 rig is a thin layer on top of Claude Code. Claude Code already writes code well, so rig does not compete with it. rig adds only
 what a measurement or a missing native feature says is needed to make the work correct, traceable, cheap and safe to merge.
 "Production ready" means the evals below show a lift, not that the features are built.
+Status 2026-10-31: no eval has shown a lift over plain Claude Code yet. On the tasks tried the bare models pass, and rig costs
+about 3x plain Haiku and takes about 3x as long (README, "Is it worth using?"). What rig adds today is a trail and gates; a quality
+lift is the open question, and the next test is work that drifts across sessions.
 
 ## What "a very good engineer" means here
 
