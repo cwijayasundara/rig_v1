@@ -48,3 +48,13 @@ test('J0 allows the files init ships beyond the harness folders (CI workflows, R
   assert.match(t, /\.github\/workflows\/rig-/)
   assert.match(t, /REVIEW\.md/)
 })
+
+test('rubrics describe the slim PRDs: three sprint 1 intents, the raise_missing removal, renewals, and nothing about a CLI, staff or --json', () => {
+  const all = files.map(read).join('\n')
+  assert.match(read('J1'), /FR-1\.\.FR-5/)
+  assert.match(read('J1'), /storage.*books.*loans/s)
+  assert.match(read('J4'), /raise_missing/)
+  assert.match(read('J6'), /RenewalLimitError/)
+  assert.match(read('J6'), /overdue_loans/)
+  for (const stale of [/--json/, /\bCLI\b/, /\bstaff\b/, /remove_book/, /FR-1\.\.FR-10/]) assert.doesNotMatch(all, stale, String(stale))
+})

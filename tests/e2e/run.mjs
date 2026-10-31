@@ -81,7 +81,7 @@ if (!live && !has('no-extras') && !failure) extras = await runExtras({ out })
 const took = (Date.now() - t0) / 60_000
 if (live && took > minutes) log.add({ stage: 'run', item: 'over-time-budget', severity: 'block', evidence: `${took.toFixed(1)} min of ${minutes}`, note: `the journey took ${took.toFixed(1)} min, over its ${minutes} min budget`, session: '', area: 'unknown' })
 const costUsd = results.reduce((n, r) => n + r.costUsd, 0)
-writeJourneyReport(out, { results, log, sandbox: sb.dir, recordedSet: live ? 'live' : recordedSet, costUsd, minutes: took, extras })
+writeJourneyReport(out, { results, log, sandbox: sb.dir, recordedSet: live ? 'live' : recordedSet, costUsd, minutes: took, extras, config: live ? [`evaluator pinned to sonnet in the sandbox: ${kit.driver.evaluatorPinned === true ? 'yes' : 'no'} (rig ships it on opus)`, 'actor model claude-haiku-5-5; inspector and reviewer claude-sonnet-5-5'] : [] })
 fs.writeFileSync(path.join(out, 'violations.md'), log.toMarkdown())
 const extrasFailed = extras ? extras.results.some(c => c.failed.length) || extras.lost.length > 0 : false
 if (extras) for (const c of extras.results) if (c.failed.length) c.print()

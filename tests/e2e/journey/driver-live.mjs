@@ -25,6 +25,17 @@ export function setupSandbox(sb) {
   sb.commitAll('chore: scaffold')
 }
 
+// The rig evaluator ships pinned to Opus. The e2e is run on a budget (Haiku acts, Sonnet judges), so the sandbox's copy is pinned to Sonnet and
+// the report says so. Returns false when there is nothing to pin.
+export function pinEvaluator(sb, model = 'sonnet') {
+  const file = '.claude/agents/rig-evaluator.md'
+  const text = sb.read(file)
+  if (!/^model: .+$/m.test(text)) return false
+  sb.write(file, text.replace(/^model: .+$/m, `model: ${model}`))
+  sb.commitAll(`chore: e2e pins the evaluator to ${model} (cost)`)
+  return true
+}
+
 // A chart or a change finishes on its own branch; the person merges it. Same here.
 const landOnMain = sb => {
   sb.commitAll('chore: session leftovers')
@@ -34,7 +45,7 @@ const landOnMain = sb => {
   sb.git('merge', '-q', '--no-ff', '-m', `Merge ${branch}`, branch)
 }
 
-export function journeyDriver({ sb, sessions, answersDir = ANSWERS, reviewer = null, liveDriverFor = phase => liveDriver(sb, phase, { sessions }) }) {
+export function journeyDriver({ sb, sessions, answersDir = ANSWERS, reviewer = null, evaluatorModel = 'sonnet', liveDriverFor = phase => liveDriver(sb, phase, { sessions }) }) {
   let live = null
   let extraUsd = 0
   const answers = () => files(answersDir).map(f => fs.readFileSync(path.join(answersDir, f), 'utf8').trim()).join('\n')
@@ -64,6 +75,7 @@ export function journeyDriver({ sb, sessions, answersDir = ANSWERS, reviewer = n
     async init() {
       sessions.run('J0-init', INIT_PROMPT, { withPlugin: true })
       sb.commitAll('chore: onboarding leftovers')
+      if (evaluatorModel) this.evaluatorPinned = pinEvaluator(sb, evaluatorModel)
     },
 
     async chart(sprint, prd) {
