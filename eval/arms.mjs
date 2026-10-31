@@ -8,6 +8,9 @@ export const ARMS = [
   { id: 'opus-bare', model: MODELS.opus, rig: false },
   { id: 'haiku-rig-arch', model: MODELS.haiku, rig: true, policy: 'continuous', arch: true },
   { id: 'haiku-rig-full', model: MODELS.haiku, rig: true, policy: 'continuous', full: true },
+  // The same model at low effort: a weaker builder, to see whether rig lifts a model that fails the task bare (the article's cheap-model case).
+  { id: 'haiku-low-bare', model: MODELS.haiku, rig: false, effort: 'low' },
+  { id: 'haiku-low-rig', model: MODELS.haiku, rig: true, policy: 'continuous', effort: 'low' },
   { id: 'haiku-rig-final', model: MODELS.haiku, rig: true, policy: 'final' },
 ]
 

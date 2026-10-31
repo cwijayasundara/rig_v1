@@ -50,7 +50,7 @@ export async function runOne(arm, n, { dry, out, capRunUsd, failAt, seed = null,
   const sb = createSandbox({ name: `${arm.id}-${n}`, out })
   // Subagents run on the arm's own model (the template pins them to Sonnet), so an arm measures its model; rig's evaluator agent keeps
   // its own pin (spec §3.5) and shows in the per-model usage.
-  const sessions = dry ? null : createSessions({ sb, out: sb.root, capUsd: capRunUsd, model: arm.model, allow: EVAL_ALLOW, env: { CLAUDE_CODE_SUBAGENT_MODEL: arm.model } })
+  const sessions = dry ? null : createSessions({ sb, out: sb.root, capUsd: capRunUsd, model: arm.model, effort: arm.effort, allow: EVAL_ALLOW, env: { CLAUDE_CODE_SUBAGENT_MODEL: arm.model } })
   const row = { arm: arm.id, run: n, model: arm.model, rig: arm.rig, policy: arm.policy ?? null, variant, seed, position, at: new Date().toISOString() }
   let base = null
   let settled = null // HEAD once rig's own setup commits are down: tamper judges the builder's commits, not the harness's
