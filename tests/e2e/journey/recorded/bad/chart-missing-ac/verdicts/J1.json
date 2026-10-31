@@ -1,0 +1,59 @@
+{
+ "stage": "J1",
+ "items": [
+  {
+   "id": "J1.1",
+   "verdict": "fail",
+   "evidence": "synthetic: seeded violation",
+   "note": "seeded"
+  },
+  {
+   "id": "J1.2",
+   "verdict": "pass",
+   "evidence": "synthetic: replayed",
+   "note": "replayed"
+  },
+  {
+   "id": "J1.3",
+   "verdict": "pass",
+   "evidence": "synthetic: replayed",
+   "note": "replayed"
+  },
+  {
+   "id": "J1.4",
+   "verdict": "pass",
+   "evidence": "synthetic: replayed",
+   "note": "replayed"
+  },
+  {
+   "id": "J1.5",
+   "verdict": "pass",
+   "evidence": "synthetic: replayed",
+   "note": "replayed"
+  },
+  {
+   "id": "J1.6",
+   "verdict": "pass",
+   "evidence": "synthetic: replayed",
+   "note": "replayed"
+  },
+  {
+   "id": "J1.7",
+   "verdict": "pass",
+   "evidence": "synthetic: replayed",
+   "note": "replayed"
+  },
+  {
+   "id": "J1.8",
+   "verdict": "pass",
+   "evidence": "synthetic: replayed",
+   "note": "replayed"
+  },
+  {
+   "id": "J1.9",
+   "verdict": "pass",
+   "evidence": "synthetic: replayed",
+   "note": "replayed"
+  }
+ ]
+}

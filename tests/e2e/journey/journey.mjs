@@ -8,7 +8,7 @@ const json = t => { try { return JSON.parse(t) } catch { return null } }
 const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40)
 const first = line => String(line).split('\n')[0]
 
-export async function runJourney({ sb, driver, inspector, reviewer, log, rubricDir, stages, capUsd = 25, minutes = 60, intents = Infinity, from = stages[0].id, stopAfter = null, now = Date.now }) {
+export async function runJourney({ sb, driver, inspector, reviewer, log, rubricDir, stages, capUsd = 25, minutes = 60, intents = Infinity, from = stages[0].id, stopAfter = null, onStageDone = null, now = Date.now }) {
   const t0 = now()
   const stateFile = path.join(sb.root, 'journey-state.json')
   const state = json(fs.existsSync(stateFile) ? fs.readFileSync(stateFile, 'utf8') : '') ?? { passed: [], memo: {} }
@@ -76,7 +76,7 @@ export async function runJourney({ sb, driver, inspector, reviewer, log, rubricD
     }
     r.costUsd = spent() - s0
     r.minutes = (now() - m0) / 60_000
-    if (r.status !== 'fail') { state.passed.push(stage.id); save() }
+    if (r.status !== 'fail') { state.passed.push(stage.id); save(); await onStageDone?.(r, { sb, stage }) }
     if (stopAfter === stage.id) break
   }
   save()

@@ -1,0 +1,53 @@
+{
+ "stage": "J4",
+ "items": [
+  {
+   "id": "J4.1",
+   "verdict": "pass",
+   "evidence": "synthetic: replayed",
+   "note": "replayed"
+  },
+  {
+   "id": "J4.2",
+   "verdict": "pass",
+   "evidence": "synthetic: replayed",
+   "note": "replayed"
+  },
+  {
+   "id": "J4.3",
+   "verdict": "pass",
+   "evidence": "synthetic: replayed",
+   "note": "replayed"
+  },
+  {
+   "id": "J4.4",
+   "verdict": "pass",
+   "evidence": "synthetic: replayed",
+   "note": "replayed"
+  },
+  {
+   "id": "J4.5",
+   "verdict": "pass",
+   "evidence": "synthetic: replayed",
+   "note": "replayed"
+  },
+  {
+   "id": "J4.6",
+   "verdict": "pass",
+   "evidence": "synthetic: replayed",
+   "note": "replayed"
+  },
+  {
+   "id": "J4.7",
+   "verdict": "pass",
+   "evidence": "synthetic: replayed",
+   "note": "replayed"
+  },
+  {
+   "id": "J4.8",
+   "verdict": "pass",
+   "evidence": "synthetic: replayed",
+   "note": "replayed"
+  }
+ ]
+}
