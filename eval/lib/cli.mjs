@@ -13,9 +13,9 @@ export const readJsonl = file => fs.readFileSync(file, 'utf8').split('\n').filte
 export const mean = xs => xs.reduce((a, b) => a + b, 0) / (xs.length || 1)
 export const nextRunAllowed = (spent, capRun, capTotal) => spent + capRun <= capTotal + 1e-9
 // One headless `claude -p` call that prints a JSON result: the process, the parsed JSON (null if unreadable), and its cost and token sum.
-export function claudeJson({ dir, prompt, model, tools, sources, maxTurns = 15 }) {
+export function claudeJson({ dir, prompt, model, tools, sources, maxTurns = 15, allowed = tools }) {
   const bin = process.env.RIG_CLAUDE || 'claude'
-  const c = spawnSync(bin, ['-p', prompt, '--output-format', 'json', '--model', model, '--tools', tools, '--allowedTools', tools, '--setting-sources', sources, '--disable-slash-commands', '--no-session-persistence', '--max-turns', String(maxTurns)], { cwd: dir, env: cleanClaudeEnv(), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 600_000 })
+  const c = spawnSync(bin, ['-p', prompt, '--output-format', 'json', '--model', model, '--tools', tools, '--allowedTools', allowed, '--setting-sources', sources, '--disable-slash-commands', '--no-session-persistence', '--max-turns', String(maxTurns)], { cwd: dir, env: cleanClaudeEnv(), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 600_000 })
   let j = null
   try { j = JSON.parse(c.stdout) } catch { /* the caller decides what an unreadable result means */ }
   const u = j?.usage ?? {}

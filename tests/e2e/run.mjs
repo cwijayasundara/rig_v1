@@ -1,5 +1,5 @@
 // The one e2e command: node tests/e2e/run.mjs [--driver live|scripted] [--intents N] [--from J0..J6] [--cap USD] [--minutes N]
-// [--full] [--record] [--out DIR] [--recorded SET] [--triage FILE] [--no-extras] [--no-notify]
+// [--full] [--record] [--out DIR] [--sandbox DIR] [--recorded SET] [--triage FILE] [--no-extras] [--no-notify]
 // It drives rig through init, chart, approve and build for Library Desk sprint 1 (greenfield) and sprint 2 (brownfield) on one
 // sandbox. Each stage acts (Haiku, live), passes deterministic gates, then a Sonnet inspector judges the artefacts against a
 // rubric. Every violation is logged and alerted; the run never fixes anything. Scripted replays recorded snapshots at $0.
@@ -19,6 +19,7 @@ import { createViolationLog, loadTriage } from './journey/violations.mjs'
 import { alert, summarise } from './journey/alert.mjs'
 import { writeJourneyReport } from './lib/report.mjs'
 import { runExtras } from './extras.mjs'
+import { PLUGIN } from './lib/sandbox.mjs'
 
 const HERE = import.meta.dirname
 const has = f => process.argv.includes(`--${f}`)
@@ -43,7 +44,13 @@ const full = has('full')
 const minutes = Number(arg('minutes', full ? 60 : 20))
 const intents = arg('intents') ? Number(arg('intents')) : full ? Infinity : 1
 const t0 = Date.now()
-const sb = createSandbox({ name: 'journey', out, reuse: resume })
+// The sandbox repo lives in the system temp folder, never inside this repo: a claude session whose repo is nested in another project
+// has its writes to CLAUDE.md and README.md refused as "sensitive files" (found by the first live run). Reports and logs stay in `out`.
+const sandboxRoot = path.resolve(arg('sandbox', resume ? fs.readFileSync(path.join(out, 'sandbox-path.txt'), 'utf8').trim() : path.join(os.tmpdir(), `rig-journey-${stamp}`)))
+if (sandboxRoot === PLUGIN || sandboxRoot.startsWith(PLUGIN + path.sep)) { console.error(`the sandbox must be outside the rig repo (${PLUGIN}): a session inside it cannot write CLAUDE.md. Got ${sandboxRoot}`); process.exit(2) }
+fs.mkdirSync(sandboxRoot, { recursive: true })
+fs.writeFileSync(path.join(out, 'sandbox-path.txt'), sandboxRoot)
+const sb = createSandbox({ name: 'journey', out: sandboxRoot, reuse: resume })
 if (!resume) setupSandbox(sb)
 const log = createViolationLog({ dir: out, run: stamp, sandbox: sb.dir, triage: loadTriage(arg('triage', path.join(HERE, 'journey/triage.json'))) })
 const inspector = { inspect: a => inspect(a) }

@@ -54,3 +54,20 @@ test('two runs in a row with the default output folder both succeed and out/late
   const newest = /report and sandbox: (.+)/.exec(b.stdout)[1]
   assert.equal(fs.realpathSync(path.join(import.meta.dirname, '../out/latest')), fs.realpathSync(newest))
 })
+
+test('the sandbox is created outside the rig repo and its path is recorded for --from', () => {
+  const { out, r } = go()
+  assert.equal(r.status, 0, r.stdout + r.stderr)
+  const sandbox = fs.readFileSync(path.join(out, 'sandbox-path.txt'), 'utf8').trim()
+  const repo = path.resolve(import.meta.dirname, '../../..')
+  assert.ok(!path.resolve(sandbox).startsWith(repo + path.sep), `${sandbox} is inside ${repo}`)
+  assert.ok(fs.existsSync(path.join(sandbox, 'journey/repo/.git')))
+})
+
+test('a sandbox inside the rig repo is refused: sessions there cannot write CLAUDE.md', () => {
+  const inside = path.join(import.meta.dirname, '../out/refused-sandbox')
+  const { r } = go(['--sandbox', inside])
+  assert.equal(r.status, 2)
+  assert.match(r.stderr, /outside the rig repo/)
+  assert.ok(!fs.existsSync(inside))
+})

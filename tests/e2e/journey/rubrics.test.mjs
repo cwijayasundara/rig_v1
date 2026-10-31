@@ -36,3 +36,15 @@ test('J6 pins read-only reports, sprint 1 data loading, one definition of the mo
 test('structural items block and judgement items warn in every stage that has both', () => {
   for (const id of files) assert.ok(parseRubric(read(id)).some(i => i.severity === 'block'), `${id} has no block item`)
 })
+
+test('J0 accepts the language-agnostic sensors rig ships for every stack (jscpd, semgrep)', () => {
+  const t = read('J0')
+  assert.match(t, /jscpd/)
+  assert.doesNotMatch(t, /not Node tools/)
+})
+
+test('J0 allows the files init ships beyond the harness folders (CI workflows, REVIEW.md)', () => {
+  const t = read('J0')
+  assert.match(t, /\.github\/workflows\/rig-/)
+  assert.match(t, /REVIEW\.md/)
+})

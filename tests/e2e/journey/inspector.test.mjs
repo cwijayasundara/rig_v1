@@ -84,3 +84,14 @@ test('the default launch gives the inspector more than the 15 turns of a quick j
     assert.ok(n >= 40, r.text)
   } finally { if (prev === undefined) delete process.env.RIG_CLAUDE; else process.env.RIG_CLAUDE = prev }
 })
+
+test('the inspector keeps Bash available but allows only git, pytest and cat', async () => {
+  const bin = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'fakeclaude-')), 'claude')
+  fs.writeFileSync(bin, '#!/bin/sh\necho "{\\"result\\": \\"$*\\"}"\n', { mode: 0o755 })
+  const prev = process.env.RIG_CLAUDE; process.env.RIG_CLAUDE = bin
+  try {
+    const { defaultLaunch } = await import('./inspector.mjs')
+    const r = await defaultLaunch({ dir: os.tmpdir(), prompt: 'p' })
+    assert.match(r.text, /--tools Read,Grep,Glob,Bash --allowedTools Read,Grep,Glob,Bash\(git \*\),Bash\(pytest \*\),Bash\(cat \*\)/)
+  } finally { if (prev === undefined) delete process.env.RIG_CLAUDE; else process.env.RIG_CLAUDE = prev }
+})
