@@ -73,12 +73,12 @@ test('a dry rules run is accepted with full marks for a rig arm and a bare arm a
 
 test('sessionTrace: one entry per session with its label, cost, turns, denied tools, agents and per-model cost', () => {
   const s = [
-    { file: '/x/sessions/00-s8-start.jsonl', costUsd: 0.5, turns: 12, denials: [{ tool_name: 'Bash', tool_input: { command: 'git add -A && git commit -m x' } }], agents: ['rig:evaluator'], skills: ['rig-plan'], models: { 'claude-opus-5-5': { costUsd: 0.4 }, 'claude-haiku-5-5': { costUsd: 0.1 } } },
+    { file: '/x/sessions/00-s8-start.jsonl', costUsd: 0.5, turns: 12, ms: 41_600, denials: [{ tool_name: 'Bash', tool_input: { command: 'git add -A && git commit -m x' } }], agents: ['rig:evaluator'], skills: ['rig-plan'], models: { 'claude-opus-5-5': { costUsd: 0.4 }, 'claude-haiku-5-5': { costUsd: 0.1 } } },
     { file: '/x/sessions/01-s8-build.jsonl', costUsd: 1.234567, turns: 3, denials: [], agents: [], skills: [], models: {} },
   ]
   assert.deepEqual(sessionTrace(s), [
-    { label: 's8-start', usd: 0.5, turns: 12, denied: ['Bash: git add -A && git commit -m x'], agents: ['rig:evaluator'], skills: ['rig-plan'], models: { opus: 0.4, haiku: 0.1 } },
-    { label: 's8-build', usd: 1.2346, turns: 3, denied: [], agents: [], skills: [], models: {} },
+    { label: 's8-start', usd: 0.5, turns: 12, seconds: 42, denied: ['Bash: git add -A && git commit -m x'], agents: ['rig:evaluator'], skills: ['rig-plan'], models: { opus: 0.4, haiku: 0.1 } },
+    { label: 's8-build', usd: 1.2346, turns: 3, seconds: 0, denied: [], agents: [], skills: [], models: {} },
   ])
 })
 

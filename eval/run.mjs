@@ -37,7 +37,7 @@ const failing = (driver, failAt) => (failAt ? { ...driver, [failAt]: async () =>
 // Where a run's sessions, dollars and denials went, kept in the row because the sandboxes are deleted after scoring.
 export const sessionTrace = sessions => sessions.map(s => ({
   label: path.basename(s.file).replace(/^\d+-/, '').replace(/\.jsonl$/, ''),
-  usd: Number(s.costUsd.toFixed(4)), turns: s.turns,
+  usd: Number(s.costUsd.toFixed(4)), turns: s.turns, seconds: Math.round((s.ms ?? 0) / 1000),
   denied: s.denials.map(d => `${d.tool_name}: ${String(d.tool_input?.command ?? d.tool_input?.file_path ?? d.tool_input?.skill ?? '').slice(0, 80)}`),
   agents: s.agents, skills: s.skills,
   models: s.models && Object.entries(s.models).reduce((o, [m, v]) => { const k = m.replace(/^claude-/, '').replace(/-\d.*$/, ''); o[k] = Number(((o[k] ?? 0) + v.costUsd).toFixed(4)); return o }, {}),
