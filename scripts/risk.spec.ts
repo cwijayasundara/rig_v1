@@ -75,3 +75,18 @@ test('records the harness generates (evidence, wiki pages) do not count towards 
   const code = [...generated, rows('src/cart.py', 450)]
   assert.match(riskOf(code as never, ['cart'], defaultRegistry(), [], false).reasons.join(), /diff of 450 lines/)
 })
+
+// Opus-gating (eval 2026-10-30: four unconditional Opus launches were ~80% of a rig run's spend): before the review exists, the tier must
+// come from the change itself, since "no review.md" would make every change tier 1.
+test('preReview: the tier ignores review-derived signals, so a small clean change is tier 0 before any review exists', () => {
+  const noReview = { 'plan.md': clean['plan.md'] }
+  assert.equal(assessRisk(input({}, noReview)).tier, 1)
+  assert.deepEqual(assessRisk(input({ preReview: true }, noReview)), { tier: 0, reasons: [] })
+})
+
+test('preReview keeps the change signals: a one-way door is tier 1, a big diff is tier 1, an access action is tier 2', () => {
+  const noReview = { 'plan.md': clean['plan.md'] }
+  assert.deepEqual(assessRisk(input({ preReview: true, lines: 401 }, noReview)).reasons, ['diff of 401 lines is over risk.maxLines (400)'])
+  assert.equal(assessRisk(input({ preReview: true }, { 'plan.md': '## Contracts\n- api.yaml\n' })).tier, 1)
+  assert.equal(assessRisk(input({ preReview: true, access: [access('cart-add')] }, noReview)).tier, 2)
+})

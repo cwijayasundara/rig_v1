@@ -11,7 +11,7 @@ import { activeSlug } from './lifecycle.ts'
 import { archPath } from './product.ts'
 
 export type Risk = { tier: 0 | 1 | 2; reasons: string[] }
-type RiskInput = { files: string[]; lines: number; slugs: string[]; read: (slug: string, name: string) => string; access: AccessRule[]; risk: Registry['risk']; contractGlobs: string[]; ci: boolean }
+type RiskInput = { files: string[]; lines: number; slugs: string[]; read: (slug: string, name: string) => string; access: AccessRule[]; risk: Registry['risk']; contractGlobs: string[]; ci: boolean; preReview?: boolean }
 
 const TWO = 'two reviewers, one a code owner, recommended; enforce it in branch protection'
 const count = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`
@@ -35,13 +35,15 @@ export function assessRisk(i: RiskInput): Risk {
   const reviews = i.slugs.map(s => i.read(s, 'review.md'))
   const sig = reviews.map(reviewSignals).reduce((a, b) => ({ open: a.open + b.open, dismissed: a.dismissed + b.dismissed, unverifiable: a.unverifiable + b.unverifiable }), { open: 0, dismissed: 0, unverifiable: 0 })
   const oneWay = i.slugs.some(s => bullets(section(i.read(s, 'plan.md'), 'Contracts')).length > 0) || i.files.some(f => matchesAny(fold(f), i.contractGlobs.map(fold)))
+  // preReview: the tier that decides which reviewers to launch, so the signals only a review can produce are left out.
+  const reviewed = !i.preReview
   const one = [
     oneWay ? 'one-way door' : '',
     i.slugs.length ? '' : 'no change record',
-    reviews.some(r => !r.trim()) ? 'no review.md: the change was not reviewed' : '',
-    sig.open ? count(sig.open, 'finding still open', 'findings still open') : '',
-    sig.dismissed ? count(sig.dismissed, 'finding dismissed by the builder', 'findings dismissed by the builder') : '',
-    sig.unverifiable ? count(sig.unverifiable, 'item the reviewer could not verify', 'items the reviewer could not verify') : '',
+    reviewed && reviews.some(r => !r.trim()) ? 'no review.md: the change was not reviewed' : '',
+    reviewed && sig.open ? count(sig.open, 'finding still open', 'findings still open') : '',
+    reviewed && sig.dismissed ? count(sig.dismissed, 'finding dismissed by the builder', 'findings dismissed by the builder') : '',
+    reviewed && sig.unverifiable ? count(sig.unverifiable, 'item the reviewer could not verify', 'items the reviewer could not verify') : '',
     i.lines > i.risk.maxLines ? `diff of ${i.lines} lines is over risk.maxLines (${i.risk.maxLines})` : '',
   ].filter(Boolean)
   if (two.length) return { tier: 2, reasons: [...two, ...one, TWO] }
@@ -51,11 +53,11 @@ export function assessRisk(i: RiskInput): Risk {
 // Records the harness writes (a change's evidence, the code wiki) are not code a reviewer reads, so they do not count towards risk.maxLines.
 const GENERATED = /^\.rig\/(changes\/[^/]+\/evidence\/|wiki\/)/
 // The inputs every caller shares: the diff's files and size, and the change records read from the working tree.
-export function riskOf(diffs: FileDiff[], slugs: string[], registry: Registry, access: AccessRule[], ci: boolean): Risk {
+export function riskOf(diffs: FileDiff[], slugs: string[], registry: Registry, access: AccessRule[], ci: boolean, preReview = false): Risk {
   return assessRisk({
     // a rename is judged by both paths, so moving a workflow or contract out of its glob still counts
     files: diffs.flatMap(d => (d.from ? [d.file, d.from] : [d.file])), lines: diffs.filter(d => !GENERATED.test(d.file)).reduce((n, d) => n + d.added.length + d.removed.length, 0), slugs,
-    read: (slug, name) => read(path.join(CHANGES, slug, name)), access, risk: registry.risk, contractGlobs: registry.contracts.files, ci,
+    read: (slug, name) => read(path.join(CHANGES, slug, name)), access, risk: registry.risk, contractGlobs: registry.contracts.files, ci, preReview,
   })
 }
 
@@ -64,7 +66,7 @@ export const formatRisk = (r: Risk): string => [`tier: ${r.tier}`, ...r.reasons.
 export function cmdRisk(args: Args): void {
   const slug = args.pos[0] ? checkSlug(args.pos[0]) : activeSlug()
   const base = optString(args, 'base') ?? (slug ? readJson<{ base?: string } | null>(path.join(CHANGES, slug, 'verify.json'), null)?.base : undefined) ?? defaultBase() ?? 'HEAD'
-  const r = riskOf(branchDiff(base), slug ? [slug] : [], parseRegistry(read(path.join(ROOT, SENSORS_JSON))).registry, parseAccess(read(archPath)), false)
+  const r = riskOf(branchDiff(base), slug ? [slug] : [], parseRegistry(read(path.join(ROOT, SENSORS_JSON))).registry, parseAccess(read(archPath)), false, Boolean(args.opt['pre-review']))
   out(args.opt.json ? JSON.stringify(r) : formatRisk(r))
 }
 
