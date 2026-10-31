@@ -459,11 +459,11 @@ claude plugin validate .claude-plugin/plugin.json
 S2 and S3 also pass a hidden HTTP acceptance test that imports no source.
 
 ```bash
-npm run test:e2e         # live: real Claude Code (claude-haiku-5-5 by default), costs money, --cap USD (default 6), --minutes (default 20)
-npm run test:e2e:fast    # a fake model plays the skills from fixtures: $0, about 30 s; runs in npm test and CI
+npm run e2e              # live journey: init, chart, approve and build a greenfield and a brownfield sprint with Haiku; Sonnet inspects every stage; costs money (--cap USD default 25, --minutes default 60, --intents N)
+npm run e2e:scripted     # the same runner replaying recorded snapshots and verdicts, plus the scripted-only Node shop regression: $0; runs in npm test and CI
 npm run test:e2e:unit    # the route runner, contract tool, stack probe, live driver accounting, eval tests
 npm run test:e2e:stacks  # one tiny repo per stack pack; skips a missing toolchain
-node tests/e2e/run.mjs --driver live --phase S3 --cap 20   # one phase (its prerequisites run first)
+node tests/e2e/run.mjs --driver live --from J4 --out <kept out dir>   # resume the journey at a stage
 ```
 
 ### Evaluation

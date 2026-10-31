@@ -92,11 +92,11 @@ test('4a: the review workflow, the rig-spec CI template and three non-lifecycle 
   assert.deepEqual(kept, SKILLS)
 })
 
-test('5a: the scripted e2e suite runs in npm test and in CI again', () => {
+test('5a: the scripted journey e2e runs in npm test and in CI', () => {
   const t = (JSON.parse(read('package.json')) as { scripts: Record<string, string> }).scripts.test ?? ''
   assert.match(t, /test:e2e:unit/)
-  assert.match(t, /test:e2e:fast/)
-  assert.match(read('.github/workflows/ci.yml'), /npm run test:e2e:fast/)
+  assert.match(t, /e2e:scripted/)
+  assert.match(read('.github/workflows/ci.yml'), /npm run e2e:scripted/)
 })
 
 // Every slash command and sdlc subcommand the shipped text names must exist (a deleted skill or command left behind breaks the flow).
@@ -148,10 +148,10 @@ test('5b: the e2e stages and the stack runner are wired, and no shipped e2e text
   const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
   assert.match(pkg.scripts['test:e2e:stacks'], /tests\/e2e\/stacks\.mjs/)
   assert.match(fs.readFileSync('.github/workflows/ci.yml', 'utf8'), /npm run test:e2e:stacks/)
-  for (const f of ['tests/e2e/phases/s0-install.mjs', 'tests/e2e/acceptance/shop.mjs', 'tests/e2e/run.mjs']) {
+  for (const f of ['tests/e2e/phases/s0-install.mjs', 'tests/e2e/acceptance/shop.mjs', 'tests/e2e/run.mjs', 'tests/e2e/extras.mjs']) {
     assert.doesNotMatch(fs.readFileSync(f, 'utf8'), /\bcharted\b|\bPRD\b|\boracle\b/i, f)
   }
-  assert.match(fs.readFileSync('tests/e2e/run.mjs', 'utf8'), /'S5 policy': \d+/)
+  assert.match(fs.readFileSync('tests/e2e/extras.mjs', 'utf8'), /'S5 policy': \d+/)
 })
 
 test('per-sensor ids: no shipped text or e2e helper still speaks of a commands sensor', () => {
