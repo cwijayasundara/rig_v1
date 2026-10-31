@@ -15,11 +15,13 @@ const templateSettings = ({ allow = [], env = {} } = {}) => {
 }
 
 // One shared session log per run, so the spend cap covers every phase.
-export function createSessions({ sb, out, capUsd = 6, model = 'claude-haiku-5-5', effort = null, allow = [], env = {} }) {
+export function createSessions({ sb, out, capUsd = 6, model = 'claude-haiku-5-5', effort = null, allow = [], env = {}, deadline = null }) {
   if (!(capUsd > 0)) throw new Error(`spend cap must be a positive number of dollars, got ${capUsd}`)
   keepAwake()
   const sessions = []
   const run = (label, prompt, { withPlugin = false, cont = false } = {}) => {
+    // A wall-clock deadline (epoch ms): no session starts after it, and none may run past it (but 30 s is the least worth starting).
+    if (deadline !== null && deadline <= Date.now()) throw new Error('time budget reached')
     const spent = totals(sessions).costUsd
     if (spent >= capUsd) throw new Error(`spend cap $${capUsd} reached ($${spent.toFixed(2)})`)
     const file = path.join(out, 'sessions', `${String(sessions.length).padStart(2, '0')}-${label}.jsonl`)
@@ -28,7 +30,7 @@ export function createSessions({ sb, out, capUsd = 6, model = 'claude-haiku-5-5'
     const args = ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits',
       '--model', model, ...(effort ? ['--effort', effort] : []), '--settings', templateSettings({ allow, env }), '--max-budget-usd', budget.toFixed(2), '--setting-sources', 'project,local',
       ...(withPlugin ? ['--plugin-dir', PLUGIN] : []), ...(cont ? ['--continue'] : [])]
-    const r = sb.run('claude', args, { timeout: 18 * 60_000 })
+    const r = sb.run('claude', args, { timeout: deadline === null ? 18 * 60_000 : Math.max(30_000, Math.min(18 * 60_000, deadline - Date.now())) })
     fs.writeFileSync(file, r.stdout ?? '')
     if (r.status !== 0 && !r.stdout) throw new Error(`claude exited ${r.status}: ${(r.stderr ?? '').split('\n')[0]}`)
     // The conversation this call resumes, back to its first session: the last of its sessions that printed a result (a crashed one printed none).

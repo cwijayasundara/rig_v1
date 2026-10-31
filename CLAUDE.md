@@ -34,7 +34,7 @@ Never paste the plan or the conversation into it.
 
 ## Verification
 
-`npm test` runs the spec files, the e2e unit tests and the scripted e2e suite (`test:e2e:fast`). `npm run test:e2e` is the live driver and `npm run eval` the eval runner. `npm run typecheck` is incremental
+`npm test` runs the spec files, the e2e unit tests and the scripted journey (`e2e:scripted`, which also runs the scripted-only Node shop extras). `npm run e2e` is the live journey (Haiku acts, Sonnet inspects; 20 minute hard deadline, one intent per sprint unless `--full`; costs money, started by a person; it logs and alerts violations and fixes nothing: decisions go in `tests/e2e/journey/triage.json`), `npm run eval:journey` its eval and `npm run eval` the paired eval runner. `npm run typecheck` is incremental
 (`node_modules/.cache/rig-scripts.tsbuildinfo`). Run them yourself and quote the output; never report a pass you did not see.
 
 ## Plugin scope

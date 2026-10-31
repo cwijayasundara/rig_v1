@@ -76,8 +76,10 @@ export function bindSandbox({ name, root, dir, origin, bin, logs, env }) {
   return sb
 }
 
-export function createSandbox({ name, out }) {
+export function createSandbox({ name, out, reuse = false }) {
   const root = path.join(out, name)
+  // reuse: pick a kept sandbox up again (the journey's --from); its repo, origin and logs stay as they were.
+  if (reuse && fs.existsSync(path.join(root, 'repo/.git'))) return reopenSandbox({ name, root })
   fs.rmSync(root, { recursive: true, force: true })
   const dir = path.join(root, 'repo')
   const origin = path.join(root, 'origin.git')
@@ -103,4 +105,13 @@ export function createSandbox({ name, out }) {
   fs.appendFileSync(path.join(dir, '.git/info/exclude'), '.tmp/\n')
   env.TMPDIR = path.join(dir, '.tmp')
   return sb
+}
+
+function reopenSandbox({ name, root }) {
+  const dir = path.join(root, 'repo')
+  const origin = path.join(root, 'origin.git')
+  const bin = path.join(root, 'bin')
+  const logs = path.join(root, 'logs')
+  const env = { ...CLEAN_ENV, PATH: `${bin}${path.delimiter}${process.env.PATH}`, RIG_GH: path.join(bin, 'gh'), RIG_GH_LOG: path.join(logs, 'gh.log'), CONTRACT_LOG: path.join(logs, 'contract.log'), TMPDIR: path.join(dir, '.tmp') }
+  return bindSandbox({ name, root, dir, origin, bin, logs, env })
 }

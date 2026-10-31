@@ -5,10 +5,10 @@ import { Checks } from '../lib/checks.mjs'
 import { parseRubric } from './inspector.mjs'
 
 const json = t => { try { return JSON.parse(t) } catch { return null } }
-const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40)
+const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60)
 const first = line => String(line).split('\n')[0]
 
-export async function runJourney({ sb, driver, inspector, reviewer, log, rubricDir, stages, capUsd = 25, minutes = 60, intents = Infinity, from = stages[0].id, stopAfter = null, onStageDone = null, now = Date.now }) {
+export async function runJourney({ sb, driver, inspector, reviewer, log, rubricDir, stages, capUsd = 25, minutes = 60, intents = Infinity, from = stages[0].id, stopAfter = null, onStageDone = null, ready: readyFor = null, now = Date.now }) {
   const t0 = now()
   const stateFile = path.join(sb.root, 'journey-state.json')
   const state = json(fs.existsSync(stateFile) ? fs.readFileSync(stateFile, 'utf8') : '') ?? { passed: [], memo: {} }
@@ -24,6 +24,7 @@ export async function runJourney({ sb, driver, inspector, reviewer, log, rubricD
   const viol = (stage, item, severity, evidence, note, area = 'unknown') => log.add({ stage, item, severity, evidence, note: first(note), session: '', area })
   const spent = () => (driver.spentUsd?.() ?? 0) + extra
 
+  try {
   for (const stage of stages.slice(ids.indexOf(from))) {
     const r = { stage: stage.id, status: 'not-run', checks: new Checks(`${stage.id} ${stage.title}`), verdicts: [], costUsd: 0, minutes: 0 }
     results.push(r)
@@ -40,7 +41,7 @@ export async function runJourney({ sb, driver, inspector, reviewer, log, rubricD
       const d = await reviewer.review({ sb, stage: stage.id, artefacts: stage.artefacts?.(ctx) ?? [] })
       extra += d.costUsd ?? 0
       if (d.decision !== 'approve') {
-        for (const reason of d.reasons.length ? d.reasons : ['rejected']) viol(stage.id, `${stage.id}.reviewer-reject`, 'block', 'reviewer decision', reason)
+        viol(stage.id, `${stage.id}.reviewer-reject`, 'block', 'reviewer decision', d.reasons.join('; ') || 'rejected')
         r.status = 'fail'; halted = stage.id
         continue
       }
@@ -48,19 +49,24 @@ export async function runJourney({ sb, driver, inspector, reviewer, log, rubricD
 
     try {
       if (stage.perIntent) {
+        let built = 0
         for (let n = 0; n < intents; n++) {
-          const ready = json(sb.sdlc(['ready', '--json']).stdout) ?? []
+          const all = readyFor ? readyFor(stage) : json(sb.sdlc(['ready', '--json']).stdout) ?? []
+          const ready = all.filter(i => stage.sprint === undefined || i.sprint === stage.sprint)
           if (ready.length === 0) break
           await stage.act(ctx, ready[0])
           await stage.gate(r.checks, ctx, ready[0])
+          built++
           if (r.checks.failed.length) break
         }
+        if (built === 0) await r.checks.check(`${stage.id} built no intent`, () => `sdlc ready listed no intent for sprint ${stage.sprint ?? '(any)'}`)
       } else {
         await stage.act(ctx)
         await stage.gate(r.checks, ctx)
       }
     } catch (err) {
-      await r.checks.check(`${stage.id} act`, () => String(err?.message ?? err))
+      const msg = String(err?.message ?? err)
+      await r.checks.check(`${stage.id} act failed ${slug(msg.split(':')[0])}`, () => msg.split('\n')[0])
     }
     if (r.checks.failed.length) {
       for (const f of r.checks.failed) viol(stage.id, `${stage.id}.gate.${slug(f.name)}`, 'block', f.why, `${f.name}: ${f.why}`)
@@ -76,8 +82,13 @@ export async function runJourney({ sb, driver, inspector, reviewer, log, rubricD
     }
     r.costUsd = spent() - s0
     r.minutes = (now() - m0) / 60_000
-    if (r.status !== 'fail') { state.passed.push(stage.id); save(); await onStageDone?.(r, { sb, stage }) }
+    if (r.status !== 'fail') { if (!state.passed.includes(stage.id)) state.passed.push(stage.id); save(); await onStageDone?.(r, { sb, stage }) }
     if (stopAfter === stage.id) break
+  }
+  } catch (err) {
+    save()
+    err.partial = results
+    throw err
   }
   save()
   return results

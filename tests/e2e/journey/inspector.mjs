@@ -16,7 +16,7 @@ export function parseRubric(text) {
 }
 
 export async function defaultLaunch({ dir, prompt, model = INSPECTOR_MODEL, tools = INSPECTOR_TOOLS }) {
-  const r = claudeJson({ dir, prompt, model, tools, sources: 'project' })
+  const r = claudeJson({ dir, prompt, model, tools, sources: 'project', maxTurns: 40 })
   return { text: r.j?.result ?? '', costUsd: r.usd }
 }
 

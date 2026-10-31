@@ -51,5 +51,8 @@ export function scriptedKit({ sb, recordedDir }) {
   const stages = gates
     ? STAGES.map(s => ({ ...s, gate: async c => { await c.check(`${s.id} gate (replayed)`, () => gates[s.id] === 'pass' || 'recorded gate failed') } }))
     : STAGES
-  return { driver, inspector, reviewer, stages }
+  // The synthetic set has no repo to ask: one stand-in intent per build stage. A recorded set asks the real sdlc.
+  const built = new Set()
+  const ready = gates ? stage => (built.has(stage.id) ? [] : (built.add(stage.id), [{ slug: 'synthetic', sprint: stage.sprint }])) : null
+  return { driver, inspector, reviewer, stages, ...(ready ? { ready } : {}) }
 }

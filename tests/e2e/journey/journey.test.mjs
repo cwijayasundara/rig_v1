@@ -15,15 +15,15 @@ const rubricDir = (() => {
 })()
 
 // Fakes: a stage table with simple acts and gates, a sandbox whose `ready` list shrinks as intents are built.
-function world({ gateFail = {}, verdict = () => 'pass', decision = 'approve', intentsReady = ['a', 'b', 'c'], spent = () => 0 } = {}) {
+function world({ gateFail = {}, verdict = () => 'pass', actThrows = {}, decision = 'approve', intentsReady = [['a', 1], ['b', 1], ['c', 1], ['d', 2], ['e', 2]], spent = () => 0 } = {}) {
   const calls = []
-  const ready = [...intentsReady]
-  const sb = { root: tmp(), dir: tmp(), sdlc: args => (args[0] === 'ready' ? { status: 0, stdout: JSON.stringify(ready.map(slug => ({ slug }))), stderr: '' } : { status: 0, stdout: '', stderr: '' }) }
+  const ready = intentsReady.map(([slug, sprint]) => ({ slug, sprint }))
+  const sb = { root: tmp(), dir: tmp(), sdlc: args => (args[0] === 'ready' ? { status: 0, stdout: JSON.stringify(ready), stderr: '' } : { status: 0, stdout: '', stderr: '' }) }
   const driver = { spentUsd: () => spent(calls.length), approveChart: s => calls.push(`approve:${s}`), built: [] }
-  const mk = (id, extra = {}) => ({ id, title: id, rubric: id, act: async (_c, intent) => { calls.push(`act:${id}${intent ? `:${intent.slug}` : ''}`); if (intent) ready.splice(ready.indexOf(intent.slug), 1) }, gate: async (c, _x, intent) => { await c.check(`${id} gate`, () => !gateFail[id] || 'gate broke') }, ...extra })
-  const stages = ['J0', 'J1', 'J2', 'J3', 'J4', 'J5', 'J6'].map(id => mk(id, id === 'J2' || id === 'J5' ? { approve: true, act: async () => { driver.approveChart(id) } } : id === 'J3' || id === 'J6' ? { perIntent: true } : {}))
+  const mk = (id, extra = {}) => ({ id, title: id, rubric: id, act: async (_c, intent) => { if (actThrows[id]) throw new Error(actThrows[id]); calls.push(`act:${id}${intent ? `:${intent.slug}` : ''}`); if (intent) ready.splice(ready.findIndex(r => r.slug === intent.slug), 1) }, gate: async (c, _x, intent) => { await c.check(`${id} gate`, () => !gateFail[id] || 'gate broke') }, ...extra })
+  const stages = ['J0', 'J1', 'J2', 'J3', 'J4', 'J5', 'J6'].map(id => mk(id, id === 'J2' || id === 'J5' ? { approve: true, act: async () => { driver.approveChart(id) } } : id === 'J3' || id === 'J6' ? { perIntent: true, sprint: id === 'J3' ? 1 : 2 } : {}))
   const inspector = { inspect: async ({ stage, rubric }) => { calls.push(`inspect:${stage}`); return { items: rubric.map(r => ({ id: r.id, verdict: verdict(r.id), severity: r.severity, evidence: 'e', note: 'n' })), problems: [], costUsd: 0.1 } } }
-  const reviewer = { review: async ({ stage }) => { calls.push(`review:${stage}`); return { decision, reasons: decision === 'reject' ? ['bad chart'] : [], costUsd: 0.1 } } }
+  const reviewer = { review: async ({ stage }) => { calls.push(`review:${stage}`); return { decision, reasons: decision === 'reject' ? ['bad chart', 'second reason'] : [], costUsd: 0.1 } } }
   const log = createViolationLog({ dir: tmp(), run: 'r', sandbox: sb.dir, triage: {} })
   return { sb, driver, inspector, reviewer, log, stages, calls, run: (o = {}) => runJourney({ sb, driver, inspector, reviewer, log, rubricDir, stages, capUsd: 25, minutes: 60, ...o }) }
 }
@@ -77,6 +77,7 @@ test('intents: 1 builds one intent in J3 and one inspector launch per stage', as
 test('default builds every ready intent in J3', async () => {
   const w = world(); await w.run()
   assert.deepEqual(w.calls.filter(c => c.startsWith('act:J3')), ['act:J3:a', 'act:J3:b', 'act:J3:c'])
+  assert.deepEqual(w.calls.filter(c => c.startsWith('act:J6')), ['act:J6:d', 'act:J6:e'])
 })
 
 test('from J4 on a fresh sandbox refuses', async () => {
@@ -96,4 +97,35 @@ test('cap reached after J1 logs cap-reached and marks the rest not-run', async (
   assert.ok(w.log.all().some(v => v.id === 'cap-reached'))
   assert.ok(r.filter(x => x.status === 'not-run').length >= 1)
   assert.equal(r.length, 7)
+})
+
+test('a perIntent stage that built nothing fails instead of passing', async () => {
+  const w = world({ intentsReady: [] }); const r = await w.run()
+  assert.equal(r[3].status, 'fail')
+  assert.match(r[3].checks.failed[0].name, /built no intent/)
+  assert.deepEqual(r.slice(4).map(x => x.status), Array(3).fill('not-run'))
+})
+
+test('J6 never starts a sprint 1 intent that is still ready', async () => {
+  const w = world({ intentsReady: [['a', 1], ['b', 1]] }); const r = await w.run({ intents: 1 })
+  assert.ok(!w.calls.includes('act:J6:b'))
+  assert.equal(r[6].status, 'fail')
+})
+
+test('different act failures get different violation ids', async () => {
+  const ids = []
+  for (const msg of ['stuck-on-input: chart 1 still questions', 'reviewer rejected the plan: x']) {
+    const w = world({ actThrows: { J1: msg } }); await w.run(); ids.push(w.log.all()[0].id)
+  }
+  assert.notEqual(ids[0], ids[1])
+})
+
+test('a throw outside a stage hands back the partial results', async () => {
+  const w = world(); w.reviewer.review = async () => { throw new Error('boom') }
+  await assert.rejects(() => w.run(), e => e.message === 'boom' && e.partial.length >= 3)
+})
+
+test('a reviewer reject with several reasons logs one violation', async () => {
+  const w = world({ decision: 'reject' }); await w.run()
+  assert.equal(w.log.all().filter(v => v.id === 'J2.reviewer-reject').length, 1)
 })

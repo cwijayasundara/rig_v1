@@ -458,8 +458,11 @@ claude plugin validate .claude-plugin/plugin.json
 
 S2 and S3 also pass a hidden HTTP acceptance test that imports no source.
 
+The **journey e2e** (`npm run e2e`) replaces the manual check. In a throwaway Python repo it runs `/rig:init --quick`, `/rig-chart 1` on a greenfield PRD (Library Desk), approves, builds every intent, then charts, approves and builds a brownfield sprint 2 on that code. After each stage a Sonnet inspector reads the repository against a rubric (`tests/e2e/journey/rubrics/`) and a reviewer agent stands in for the person who approves. Open violations are written to `violations.md` in the run's output folder, rung and notified, and make the exit code non-zero; nothing is fixed automatically. Record your decision per violation id in `tests/e2e/journey/triage.json` (`fix`, `accept`, `wontfix`). `npm run eval:journey` runs it N times per arm and scores the verdicts.
+
+
 ```bash
-npm run e2e              # live journey: init, chart, approve and build a greenfield and a brownfield sprint with Haiku; Sonnet inspects every stage; costs money (--cap USD default 25, --minutes default 60, --intents N)
+npm run e2e              # live journey: init, chart, approve and build a greenfield and a brownfield sprint with Haiku; Sonnet inspects every stage; costs money (a 20 minute smoke journey by default: one intent per sprint and a hard wall-clock deadline; `--full` builds every intent in up to 60 minutes; `--cap USD` default 25; `--intents N`)
 npm run e2e:scripted     # the same runner replaying recorded snapshots and verdicts, plus the scripted-only Node shop regression: $0; runs in npm test and CI
 npm run test:e2e:unit    # the route runner, contract tool, stack probe, live driver accounting, eval tests
 npm run test:e2e:stacks  # one tiny repo per stack pack; skips a missing toolchain

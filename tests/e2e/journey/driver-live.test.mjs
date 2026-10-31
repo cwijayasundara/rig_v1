@@ -23,7 +23,8 @@ function world({ sdlc = () => ({ status: 0, stdout: '', stderr: '' }), files = {
   }
   return { sb, sessions, runs, sdlcCalls, git, put }
 }
-const ready = '[]'
+const CHART = { '.rig/product/sprints/sprint-1/intents/a.md': 'x', '.rig/product/sprints/sprint-1/chart-review.md': 'x', '.rig/product/sprints/sprint-1/testplan/cases.md': 'x' }
+const putChart = put => { for (const f of Object.keys(CHART)) put(f) }
 const answersDir = (() => { const d = tmp(); fs.writeFileSync(path.join(d, 'overdue.md'), 'Overdue means due date before today.'); return d })()
 const chartState = (kinds) => args => {
   if (args[0] === 'prd') return { status: 0, stdout: 'current', stderr: '' }
@@ -33,7 +34,7 @@ const chartState = (kinds) => args => {
 
 test('chart throws stuck-on-input after 3 continuations while open questions persist', async () => {
   const q = [{ rule: 'open-question', severity: 'block', where: 'prd' }]
-  const w = world({ sdlc: args => (args[0] === 'chart' ? { status: 0, stdout: JSON.stringify(q), stderr: '' } : { status: 0, stdout: 'current', stderr: '' }), files: { '.rig/product/sprints/sprint-1/intents/a.md': 'x' } })
+  const w = world({ sdlc: args => (args[0] === 'chart' ? { status: 0, stdout: JSON.stringify(q), stderr: '' } : { status: 0, stdout: 'current', stderr: '' }), files: CHART })
   const d = journeyDriver({ sb: w.sb, sessions: w.sessions, answersDir })
   await assert.rejects(() => d.chart(1, 'docs/prd/p.md'), /stuck-on-input/)
   assert.equal(w.runs.length, 4)
@@ -41,7 +42,7 @@ test('chart throws stuck-on-input after 3 continuations while open questions per
 
 test('open questions are answered from the answers dir before any reviewer is asked', async () => {
   const q = [{ rule: 'open-question', severity: 'block', where: 'prd' }]
-  const w = world({ sdlc: chartState([q, []]), files: { '.rig/product/sprints/sprint-1/intents/a.md': 'x' } })
+  const w = world({ sdlc: chartState([q, []]), files: CHART })
   let asked = 0
   const d = journeyDriver({ sb: w.sb, sessions: w.sessions, answersDir, reviewer: { review: async () => { asked++; return { decision: 'approve', reasons: [] } } } })
   await d.chart(1, 'docs/prd/p.md')
@@ -51,7 +52,7 @@ test('open questions are answered from the answers dir before any reviewer is as
 
 test('chart with no intents written yet continues once, then passes', async () => {
   const w = world({ sdlc: chartState([[], []]) })
-  w.sessions.run = (label, prompt, opts) => { w.runs.push({ label, prompt, opts }); if (w.runs.length === 2) w.put('.rig/product/sprints/sprint-1/intents/a.md'); return { costUsd: 0 } }
+  w.sessions.run = (label, prompt, opts) => { w.runs.push({ label, prompt, opts }); if (w.runs.length === 2) putChart(w.put); return { costUsd: 0 } }
   const d = journeyDriver({ sb: w.sb, sessions: w.sessions, answersDir })
   await d.chart(1, 'docs/prd/p.md')
   assert.equal(w.runs.length, 2)
@@ -81,4 +82,30 @@ test('setupSandbox copies the skeleton and both PRDs and commits them', () => {
   setupSandbox(sb)
   for (const f of ['pyproject.toml', 'src/library/__init__.py', 'tests/test_smoke.py', 'docs/prd/sprint-1-library-desk.md', 'docs/prd/sprint-2-library-desk-changes.md']) assert.ok(fs.existsSync(path.join(sb.dir, f)), f)
   assert.deepEqual(written, ['chore: scaffold'])
+})
+
+test('a concern with no answer on file is stuck-on-input, not a finished chart', async () => {
+  const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'noans-'))
+  const w = world({ sdlc: args => (args[0] === 'chart' ? { status: 0, stdout: JSON.stringify([{ rule: 'concern', severity: 'block', where: 'architect' }]), stderr: '' } : { status: 0, stdout: '', stderr: '' }), files: CHART })
+  await assert.rejects(() => journeyDriver({ sb: w.sb, sessions: w.sessions, answersDir: empty }).chart(1, 'docs/prd/p.md'), /concern@architect.*no answer/)
+})
+
+test('intents written but no chart review yet counts as unfinished and continues', async () => {
+  const w = world({ sdlc: chartState([[], [], []]), files: { '.rig/product/sprints/sprint-1/intents/a.md': 'x' } })
+  w.sessions.run = (label, prompt, opts) => { w.runs.push({ label, prompt, opts }); if (w.runs.length === 2) putChart(w.put); return { costUsd: 0 } }
+  await journeyDriver({ sb: w.sb, sessions: w.sessions, answersDir }).chart(1, 'docs/prd/p.md')
+  assert.equal(w.runs.length, 2)
+})
+
+test('spentUsd counts the reviewer calls as well as the sessions', async () => {
+  const w = world()
+  const live = { begin: async () => 'loans', plan: async () => {}, build: async () => {}, answer: async () => {} }
+  const d = journeyDriver({ sb: w.sb, sessions: w.sessions, answersDir, liveDriverFor: () => live, reviewer: { review: async () => ({ decision: 'approve', reasons: [], costUsd: 0.5 }) } })
+  await d.buildIntent(await d.startIntent('.rig/product/sprints/sprint-1/intents/loans.md'))
+  assert.equal(d.spentUsd(), 1)
+})
+
+test('the skeleton ignores Python caches so they never reach a commit', () => {
+  const ig = fs.readFileSync(path.join(import.meta.dirname, 'skeleton/.gitignore'), 'utf8')
+  for (const p of ['__pycache__/', '.pytest_cache/', '.mypy_cache/', '.ruff_cache/', '.venv/']) assert.ok(ig.split('\n').includes(p), p)
 })

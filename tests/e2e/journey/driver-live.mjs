@@ -36,27 +36,30 @@ const landOnMain = sb => {
 
 export function journeyDriver({ sb, sessions, answersDir = ANSWERS, reviewer = null, liveDriverFor = phase => liveDriver(sb, phase, { sessions }) }) {
   let live = null
+  let extraUsd = 0
   const answers = () => files(answersDir).map(f => fs.readFileSync(path.join(answersDir, f), 'utf8').trim()).join('\n')
   const sprintDir = n => `.rig/product/sprints/sprint-${n}`
 
-  // Where the chart stands, from state: a converted PRD awaiting approval, open questions, or no intents written yet.
+  // Where the chart stands, from state: open questions or concerns, or not yet finished (intents, test plan and chart review all written).
+  // The PRD conversion needs no separate step: approving chart-N covers it.
   const pending = n => {
-    if (/^(missing|stale)/.test(sb.sdlc(['prd', 'status', String(n)]).stdout)) return { kind: 'prd' }
     const found = json(sb.sdlc(['chart', 'check', String(n), '--cases', '--json']).stdout) ?? []
-    const open = found.filter(f => /question/.test(f.rule ?? ''))
+    const open = found.filter(f => /question|concern/.test(f.rule ?? ''))
     if (open.length) return { kind: 'questions', detail: open.map(f => `${f.rule}@${f.where}`).join(', ') }
-    if (files(path.join(sb.dir, sprintDir(n), 'intents')).length === 0) return { kind: 'incomplete' }
+    const dir = path.join(sb.dir, sprintDir(n))
+    if (files(path.join(dir, 'intents')).length === 0 || !fs.existsSync(path.join(dir, 'chart-review.md')) || files(path.join(dir, 'testplan')).length === 0) return { kind: 'incomplete' }
     return { kind: 'none' }
   }
   const requireApproval = async (stage, artefacts, what) => {
     if (!reviewer) return
     const d = await reviewer.review({ sb, stage, artefacts })
+    extraUsd += d.costUsd ?? 0
     if (d.decision !== 'approve') throw new Error(`reviewer rejected the ${what}: ${d.reasons.join('; ')}`)
   }
 
   return {
     sessions,
-    spentUsd: () => totals(sessions.sessions).costUsd,
+    spentUsd: () => totals(sessions.sessions).costUsd + extraUsd,
 
     async init() {
       sessions.run('J0-init', INIT_PROMPT, { withPlugin: true })
@@ -69,15 +72,9 @@ export function journeyDriver({ sb, sessions, answersDir = ANSWERS, reviewer = n
         const p = pending(sprint)
         if (p.kind === 'none') break
         if (i === MAX_CONTINUATIONS) throw new Error(`stuck-on-input: chart ${sprint} still ${p.kind}${p.detail ? ` (${p.detail})` : ''} after ${MAX_CONTINUATIONS} continuations`)
-        if (p.kind === 'prd') {
-          await requireApproval(`chart-${sprint}-conversion`, [`${sprintDir(sprint)}/prd.md`, `${sprintDir(sprint)}/conversion.md`], 'PRD conversion')
-          sb.sdlc(['approve', `prd-${sprint}`, '--by', 'journey'], { human: true })
-          sessions.run(`J-chart-${sprint}-after-prd`, `/rig-chart ${sprint}`, { cont: true })
-        } else {
-          const a = p.kind === 'questions' ? answers() : ''
-          if (p.kind === 'questions' && !a) throw new Error(`stuck-on-input: chart ${sprint} asks (${p.detail}) and journey/answers has no answer`)
-          sessions.run(`J-chart-${sprint}-cont${i + 1}`, `/rig-chart ${sprint}${a ? `\nThe person answers your open questions:\n${a}` : '\nContinue where you stopped and finish the chart.'}`, { cont: true })
-        }
+        const a = p.kind === 'questions' ? answers() : ''
+        if (p.kind === 'questions' && !a) throw new Error(`stuck-on-input: chart ${sprint} asks (${p.detail}) and journey/answers has no answer`)
+        sessions.run(`J-chart-${sprint}-cont${i + 1}`, `/rig-chart ${sprint}${a ? `\nThe person answers your open questions:\n${a}` : '\nContinue where you stopped and finish the chart.'}`, { cont: true })
       }
       landOnMain(sb)
     },

@@ -268,3 +268,14 @@ test('an effort is passed to every session as --effort, and no effort adds no fl
   createSessions({ sb: none, out: out(), capUsd: 6 }).run('a', 'x')
   assert.ok(!none.calls[0].includes('--effort'))
 })
+
+test('a deadline shortens each session timeout to the time left, and refuses to start one after it', () => {
+  const seen = []
+  const sb = { run: (cmd, args, opts) => { seen.push(opts.timeout); return { status: 0, stdout: result(0), stderr: '' } } }
+  createSessions({ sb, out: out(), capUsd: 6 }).run('a', 'x')
+  assert.equal(seen[0], 18 * 60_000)
+  createSessions({ sb, out: out(), capUsd: 6, deadline: Date.now() + 90_000 }).run('b', 'x')
+  assert.ok(seen[1] <= 90_000 && seen[1] >= 30_000, String(seen[1]))
+  assert.throws(() => createSessions({ sb, out: out(), capUsd: 6, deadline: Date.now() - 1 }).run('c', 'x'), /time budget/)
+  assert.equal(seen.length, 2)
+})

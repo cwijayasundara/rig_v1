@@ -72,3 +72,15 @@ test('context is passed into the inspector prompt', async () => {
   await inspect({ sb: sandbox(), stage: 'J1', rubric: RUBRIC, context: 'Sprint 1 ended at commit abc123.', launch: async ({ prompt }) => { seen = prompt; return answer(RUBRIC.map(x => ok(x.id))) } })
   assert.match(seen, /Sprint 1 ended at commit abc123\./)
 })
+
+test('the default launch gives the inspector more than the 15 turns of a quick judge', async () => {
+  const bin = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'fakeclaude-')), 'claude')
+  fs.writeFileSync(bin, '#!/bin/sh\necho "{\\"result\\": \\"$*\\"}"\n', { mode: 0o755 })
+  const prev = process.env.RIG_CLAUDE; process.env.RIG_CLAUDE = bin
+  try {
+    const { defaultLaunch } = await import('./inspector.mjs')
+    const r = await defaultLaunch({ dir: os.tmpdir(), prompt: 'p' })
+    const n = Number(/--max-turns (\d+)/.exec(r.text)?.[1])
+    assert.ok(n >= 40, r.text)
+  } finally { if (prev === undefined) delete process.env.RIG_CLAUDE; else process.env.RIG_CLAUDE = prev }
+})

@@ -1,6 +1,6 @@
 # One journey e2e: drive rig step by step, inspect behind the scenes
 
-Status: draft for approval · 2026-10-31
+Status: implemented on feat/journey-e2e · 2026-10-31 (first live run and snapshot recording pending; legacy Node shop phases kept as scripted extras)
 
 ## Intent
 
@@ -115,7 +115,7 @@ One inspector launch per stage, not per file: at most 7 per journey.
 
 ## Cost, time, drivers
 
-- Act sessions: Haiku, using the existing `createSessions` spend cap. Default cap for the journey: $25 (my call, to be tuned after the first run). Wall clock budget default 60 min (my call).
+- Act sessions: Haiku, using the existing `createSessions` spend cap. Default cap for the journey: $25 (my call, to be tuned after the first run). Wall clock budget default 20 min as a hard deadline (the person's requirement): every session timeout is capped to the time left and no session starts after it, the default scope is one intent per sprint, and `--full` (all intents) gets 60 min. An overrun is the violation `over-time-budget`.
 - Inspector: Sonnet, counted in the same cap.
 - `--driver scripted` ($0, runs inside `npm test`): applies recorded stage snapshots (a tarball of the sandbox after each stage, taken from a good live run) and replays recorded inspector verdicts, so the runner, rubric parsing, gating, resume and reporting are tested without a model. The existing deterministic assertions run for real on the snapshots.
 - `--driver live` is the default of `npm run e2e`. Recording: `npm run e2e -- --record` saves snapshots and verdicts as the new scripted fixtures (a person reviews the diff).
@@ -174,9 +174,9 @@ Same principles as the other evals (`eval/run.mjs`, `eval/chart.mjs`): arms, `--
 0. Approvals are a reviewer agent plus `SDLC_HUMAN=1` set by the runner in the sandbox; alert channel is terminal summary, non-zero exit, bell and macOS notification; triage decisions live in `triage.json` that only you edit.
 
 1. Python and pytest sandbox; two new PRDs written for the suite (Library Desk), replacing both the node shop and the cart PRDs.
-2. Default scope is all intents, with `--intents N` to shorten.
+2. Default scope is one intent per sprint (a 20 minute smoke journey), with `--full` for all intents and `--intents N` for any other number.
 3. Actor Haiku 5.5, inspector and reviewer Sonnet 5.5 (the person chose this to keep cost down), one launch per stage; if the seeded-bad checks show Sonnet misses violations, escalate the inspector to Opus for those stages.
-4. $25 cap and 60 minute budget are guesses.
+4. The $25 cap is a guess; the 20 minute budget (60 with `--full`) is the person's requirement and a hard deadline.
 5. S4, S5 and the S6 negative checks stay as scripted-only stages inside the same command.
 6. `parallel` and `stacks` stay as they are (CI calls them).
 7. Sprint 2 runs on the same sandbox after sprint 1 merges, not on a fresh copy.

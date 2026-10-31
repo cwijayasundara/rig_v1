@@ -1,5 +1,5 @@
 // The journey eval: the e2e journey run N times per arm, scored by the inspector's verdicts (per-stage pass share, blocking items, how far it got).
-// node eval/journey.mjs [--arms haiku-rig,sonnet-rig] [--runs 3] [--cap-run 25] [--cap-total 60] [--intents N] [--results FILE] [--dry] [--dry-check] [--agreement]
+// node eval/journey.mjs [--arms haiku-rig,sonnet-rig] [--runs 3] [--cap-run 25] [--cap-total 60] [--intents N, default 1] [--minutes N, default 20] [--results FILE] [--dry] [--dry-check] [--agreement]
 // Live runs cost money and are started by a person. --dry replays the recorded set at $0 and never writes under eval/results.
 // --dry-check replays every seeded-bad case and fails when its expected violation is not raised (the replay pipeline; a live check of the
 // inspector itself needs seeded-bad snapshots, recorded after the first good live run).
@@ -30,7 +30,7 @@ export const JOURNEY_ARMS = [
 
 const share = r => (r.verdicts.length ? r.verdicts.filter(v => v.verdict === 'pass').length / r.verdicts.length : r.status === 'not-run' ? null : 0)
 
-export async function runJourneyOnce({ arm, n, dry, out, capRunUsd, intents = Infinity, recordedDir = path.join(RECORDED, 'synthetic'), agreement = false }) {
+export async function runJourneyOnce({ arm, n, dry, out, capRunUsd, intents = 1, minutes = 20, recordedDir = path.join(RECORDED, 'synthetic'), agreement = false }) {
   const t0 = Date.now()
   const sb = createSandbox({ name: `${arm.id}-${n}`, out })
   setupSandbox(sb)
@@ -51,12 +51,12 @@ export async function runJourneyOnce({ arm, n, dry, out, capRunUsd, intents = In
   const kit = dry
     ? scriptedKit({ sb, recordedDir })
     : (() => {
-        const sessions = createSessions({ sb, out: sb.root, capUsd: capRunUsd, model: arm.model, env: { CLAUDE_CODE_SUBAGENT_MODEL: arm.model } })
+        const sessions = createSessions({ sb, out: sb.root, capUsd: capRunUsd, model: arm.model, env: { CLAUDE_CODE_SUBAGENT_MODEL: arm.model }, deadline: t0 + minutes * 60_000 })
         return { driver: journeyDriver({ sb, sessions, reviewer }), inspector, reviewer, stages: STAGES }
       })()
   let results = []
   let error
-  try { results = await runJourney({ sb, log, rubricDir: RUBRICS, ...kit, capUsd: capRunUsd, minutes: 60, intents }) } catch (err) { error = String(err?.message ?? err).split('\n')[0] }
+  try { results = await runJourney({ sb, log, rubricDir: RUBRICS, ...kit, capUsd: capRunUsd, minutes, intents }) } catch (err) { error = String(err?.message ?? err).split('\n')[0] }
   const reached = [...results].reverse().find(r => r.status !== 'not-run')
   return {
     arm: arm.id, run: n, model: arm.model, at: new Date().toISOString(),
@@ -123,7 +123,7 @@ if (process.argv[1] === import.meta.filename) {
   for (let n = 1; n <= Number(arg('runs', 3)); n++) {
     for (const arm of arms) {
       if (!dry && !nextRunAllowed(spent, capRun, capTotal)) { console.log(`stopping: $${spent.toFixed(2)} spent, the next run could pass the $${capTotal} total cap`); break }
-      const row = await runJourneyOnce({ arm, n, dry, out, capRunUsd: capRun, intents: arg('intents') ? Number(arg('intents')) : Infinity, agreement: process.argv.includes('--agreement') })
+      const row = await runJourneyOnce({ arm, n, dry, out, capRunUsd: capRun, intents: arg('intents') ? Number(arg('intents')) : 1, minutes: Number(arg('minutes', 20)), agreement: process.argv.includes('--agreement') })
       spent += row.usd
       rows.push(row)
       fs.appendFileSync(results, JSON.stringify(row) + '\n')
