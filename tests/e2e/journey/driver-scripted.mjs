@@ -2,19 +2,16 @@
 // A set with gates.json (the synthetic set) replays the gate results too; a recorded set runs the real gates on real snapshots.
 import fs from 'node:fs'
 import path from 'node:path'
-import { spawnSync } from 'node:child_process'
 import { inspect } from './inspector.mjs'
 import { STAGES } from './stages.mjs'
+import { packSnapshot, unpackSnapshot } from './snapshot.mjs'
 
-const EXCLUDE = ['.venv', '__pycache__', 'node_modules', '.tmp', '.mypy_cache', '.pytest_cache', '.ruff_cache']
 const readJson = f => { try { return JSON.parse(fs.readFileSync(f, 'utf8')) } catch { return null } }
 const sprintOf = p => (/sprint-(\d)/.exec(p) ?? [])[1] === '2' ? 2 : 1
-const must = (r, what) => { if (r.status !== 0) throw new Error(`${what}: ${(r.stderr || '').toString().trim().split('\n')[0]}`) }
 
-export function recordStage({ sb, stage, verdicts, decision, recordedDir }) {
-  fs.mkdirSync(path.join(recordedDir, 'snapshots'), { recursive: true })
+export function recordStage({ sb, stage, verdicts, decision, recordedDir, snapshot = true }) {
   fs.mkdirSync(path.join(recordedDir, 'verdicts'), { recursive: true })
-  must(spawnSync('tar', ['czf', path.join(recordedDir, 'snapshots', `${stage}.tar.gz`), ...EXCLUDE.map(e => `--exclude=${e}`), '-C', sb.dir, '.']), 'tar')
+  if (snapshot) packSnapshot({ dir: sb.dir, recordedDir, stage })
   fs.writeFileSync(path.join(recordedDir, 'verdicts', `${stage}.json`), JSON.stringify({ stage, items: verdicts }, null, 1))
   if (decision) {
     const file = path.join(recordedDir, 'decisions.json')
@@ -24,12 +21,7 @@ export function recordStage({ sb, stage, verdicts, decision, recordedDir }) {
 
 // driver, inspector, reviewer and stages for runJourney, all replaying `recordedDir`.
 export function scriptedKit({ sb, recordedDir }) {
-  const unpack = stage => {
-    const snap = path.join(recordedDir, 'snapshots', `${stage}.tar.gz`)
-    if (!fs.existsSync(snap)) return
-    for (const e of fs.readdirSync(sb.dir)) fs.rmSync(path.join(sb.dir, e), { recursive: true, force: true })
-    must(spawnSync('tar', ['xzf', snap, '-C', sb.dir]), 'untar')
-  }
+  const unpack = stage => { unpackSnapshot({ dir: sb.dir, recordedDir, stage }) }
   let sprint = 1
   const driver = {
     spentUsd: () => 0,

@@ -1,5 +1,5 @@
 // The one e2e command: node tests/e2e/run.mjs [--driver live|scripted] [--intents N] [--from J0..J6] [--cap USD] [--minutes N]
-// [--full] [--record] [--out DIR] [--sandbox DIR] [--recorded SET] [--triage FILE] [--no-extras] [--no-notify]
+// [--mode fast|chart|full] [--record] [--out DIR] [--sandbox DIR] [--recorded SET] [--triage FILE] [--no-extras] [--no-notify]
 // It drives rig through init, chart, approve and build for Library Desk sprint 1 (greenfield) and sprint 2 (brownfield) on one
 // sandbox. Each stage acts (Haiku, live), passes deterministic gates, then a Sonnet inspector judges the artefacts against a
 // rubric. Every violation is logged and alerted; the run never fixes anything. Scripted replays recorded snapshots at $0.
@@ -20,10 +20,17 @@ import { alert, summarise } from './journey/alert.mjs'
 import { writeJourneyReport } from './lib/report.mjs'
 import { runExtras } from './extras.mjs'
 import { PLUGIN } from './lib/sandbox.mjs'
+import { MODES, SEEDS, legStages } from './journey/legs.mjs'
+import { seedSandbox, snapshotFile } from './journey/snapshot.mjs'
 
 const HERE = import.meta.dirname
 const has = f => process.argv.includes(`--${f}`)
 const live = arg('driver', 'scripted') === 'live'
+// fast (default, under 20 min): build one intent greenfield and one brownfield, each from a recorded approved chart. chart: init and the two
+// charts. full: everything from nothing, and the way the snapshots are recorded. Scripted always replays the full journey.
+const mode = arg('mode', has('full') ? 'full' : 'fast')
+if (!MODES[mode]) { console.error(`unknown --mode ${mode}: fast, chart or full`); process.exit(2) }
+if (has('record') && mode !== 'full') { console.error('--record needs --mode full: the snapshots the other modes start from come from a whole journey'); process.exit(2) }
 const stamp = new Date().toISOString().replace(/[:.]/g, '-')
 const out = path.resolve(arg('out', path.join(HERE, 'out', stamp)))
 fs.mkdirSync(out, { recursive: true })
@@ -34,15 +41,20 @@ if (!arg('out')) {
 }
 
 const recordedRoot = path.join(HERE, 'journey/recorded')
-const recordedSet = arg('recorded', fs.existsSync(path.join(recordedRoot, 'real/snapshots/J6.tar.gz')) ? 'real' : 'synthetic')
+const recordedSet = arg('recorded', live ? 'real' : fs.existsSync(path.join(recordedRoot, 'real/snapshots/J6.tar.gz')) ? 'real' : 'synthetic')
 const recordedDir = path.join(recordedRoot, recordedSet)
 
+// Before anything is created or spent: every leg that starts from a snapshot needs it on disk.
+if (live) {
+  for (const leg of MODES[mode].legs) {
+    if (leg.seed && !fs.existsSync(snapshotFile(recordedDir, leg.seed))) { console.error(`mode ${mode} starts from the recorded ${leg.seed} snapshot, which is missing in ${recordedDir}. Record it once with: npm run e2e:full -- --record`); process.exit(2) }
+  }
+}
 const resume = arg('from', 'J0') !== 'J0'
 if (resume && !arg('out')) { console.error('--from needs --out <the kept run folder>'); process.exit(2) }
-// The default is a 20 minute smoke journey: one intent per sprint, a hard wall-clock deadline for every session. --full builds every intent.
-const full = has('full')
-const minutes = Number(arg('minutes', full ? 60 : 20))
-const intents = arg('intents') ? Number(arg('intents')) : full ? Infinity : 1
+// Every mode has a hard wall-clock deadline for its sessions; fast is the 20 minute one.
+const minutes = Number(arg('minutes', MODES[mode].minutes))
+const intents = arg('intents') ? Number(arg('intents')) : MODES[mode].intents
 const t0 = Date.now()
 // The sandbox repo lives in the system temp folder, never inside this repo: a claude session whose repo is nested in another project
 // has its writes to CLAUDE.md and README.md refused as "sensitive files" (found by the first live run). Reports and logs stay in `out`.
@@ -64,15 +76,21 @@ if (live) {
 }
 let results = []
 let failure = null
+const legs = live ? MODES[mode].legs : MODES.full.legs
+const live_record = live && has('record') ? (r, { stage }) => recordStage({ sb, stage: stage.id, verdicts: r.verdicts, decision: stage.approve ? 'approve' : null, recordedDir: path.join(recordedRoot, 'real'), snapshot: SEEDS.includes(stage.id) }) : null
 try {
-  results = await runJourney({
-    sb, log, rubricDir: path.join(HERE, 'journey/rubrics'), ...kit,
-    capUsd: Number(arg('cap', 25)), minutes, intents, from: arg('from', 'J0'),
-    onStageDone: live && has('record') ? (r, { stage }) => recordStage({ sb, stage: stage.id, verdicts: r.verdicts, decision: stage.approve ? 'approve' : null, recordedDir: path.join(recordedRoot, 'real') }) : null,
-  })
+  for (const leg of legs) {
+    if (live && leg.seed) seedSandbox({ sb, recordedDir, stage: leg.seed })
+    const stages = legStages(kit.stages, leg.stages)
+    results.push(...await runJourney({
+      sb, log, rubricDir: path.join(HERE, 'journey/rubrics'), ...kit, stages, startedAt: t0,
+      capUsd: Number(arg('cap', 25)), minutes, intents, from: legs.length === 1 ? arg('from', stages[0].id) : stages[0].id,
+      onStageDone: live_record,
+    }))
+  }
 } catch (err) {
   failure = String(err?.message ?? err)
-  results = err.partial ?? []
+  results.push(...(err.partial ?? []))
   log.add({ stage: 'run', item: 'run-aborted', severity: 'block', evidence: failure, note: failure.split('\n')[0], session: '', area: 'unknown' })
 }
 
@@ -81,7 +99,7 @@ if (!live && !has('no-extras') && !failure) extras = await runExtras({ out })
 const took = (Date.now() - t0) / 60_000
 if (live && took > minutes) log.add({ stage: 'run', item: 'over-time-budget', severity: 'block', evidence: `${took.toFixed(1)} min of ${minutes}`, note: `the journey took ${took.toFixed(1)} min, over its ${minutes} min budget`, session: '', area: 'unknown' })
 const costUsd = results.reduce((n, r) => n + r.costUsd, 0)
-writeJourneyReport(out, { results, log, sandbox: sb.dir, recordedSet: live ? 'live' : recordedSet, costUsd, minutes: took, extras, config: live ? [`evaluator pinned to sonnet in the sandbox: ${kit.driver.evaluatorPinned === true ? 'yes' : 'no'} (rig ships it on opus)`, 'actor model claude-haiku-5-5; inspector and reviewer claude-sonnet-5-5'] : [] })
+writeJourneyReport(out, { results, log, sandbox: sb.dir, recordedSet: live ? 'live' : recordedSet, costUsd, minutes: took, extras, config: live ? [`mode ${mode}`, `evaluator pinned to sonnet in the sandbox: ${/^model: sonnet$/m.test(sb.read('.claude/agents/rig-evaluator.md')) ? 'yes' : 'no'} (rig ships it on opus)`, 'actor model claude-haiku-5-5; inspector and reviewer claude-sonnet-5-5'] : [] })
 fs.writeFileSync(path.join(out, 'violations.md'), log.toMarkdown())
 const extrasFailed = extras ? extras.results.some(c => c.failed.length) || extras.lost.length > 0 : false
 if (extras) for (const c of extras.results) if (c.failed.length) c.print()

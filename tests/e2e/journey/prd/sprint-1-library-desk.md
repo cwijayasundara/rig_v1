@@ -122,6 +122,10 @@ Depends on: FR-4
 ## Decisions
 
 - 2026-10-31: one JSON file, no database — a small desk needs no more.
+- 2026-10-31: single user, one process at a time: no locking and no file permission handling.
+- 2026-10-31: a member may hold more than one loan of the same isbn; each counts toward the limit.
+- 2026-10-31: the day is a required argument of check_out and return_book; there is no default of today.
+- 2026-10-31: check_out refuses in this order: unknown isbn, overdue loan, loan limit, no free copy.
 
 ## Open questions
 

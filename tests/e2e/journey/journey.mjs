@@ -8,8 +8,8 @@ const json = t => { try { return JSON.parse(t) } catch { return null } }
 const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60)
 const first = line => String(line).split('\n')[0]
 
-export async function runJourney({ sb, driver, inspector, reviewer, log, rubricDir, stages, capUsd = 25, minutes = 60, intents = Infinity, from = stages[0].id, stopAfter = null, onStageDone = null, ready: readyFor = null, now = Date.now }) {
-  const t0 = now()
+export async function runJourney({ sb, driver, inspector, reviewer, log, rubricDir, stages, capUsd = 25, minutes = 60, intents = Infinity, from = stages[0].id, stopAfter = null, onStageDone = null, ready: readyFor = null, startedAt = null, now = Date.now }) {
+  const t0 = startedAt ?? now()
   const stateFile = path.join(sb.root, 'journey-state.json')
   const state = json(fs.existsSync(stateFile) ? fs.readFileSync(stateFile, 'utf8') : '') ?? { passed: [], memo: {} }
   const save = () => fs.writeFileSync(stateFile, JSON.stringify(state, null, 2))

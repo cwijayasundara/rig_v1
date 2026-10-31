@@ -129,3 +129,9 @@ test('a reviewer reject with several reasons logs one violation', async () => {
   const w = world({ decision: 'reject' }); await w.run()
   assert.equal(w.log.all().filter(v => v.id === 'J2.reviewer-reject').length, 1)
 })
+
+test('startedAt shares one clock across legs: a leg that starts late is already out of time', async () => {
+  const w = world(); const r = await w.run({ startedAt: Date.now() - 61 * 60_000 })
+  assert.ok(w.log.all().some(v => v.id === 'cap-reached'))
+  assert.ok(r.every(x => x.status === 'not-run'))
+})

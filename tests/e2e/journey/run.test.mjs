@@ -9,8 +9,9 @@ const RUN = path.join(import.meta.dirname, '../run.mjs')
 const go = (extra = []) => {
   const given = extra.indexOf('--out')
   const out = given >= 0 ? extra[given + 1] : fs.mkdtempSync(path.join(os.tmpdir(), 'run-'))
-  const rest = given >= 0 ? extra.filter((_, i) => i !== given && i !== given + 1) : extra
-  const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', RUN, '--driver', 'scripted', '--no-extras', '--no-notify', '--out', out, ...rest], { encoding: 'utf8', env: { ...process.env, NODE_TEST_CONTEXT: '' } })
+  const drv = extra.indexOf('--driver')
+  const rest = (given >= 0 ? extra.filter((_, i) => i !== given && i !== given + 1) : extra).filter((_, i, a) => drv < 0 || (a.indexOf('--driver') !== i && a.indexOf('--driver') + 1 !== i))
+  const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', RUN, '--driver', extra.includes('--driver') ? extra[extra.indexOf('--driver') + 1] : 'scripted', '--no-extras', '--no-notify', '--out', out, ...rest], { encoding: 'utf8', env: { ...process.env, NODE_TEST_CONTEXT: '' } })
   return { out, r }
 }
 
@@ -70,4 +71,17 @@ test('a sandbox inside the rig repo is refused: sessions there cannot write CLAU
   assert.equal(r.status, 2)
   assert.match(r.stderr, /outside the rig repo/)
   assert.ok(!fs.existsSync(inside))
+})
+
+test('live fast mode refuses before spending anything when the approved-chart snapshots were never recorded', () => {
+  const { r } = go(['--driver', 'live', '--cap', '0', '--mode', 'fast', '--recorded', 'synthetic'])
+  assert.equal(r.status, 2)
+  assert.match(r.stderr, /recorded J2 snapshot.*npm run e2e:full -- --record/s)
+})
+
+test('an unknown mode is refused, and --record only works in full mode', () => {
+  assert.equal(go(['--mode', 'nope']).r.status, 2)
+  const rec = go(['--driver', 'live', '--cap', '0', '--mode', 'fast', '--record'])
+  assert.equal(rec.r.status, 2)
+  assert.match(rec.r.stderr, /--record needs --mode full/)
 })

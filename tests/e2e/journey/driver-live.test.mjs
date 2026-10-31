@@ -109,3 +109,19 @@ test('the skeleton ignores Python caches so they never reach a commit', () => {
   const ig = fs.readFileSync(path.join(import.meta.dirname, 'skeleton/.gitignore'), 'utf8')
   for (const p of ['__pycache__/', '.pytest_cache/', '.mypy_cache/', '.ruff_cache/', '.venv/']) assert.ok(ig.split('\n').includes(p), p)
 })
+
+test('blocking chart findings that are not questions get a fix-it continuation naming them', async () => {
+  const f = [{ rule: 'rule-untested', severity: 'block', where: 'AC-4.6' }, { rule: 'req-untested', severity: 'block', where: 'NFR-3' }]
+  const w = world({ sdlc: chartState([f, []]), files: CHART })
+  await journeyDriver({ sb: w.sb, sessions: w.sessions, answersDir }).chart(1, 'docs/prd/p.md')
+  assert.equal(w.runs.length, 2)
+  assert.match(w.runs[1].prompt, /rule-untested@AC-4\.6/)
+  assert.match(w.runs[1].prompt, /req-untested@NFR-3/)
+})
+
+test('blocking findings that never clear end as stuck-on-input after 3 continuations', async () => {
+  const f = [{ rule: 'rule-untested', severity: 'block', where: 'AC-4.6' }]
+  const w = world({ sdlc: args => (args[0] === 'chart' ? { status: 0, stdout: JSON.stringify(f), stderr: '' } : { status: 0, stdout: '', stderr: '' }), files: CHART })
+  await assert.rejects(() => journeyDriver({ sb: w.sb, sessions: w.sessions, answersDir }).chart(1, 'docs/prd/p.md'), /stuck-on-input.*findings/)
+  assert.equal(w.runs.length, 4)
+})

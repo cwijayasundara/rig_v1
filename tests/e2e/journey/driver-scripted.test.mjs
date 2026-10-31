@@ -57,3 +57,11 @@ test('onStageDone is called with each finished stage', async () => {
   await runJourney({ sb, log, rubricDir: path.join(here, 'rubrics'), capUsd: 25, minutes: 60, ...kit, onStageDone: r => seen.push(r.stage) })
   assert.deepEqual(seen, ['J0', 'J1', 'J2', 'J3', 'J4', 'J5', 'J6'])
 })
+
+test('recordStage with snapshot:false writes verdicts but no tarball', () => {
+  const sb = stubSb(); fs.writeFileSync(path.join(sb.dir, 'a.txt'), 'a')
+  const rec = tmp()
+  recordStage({ sb, stage: 'J1', verdicts: [], decision: null, recordedDir: rec, snapshot: false })
+  assert.ok(fs.existsSync(path.join(rec, 'verdicts/J1.json')))
+  assert.ok(!fs.existsSync(path.join(rec, 'snapshots/J1.tar.gz')))
+})

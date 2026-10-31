@@ -59,6 +59,8 @@ export function journeyDriver({ sb, sessions, answersDir = ANSWERS, reviewer = n
     if (open.length) return { kind: 'questions', detail: open.map(f => `${f.rule}@${f.where}`).join(', ') }
     const dir = path.join(sb.dir, sprintDir(n))
     if (files(path.join(dir, 'intents')).length === 0 || !fs.existsSync(path.join(dir, 'chart-review.md')) || files(path.join(dir, 'testplan')).length === 0) return { kind: 'incomplete' }
+    const blocks = found.filter(f => f.severity === 'block')
+    if (blocks.length) return { kind: 'findings', detail: blocks.map(f => `${f.rule}@${f.where}`).join(', ') }
     return { kind: 'none' }
   }
   const requireApproval = async (stage, artefacts, what) => {
@@ -84,6 +86,10 @@ export function journeyDriver({ sb, sessions, answersDir = ANSWERS, reviewer = n
         const p = pending(sprint)
         if (p.kind === 'none') break
         if (i === MAX_CONTINUATIONS) throw new Error(`stuck-on-input: chart ${sprint} still ${p.kind}${p.detail ? ` (${p.detail})` : ''} after ${MAX_CONTINUATIONS} continuations`)
+        if (p.kind === 'findings') {
+          sessions.run(`J-chart-${sprint}-cont${i + 1}`, `/rig-chart ${sprint}\nThe chart check still reports blocking findings: ${p.detail}.\nFix each one: add test cases that cover an untested requirement or rule, or remove a requirement the PRD does not state. Add no new requirements. Then run the chart check again.`, { cont: true })
+          continue
+        }
         const a = p.kind === 'questions' ? answers() : ''
         if (p.kind === 'questions' && !a) throw new Error(`stuck-on-input: chart ${sprint} asks (${p.detail}) and journey/answers has no answer`)
         sessions.run(`J-chart-${sprint}-cont${i + 1}`, `/rig-chart ${sprint}${a ? `\nThe person answers your open questions:\n${a}` : '\nContinue where you stopped and finish the chart.'}`, { cont: true })
