@@ -8,8 +8,8 @@ const json = text => JSON.parse(text)
 const pluginVersion = () => json(fs.readFileSync(path.join(PLUGIN, '.claude-plugin/plugin.json'), 'utf8')).version
 const names = (dir, ext = '') => fs.readdirSync(path.join(PLUGIN, dir)).filter(f => f.endsWith(ext)).map(f => f.slice(0, f.length - ext.length))
 
-// lane: 'greenfield' | 'brownfield'. modules: directory names a brownfield CLAUDE.md map must name.
-export async function assertOnboarding(c, sb, { lane, modules = [] }) {
+// lane: 'greenfield' | 'brownfield' | 'journey' (no stack-specific scaffold check). testCmd: the suite that must pass on main. modules: directory names a brownfield CLAUDE.md map must name.
+export async function assertOnboarding(c, sb, { lane, modules = [], testCmd = ['npm', 'test', '--silent'] }) {
   const claudeMd = sb.read('CLAUDE.md')
   await c.check('CLAUDE.md exists, at most 120 lines', () => (claudeMd !== '' && claudeMd.split('\n').length <= 120) || `${claudeMd.split('\n').length} lines`)
   // init --full rewrites the line to the vendored command, /rig-start, the one the session-start hook and status name.
@@ -57,8 +57,8 @@ export async function assertOnboarding(c, sb, { lane, modules = [] }) {
     const dirty = sb.git('status', '--porcelain')
     return dirty === '' || dirty.split('\n').join('; ')
   })
-  await c.check('npm test passes on main', () => {
-    const r = sb.run('npm', ['test', '--silent'])
+  await c.check(`${testCmd.join(' ')} passes on main`, () => {
+    const r = sb.run(testCmd[0], testCmd.slice(1))
     return r.status === 0 || (r.stdout + r.stderr).trim().split('\n').slice(-3).join(' ')
   })
 
