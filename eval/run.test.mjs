@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { orderArms, runOne, sessionTrace, phasesFor, taskOf } from './run.mjs'
-import { setupBare, BARE_PROMPT_DELTA } from './setup.mjs'
+import { setupBare, BARE_PROMPT_DELTA, BARE_PROMPT_PRICING } from './setup.mjs'
 import { createSandbox } from '../tests/e2e/lib/sandbox.mjs'
 import { EVAL_ALLOW, nextRunAllowed, resultsAllowed } from './lib/cli.mjs'
 import { ARMS } from './arms.mjs'
@@ -109,5 +109,48 @@ test('a dry delta run is accepted with full marks for a rig arm and a bare arm a
   for (const id of ['haiku-rig', 'haiku-bare']) {
     const row = await runOne(ARMS.find(a => a.id === id), 1, { dry: true, out, capRunUsd: 6, variant: 'delta' })
     assert.deepEqual([row.accepted, row.checks, row.of, row.rules.b8, row.rules.b9, row.usd, row.error], [true, 11, 11, 6, true, 0, undefined], JSON.stringify(row))
+  }
+})
+
+// The pricing variant (eval 2026-10-31): B10-B12 on a built B1-B9 shop, a task with many exact rules.
+test('pricing: rig builds B10-B12 as three changes, and every arm starts from the built B1-B9 shop', () => {
+  assert.deepEqual(phasesFor('pricing').map(p => p.id), ['S10', 'S11', 'S12'])
+  const sb = createSandbox({ name: 'pricing-seed', out: fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-seed-')) })
+  setupBare(sb, { dry: true, variant: 'pricing' })
+  for (const f of ['src/orders/orders.js', 'test/rules.test.js', 'test/links.test.js']) assert.ok(fs.existsSync(path.join(sb.dir, f)), f)
+  assert.ok(!fs.existsSync(path.join(sb.dir, 'test/pricing.test.js')) && !/cancelOrder/.test(fs.readFileSync(path.join(sb.dir, 'src/orders/orders.js'), 'utf8')))
+  assert.match(BARE_PROMPT_PRICING, /already[^.]*B1–B9[^]*B10[^]*B11[^]*B12/)
+})
+
+test('a dry pricing run is accepted with full marks (25 of 25) for a rig arm and a bare arm at $0', async () => {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-run-'))
+  for (const id of ['haiku-rig', 'haiku-bare']) {
+    const row = await runOne(ARMS.find(a => a.id === id), 1, { dry: true, out, capRunUsd: 6, variant: 'pricing' })
+    assert.deepEqual([row.accepted, row.checks, row.of, row.pricing?.b10, row.pricing?.b11, row.pricing?.b12, row.usd, row.error], [true, 25, 25, 5, 5, 4, 0, undefined], JSON.stringify(row))
+  }
+})
+
+test('pricing checks: the reference passes all 14, and each plausible slip is caught by the check that names it', async () => {
+  const { pricingChecks } = await import('./variants/pricing.mjs')
+  const build = mutate => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-pricing-'))
+    const sb = { dir }
+    for (const d of ['tests/e2e/fixtures/shop', 'tests/e2e/fixtures/remove', 'eval/variants/links/fixtures', 'eval/variants/rules/fixtures', 'eval/variants/pricing/fixtures']) fs.cpSync(path.resolve(import.meta.dirname, '..', d), dir, { recursive: true })
+    const f = path.join(dir, 'src/orders/orders.js')
+    if (mutate) fs.writeFileSync(f, mutate(fs.readFileSync(f, 'utf8')))
+    return sb.dir
+  }
+  const ref = await pricingChecks(build())
+  assert.deepEqual([ref.b10, ref.b11, ref.b12, ref.failures], [5, 5, 4, []])
+  const slips = {
+    'shipping threshold on the subtotal, not after the discount': [s => s.replace('subtotal - discount >= FREE_SHIPPING_CENTS', 'subtotal >= FREE_SHIPPING_CENTS'), 'b10'],
+    'totalCents includes shipping and tax': [s => s.replace('const totalCents = subtotal - discount', 'const totalCents = subtotal - discount + shippingCents + taxCents'), 'b10'],
+    'tax rounded per order, not per line': [s => s.replace('halfUp((amounts[i] - shares[i]) * TAX_BASIS_POINTS, 10000)', 'Math.floor(((amounts[i] - shares[i]) * TAX_BASIS_POINTS) / 10000)'), 'b10'],
+    'a failed checkout still uses the coupon up': [s => s.replace("  if (code && used.has(`${customer}|${code}`)) throw", "  if (code) used.add(`${customer}|${code}`)\n  if (code && used.has(`${customer}|${code}`)) throw"), 'b11'],
+    'cancel does not free the coupon': [s => s.replace("  if (entry.order.code) used.delete(`${entry.order.customer}|${entry.order.code}`)\n", ''), 'b12'],
+  }
+  for (const [name, [mutate, group]] of Object.entries(slips)) {
+    const r = await pricingChecks(build(mutate))
+    assert.ok(r[group] < ref[group], `${name}: ${group} still ${r[group]}`)
   }
 })

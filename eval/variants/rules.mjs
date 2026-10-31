@@ -27,7 +27,7 @@ export function briefFor(base) {
     .replace('B7: unit tests in test/links.test.js.', 'B7: unit tests in test/links.test.js. B8–B9: unit tests in test/rules.test.js.')
 }
 
-const stateOf = (id, slug, title, behaviour, prompt, files, tests, impl, commit) => ({
+export const stateOf = (id, slug, title, behaviour, prompt, files, tests, impl, commit) => ({
   id, slug, type: 'feature', title, prompt,
   intent: { problem: files.problem, outcome: `${behaviour.id} of the brief holds and the earlier behaviour is unchanged.`, nonGoals: 'Persistence, payment, new HTTP routes.' },
   spec: `# Spec: ${title}\n\n## Behaviours\n- ${behaviour.id}: ${behaviour.text}\n\n## Out of scope\n- New HTTP routes.\n\n## Open questions\nnone\n`,
@@ -57,8 +57,9 @@ export function dryOverlay(sb) {
 }
 
 // Hidden acceptance for B8 and B9: module imports in a fresh process. Each check returns true or a message the brief explains.
-const load = (repo, rel) => import(`${pathToFileURL(path.join(repo, rel)).href}?t=${Date.now()}`)
-const throwsWith = (fn, re) => { try { fn() } catch (e) { return re.test(e.message) } return false }
+let loads = 0 // two checks in one millisecond must not share a module instance (and its state)
+export const load = (repo, rel) => import(`${pathToFileURL(path.join(repo, rel)).href}?t=${Date.now()}-${loads++}`)
+export const throwsWith = (fn, re) => { try { fn() } catch (e) { return re.test(e.message) } return false }
 
 async function modules(repo) {
   const { Catalog } = await load(repo, 'src/catalog/products.js')

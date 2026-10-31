@@ -1,4 +1,4 @@
-// The eval runner (spec §9): node eval/run.mjs [--arms all|a,b] [--runs 10] [--seed N] [--variant links|rules|delta] [--cap-run 6] [--cap-total 300] [--out DIR] [--results FILE] [--dry]
+// The eval runner (spec §9): node eval/run.mjs [--arms all|a,b] [--runs 10] [--seed N] [--variant links|rules|delta|pricing] [--cap-run 6] [--cap-total 300] [--out DIR] [--results FILE] [--dry]
 // Live runs cost money and are started by a person; --dry replays fixtures at $0 and never writes under eval/results.
 import fs from 'node:fs'
 import os from 'node:os'
@@ -14,9 +14,10 @@ import { PHASE as S3 } from '../tests/e2e/phases/s3-delete.mjs'
 import { EVAL_ALLOW, arg, nextRunAllowed, resultsAllowed } from './lib/cli.mjs'
 import { armsFrom } from './arms.mjs'
 import { scoreRun } from './score.mjs'
-import { setupBare, setupRig, dryBare, BARE_PROMPT, BARE_PROMPT_LINKS, BARE_PROMPT_RULES, BARE_PROMPT_DELTA } from './setup.mjs'
+import { setupBare, setupRig, dryBare, BARE_PROMPT, BARE_PROMPT_LINKS, BARE_PROMPT_RULES, BARE_PROMPT_DELTA, BARE_PROMPT_PRICING } from './setup.mjs'
 import { PHASE as S7 } from './variants/links.mjs'
 import { PHASE_S8 as S8, PHASE_S9 as S9 } from './variants/rules.mjs'
+import { PHASE_S10 as S10, PHASE_S11 as S11, PHASE_S12 as S12 } from './variants/pricing.mjs'
 
 const RESULTS = path.resolve(import.meta.dirname, 'results')
 
@@ -28,7 +29,7 @@ export function orderArms(arms, seed, n) {
   return arms.map(a => [rand(), a]).sort((a, b) => a[0] - b[0]).map(([, a]) => a)
 }
 
-const PHASES = { links: [S2, S3, S7], rules: [S2, S3, S7, S8, S9], delta: [S8, S9] }
+const PHASES = { links: [S2, S3, S7], rules: [S2, S3, S7, S8, S9], delta: [S8, S9], pricing: [S10, S11, S12] }
 export const phasesFor = variant => PHASES[variant] ?? [S2, S3]
 // delta is the rules task from a built B1–B7 shop: it is briefed, prompted and scored as rules.
 export const taskOf = variant => (variant === 'delta' ? 'rules' : variant)
@@ -68,7 +69,7 @@ export async function runOne(arm, n, { dry, out, capRunUsd, failAt, seed = null,
       base = setupBare(sb, { dry, variant })
       if (dry) dryBare(sb, { variant })
       if (failAt) throw new Error(`injected failure at ${failAt}`)
-      if (!dry) sessions.run('bare', { links: BARE_PROMPT_LINKS, rules: BARE_PROMPT_RULES, delta: BARE_PROMPT_DELTA }[variant] ?? BARE_PROMPT)
+      if (!dry) sessions.run('bare', { links: BARE_PROMPT_LINKS, rules: BARE_PROMPT_RULES, delta: BARE_PROMPT_DELTA, pricing: BARE_PROMPT_PRICING }[variant] ?? BARE_PROMPT)
     }
   } catch (err) {
     row.error = String(err?.message ?? err).split('\n')[0]
@@ -102,7 +103,7 @@ if (process.argv[1] === import.meta.filename) {
   const retries = Number(arg('retries', 1)) // reruns of a run the machine slept through
   fs.mkdirSync(path.dirname(results), { recursive: true })
   const variant = arg('variant', null)
-  if (variant && !['links', 'rules', 'delta'].includes(variant)) { console.error('--variant must be: links, rules or delta'); process.exit(2) }
+  if (variant && !['links', 'rules', 'delta', 'pricing'].includes(variant)) { console.error('--variant must be: links, rules, delta or pricing'); process.exit(2) }
   const seed = Number(arg('seed', Date.now() % 1_000_000))
   if (!Number.isInteger(seed) || seed < 0) { console.error('--seed must be a non-negative integer'); process.exit(2) }
   console.log(`arm order seed ${seed} (pass --seed ${seed} to repeat it)`)
