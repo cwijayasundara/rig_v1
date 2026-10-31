@@ -5,43 +5,43 @@
    "id": "J0.1",
    "verdict": "pass",
    "severity": "block",
-   "evidence": "`grep -c \"\" CLAUDE.md` printed 59. CLAUDE.md line 3 reads \"sdlc routes all work in this repo: start with /rig-start\".",
-   "note": "The file is 59 lines, under the 120 limit, and routes work to /rig-start."
+   "evidence": "wc -l CLAUDE.md = 55; CLAUDE.md:3 'sdlc routes all work in this repo: start with /rig-start'",
+   "note": "Under 120 lines and routes to /rig-start."
   },
   {
    "id": "J0.2",
    "verdict": "pass",
    "severity": "block",
-   "evidence": ".rig/sensors.json: unit cmd is \"pytest -q\", lint cmd is \"ruff check ...\", types cmd is \"mypy ...\". The other sensors are jscpd (duplication), semgrep (sast), pip-audit (audit) and mutmut (mutation).",
-   "note": "The unit sensor runs pytest, and lint and types use ruff and mypy. The other sensors are acceptable."
+   "evidence": ".rig/sensors.json:37 unit cmd 'pytest -q'; :23 lint 'ruff check ...'; :30 types 'mypy ...'; stack:python (line 2)",
+   "note": "Unit, lint and types sensors use pytest, ruff and mypy. jscpd and semgrep are the language-agnostic extras."
   },
   {
    "id": "J0.3",
    "verdict": "pass",
    "severity": "block",
-   "evidence": "`git diff c728e7a HEAD -- pyproject.toml src/library/__init__.py tests/test_smoke.py` printed nothing.",
-   "note": "The three skeleton files are identical to the first commit."
+   "evidence": "git diff 067b173 HEAD --stat -- pyproject.toml src/library/__init__.py tests/test_smoke.py produced empty output",
+   "note": "The three skeleton files are unchanged from the first commit 067b173."
   },
   {
    "id": "J0.4",
    "verdict": "pass",
    "severity": "block",
-   "evidence": "`git diff --stat c728e7a HEAD` lists 154 files, all under .claude, .claude-plugin, .github/workflows/rig-check.yml and rig-maintain.yml, .rig, AGENTS.md, CLAUDE.md, README.md, REVIEW.md and docs/prd/README.md. Nothing is under src/ or tests/. The .rig/templates/slices/python/files entries are rig templates, not repo source.",
-   "note": "Only harness paths changed. The src/ and tests/ paths in the stat output are all under .rig/templates."
+   "evidence": "git diff --stat 067b173 HEAD lists 154 files, all under .claude, .claude-plugin, .github/workflows/rig-check.yml, .github/workflows/rig-maintain.yml, .rig, AGENTS.md, CLAUDE.md, README.md, REVIEW.md, docs/prd/README.md",
+   "note": "Nothing under src/ or tests/ changed. The only src/ and tests/ paths in the diff are templates under .rig/templates/slices."
   },
   {
    "id": "J0.5",
    "verdict": "pass",
    "severity": "warn",
-   "evidence": "CLAUDE.md names `src/library/` and `tests/` in the Map section. The Commands section gives `pytest -q`, `ruff check src tests` and `mypy --exclude ...`.",
-   "note": "The layout and commands are the real Python ones, not generic or Node."
+   "evidence": "CLAUDE.md Map: '`src/library/`', '`tests/`'; Commands: 'Test: `pytest -q`', 'ruff check .', mypy",
+   "note": "Layout and test command are specific to this Python repo, with no Node references."
   },
   {
    "id": "J0.6",
-   "verdict": "pass",
+   "verdict": "warn",
    "severity": "warn",
-   "evidence": "A grep of .rig for knownRed found it only in the rig code (.rig/bin/registry.ts:61 defaults it to []). .rig/sensors.json has no knownRed entry. CLAUDE.md says semgrep, pip-audit, mutmut and lint-imports may be missing locally and are reported, not blocking.",
-   "note": "No sensors are recorded as known-red. The tools CLAUDE.md names as possibly absent are plausible ones."
+   "evidence": "No knownRed key in .rig/sensors.json (full file read, lines 1-79). The only knownRed hits are descriptive text in README.md:27 and .claude/skills/rig-init/SKILL.md:53",
+   "note": "No known-red sensors are recorded, so there is nothing to judge. This is consistent with a clean baseline, but I did not run the baseline to confirm it."
   }
  ]
 }

@@ -29,12 +29,14 @@ test('a seeded-bad set exits 1 and violations.md names the expected id', () => {
   assert.match(r.stdout, /open violation/)
 })
 
-test('an accepted violation quiets the alert, but a halted run still exits 1', () => {
+test('an accepted violation is logged but neither alerts, halts nor fails the run', () => {
   const triage = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'tri-')), 'triage.json')
   fs.writeFileSync(triage, JSON.stringify({ 'J1.1': { decision: 'accept', reason: 'known' } }))
-  const { r } = go(['--recorded', 'bad/chart-missing-ac', '--triage', triage])
-  assert.equal(r.status, 1, 'an accepted violation quiets the alert but a halted run is still not green')
+  const { out, r } = go(['--recorded', 'bad/chart-missing-ac', '--triage', triage])
+  assert.equal(r.status, 0, r.stdout + r.stderr)
   assert.doesNotMatch(r.stdout, /1 open violation/)
+  assert.match(fs.readFileSync(path.join(out, 'violations.md'), 'utf8'), /## Accepted \(1\)/)
+  assert.match(fs.readFileSync(path.join(out, 'report.md'), 'utf8'), /## J6: pass/)
 })
 
 test('--from resumes a kept sandbox and runs only the later stages', () => {

@@ -15,7 +15,7 @@ const rubricDir = (() => {
 })()
 
 // Fakes: a stage table with simple acts and gates, a sandbox whose `ready` list shrinks as intents are built.
-function world({ gateFail = {}, verdict = () => 'pass', actThrows = {}, decision = 'approve', intentsReady = [['a', 1], ['b', 1], ['c', 1], ['d', 2], ['e', 2]], spent = () => 0 } = {}) {
+function world({ gateFail = {}, triage = {}, verdict = () => 'pass', actThrows = {}, decision = 'approve', intentsReady = [['a', 1], ['b', 1], ['c', 1], ['d', 2], ['e', 2]], spent = () => 0 } = {}) {
   const calls = []
   const ready = intentsReady.map(([slug, sprint]) => ({ slug, sprint }))
   const sb = { root: tmp(), dir: tmp(), sdlc: args => (args[0] === 'ready' ? { status: 0, stdout: JSON.stringify(ready), stderr: '' } : { status: 0, stdout: '', stderr: '' }) }
@@ -24,7 +24,7 @@ function world({ gateFail = {}, verdict = () => 'pass', actThrows = {}, decision
   const stages = ['J0', 'J1', 'J2', 'J3', 'J4', 'J5', 'J6'].map(id => mk(id, id === 'J2' || id === 'J5' ? { approve: true, act: async () => { driver.approveChart(id) } } : id === 'J3' || id === 'J6' ? { perIntent: true, sprint: id === 'J3' ? 1 : 2 } : {}))
   const inspector = { inspect: async ({ stage, rubric }) => { calls.push(`inspect:${stage}`); return { items: rubric.map(r => ({ id: r.id, verdict: verdict(r.id), severity: r.severity, evidence: 'e', note: 'n' })), problems: [], costUsd: 0.1 } } }
   const reviewer = { review: async ({ stage }) => { calls.push(`review:${stage}`); return { decision, reasons: decision === 'reject' ? ['bad chart', 'second reason'] : [], costUsd: 0.1 } } }
-  const log = createViolationLog({ dir: tmp(), run: 'r', sandbox: sb.dir, triage: {} })
+  const log = createViolationLog({ dir: tmp(), run: 'r', sandbox: sb.dir, triage })
   return { sb, driver, inspector, reviewer, log, stages, calls, run: (o = {}) => runJourney({ sb, driver, inspector, reviewer, log, rubricDir, stages, capUsd: 25, minutes: 60, ...o }) }
 }
 
@@ -134,4 +134,19 @@ test('startedAt shares one clock across legs: a leg that starts late is already 
   const w = world(); const r = await w.run({ startedAt: Date.now() - 61 * 60_000 })
   assert.ok(w.log.all().some(v => v.id === 'cap-reached'))
   assert.ok(r.every(x => x.status === 'not-run'))
+})
+
+test('a block verdict the person has accepted is still logged but does not halt the journey', async () => {
+  const w = world({ verdict: id => (id === 'J1.1' ? 'fail' : 'pass'), triage: { 'J1.1': { decision: 'accept', reason: 'known' } } })
+  const r = await w.run()
+  assert.equal(r[1].status, 'warn')
+  assert.deepEqual(r.map(x => x.status).slice(2), Array(5).fill('pass'))
+  assert.deepEqual(w.log.accepted().map(v => v.id), ['J1.1'])
+})
+
+test('a block verdict triaged as fix still halts the journey', async () => {
+  const w = world({ verdict: id => (id === 'J1.1' ? 'fail' : 'pass'), triage: { 'J1.1': { decision: 'fix' } } })
+  const r = await w.run()
+  assert.equal(r[1].status, 'fail')
+  assert.equal(r[2].status, 'not-run')
 })

@@ -43,3 +43,8 @@ test('loadTriage returns {} for a missing file or invalid JSON', () => {
   assert.deepEqual(loadTriage(path.join(dir, 'missing.json')), {})
   assert.deepEqual(loadTriage(path.join(dir, 'bad.json')), {})
 })
+
+test('isQuiet is true for accept and wontfix, false for fix and for unknown ids', () => {
+  const log = createViolationLog({ dir: tmp(), run: 'r', sandbox: '/sb', triage: { A: { decision: 'accept' }, B: { decision: 'wontfix' }, C: { decision: 'fix' } } })
+  assert.deepEqual(['A', 'B', 'C', 'D'].map(id => log.isQuiet(id)), [true, true, false, false])
+})

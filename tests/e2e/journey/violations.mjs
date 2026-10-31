@@ -22,6 +22,7 @@ export function createViolationLog({ dir, run, sandbox, triage = {} }) {
       fs.appendFileSync(file, JSON.stringify(v) + '\n')
       return v
     },
+    isQuiet: id => QUIET.has(triage[id]?.decision),
     all: () => [...list],
     open: () => list.filter(v => !quiet(v)),
     accepted: () => list.filter(quiet),

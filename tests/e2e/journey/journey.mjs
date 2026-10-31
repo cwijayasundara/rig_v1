@@ -76,7 +76,8 @@ export async function runJourney({ sb, driver, inspector, reviewer, log, rubricD
       extra += v.costUsd ?? 0
       r.verdicts = v.items
       for (const it of v.items.filter(i => i.verdict !== 'pass')) viol(stage.id, it.id, it.severity, it.evidence, it.note)
-      const block = v.items.some(i => i.verdict === 'fail' && i.severity === 'block')
+      // A block the person has already triaged as accept or wontfix is logged and quiet: it no longer stops the journey.
+      const block = v.items.some(i => i.verdict === 'fail' && i.severity === 'block' && !log.isQuiet?.(i.id))
       r.status = block ? 'fail' : v.items.some(i => i.verdict !== 'pass') ? 'warn' : 'pass'
       if (block) halted = stage.id
     }

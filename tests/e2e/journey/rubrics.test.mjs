@@ -65,3 +65,8 @@ test('J1.1 expects the ledger to hold acceptance criteria, data rules and NFRs, 
   assert.match(line, /through their (ACs|acceptance criteria)/)
   assert.doesNotMatch(line, /FR-1\.\.FR-5 and every AC/)
 })
+
+test('J0.6 treats no known-red sensors as a pass', () => {
+  const line = read('J0').split('\n').find(l => l.startsWith('- J0.6'))
+  assert.match(line, /none recorded is a pass/i)
+})
