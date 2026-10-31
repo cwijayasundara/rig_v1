@@ -37,7 +37,7 @@ export const sessionTrace = sessions => sessions.map(s => ({
   usd: Number(s.costUsd.toFixed(4)), turns: s.turns,
   denied: s.denials.map(d => `${d.tool_name}: ${String(d.tool_input?.command ?? d.tool_input?.file_path ?? d.tool_input?.skill ?? '').slice(0, 80)}`),
   agents: s.agents, skills: s.skills,
-  models: Object.fromEntries(Object.entries(s.models).map(([m, v]) => [m.replace(/^claude-/, '').replace(/-\d.*$/, ''), Number(v.costUsd.toFixed(4))])),
+  models: s.models && Object.entries(s.models).reduce((o, [m, v]) => { const k = m.replace(/^claude-/, '').replace(/-\d.*$/, ''); o[k] = Number(((o[k] ?? 0) + v.costUsd).toFixed(4)); return o }, {}),
 }))
 
 export async function runOne(arm, n, { dry, out, capRunUsd, failAt, seed = null, position = null, variant = null }) {

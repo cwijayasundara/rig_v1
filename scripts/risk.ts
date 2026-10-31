@@ -9,6 +9,16 @@ import { parseAccess, type AccessRule } from './chartcheck.ts'
 import { branchDiff } from './diffs.ts'
 import { activeSlug } from './lifecycle.ts'
 import { archPath } from './product.ts'
+import { isHarnessPath } from './vendor.ts'
+
+const SHARED = ['.rig/waivers.jsonl', '.rig/autonomy.json', '.rig/.gitignore', '.rig/sensors.json', '.rig/rules.json', '.rig/product/brief.md', '.rig/wiki.json']
+const SHARED_DIRS = ['.rig/guides/', '.rig/wiki/']
+// Only the sprint approval rides along by pattern; the plan, the carried files, the backlog and the additions ship when this run wrote them.
+const SHARED_RE = /^\.rig\/product\/sprints\/sprint-\d+\/approval\.json$/
+// What a PR for this change carries under .rig/: its own record and the shared files; the rest of .rig/ stays local.
+// A vendored harness file never rides along: a rig upgrade left uncommitted ended up in a feature commit (shop_app 2026-10-27).
+// pr-outline.md is embedded in pr-body.md, which ships; storing both kept the text twice.
+export const ships = (slug: string) => (f: string): boolean => !isHarnessPath(f) && !f.endsWith(`/${slug}/pr-outline.md`) && (!f.startsWith('.rig/') || f.startsWith(`.rig/changes/${slug}/`) || SHARED_DIRS.some(d => f.startsWith(d)) || SHARED_RE.test(f) || SHARED.includes(f))
 
 export type Risk = { tier: 0 | 1 | 2; reasons: string[] }
 type RiskInput = { files: string[]; lines: number; slugs: string[]; read: (slug: string, name: string) => string; access: AccessRule[]; risk: Registry['risk']; contractGlobs: string[]; ci: boolean; preReview?: boolean }
@@ -64,9 +74,12 @@ export function riskOf(diffs: FileDiff[], slugs: string[], registry: Registry, a
 export const formatRisk = (r: Risk): string => [`tier: ${r.tier}`, ...r.reasons.map(x => `- ${x}`)].join('\n')
 
 export function cmdRisk(args: Args): void {
-  const slug = args.pos[0] ? checkSlug(args.pos[0]) : activeSlug()
+  // `--pre-review <slug>` parses the slug as the flag's value; it is still the slug.
+  const pre = args.opt['pre-review']
+  const pos = typeof pre === 'string' ? [pre, ...args.pos] : args.pos
+  const slug = pos[0] ? checkSlug(pos[0]) : activeSlug()
   const base = optString(args, 'base') ?? (slug ? readJson<{ base?: string } | null>(path.join(CHANGES, slug, 'verify.json'), null)?.base : undefined) ?? defaultBase() ?? 'HEAD'
-  const r = riskOf(branchDiff(base), slug ? [slug] : [], parseRegistry(read(path.join(ROOT, SENSORS_JSON))).registry, parseAccess(read(archPath)), false, Boolean(args.opt['pre-review']))
+  const r = riskOf(slug ? branchDiff(base).filter(d => ships(slug)(d.file)) : branchDiff(base), slug ? [slug] : [], parseRegistry(read(path.join(ROOT, SENSORS_JSON))).registry, parseAccess(read(archPath)), false, Boolean(pre))
   out(args.opt.json ? JSON.stringify(r) : formatRisk(r))
 }
 

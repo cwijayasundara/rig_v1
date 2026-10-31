@@ -79,3 +79,8 @@ test('sessionTrace: one entry per session with its label, cost, turns, denied to
     { label: 's8-build', usd: 1.2346, turns: 3, denied: [], agents: [], skills: [], models: {} },
   ])
 })
+
+test('sessionTrace: two model ids of one family add up under one name', () => {
+  const [row] = sessionTrace([{ file: '/x/00-a.jsonl', costUsd: 1, turns: 1, denials: [], agents: [], skills: [], models: { 'claude-sonnet-5-5': { costUsd: 0.25 }, 'claude-sonnet-4-5': { costUsd: 0.5 } } }])
+  assert.deepEqual(row.models, { sonnet: 0.75 })
+})
