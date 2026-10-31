@@ -64,7 +64,10 @@ export function liveDriver(sb, phase, { sessions }) {
     async plan(slug) {
       // /rig-start carries on into the plan in the same turn when it can; a person does not type /rig:plan over a plan that is written and reviewed.
       const has = f => (sb.read?.(`.rig/changes/${slug}/${f}`) ?? '') !== ''
-      if (has('plan.md') && has('plan-review.md')) return
+      // A light plan with no contracts is never evaluated (skills/plan step 5), so plan-review.md is only expected of a full or contract plan.
+      const contracts = /^## Contracts\n(?:\s*\n)*- /m.test(sb.read?.(`.rig/changes/${slug}/plan.md`) ?? '')
+      const light = JSON.parse(sb.sdlc?.(['weight', slug, '--json']).stdout || '{}').weight === 'light'
+      if (has('plan.md') && (has('plan-review.md') || (light && !contracts))) return
       sessions.run(`${phase.id}-plan`, `/rig-plan ${slug}. Write plan.md, then stop for the person's approval.`, { cont: true })
     },
     // The person's reply to open questions, the same words for every arm: take your recommended default and carry on.

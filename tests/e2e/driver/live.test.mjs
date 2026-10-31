@@ -233,9 +233,9 @@ test('a result with no modelUsage: its cost is still a running total, but its us
 
 // A person types /rig:plan only when there is no plan yet. /rig-start carries on into the plan in the same turn when it can, and the
 // plan skill writes plan.md and the evaluator's plan-review.md; a separate plan session after that does nothing but cost a start-up.
-const planSb = files => {
+const planSb = (files, weight = 'light') => {
   const prompts = []
-  return { prompts, run: (cmd, args) => { prompts.push(args[1]); return { status: 0, stdout: result(0.1), stderr: '' } }, read: rel => files[rel] ?? '' }
+  return { prompts, run: (cmd, args) => { prompts.push(args[1]); return { status: 0, stdout: result(0.1), stderr: '' } }, read: rel => files[rel] ?? '', sdlc: () => ({ status: 0, stdout: JSON.stringify({ weight, reasons: [] }) }) }
 }
 const planned = ['plan.md', 'plan-review.md']
 
@@ -245,9 +245,15 @@ test('plan(): no session when start already wrote plan.md and the evaluator\'s p
   assert.deepEqual(sb.prompts, [])
 })
 
-test('plan(): a session when plan.md is missing, or the plan was written but never reviewed', async () => {
-  for (const files of [{}, { '.rig/changes/c/plan.md': 'x' }]) {
-    const sb = planSb(files)
+// A light plan with no contracts gets no evaluator pass (skills/plan step 5), so it never has a plan-review.md; it is still a finished plan.
+test('plan(): no session for a light plan with no contracts and no plan-review.md', async () => {
+  const sb = planSb({ '.rig/changes/c/plan.md': '# Plan\n\n## Contracts\nnone\n' })
+  await liveDriver(sb, { id: 'PX', prompt: '/rig-start x' }, { sessions: createSessions({ sb, out: out(), capUsd: 6 }) }).plan('c')
+  assert.deepEqual(sb.prompts, [])
+})
+
+test('plan(): a session when plan.md is missing, or a full or contract plan was written but never reviewed', async () => {
+  for (const sb of [planSb({}), planSb({ '.rig/changes/c/plan.md': 'x' }, 'full'), planSb({ '.rig/changes/c/plan.md': '# Plan\n\n## Contracts\n- api/openapi.yaml\n' })]) {
     await liveDriver(sb, { id: 'PX', prompt: '/rig-start x' }, { sessions: createSessions({ sb, out: out(), capUsd: 6 }) }).plan('c')
     assert.equal(sb.prompts.length, 1)
     assert.match(sb.prompts[0], /^\/rig-plan c\./)
