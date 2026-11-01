@@ -24,12 +24,12 @@ export function estimateUsd(pages: number, sourceChars: number): number {
 
 // The real runner: a one-shot `claude -p` (prompt on stdin: sources can exceed an argv element) with no tools (the prompt carries the sources) and user settings only, so a target repo's
 // CLAUDE.md, hooks and plugins add nothing (measured 2026-10-17: $0.06 a call with them, $0.0005 without). Cost comes from its JSON result.
-// `opts.tools` turns tools on (the review eval's tools arm), run from `opts.cwd`; the default is no tools.
-export function claudeRunner(model: string = WIKI_MODEL, opts: { tools?: string; cwd?: string } = {}): Runner {
+// `opts.tools` turns tools on (the review eval's tools arm), `opts.allowed` limits what they may run, from `opts.cwd`; the default is no tools.
+export function claudeRunner(model: string = WIKI_MODEL, opts: { tools?: string; allowed?: string; cwd?: string } = {}): Runner {
   return ({ prompt }) => {
     const bin = process.env.RIG_CLAUDE || 'claude'
     const env = cleanClaudeEnv()
-    const c = spawnSync(bin, ['-p', '--output-format', 'json', '--model', model, '--tools', opts.tools ?? '', '--setting-sources', 'user', '--disable-slash-commands', '--no-session-persistence'], { input: prompt, env, cwd: opts.cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 600_000 })
+    const c = spawnSync(bin, ['-p', '--output-format', 'json', '--model', model, '--tools', opts.tools ?? '', ...(opts.allowed ? ['--allowedTools', opts.allowed] : []), '--setting-sources', 'user', '--disable-slash-commands', '--no-session-persistence'], { input: prompt, env, cwd: opts.cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 600_000 })
     if ((c.error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT') throw new Error(`${bin} not found: install Claude Code`)
     if (c.error) throw new Error(`${bin} did not finish: ${c.error.message}`)
     if (c.status !== 0) throw new Error(`${bin} exited ${c.status}: ${(c.stderr ?? '').trim().split('\n').slice(-2).join(' ')}`)

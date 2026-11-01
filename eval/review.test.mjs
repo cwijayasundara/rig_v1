@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { CASES, buildPrompt, scoreReview, summarize, renderMarkdown, ARMS, DEFAULT_ARMS, reprosOf, repoFor as ctxFor, baseOf } from './review.mjs'
+import { CASES, buildPrompt, scoreReview, summarize, renderMarkdown, ARMS, DEFAULT_ARMS, reprosOf, runRepros, repoFor as ctxFor, baseOf } from './review.mjs'
 
 // The cart cases run Python and pytest; a machine without them skips those tests, by name, rather than failing the suite.
 const has = (...cmd) => { try { execFileSync(cmd[0], cmd.slice(1), { stdio: 'pipe' }); return true } catch { return false } }
@@ -184,4 +184,21 @@ test('--arms clean,tools --dry runs, reports the tools row, and writes nothing u
   assert.match(text, /tools/)
   assert.match(text, /findings with a Repro/)
   fs.rmSync(out, { force: true })
+})
+
+test('runRepros runs a repro in the case dir with a minimal env, and refuses one that names an absolute path or leaves the dir', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-repro-'))
+  const f = cmd => `## Findings\n- [severity: high] [category: tests] a.js:1: p. Repro: ${cmd} → f\n`
+  assert.deepEqual(runRepros(f('node -e "process.exit(1)"'), dir), { fails: 1, unrun: 0 })
+  assert.deepEqual(runRepros(f('node -e "process.exit(0)"'), dir), { fails: 0, unrun: 0 })
+  assert.deepEqual(runRepros(f('cat /etc/hosts'), dir), { fails: 0, unrun: 1 })
+  assert.deepEqual(runRepros(f('cat ../x'), dir), { fails: 0, unrun: 1 })
+  assert.deepEqual(runRepros(f('node -e "process.exit(require(\'fs\').realpathSync(process.env.HOME) === require(\'fs\').realpathSync(process.cwd()) ? 1 : 0)"'), dir), { fails: 1, unrun: 0 }, 'HOME is the case dir')
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('the tools arm prompt lists the files the delta changes', () => {
+  const c = CASES[0], ctx = ctxFor(c)
+  for (const f of ctx.changed) assert.ok(buildPrompt(c, 'tools', ctx).includes(f), f)
+  fs.rmSync(ctx.dir, { recursive: true, force: true })
 })

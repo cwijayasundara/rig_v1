@@ -49,7 +49,7 @@ export function buildPrompt(c, arm, { diff, dir, changed }) {
     const brief = fs.readFileSync(path.join(ROOT, 'templates/review-brief.md'), 'utf8')
       .replace(/Inputs\. Read them yourself[\s\S]*?(?=\nReview for)/, 'Your working directory is the repository: read the delta with `git diff <base>`, and every file the delta touches. The intent, spec and plan are below.\n')
       .replace(/<base>/g, 'main').replace(/<slug>/g, c.slug)
-    return [brief, `## intent.md\n${c.intent}`, `## spec.md\n${c.spec}`, `## plan.md\n${c.plan}`].join('\n\n')
+    return [brief, `## Files the delta changes\n${changed.map(f => `- ${f}`).join('\n')}`, `## intent.md\n${c.intent}`, `## spec.md\n${c.spec}`, `## plan.md\n${c.plan}`].join('\n\n')
   }
   const brief = fs.readFileSync(path.join(ROOT, 'templates/review-brief.md'), 'utf8')
     .replace(/Inputs\. Read them yourself[\s\S]*?(?=\nReview for)/, 'Everything you may use is below; you have no tools.\n')
@@ -82,8 +82,16 @@ export const reprosOf = text => {
   const section = /^## Findings[ \t]*\n([\s\S]*?)(?=^## |(?![\s\S]))/m.exec(text)?.[1] ?? ''
   return section.split('\n').filter(l => FINDING.test(l)).flatMap(l => REPRO.exec(l)?.[1] ?? [])
 }
-// Run in the throwaway copy the case was staged in, never in this repo. A repro that still fails there reproduces the seeded defect.
-const runRepros = (text, dir) => reprosOf(text).filter(cmd => spawnSync(cmd, { shell: true, cwd: dir, timeout: 60_000, stdio: 'ignore' }).status !== 0).length
+// Run in the throwaway copy the case was staged in, with HOME and PATH only, never in this repo. A command that names an absolute path or
+// leaves the directory is not run (unrun); one that still fails there reproduces the seeded defect (fails).
+export const runRepros = (text, dir) => {
+  let fails = 0, unrun = 0
+  for (const cmd of reprosOf(text)) {
+    if (/(^|[\s"'=])(\/|~|[A-Za-z]:[\\/])|\.\.[\\/]/.test(cmd)) { unrun++; continue }
+    if (spawnSync(cmd, { shell: true, cwd: dir, timeout: 60_000, stdio: 'ignore', env: { PATH: process.env.PATH, HOME: dir } }).status !== 0) fails++
+  }
+  return { fails, unrun }
+}
 
 // A group is an arm, or an arm and a model once the rows hold more than one model.
 export const groups = rows => {
@@ -137,7 +145,9 @@ if (process.argv[1] === import.meta.filename) {
     return { text: !c || c.control || c.hard || blind ? 'verdict: pass\n## Findings\n' : `verdict: changes-needed\n## Findings\n- [severity: high] [category: correctness] ${[c.defects[0].file].flat()[0]}:1: ${c.id} ${c.defects[0].re.source.split('|')[0]}. Fails when: used.${arm === 'tools' ? ' Repro: node -e "process.exit(1)"' : ''} → fix\n`, usd: 0 }
   }
   const runners = Object.fromEntries(models.map(m => [m, dry ? dryRunner : claudeRunner(m)]))
-  const runnerFor = (model, arm, repo) => (dry || arm !== 'tools' ? runners[model] : claudeRunner(model, { tools: 'Bash,Read,Grep,Glob', cwd: repo.dir }))
+  // A tools-arm reviewer may write to the repo it reads, so it gets its own copy of the case: no other arm or model sees its changes.
+  const READONLY = 'Read,Grep,Glob,Bash(git diff:*),Bash(git show:*),Bash(git log:*),Bash(git blame:*),Bash(git status:*),Bash(node --test:*),Bash(python3 -m pytest:*)'
+  const runnerFor = (model, arm, dir) => (dry || arm !== 'tools' ? runners[model] : claudeRunner(model, { tools: 'Bash,Read,Grep,Glob', allowed: READONLY, cwd: dir }))
   fs.mkdirSync(path.dirname(results), { recursive: true })
   let spent = 0
   runs: for (let n = 1; n <= runs; n++) for (const c of CASES.filter(x => !only || (x.base ?? 'shop') === only)) {
@@ -145,7 +155,9 @@ if (process.argv[1] === import.meta.filename) {
     for (const model of models) for (const arm of arms) {
       if (!dry && spent >= maxUsd) { console.log(`stopped at the cap: $${spent.toFixed(2)} of $${maxUsd}`); fs.rmSync(repo.dir, { recursive: true, force: true }); break runs }
       const row = { case: c.id, arm, model, run: n, control: Boolean(c.control), hard: Boolean(c.hard), defects: c.defects.length, at: new Date().toISOString() }
-      try { const r = runnerFor(model, arm, repo)({ role: 'review', prompt: buildPrompt(c, arm, repo), case: c, arm }); spent += r.usd; Object.assign(row, scoreReview(r.text, c.defects), { usd: r.usd, text: r.text }, arm === 'tools' ? { reproFails: runRepros(r.text, repo.dir) } : {}) } catch (e) { Object.assign(row, { failed: true, error: String(e.message).split('\n')[0] }) }
+      const own = arm === 'tools' && !dry ? repoFor(c) : repo, runDir = own.dir
+      try { const r = runnerFor(model, arm, runDir)({ role: 'review', prompt: buildPrompt(c, arm, own), case: c, arm }); spent += r.usd; Object.assign(row, scoreReview(r.text, c.defects), { usd: r.usd, text: r.text }, arm === 'tools' ? (({ fails, unrun }) => ({ reproFails: fails, reproUnrun: unrun }))(runRepros(r.text, runDir)) : {}) } catch (e) { Object.assign(row, { failed: true, error: String(e.message).split('\n')[0] }) }
+      if (own !== repo) fs.rmSync(own.dir, { recursive: true, force: true })
       fs.appendFileSync(results, JSON.stringify(row) + '\n')
       console.log(`${c.id} ${arm} ${model} #${n}: ${row.failed ? `failed (${row.error})` : `caught ${row.caught.length}/${row.defects}, ${row.findings} finding(s), $${(row.usd ?? 0).toFixed(3)}`}`)
     }

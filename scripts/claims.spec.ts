@@ -31,13 +31,15 @@ test('parseFindings gives [] without a Findings heading, and for a tier-0 review
 const base = { findings: parseFindings(review), exists: (f: string) => f !== 'test/b.test.ts', lineCount: () => 10, planFiles: ['src/a.ts', 'src/c.ts'], changed: (f: string) => f === 'src/a.ts', amendments: '## Amendments\n- A1 (B9): load catches X\n', behaviourIds: ['B1', 'B2'] }
 const by = (rows: ReturnType<typeof fileRows>, rule: string) => rows.filter(r => r.rule === rule)
 
-test('C1 suggests for a missing file and for a line past the end', () => {
-  const rows = by(fileRows(base), 'C1')
+test('C1 suggests for a missing file and for a line past the end, for findings not marked fixed', () => {
+  const open = { ...base, findings: base.findings.map(f => ({ ...f, fixed: false })) }
+  const rows = by(fileRows(open), 'C1')
   assert.equal(rows.length, 2)
   assert.equal(rows[0]!.status, 'suggest') // src/a.ts:12 of 10 lines
   assert.match(rows[0]!.detail, /src\/a\.ts:12/)
   assert.equal(rows[1]!.status, 'suggest') // test/b.test.ts missing
-  assert.equal(by(fileRows({ ...base, lineCount: () => 99, exists: () => true }), 'C1').every(r => r.status === 'ok'), true)
+  assert.equal(by(fileRows({ ...open, lineCount: () => 99, exists: () => true }), 'C1').every(r => r.status === 'ok'), true)
+  assert.equal(by(fileRows(base), 'C1').length, 1, 'the fixed finding is not checked')
 })
 
 test('C1 does not throw on an empty or absolute path', () => {
@@ -117,4 +119,49 @@ test('a tier-0 review has nothing to suggest', () => {
   const r = sdlc(repo, ['claims', 'demo'])
   assert.equal(r.code, 0)
   assert.match(r.stdout, /claims: nothing to suggest/)
+})
+
+// Opus review of the change (2026-11-01): paths in a finding are model text, and the tree moves under a fix.
+test('a cited path is resolved inside the repo: an absolute one that points in works, one outside, a ".." one and a directory are suggested, exit 0', () => {
+  const repo = changeRepo('')
+  const f = (p: string): string => `- [severity: high] [category: tests] ${p}:1: p → f\n`
+  write(repo, '.rig/changes/demo/review.md', `## Findings\n${f(`${repo}/src/a.ts`)}${f('../x')}${f('src')}`)
+  const r = sdlc(repo, ['claims', 'demo'])
+  assert.equal(r.code, 0, r.stderr)
+  assert.equal((r.stdout.match(/C1 suggest/g) ?? []).length, 2, r.stdout)
+})
+
+test('a correctly fixed finding that cites an absolute path is not reported unchanged', () => {
+  const repo = changeRepo('')
+  const text = `## Findings\n- [severity: high] [category: tests] ${repo}/src/a.ts:1: p → f\n`
+  write(repo, '.rig/changes/demo/review.md', text)
+  sdlc(repo, ['claims', 'stamp', 'demo'])
+  write(repo, 'src/a.ts', 'export const a = 2\n')
+  write(repo, '.rig/changes/demo/review.md', text.replace('→ f', '→ f → fixed'))
+  assert.doesNotMatch(sdlc(repo, ['claims', 'demo']).stdout, /C2 suggest/)
+})
+
+test('a fixed finding is not checked for its line or file after the fix wave moved the tree', () => {
+  const repo = changeRepo('## Findings\n- [severity: high] [category: tests] src/a.ts:50: p → f → fixed\n')
+  const r = sdlc(repo, ['claims', 'demo'])
+  assert.doesNotMatch(r.stdout, /C1/)
+})
+
+test('a fix that changes the file named in the finding\'s fix text counts as a change', () => {
+  const repo = changeRepo('')
+  write(repo, 'test/a.test.ts', 'one\n')
+  const text = '## Findings\n- [severity: high] [category: tests] src/a.ts:1: p → strengthen test/a.test.ts → fixed\n'
+  write(repo, '.rig/changes/demo/review.md', text)
+  sdlc(repo, ['claims', 'stamp', 'demo'])
+  assert.match(sdlc(repo, ['claims', 'demo']).stdout, /C2 suggest/)
+  write(repo, 'test/a.test.ts', 'two\n')
+  assert.doesNotMatch(sdlc(repo, ['claims', 'demo']).stdout, /C2 suggest/)
+})
+
+test('C3 matches a planned directory and a ./ path against the files the change touched', () => {
+  const repo = changeRepo('## Findings\n')
+  write(repo, '.rig/changes/demo/plan.md', '# Plan\n\n## Files\n- tests/\n- ./src/a.ts\n')
+  write(repo, '.rig/changes/demo/verify.json', '{"base":"HEAD"}')
+  write(repo, 'tests/x.test.ts', 'x\n')
+  assert.match(sdlc(repo, ['claims', 'demo']).stdout, /nothing to suggest/)
 })
