@@ -115,13 +115,16 @@ export function summarize(rows) {
   return by
 }
 
+// The cap is checked against the next call's likely cost (the mean so far), so a run stops under it rather than one call over.
+export const overCap = (spent, done, maxUsd) => spent + (done ? spent / done : 0) > maxUsd
+
 const LABEL = { clean: 'clean context', same: 'same context (with builder notes)', tools: 'clean context with read-only tools' }
 const label = g => { const [arm, model] = g.split(' '); return model ? `${LABEL[arm]}, ${model}` : LABEL[arm] }
 
 export function renderMarkdown(rows, { date, files }) {
   const s = summarize(rows), { key, names } = groups(rows), pct = v => (v === null ? '–' : `${Math.round(v * 100)}%`)
   const cases = CASES.filter(c => rows.some(r => r.case === c.id))
-  const byCase = cases.map(c => `| ${c.id}${c.control ? ' (clean)' : c.hard ? ' (hard)' : ''} | ${names.map(g => { const rs = rows.filter(r => r.case === c.id && key(r) === g && !r.failed); return c.control ? `${rs.reduce((n, r) => n + r.findings, 0)} finding(s) in ${rs.length} runs` : c.defects.length > 1 ? `${rs.reduce((n, r) => n + r.caught.length, 0)}/${rs.length * c.defects.length} defects` : `${rs.filter(r => r.caught.length).length}/${rs.length}` }).join(' | ')} |`)
+  const byCase = cases.map(c => `| ${c.id}${c.control ? ' (clean)' : c.hard ? ' (hard)' : ''} | ${names.map(g => { const rs = rows.filter(r => r.case === c.id && key(r) === g && !r.failed); return c.control ? `${rs.reduce((n, r) => n + r.findings, 0)} finding(s) in ${rs.length} run(s)` : c.defects.length > 1 ? `${rs.reduce((n, r) => n + r.caught.length, 0)}/${rs.length * c.defects.length} defects` : `${rs.filter(r => r.caught.length).length}/${rs.length}` }).join(' | ')} |`)
   return [`# Eval results ${date}: review eval`, '',
     `Question: which reviewer catches more seeded defects, hard ones included, and raises fewer findings on correct changes? Source: ${files.join(', ')}. No tools; the prompt carries the change and the whole source tree.`, '',
     '| reviewer | runs | defects caught | hard defects caught | extra findings per defect run | findings on the clean changes | USD |', '|---|---|---|---|---|---|---|',
@@ -149,21 +152,26 @@ if (process.argv[1] === import.meta.filename) {
   const READONLY = 'Read,Grep,Glob,Bash(git diff:*),Bash(git show:*),Bash(git log:*),Bash(git blame:*),Bash(git status:*),Bash(node --test:*),Bash(python3 -m pytest:*)'
   const runnerFor = (model, arm, dir) => (dry || arm !== 'tools' ? runners[model] : claudeRunner(model, { tools: 'Bash,Read,Grep,Glob', allowed: READONLY, cwd: dir }))
   fs.mkdirSync(path.dirname(results), { recursive: true })
-  let spent = 0
+  let spent = 0, done = 0
+  const written = []
   runs: for (let n = 1; n <= runs; n++) for (const c of CASES.filter(x => !only || (x.base ?? 'shop') === only)) {
     const repo = repoFor(c)
     for (const model of models) for (const arm of arms) {
-      if (!dry && spent >= maxUsd) { console.log(`stopped at the cap: $${spent.toFixed(2)} of $${maxUsd}`); fs.rmSync(repo.dir, { recursive: true, force: true }); break runs }
+      if (!dry && overCap(spent, done, maxUsd)) { console.log(`stopped at the cap: $${spent.toFixed(2)} of $${maxUsd}`); fs.rmSync(repo.dir, { recursive: true, force: true }); break runs }
       const row = { case: c.id, arm, model, run: n, control: Boolean(c.control), hard: Boolean(c.hard), defects: c.defects.length, at: new Date().toISOString() }
       const own = arm === 'tools' && !dry ? repoFor(c) : repo, runDir = own.dir
-      try { const r = runnerFor(model, arm, runDir)({ role: 'review', prompt: buildPrompt(c, arm, own), case: c, arm }); spent += r.usd; Object.assign(row, scoreReview(r.text, c.defects), { usd: r.usd, text: r.text }, arm === 'tools' ? (({ fails, unrun }) => ({ reproFails: fails, reproUnrun: unrun }))(runRepros(r.text, runDir)) : {}) } catch (e) { Object.assign(row, { failed: true, error: String(e.message).split('\n')[0] }) }
+      try { const r = runnerFor(model, arm, runDir)({ role: 'review', prompt: buildPrompt(c, arm, own), case: c, arm }); spent += r.usd; done++; Object.assign(row, scoreReview(r.text, c.defects), { usd: r.usd, text: r.text }, arm === 'tools' ? (({ fails, unrun }) => ({ reproFails: fails, reproUnrun: unrun }))(runRepros(r.text, runDir)) : {}) } catch (e) { Object.assign(row, { failed: true, error: String(e.message).split('\n')[0] }) }
       if (own !== repo) fs.rmSync(own.dir, { recursive: true, force: true })
+      written.push(row)
       fs.appendFileSync(results, JSON.stringify(row) + '\n')
       console.log(`${c.id} ${arm} ${model} #${n}: ${row.failed ? `failed (${row.error})` : `caught ${row.caught.length}/${row.defects}, ${row.findings} finding(s), $${(row.usd ?? 0).toFixed(3)}`}`)
     }
     fs.rmSync(repo.dir, { recursive: true, force: true })
   }
-  const rows = readJsonl(results)
+  // The report is built from the rows this run wrote, not from re-reading the file: a file deleted or truncated mid-run (it did, once: 38 of 52 rows vanished) must not shrink the report.
+  const onDisk = readJsonl(results).length
+  if (onDisk !== written.length) console.error(`WARNING: ${results} holds ${onDisk} rows but this run wrote ${written.length}; the report below uses the ${written.length} in memory, and the file is incomplete.`)
+  const rows = written
   console.log(`\n${renderMarkdown(rows, { date: new Date().toISOString().slice(0, 10), files: [path.basename(results)] })}`)
   console.log(`${results}  spent $${spent.toFixed(2)}`)
 }
