@@ -52,7 +52,7 @@ const recordedDir = path.join(recordedRoot, recordedSet)
 // Before anything is created or spent: every leg that starts from a snapshot needs it on disk.
 if (live) {
   for (const leg of legs) {
-    if (leg.seed && !fs.existsSync(snapshotFile(recordedDir, leg.seed))) { console.error(`mode ${mode} starts from the recorded ${leg.seed} snapshot, which is missing in ${recordedDir}. Record it once with: npm run e2e:full -- --record`); process.exit(2) }
+    if (leg.seed && !fs.existsSync(snapshotFile(recordedDir, leg.seed))) { console.error(`mode ${mode} starts from the recorded ${leg.seed} snapshot, which is missing in ${recordedDir}. Record it once with: npm run e2e:record (a long one-time run, not a test)`); process.exit(2) }
   }
 }
 const resume = arg('from', 'J0') !== 'J0'

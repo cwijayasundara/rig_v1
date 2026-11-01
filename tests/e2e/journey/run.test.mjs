@@ -78,7 +78,7 @@ test('a sandbox inside the rig repo is refused: sessions there cannot write CLAU
 test('live fast mode refuses before spending anything when the approved-chart snapshots were never recorded', () => {
   const { r } = go(['--driver', 'live', '--cap', '0', '--mode', 'fast', '--recorded', 'synthetic'])
   assert.equal(r.status, 2)
-  assert.match(r.stderr, /recorded J2 snapshot.*npm run e2e:full -- --record/s)
+  assert.match(r.stderr, /recorded J2 snapshot.*npm run e2e:record/s)
 })
 
 test('an unknown mode is refused, and --record only works in full mode', () => {

@@ -135,7 +135,7 @@ tests/e2e/out/<timestamp>/        sandbox, sessions/*.jsonl, verdicts.json, repo
 
 ## Modes (added after the first live runs)
 
-Measured: init 1.5 min; `/rig-chart` 17 min on the first PRD ($2.66) and 11.5 min on the slim one with the evaluator on Sonnet ($1.45). Two charts cannot fit in 20 minutes, so the live runs are split by stage kind: `npm run e2e` (fast, 20 min) = leg J3 from the recorded J2 snapshot (approved sprint 1 chart) then leg J6 from the recorded J5 snapshot (built sprint 1 plus approved sprint 2 chart), one intent each; `npm run e2e:chart` (30 min) = J0, J1, J2 from nothing then J4, J5 from the recorded J3 snapshot; `npm run e2e:full` (70 min) = all stages, and `-- --record` saves the J2, J3 and J5 snapshots plus all verdicts under `journey/recorded/real/`. A mode that needs a missing snapshot refuses before spending anything.
+Measured: init 1.5 min; `/rig-chart` 17 min on the first PRD ($2.66) and 11.5 min on the slim one with the evaluator on Sonnet ($1.45). Two charts cannot fit in 20 minutes, so the live runs are split by stage kind: `npm run e2e` (fast, 20 min) = leg J3 from the recorded J2 snapshot (approved sprint 1 chart) then leg J6 from the recorded J5 snapshot (built sprint 1 plus approved sprint 2 chart), one intent each; `npm run e2e:record` (an hour or more, one-time, not a test) = all stages from nothing; it saves the J2, J3 and J5 snapshots plus all verdicts under `journey/recorded/real/`. A mode that needs a missing snapshot refuses before spending anything.
 
 ## Consolidation
 
