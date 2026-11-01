@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { CASES, buildPrompt, scoreReview, summarize, renderMarkdown, ARMS, repoFor as ctxFor, baseOf } from './review.mjs'
+import { CASES, buildPrompt, scoreReview, summarize, renderMarkdown, ARMS, DEFAULT_ARMS, reprosOf, repoFor as ctxFor, baseOf } from './review.mjs'
 
 // The cart cases run Python and pytest; a machine without them skips those tests, by name, rather than failing the suite.
 const has = (...cmd) => { try { execFileSync(cmd[0], cmd.slice(1), { stdio: 'pipe' }); return true } catch { return false } }
@@ -71,9 +71,9 @@ test('the two arms see the same change and differ only in who the reviewer is an
 test('scoreReview counts a defect only when a finding names its file and matches its pattern, and counts the rest as extra', () => {
   const d = [{ id: 'x', file: 'src/cart/cart.js', re: /throw|absent/i }]
   const text = 'verdict: changes-needed\n## Findings\n- [severity: high] [category: correctness] src/cart/cart.js:14: remove no longer throws for an absent SKU. → fix\n- [severity: medium] [category: tests] test/a.js:1: something else. → fix\n## Deferred\n- [severity: medium] not a finding here\n'
-  assert.deepEqual(scoreReview(text, d), { findings: 2, caught: ['x'], extra: 1 })
+  assert.deepEqual(scoreReview(text, d), { findings: 2, repros: 0, caught: ['x'], extra: 1 })
   assert.deepEqual(scoreReview('- [severity: high] [category: x] src/orders/orders.js:1: absent. → f', d).caught, [], 'right words, wrong file')
-  assert.deepEqual(scoreReview('verdict: pass\n## Findings\n', []), { findings: 0, caught: [], extra: 0 })
+  assert.deepEqual(scoreReview('verdict: pass\n## Findings\n', []), { findings: 0, repros: 0, caught: [], extra: 0 })
   assert.equal(scoreReview('- [severity: low] ignored', []).findings, 0, 'only critical, high and medium are findings')
 })
 
@@ -91,7 +91,7 @@ test('summarize reports recall and false findings per arm, and the table names b
   const md = renderMarkdown(rows, { date: '2026-10-21', files: ['x.jsonl'] })
   assert.match(md, /\| clean context \| 2 \| 100% /)
   assert.match(md, /\| same context \(with builder notes\) \| 2 \| 0% /)
-  assert.deepEqual(ARMS, ['clean', 'same'])
+  assert.deepEqual(ARMS, ['clean', 'same', 'tools'])
 })
 
 test('with two models the rows group by arm and model, and hard recall counts only the hard cases', () => {
@@ -158,4 +158,30 @@ test('every seeded cart defect is a real bug: its probe prints something other t
     fs.rmSync(ctx.dir, { recursive: true, force: true })
   }
   fs.rmSync(ok.dir, { recursive: true, force: true })
+})
+
+test('the tools arm keeps the brief\'s own inputs and read-only commands, pastes no files, and is not a default arm', () => {
+  assert.deepEqual(DEFAULT_ARMS, ['clean', 'same'])
+  const c = CASES[0], ctx = ctxFor(c), p = buildPrompt(c, 'tools', ctx)
+  assert.match(p, /You may read files/)
+  assert.match(p, /Repro: <command/)
+  assert.doesNotMatch(p, /## Files the change touches, in full/)
+  assert.doesNotMatch(p, /you have no tools/)
+  assert.match(p, /## intent\.md/)
+  fs.rmSync(ctx.dir, { recursive: true, force: true })
+})
+
+test('scoreReview counts the findings that carry a Repro, and reprosOf lists the commands', () => {
+  const text = '## Findings\n- [severity: high] [category: correctness] src/a.js:1: p. Repro: node --test x.js → f\n- [severity: medium] [category: tests] src/b.js:2: q → f\n'
+  assert.equal(scoreReview(text, []).repros, 1)
+  assert.deepEqual(reprosOf(text), ['node --test x.js'])
+  assert.deepEqual(reprosOf('## Findings\n'), [])
+})
+
+test('--arms clean,tools --dry runs, reports the tools row, and writes nothing under eval/results', () => {
+  const out = path.join(os.tmpdir(), `rig-review-tools-${Date.now()}.jsonl`)
+  const text = execFileSync(process.execPath, ['--disable-warning=ExperimentalWarning', path.resolve(import.meta.dirname, 'review.mjs'), '--dry', '--runs', '1', '--arms', 'clean,tools', '--base', 'shop', '--results', out], { stdio: 'pipe', encoding: 'utf8' })
+  assert.match(text, /tools/)
+  assert.match(text, /findings with a Repro/)
+  fs.rmSync(out, { force: true })
 })

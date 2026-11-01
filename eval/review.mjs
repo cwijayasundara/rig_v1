@@ -9,7 +9,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { CASES as SHOP_CASES } from './review/cases.mjs'
 import { CART_CASES } from './review/cart-cases.mjs'
 import { stageFixture, commitAll } from './lib/fixture.mjs'
@@ -18,8 +18,11 @@ import { claudeRunner } from '../scripts/wikigen.ts'
 
 const ROOT = path.resolve(import.meta.dirname, '..')
 const FX = path.join(ROOT, 'tests/e2e/fixtures')
-export const ARMS = ['clean', 'same']
+export const ARMS = ['clean', 'same', 'tools']
+// The tools arm costs more and needs a real run to mean anything, so it is never a default.
+export const DEFAULT_ARMS = ['clean', 'same']
 const FINDING = /^\s*-\s*\[severity:\s*(critical|high|medium)\]/i
+const REPRO = /\bRepro:\s*(.+?)\s+→/
 
 export const CASES = [...SHOP_CASES, ...CART_CASES]
 // What a case is applied over: the toy shop with its two changes merged, or shop_app at 26f1105 (real code, Python).
@@ -41,6 +44,13 @@ export function repoFor(c) {
 }
 
 export function buildPrompt(c, arm, { diff, dir, changed }) {
+  // The tools arm: the reviewer reads the staged repo itself, as in a real review, so nothing but the intent, spec and plan is pasted.
+  if (arm === 'tools') {
+    const brief = fs.readFileSync(path.join(ROOT, 'templates/review-brief.md'), 'utf8')
+      .replace(/Inputs\. Read them yourself[\s\S]*?(?=\nReview for)/, 'Your working directory is the repository: read the delta with `git diff <base>`, and every file the delta touches. The intent, spec and plan are below.\n')
+      .replace(/<base>/g, 'main').replace(/<slug>/g, c.slug)
+    return [brief, `## intent.md\n${c.intent}`, `## spec.md\n${c.spec}`, `## plan.md\n${c.plan}`].join('\n\n')
+  }
   const brief = fs.readFileSync(path.join(ROOT, 'templates/review-brief.md'), 'utf8')
     .replace(/Inputs\. Read them yourself[\s\S]*?(?=\nReview for)/, 'Everything you may use is below; you have no tools.\n')
     .replace(/You may read files[^\n]*\n/, '').replace(/<base>/g, 'main').replace(/<slug>/g, c.slug)
@@ -60,11 +70,20 @@ export function scoreReview(text, defects) {
   // Only the ## Findings section: a tagged line under Deferred is not a finding. No such heading: the whole answer is read.
   const section = /^## Findings[ \t]*\n([\s\S]*?)(?=^## |(?![\s\S]))/m.exec(text)?.[1] ?? text
   const found = section.split('\n').filter(l => FINDING.test(l))
+  const repros = found.filter(l => REPRO.test(l)).length
   const hits = (d, l) => [d.file].flat().some(f => l.includes(f)) && d.re.test(l)
   const caught = defects.filter(d => found.some(l => hits(d, l)))
   const extra = found.filter(l => !defects.some(d => hits(d, l)))
-  return { findings: found.length, caught: caught.map(d => d.id), extra: extra.length }
+  return { findings: found.length, repros, caught: caught.map(d => d.id), extra: extra.length }
 }
+
+// The Repro commands on the findings of an answer, in order.
+export const reprosOf = text => {
+  const section = /^## Findings[ \t]*\n([\s\S]*?)(?=^## |(?![\s\S]))/m.exec(text)?.[1] ?? ''
+  return section.split('\n').filter(l => FINDING.test(l)).flatMap(l => REPRO.exec(l)?.[1] ?? [])
+}
+// Run in the throwaway copy the case was staged in, never in this repo. A repro that still fails there reproduces the seeded defect.
+const runRepros = (text, dir) => reprosOf(text).filter(cmd => spawnSync(cmd, { shell: true, cwd: dir, timeout: 60_000, stdio: 'ignore' }).status !== 0).length
 
 // A group is an arm, or an arm and a model once the rows hold more than one model.
 export const groups = rows => {
@@ -82,13 +101,13 @@ export function summarize(rows) {
     return [g, {
       runs: rs.length, recall: recallOf(defect), hardRecall: recallOf(defect.filter(r => r.hard)),
       extraPerDefectRun: defect.length ? defect.reduce((n, r) => n + r.extra, 0) / defect.length : null,
-      falseFindingsOnClean: control.reduce((n, r) => n + r.findings, 0), cleanRuns: control.length, usd: rs.reduce((n, r) => n + (r.usd ?? 0), 0),
+      falseFindingsOnClean: control.reduce((n, r) => n + r.findings, 0), cleanRuns: control.length, reproFindings: rs.reduce((n, r) => n + (r.repros ?? 0), 0), reproFails: rs.reduce((n, r) => n + (r.reproFails ?? 0), 0), usd: rs.reduce((n, r) => n + (r.usd ?? 0), 0),
     }]
   }))
   return by
 }
 
-const LABEL = { clean: 'clean context', same: 'same context (with builder notes)' }
+const LABEL = { clean: 'clean context', same: 'same context (with builder notes)', tools: 'clean context with read-only tools' }
 const label = g => { const [arm, model] = g.split(' '); return model ? `${LABEL[arm]}, ${model}` : LABEL[arm] }
 
 export function renderMarkdown(rows, { date, files }) {
@@ -99,24 +118,26 @@ export function renderMarkdown(rows, { date, files }) {
     `Question: which reviewer catches more seeded defects, hard ones included, and raises fewer findings on correct changes? Source: ${files.join(', ')}. No tools; the prompt carries the change and the whole source tree.`, '',
     '| reviewer | runs | defects caught | hard defects caught | extra findings per defect run | findings on the clean changes | USD |', '|---|---|---|---|---|---|---|',
     ...names.map(g => `| ${label(g)} | ${s[g].runs} | ${pct(s[g].recall)} | ${pct(s[g].hardRecall)} | ${s[g].extraPerDefectRun?.toFixed(2) ?? '–'} | ${s[g].falseFindingsOnClean} in ${s[g].cleanRuns} runs | $${s[g].usd.toFixed(2)} |`), '',
+    ...names.filter(g => g.startsWith('tools')).map(g => `${label(g)}: ${s[g].reproFindings} findings with a Repro, ${s[g].reproFails} of them fail on the defect.`), '',
     `| case | ${names.map(g => `${label(g)}: runs that caught it`).join(' | ')} |`, `|---|${names.map(() => '---').join('|')}|`, ...byCase, ''].join('\n')
 }
 
 if (process.argv[1] === import.meta.filename) {
   const dry = process.argv.includes('--dry')
   const runs = Number(arg('runs', 3)), maxUsd = Number(arg('max-usd', 8))
-  const models = arg('models', arg('model', 'claude-sonnet-5-5')).split(','), arms = arg('arms', ARMS.join(',')).split(','), only = arg('base', null)
+  const models = arg('models', arg('model', 'claude-sonnet-5-5')).split(','), arms = arg('arms', DEFAULT_ARMS.join(',')).split(','), only = arg('base', null)
   if (only && !BASES[only]) { console.error(`--base takes ${Object.keys(BASES).join(', ')}`); process.exit(2) }
   if (arms.some(a => !ARMS.includes(a))) { console.error(`--arms takes ${ARMS.join(', ')}`); process.exit(2) }
   const results = path.resolve(arg('results', dry ? path.join(os.tmpdir(), `rig-review-${Date.now()}.jsonl`) : path.join(ROOT, 'eval/results', `${new Date().toISOString().slice(0, 10)}-review.jsonl`)))
   const refusal = resultsAllowed(results, dry)
   if (refusal) { console.error(refusal); process.exit(2) }
   // The dry runner "reviews" like a clean reviewer that misses every hard case and what the builder's notes explain away: plumbing, not a measurement.
-  const dryRunner = ({ prompt, case: c }) => {
+  const dryRunner = ({ prompt, case: c, arm }) => {
     const blind = prompt.includes('## Your build notes')
-    return { text: !c || c.control || c.hard || blind ? 'verdict: pass\n## Findings\n' : `verdict: changes-needed\n## Findings\n- [severity: high] [category: correctness] ${[c.defects[0].file].flat()[0]}:1: ${c.id} ${c.defects[0].re.source.split('|')[0]}. Fails when: used. → fix\n`, usd: 0 }
+    return { text: !c || c.control || c.hard || blind ? 'verdict: pass\n## Findings\n' : `verdict: changes-needed\n## Findings\n- [severity: high] [category: correctness] ${[c.defects[0].file].flat()[0]}:1: ${c.id} ${c.defects[0].re.source.split('|')[0]}. Fails when: used.${arm === 'tools' ? ' Repro: node -e "process.exit(1)"' : ''} → fix\n`, usd: 0 }
   }
   const runners = Object.fromEntries(models.map(m => [m, dry ? dryRunner : claudeRunner(m)]))
+  const runnerFor = (model, arm, repo) => (dry || arm !== 'tools' ? runners[model] : claudeRunner(model, { tools: 'Bash,Read,Grep,Glob', cwd: repo.dir }))
   fs.mkdirSync(path.dirname(results), { recursive: true })
   let spent = 0
   runs: for (let n = 1; n <= runs; n++) for (const c of CASES.filter(x => !only || (x.base ?? 'shop') === only)) {
@@ -124,7 +145,7 @@ if (process.argv[1] === import.meta.filename) {
     for (const model of models) for (const arm of arms) {
       if (!dry && spent >= maxUsd) { console.log(`stopped at the cap: $${spent.toFixed(2)} of $${maxUsd}`); fs.rmSync(repo.dir, { recursive: true, force: true }); break runs }
       const row = { case: c.id, arm, model, run: n, control: Boolean(c.control), hard: Boolean(c.hard), defects: c.defects.length, at: new Date().toISOString() }
-      try { const r = runners[model]({ role: 'review', prompt: buildPrompt(c, arm, repo), case: c }); spent += r.usd; Object.assign(row, scoreReview(r.text, c.defects), { usd: r.usd, text: r.text }) } catch (e) { Object.assign(row, { failed: true, error: String(e.message).split('\n')[0] }) }
+      try { const r = runnerFor(model, arm, repo)({ role: 'review', prompt: buildPrompt(c, arm, repo), case: c, arm }); spent += r.usd; Object.assign(row, scoreReview(r.text, c.defects), { usd: r.usd, text: r.text }, arm === 'tools' ? { reproFails: runRepros(r.text, repo.dir) } : {}) } catch (e) { Object.assign(row, { failed: true, error: String(e.message).split('\n')[0] }) }
       fs.appendFileSync(results, JSON.stringify(row) + '\n')
       console.log(`${c.id} ${arm} ${model} #${n}: ${row.failed ? `failed (${row.error})` : `caught ${row.caught.length}/${row.defects}, ${row.findings} finding(s), $${(row.usd ?? 0).toFixed(3)}`}`)
     }
