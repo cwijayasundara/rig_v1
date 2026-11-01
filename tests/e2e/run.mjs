@@ -1,132 +1,115 @@
-// The one integration test: node tests/e2e/run.mjs [--driver scripted|live] [--phase S0|S1|S2|S3|S4|S5|S6]
-// [--cap USD] [--model MODEL] [--minutes N] [--out DIR]
-// S0 installs the harness into a throwaway shop-app repo, S1 writes the product brief, S2 builds the shop greenfield
-// through approval, verify and PR, S3 lands the delete-item change on top (with a stale-approval check), S4 exercises
-// the local deploy gate, S5 runs one change under the continuous and the final policy, S6 traces, approves and starts a sprint's intents (both scripted only). S2 and S3 also
-// write and freeze the HTTP contract and pass the hidden HTTP acceptance. Scripted is $0 and gates CI; live drives real `claude -p` sessions (default model
-// claude-haiku-5-5) and fails when the whole run takes longer than --minutes (default 20) of wall clock.
+// The one e2e command: node tests/e2e/run.mjs [--driver live|scripted] [--intents N] [--from J0..J6] [--cap USD] [--minutes N]
+// [--mode fast|chart|full] [--seed J2|J3|J5] [--record] [--out DIR] [--sandbox DIR] [--recorded SET] [--triage FILE] [--no-extras] [--no-notify]
+// It drives rig through init, chart, approve and build for Library Desk sprint 1 (greenfield) and sprint 2 (brownfield) on one
+// sandbox. Each stage acts (Haiku, live), passes deterministic gates, then a Sonnet inspector judges the artefacts against a
+// rubric. Every violation is logged and alerted; the run never fixes anything. Scripted replays recorded snapshots at $0.
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { createSandbox } from './lib/sandbox.mjs'
 import { arg } from '../../eval/lib/cli.mjs'
-import { writeReport } from './lib/report.mjs'
-import { mergeToMain } from './lib/merge.mjs'
-import { Checks } from './lib/checks.mjs'
-import { install, SCAFFOLD_PROMPT, copyContractTool } from './phases/s0-install.mjs'
-import { runBrief } from './phases/s1-brief.mjs'
-import { PHASE as S2, runShopChange } from './phases/s2-greenfield.mjs'
-import { PHASE as S3, assertDelete, staleCheck, contractChecks } from './phases/s3-delete.mjs'
-import { runDeploy } from './phases/s4-deploy.mjs'
-import { runPolicy } from './phases/s5-policy.mjs'
-import { runChart } from './phases/s6-chart.mjs'
-import { scriptedDriver } from './driver/scripted.mjs'
-import { createSessions, liveDriver } from './driver/live.mjs'
-import { assertOnboarding } from './assert/onboarding.mjs'
-import { assertProcess } from './assert/process.mjs'
+import { createSessions } from './driver/live.mjs'
+import { runJourney } from './journey/journey.mjs'
+import { STAGES } from './journey/stages.mjs'
+import { journeyDriver, setupSandbox } from './journey/driver-live.mjs'
+import { scriptedKit, recordStage } from './journey/driver-scripted.mjs'
+import { inspect } from './journey/inspector.mjs'
+import { review } from './journey/reviewer.mjs'
+import { createViolationLog, loadTriage } from './journey/violations.mjs'
+import { alert, summarise } from './journey/alert.mjs'
+import { writeJourneyReport } from './lib/report.mjs'
+import { runExtras } from './extras.mjs'
+import { PLUGIN } from './lib/sandbox.mjs'
+import { MODES, SEEDS, legStages } from './journey/legs.mjs'
+import { seedSandbox, snapshotFile } from './journey/snapshot.mjs'
 
-const driverName = arg('driver', 'scripted')
-const only = arg('phase')
-const out = path.resolve(arg('out', fs.mkdtempSync(path.join(os.tmpdir(), 'rig-e2e-'))))
-const live = driverName === 'live'
+const HERE = import.meta.dirname
+const has = f => process.argv.includes(`--${f}`)
+const live = arg('driver', 'scripted') === 'live'
+// fast (default, under 20 min): build one intent greenfield and one brownfield, each from a recorded approved chart. chart: init and the two
+// charts. full: everything from nothing, and the way the snapshots are recorded. Scripted always replays the full journey.
+const mode = arg('mode', has('full') ? 'full' : 'fast')
+if (!MODES[mode]) { console.error(`unknown --mode ${mode}: fast, chart or full`); process.exit(2) }
+// --seed STAGE restarts a full run from that stage's recorded snapshot: the stages after it, in a fresh sandbox.
+const seedArg = arg('seed')
+const stageIds = STAGES.map(st => st.id)
+if (seedArg && !stageIds.includes(seedArg)) { console.error(`unknown --seed ${seedArg}: ${stageIds.join(', ')}`); process.exit(2) }
+const legs = !live ? MODES.full.legs : seedArg ? [{ seed: seedArg, stages: stageIds.slice(stageIds.indexOf(seedArg) + 1) }] : MODES[mode].legs
+if (has('record') && mode !== 'full') { console.error('--record needs --mode full: the snapshots the other modes start from come from a whole journey'); process.exit(2) }
+const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+const out = path.resolve(arg('out', path.join(HERE, 'out', stamp)))
+fs.mkdirSync(out, { recursive: true })
+if (!arg('out')) {
+  const latest = path.join(HERE, 'out', 'latest')
+  try { fs.unlinkSync(latest) } catch { /* none yet */ }
+  fs.symlinkSync(out, latest)
+}
 
-const sb = createSandbox({ name: 'project', out })
-const sessions = live ? createSessions({ sb, out, capUsd: Number(arg('cap', 6)), model: arg('model', 'claude-haiku-5-5') }) : null
-const driverFor = phase => (live ? liveDriver(sb, phase, { sessions }) : scriptedDriver(sb, phase))
-const results = []
-// Wall clock per phase, printed as it ends and checked against the greenfield + brownfield budget at the end of a live run.
-const took = {}
-const timed = async (id, fn) => {
-  const t0 = Date.now()
-  try { return await fn() } finally {
-    took[id] = (Date.now() - t0) / 60_000
-    console.log(`  ${id}: ${took[id].toFixed(1)} min`)
+const recordedRoot = path.join(HERE, 'journey/recorded')
+const recordedSet = arg('recorded', live ? 'real' : fs.existsSync(path.join(recordedRoot, 'real/snapshots/J6.tar.gz')) ? 'real' : 'synthetic')
+const recordedDir = path.join(recordedRoot, recordedSet)
+
+// Before anything is created or spent: every leg that starts from a snapshot needs it on disk.
+if (live) {
+  for (const leg of legs) {
+    if (leg.seed && !fs.existsSync(snapshotFile(recordedDir, leg.seed))) { console.error(`mode ${mode} starts from the recorded ${leg.seed} snapshot, which is missing in ${recordedDir}. Record it once with: npm run e2e:record (a long one-time run, not a test)`); process.exit(2) }
   }
 }
-const fmt = m => `${m.toFixed(1)} min`
-// A phase runs when it is the requested one or a prerequisite of it.
-const NEEDS = { S2: ['S1'], S3: ['S1', 'S2'], S4: ['S1', 'S2', 'S3'], S5: ['S1', 'S2', 'S3', 'S4'], S6: ['S1'] }
-const want = id => !only || only === id || (NEEDS[only] ?? []).includes(id)
-const ensureMain = slug => {
-  const b = sb.git('rev-parse', '--abbrev-ref', 'HEAD')
-  if (b !== 'main') mergeToMain(sb, slug)
+const resume = arg('from', 'J0') !== 'J0'
+if (resume && !arg('out')) { console.error('--from needs --out <the kept run folder>'); process.exit(2) }
+// Every mode has a hard wall-clock deadline for its sessions; fast is the 20 minute one.
+const minutes = Number(arg('minutes', MODES[mode].minutes))
+const intents = arg('intents') ? Number(arg('intents')) : MODES[mode].intents
+const t0 = Date.now()
+// The sandbox repo lives in the system temp folder, never inside this repo: a claude session whose repo is nested in another project
+// has its writes to CLAUDE.md and README.md refused as "sensitive files" (found by the first live run). Reports and logs stay in `out`.
+const sandboxRoot = path.resolve(arg('sandbox', resume ? fs.readFileSync(path.join(out, 'sandbox-path.txt'), 'utf8').trim() : path.join(os.tmpdir(), `rig-journey-${stamp}`)))
+if (sandboxRoot === PLUGIN || sandboxRoot.startsWith(PLUGIN + path.sep)) { console.error(`the sandbox must be outside the rig repo (${PLUGIN}): a session inside it cannot write CLAUDE.md. Got ${sandboxRoot}`); process.exit(2) }
+fs.mkdirSync(sandboxRoot, { recursive: true })
+fs.writeFileSync(path.join(out, 'sandbox-path.txt'), sandboxRoot)
+const sb = createSandbox({ name: 'journey', out: sandboxRoot, reuse: resume })
+if (!resume) setupSandbox(sb)
+const log = createViolationLog({ dir: out, run: stamp, sandbox: sb.dir, triage: loadTriage(arg('triage', path.join(HERE, 'journey/triage.json'))) })
+const inspector = { inspect: a => inspect(a) }
+const reviewer = { review: a => review(a) }
+let kit
+if (live) {
+  const sessions = createSessions({ sb, out, capUsd: Number(arg('cap', 25)), model: 'claude-haiku-5-5', deadline: t0 + minutes * 60_000 })
+  kit = { driver: journeyDriver({ sb, sessions, reviewer }), inspector, reviewer, stages: STAGES }
+} else {
+  kit = scriptedKit({ sb, recordedDir })
 }
-// A group that ran fewer checks than this lost coverage silently (an assertion call deleted or skipped): fail the scripted run.
-const FLOOR = { 'S0 install': 14, 'S1 brief': 3, 'S2 ': 22, 'S3 ': 27, 'S4 deploy': 9, 'S5 policy': 7, 'S6 chart': 12 }
-const lostCoverage = () => (live || only ? [] : Object.entries(FLOOR).filter(([k, n]) => {
-  const g = results.find(c => c.title.startsWith(k))
-  return !g || g.results.length < n
-}).map(([k, n]) => `${k}: fewer than ${n} checks ran`))
-const finish = () => {
-  for (const m of lostCoverage()) { console.error(`coverage floor: ${m}`); process.exitCode = 1 }
-  writeReport(out, results)
-  for (const c of results) c.print()
-  console.log(`\nreport and sandbox: ${out}`)
-  process.exitCode = results.some(c => c.failed.length) ? 1 : (process.exitCode ?? 0)
-}
-
+let results = []
+let failure = null
+const live_record = live && has('record') ? (r, { stage }) => recordStage({ sb, stage: stage.id, verdicts: r.verdicts, decision: stage.approve ? 'approve' : null, recordedDir: path.join(recordedRoot, 'real'), snapshot: SEEDS.includes(stage.id) }) : null
 try {
-  const t0 = Date.now()
-  if (live) {
-    sb.git('commit', '-q', '--allow-empty', '-m', 'chore: empty start')
-    sb.isolate()
-    copyContractTool(sb)
-    sessions.run('S0-init', `/rig:init --defaults greenfield "${SCAFFOLD_PROMPT}"`, { withPlugin: true })
-    sb.commitAll('chore: onboarding leftovers')
-    const p0 = new Checks('S0 install (live)')
-    await assertOnboarding(p0, sb, { lane: 'greenfield' })
-    results.push(p0)
-  } else {
-    results.push(await install(sb))
-  }
-  took.S0 = (Date.now() - t0) / 60_000
-  if (want('S1')) results.push(await timed('S1', () => runBrief(sb)))
-
-  let s2slug = S2.slug
-  if (want('S2')) {
-    const r = await timed('S2', () => runShopChange(sb, S2, driverFor(S2), { first: true }))
-    s2slug = r.slug
-    results.push(r.checks)
-  }
-  if (want('S3')) {
-    const { slug, checks } = await timed('S3', () => {
-      ensureMain(s2slug)
-      return runShopChange(sb, S3, driverFor(S3), { afterApprove: live ? undefined : async slug => [...await staleCheck(sb, slug), ...await contractChecks(sb, slug)] })
-    })
-    await assertDelete(checks, sb, slug)
-    results.push(checks)
-    var s3slug = slug
-  }
-  if (want('S4')) {
-    ensureMain(s3slug ?? S3.slug)
-    results.push(...await timed('S4', () => runDeploy(sb)))
-  }
-  if (want('S5') && !live) {
-    ensureMain(s3slug ?? S3.slug)
-    results.push(await timed('S5', () => runPolicy(sb)))
-  }
-  if (want('S6') && !live) {
-    ensureMain(s3slug ?? S3.slug)
-    results.push(await timed('S6', () => runChart(sb)))
-  }
-  if (live) {
-    const pc = new Checks('process (all live sessions)')
-    await assertProcess(pc, sessions.sessions, { label: 'live run' })
-    results.push(pc)
+  for (const leg of legs) {
+    if (live && leg.seed) seedSandbox({ sb, recordedDir, stage: leg.seed })
+    const stages = legStages(kit.stages, leg.stages)
+    results.push(...await runJourney({
+      sb, log, rubricDir: path.join(HERE, 'journey/rubrics'), ...kit, stages, startedAt: t0,
+      capUsd: Number(arg('cap', 25)), minutes, intents, from: legs.length === 1 ? arg('from', stages[0].id) : stages[0].id,
+      onStageDone: live_record,
+    }))
   }
 } catch (err) {
-  console.error(`e2e aborted: ${err.message}\nsandbox kept at ${out}`)
-  const ab = new Checks('aborted')
-  await ab.check('the run reached its end', () => err.message)
-  results.push(ab)
-  process.exitCode = 1
+  failure = String(err?.message ?? err)
+  results.push(...(err.partial ?? []))
+  log.add({ stage: 'run', item: 'run-aborted', severity: 'block', evidence: failure, note: failure.split('\n')[0], session: '', area: 'unknown' })
 }
-if (live) {
-  const budget = Number(arg('minutes', 20))
-  const total = Object.values(took).reduce((n, m) => n + m, 0)
-  const tc = new Checks('timing (live)')
-  await tc.check(`the whole run finished within ${budget} min`, () => total <= budget || `took ${fmt(total)} (${Object.entries(took).map(([k, m]) => `${k} ${fmt(m)}`).join(', ')})`)
-  results.push(tc)
-}
-console.log(`timing: ${Object.entries(took).map(([k, m]) => `${k} ${fmt(m)}`).join(', ')}`)
-finish()
+
+let extras = null
+if (!live && !has('no-extras') && !failure) extras = await runExtras({ out })
+const took = (Date.now() - t0) / 60_000
+if (live && took > minutes) log.add({ stage: 'run', item: 'over-time-budget', severity: 'block', evidence: `${took.toFixed(1)} min of ${minutes}`, note: `the journey took ${took.toFixed(1)} min, over its ${minutes} min budget`, session: '', area: 'unknown' })
+const costUsd = results.reduce((n, r) => n + r.costUsd, 0)
+writeJourneyReport(out, { results, log, sandbox: sb.dir, recordedSet: live ? 'live' : recordedSet, costUsd, minutes: took, extras, config: live ? [`mode ${mode}`, `evaluator pinned to sonnet in the sandbox: ${/^model: sonnet$/m.test(sb.read('.claude/agents/rig-evaluator.md')) ? 'yes' : 'no'} (rig ships it on opus)`, 'actor model claude-haiku-5-5; inspector and reviewer claude-sonnet-5-5'] : [] })
+fs.writeFileSync(path.join(out, 'violations.md'), log.toMarkdown())
+const extrasFailed = extras ? extras.results.some(c => c.failed.length) || extras.lost.length > 0 : false
+if (extras) for (const c of extras.results) if (c.failed.length) c.print()
+for (const m of extras?.lost ?? []) console.error(`coverage floor: ${m}`)
+const code = alert(log, { summary: summarise(log, { stages: results, costUsd, minutes: took }), ...(has('no-notify') ? { notify: () => {} } : {}) })
+console.log(`report and sandbox: ${out}`)
+// A halted journey is never green, whatever the triage says: triage only quiets the alert for a violation already decided.
+const halted = results.some(r => r.status === 'fail' || r.status === 'not-run') || failure !== null
+process.exitCode = code || (halted || extrasFailed ? 1 : 0)

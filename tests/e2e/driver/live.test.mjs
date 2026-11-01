@@ -268,3 +268,27 @@ test('an effort is passed to every session as --effort, and no effort adds no fl
   createSessions({ sb: none, out: out(), capUsd: 6 }).run('a', 'x')
   assert.ok(!none.calls[0].includes('--effort'))
 })
+
+test('a deadline shortens each session timeout to the time left, and refuses to start one after it', () => {
+  const seen = []
+  const sb = { run: (cmd, args, opts) => { seen.push(opts.timeout); return { status: 0, stdout: result(0), stderr: '' } } }
+  createSessions({ sb, out: out(), capUsd: 6 }).run('a', 'x')
+  assert.equal(seen[0], 18 * 60_000)
+  createSessions({ sb, out: out(), capUsd: 6, deadline: Date.now() + 90_000 }).run('b', 'x')
+  assert.ok(seen[1] <= 90_000 && seen[1] >= 30_000, String(seen[1]))
+  assert.throws(() => createSessions({ sb, out: out(), capUsd: 6, deadline: Date.now() - 1 }).run('c', 'x'), /time budget/)
+  assert.equal(seen.length, 2)
+})
+
+test('a session that ends on the account usage limit throws usage-limit, after counting its cost, instead of looking like a stuck step', () => {
+  const limit = JSON.stringify({ type: 'result', is_error: true, total_cost_usd: 0.4, num_turns: 3, duration_ms: 1, permission_denials: [], result: "You've hit your 5-hour limit · resets 6:50pm (Europe/London)" })
+  const sessions = createSessions({ sb: fakeSb(limit), out: out(), capUsd: 6 })
+  assert.throws(() => sessions.run('a', 'x'), /usage-limit: You've hit your 5-hour limit/)
+  assert.equal(sessions.sessions.length, 1)
+  assert.equal(sessions.sessions[0].costUsd, 0.4)
+})
+
+test('an ordinary error result is not mistaken for the usage limit', () => {
+  const err = JSON.stringify({ type: 'result', is_error: true, total_cost_usd: 0, num_turns: 1, duration_ms: 1, permission_denials: [], result: 'something else went wrong' })
+  assert.doesNotThrow(() => createSessions({ sb: fakeSb(err), out: out(), capUsd: 6 }).run('a', 'x'))
+})

@@ -83,3 +83,24 @@ test('the reviewer reviews the delta only: other files are read only to understa
   assert.match(brief, /Review only what the delta adds or changes/)
   assert.match(brief, /never review code the delta does not change/)
 })
+
+test('a finding may carry a Repro, which is optional and limited to existing tests or temp-dir scripts', () => {
+  assert.match(brief, /Repro: <command/)
+  assert.match(brief, /existing test[\s\S]*temp/)
+  assert.match(brief, /without a Repro is still valid/)
+  assert.ok(brief.trimEnd().split('\n').length <= 60)
+})
+
+test('the confirm brief runs a finding\'s Repro once, answers unrun for one that would write outside temp, and still edits nothing', () => {
+  const confirm = fs.readFileSync(path.resolve(import.meta.dirname, '../templates/confirm-brief.md'), 'utf8')
+  assert.match(confirm, /Repro: <command>/)
+  assert.match(confirm, /run it once/)
+  assert.match(confirm, /unrun: <why>/)
+  assert.match(confirm, /Edit nothing/)
+})
+
+test('the pr skill stamps the cited files after review.md is written and before the fix wave', () => {
+  const t = fs.readFileSync(path.resolve(import.meta.dirname, '../skills/pr/SKILL.md'), 'utf8')
+  const stamp = t.indexOf('claims stamp')
+  assert.ok(stamp > t.indexOf('review.md') && stamp < t.indexOf('fix every item'))
+})

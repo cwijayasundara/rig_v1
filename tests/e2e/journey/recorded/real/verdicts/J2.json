@@ -1,0 +1,33 @@
+{
+ "stage": "J2",
+ "items": [
+  {
+   "id": "J2.1",
+   "verdict": "pass",
+   "severity": "block",
+   "evidence": ".rig/product/sprints/sprint-1/approval.json: \"by\": \"rig operator\", \"at\": \"2026-11-01T05:49:47.941Z\", 16 entries in \"files\" with path and sha",
+   "note": "The file exists, names the approver and lists the covered files with hashes."
+  },
+  {
+   "id": "J2.2",
+   "verdict": "pass",
+   "severity": "block",
+   "evidence": "approval.json files include requirements.md, intents/{catalogue,data-file,lending,walking-skeleton}.md, testplan/{plan,cases}.md and testplan/data/{valid,invalid}.json. The sprint-1 directory glob shows exactly these four intents.",
+   "note": "Ledger, all 4 intents and the test plan are covered. prd, source, implementation-plan, the ADRs and architecture are covered as well."
+  },
+  {
+   "id": "J2.3",
+   "verdict": "pass",
+   "severity": "block",
+   "evidence": "`git status --short` printed nothing. HEAD is the approval commit fef338c, so no commit comes after it. Its stat touches only adr/0001, adr/0002, architecture.md, approval.json and plan.md, and none of the files in the covered sprint-1 list.",
+   "note": "I could not recompute the sha values because shasum was denied. The pass rests on git showing the covered files unchanged since approval."
+  },
+  {
+   "id": "J2.4",
+   "verdict": "pass",
+   "severity": "warn",
+   "evidence": "`git log --stat -1` for fef338c lists only .rig/product/adr/0001*, adr/0002*, architecture.md, sprints/sprint-1/approval.json and sprints/sprint-1/plan.md. The diff shows ADR status flips to accepted and plan.md changing 'Chart: missing' to 'Chart: approved'.",
+   "note": "Every file is a chart or approval artifact. plan.md is generated and not in the approval file list, which is a minor observation."
+  }
+ ]
+}

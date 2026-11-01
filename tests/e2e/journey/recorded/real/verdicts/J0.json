@@ -1,0 +1,47 @@
+{
+ "stage": "J0",
+ "items": [
+  {
+   "id": "J0.1",
+   "verdict": "pass",
+   "severity": "block",
+   "evidence": "`wc -l CLAUDE.md` gives 64 lines. CLAUDE.md:3 reads 'sdlc routes all work in this repo: start with /rig-start'.",
+   "note": "Under the 120-line limit and routes to /rig-start."
+  },
+  {
+   "id": "J0.2",
+   "verdict": "pass",
+   "severity": "block",
+   "evidence": ".rig/sensors.json: unit cmd is `pytest -q`; lint cmd is `ruff check ...`; types cmd is `mypy --exclude ... .`. The other sensors are jscpd, semgrep, pip-audit and mutmut.",
+   "note": "The unit, lint and types sensors use Python tools. The extra sensors are language-agnostic or Python-based."
+  },
+  {
+   "id": "J0.3",
+   "verdict": "pass",
+   "severity": "block",
+   "evidence": "`git diff 9771681 HEAD --stat -- pyproject.toml src/library/__init__.py tests/test_smoke.py` printed nothing.",
+   "note": "The first commit is 9771681 (chore: scaffold). The three skeleton files are unchanged since then."
+  },
+  {
+   "id": "J0.4",
+   "verdict": "pass",
+   "severity": "block",
+   "evidence": "`git diff 9771681 HEAD --name-only` lists only .claude/*, .claude-plugin/marketplace.json, .github/workflows/rig-check.yml, .github/workflows/rig-maintain.yml, .rig/*, AGENTS.md, CLAUDE.md, README.md, REVIEW.md and docs/prd/README.md.",
+   "note": "Nothing under src/ or tests/ was touched."
+  },
+  {
+   "id": "J0.5",
+   "verdict": "pass",
+   "severity": "warn",
+   "evidence": "CLAUDE.md Map lists `src/library/` and `tests/`. Commands list `Test: pytest -q`, `ruff check src tests` and mypy. Conventions say `src` layout with `pythonpath = [\"src\"]`.",
+   "note": "The layout and commands are the real Python ones, with no Node references."
+  },
+  {
+   "id": "J0.6",
+   "verdict": "pass",
+   "severity": "warn",
+   "evidence": "Grep of .rig/*.json found no known-red record. Only `\"deferred\": []` appears, in .rig/autonomy.json:4.",
+   "note": "No known-red sensors are recorded, which counts as a pass."
+  }
+ ]
+}

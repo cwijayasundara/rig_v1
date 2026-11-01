@@ -1,0 +1,29 @@
+{
+ "stage": "J2",
+ "items": [
+  {
+   "id": "J2.1",
+   "verdict": "pass",
+   "evidence": "synthetic: replayed",
+   "note": "replayed"
+  },
+  {
+   "id": "J2.2",
+   "verdict": "pass",
+   "evidence": "synthetic: replayed",
+   "note": "replayed"
+  },
+  {
+   "id": "J2.3",
+   "verdict": "pass",
+   "evidence": "synthetic: replayed",
+   "note": "replayed"
+  },
+  {
+   "id": "J2.4",
+   "verdict": "pass",
+   "evidence": "synthetic: replayed",
+   "note": "replayed"
+  }
+ ]
+}

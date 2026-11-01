@@ -4,8 +4,9 @@ import { section, blastRadius, bullets } from './model.ts'
 import type { Risk } from './risk.ts'
 import type { RunRow } from './runs.ts'
 import { behaviourIds, missingBehaviours } from './sensors.ts'
+import { parseFindings, type ClaimRow } from './claims.ts'
 
-type PrBodyInput = { intent: string; spec: string; plan: string; verify: { pass: boolean; tree: string | null; blocks: string[]; from?: string } | null; outline: string; review: string; risk: Risk; amendments?: string; runs?: RunRow[]; tests?: string }
+type PrBodyInput = { claims?: ClaimRow[]; intent: string; spec: string; plan: string; verify: { pass: boolean; tree: string | null; blocks: string[]; from?: string } | null; outline: string; review: string; risk: Risk; amendments?: string; runs?: RunRow[]; tests?: string }
 
 const firstSentence = (text: string): string => /^[\s\S]*?[.!?](?=\s|$)/.exec(text.trim())?.[0].replace(/\s+/g, ' ') ?? text.trim().replace(/\s+/g, ' ')
 
@@ -64,6 +65,14 @@ function behaviourTests(spec: string, tests: string | undefined): string {
   return none.length ? `No test this change adds or edits names ${none.join(', ')}: check those behaviours by hand.` : `Every behaviour (${ids.join(', ')}) is named by a test this change adds or edits.`
 }
 
+// Suggestions only (claims.ts): how many findings carry a Repro, and each row that asks for a second look.
+function claimsNote(review: string, claims: ClaimRow[] | undefined): string {
+  if (!claims) return ''
+  const found = parseFindings(review), suggest = claims.filter(c => c.status === 'suggest')
+  if (!found.length && !suggest.length) return ''
+  return [`Claims: ${found.length} finding(s), ${found.filter(f => f.repro).length} with a Repro.`, ...suggest.map(c => `- ${c.rule}: ${c.detail}`)].join('\n')
+}
+
 export function prBody(i: PrBodyInput): string {
   const why = firstSentence(section(i.intent, 'Intent')) || 'none recorded'
   const behaviours = bullets(section(i.spec, 'Behaviours'))
@@ -81,7 +90,7 @@ export function prBody(i: PrBodyInput): string {
     `## Risk\n\n${i.risk.reasons.length ? `Tier ${i.risk.tier}\n\n${i.risk.reasons.map(r => `- ${r}`).join('\n')}` : 'Tier 0: none of the signals'}`,
     `## How to revert\n\n${revert(i.plan)}`,
     `## What the checks would miss\n\n${!i.review.trim() ? 'no review.md' : /^reviewer:\s*none\b/.test(i.review) ? `No agent reviewed this change (tier ${i.risk.tier}): the sensors and the tests are the evidence.` : missed.length ? missed.join('\n') : 'nothing the reviewer named'}`,
-    `## Evidence\n\n${[evidence, baseProof(runs), headChecks(runs), behaviourTests(i.spec, i.tests)].filter(Boolean).join('\n\n')}`,
+    `## Evidence\n\n${[evidence, baseProof(runs), headChecks(runs), behaviourTests(i.spec, i.tests), claimsNote(i.review, i.claims)].filter(Boolean).join('\n\n')}`,
     i.outline.trim(),
   ]
   return parts.filter(Boolean).join('\n\n') + '\n'

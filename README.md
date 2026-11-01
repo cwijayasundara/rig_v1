@@ -251,7 +251,7 @@ A change's status comes from which of its files exist: spec, plan, approve, buil
 | `/rig:approve chart-<N>` | A sprint's PRD, intents, architecture, ADRs, test plan and the contract files its intents name, as written. Refused while a blocking finding stands; goes stale when any of them changes. |
 | `/rig:waive <sensor> <file\|*> <reason>` | One sensor finding on the active change. |
 
-**The script underneath** (`node .rig/bin/sdlc.ts <cmd>`): `stamp`, `init`, `new`, `activate`, `status`, `approve`, `chart next|check|report|plan <N>`, `prd check|map|ledger|status <N>`, `ready`, `start-brief`, `superpowers`, `pr`, `carry <slug>`, `run`, `verify`, `hook <event>`, `diff`, `baseline`, `check`, `check-file`, `sync`, `vendor`, `upgrade [--json|--diff <file>]`, `hooks`, `waive`, `sensors`, `wiki`, `learn mine|replay|check|proposal|status|reverts|review-eval --max-usd <n>`, `report [--since <date>] [--github [--limit N]]`, `arch`, `queue`, `app`, `slice`, `maintain`, `readiness`, `autonomy`, `risk [<slug>] [--base <ref>] [--json]`, `weight [<slug>] [--json]` (light or full planning, from the blast radius), `new <slug> ... [--full] [--from-diff]`. Skills and CI call these, and so can you.
+**The script underneath** (`node .rig/bin/sdlc.ts <cmd>`): `stamp`, `init`, `new`, `activate`, `status`, `approve`, `chart next|check|report|plan <N>`, `prd check|map|ledger|status <N>`, `ready`, `start-brief`, `superpowers`, `pr`, `carry <slug>`, `run`, `verify`, `hook <event>`, `diff`, `baseline`, `check`, `check-file`, `sync`, `vendor`, `upgrade [--json|--diff <file>]`, `hooks`, `waive`, `sensors`, `wiki`, `learn mine|replay|check|proposal|status|reverts|review-eval --max-usd <n>`, `report [--since <date>] [--github [--limit N]]`, `arch`, `queue`, `app`, `slice`, `maintain`, `readiness`, `autonomy`, `risk [<slug>] [--base <ref>] [--json]`, `weight [<slug>] [--json]` (light or full planning, from the blast radius), `claims <slug>|stamp <slug>` (advisory: where review.md or plan.md disagree with the tree), `new <slug> ... [--full] [--from-diff]`. Skills and CI call these, and so can you.
 
 ### Sensors, policy and guides
 
@@ -458,12 +458,16 @@ claude plugin validate .claude-plugin/plugin.json
 
 S2 and S3 also pass a hidden HTTP acceptance test that imports no source.
 
+The **journey e2e** (`npm run e2e`) replaces the manual check. In a throwaway Python repo it runs `/rig:init --quick`, `/rig-chart 1` on a greenfield PRD (Library Desk), approves, builds every intent, then charts, approves and builds a brownfield sprint 2 on that code. After each stage a Sonnet inspector reads the repository against a rubric (`tests/e2e/journey/rubrics/`) and a reviewer agent stands in for the person who approves. Open violations are written to `violations.md` in the run's output folder, rung and notified, and make the exit code non-zero; nothing is fixed automatically. Record your decision per violation id in `tests/e2e/journey/triage.json` (`fix`, `accept`, `wontfix`); an accepted or wontfix violation is still listed but no longer alerts, halts the run or fails it. `npm run eval:journey` runs it N times per arm and scores the verdicts.
+
+
 ```bash
-npm run test:e2e         # live: real Claude Code (claude-haiku-5-5 by default), costs money, --cap USD (default 6), --minutes (default 20)
-npm run test:e2e:fast    # a fake model plays the skills from fixtures: $0, about 30 s; runs in npm test and CI
+npm run e2e              # live, under 20 minutes: builds one intent greenfield and one brownfield, each from a recorded approved-chart snapshot (Haiku acts, Sonnet inspects); costs money
+npm run e2e:record       # NOT a test: the one-time, hour-plus run that records those snapshots (init, both charts, every build). Re-run only when rig's chart format changes
+npm run e2e:scripted     # the same runner replaying recorded snapshots and verdicts, plus the scripted-only Node shop regression: $0; runs in npm test and CI
 npm run test:e2e:unit    # the route runner, contract tool, stack probe, live driver accounting, eval tests
 npm run test:e2e:stacks  # one tiny repo per stack pack; skips a missing toolchain
-node tests/e2e/run.mjs --driver live --phase S3 --cap 20   # one phase (its prerequisites run first)
+node tests/e2e/run.mjs --driver live --from J4 --out <kept out dir>   # resume the journey at a stage
 ```
 
 ### Evaluation
