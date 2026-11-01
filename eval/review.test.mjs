@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { CASES, buildPrompt, scoreReview, summarize, renderMarkdown, ARMS, DEFAULT_ARMS, reprosOf, runRepros, repoFor as ctxFor, baseOf } from './review.mjs'
+import { CASES, buildPrompt, scoreReview, summarize, renderMarkdown, ARMS, DEFAULT_ARMS, reprosOf, overCap, runRepros, repoFor as ctxFor, baseOf } from './review.mjs'
 
 // The cart cases run Python and pytest; a machine without them skips those tests, by name, rather than failing the suite.
 const has = (...cmd) => { try { execFileSync(cmd[0], cmd.slice(1), { stdio: 'pipe' }); return true } catch { return false } }
@@ -201,4 +201,10 @@ test('the tools arm prompt lists the files the delta changes', () => {
   const c = CASES[0], ctx = ctxFor(c)
   for (const f of ctx.changed) assert.ok(buildPrompt(c, 'tools', ctx).includes(f), f)
   fs.rmSync(ctx.dir, { recursive: true, force: true })
+})
+
+test('the spend cap stops before a call that would take the run over it', () => {
+  assert.equal(overCap(0, 0, 8), false, 'the first call always runs')
+  assert.equal(overCap(7.5, 25, 8), false, '$0.30 a call fits under $8')
+  assert.equal(overCap(7.9, 25, 8), true, 'one more call at $0.32 would pass $8')
 })
