@@ -1,0 +1,68 @@
+{
+ "stage": "J1",
+ "items": [
+  {
+   "id": "J1.1",
+   "verdict": "pass",
+   "severity": "block",
+   "evidence": ".rig/product/sprints/sprint-1/requirements.md:3-31 lists AC-1.1..5.3 (20 ACs), DR-1..DR-7 and NFR-1..2, with no FR heading lines. These match prd.md:43-107.",
+   "note": "Nothing invented and nothing dropped."
+  },
+  {
+   "id": "J1.2",
+   "verdict": "pass",
+   "severity": "block",
+   "evidence": "Every behaviour in intents/walking-skeleton.md:40-44, data-file.md:42-51, catalogue.md:40-53 and lending.md:45-63 starts with an FR-n or NFR-n. Intents cover FR-1..5 (walking-skeleton.md:3), NFR-1 (data-file.md:3) and NFR-2 (lending.md:3, B8).",
+   "note": "All FR and NFR ids are cited at least once."
+  },
+  {
+   "id": "J1.3",
+   "verdict": "pass",
+   "severity": "block",
+   "evidence": "data-file.md:4 depends on walking-skeleton; catalogue.md:4 depends on data-file; lending.md:4 depends on catalogue and data-file.",
+   "note": "There are four intents, one more than the rubric's three: walking-skeleton is extra. The storage -> books -> loans dependency chain matches the PRD (FR-2 depends on FR-1, FR-4 on FR-1 and FR-3)."
+  },
+  {
+   "id": "J1.4",
+   "verdict": "pass",
+   "severity": "block",
+   "evidence": "lending.md:47 B3 DR-4 \"at most 3\"; lending.md:46 B2 DR-5 \"14 days\"; lending.md:62 B15 DR-6; lending.md:49 B5 DR-7. Tests: cases.md TC-33/34/40 (DR-4), TC-32 (DR-5), TC-47/50/52 (DR-6), TC-35/41 (DR-7).",
+   "note": "DR-6 has no number to quote. The others carry their exact numbers and are covered by ACs and test cases."
+  },
+  {
+   "id": "J1.5",
+   "verdict": "pass",
+   "severity": "block",
+   "evidence": "cases.md: AC-1.1 TC-6, 1.2 TC-7, 1.3 TC-17, 1.4 TC-14, 2.1 TC-18, 2.2 TC-23, 2.3 TC-26, 2.4 TC-28, 3.1 TC-19, 3.2 TC-29, 3.3 TC-20, 3.4 TC-21, 4.1 TC-31, 4.2 TC-40, 4.3 TC-41, 4.4 TC-42, 4.5 TC-47, 5.1 TC-36, 5.2 TC-44, 5.3 TC-37.",
+   "note": "All 20 ACs appear in at least one case."
+  },
+  {
+   "id": "J1.6",
+   "verdict": "pass",
+   "severity": "block",
+   "evidence": "prd.md:128 \"(answered by the person at chart): a loan is overdue when its due date is before the day of the check_out attempt...\"; the Open questions heading at prd.md:135 has no entries. Every intent ends with \"Open questions: none\". testplan/plan.md:16 records OQ-1.",
+   "note": "OQ-1 was answered once, in Decisions, and no open question remains."
+  },
+  {
+   "id": "J1.7",
+   "verdict": "pass",
+   "severity": "block",
+   "evidence": "No behaviour in intents/*.md builds fines, reservations, renewals, reports, a member registry, a CLI, or editing or removing a book. lending.md:22 and catalogue.md:21 list them as non-goals.",
+   "note": "No non-goal is built."
+  },
+  {
+   "id": "J1.8",
+   "verdict": "pass",
+   "severity": "warn",
+   "evidence": "lending.md:32 and :52 define LOAN_LIMIT = 3 and LOAN_DAYS = 14 only in lending.py. Behaviour B8 and test TC-39 enforce a single definition each.",
+   "note": "Each rule is one named constant, in one intent."
+  },
+  {
+   "id": "J1.9",
+   "verdict": "warn",
+   "severity": "warn",
+   "evidence": "lending.md has B1..B16 (16 behaviours, estimate_days 2). catalogue.md has 11 and data-file.md has 7. Failure sections exist: lending.md:54, catalogue.md:47, data-file.md:47, walking-skeleton.md:46 (\"none\").",
+   "note": "Every intent states its failure behaviour, but lending is large for one change (16 behaviours); the others are modest."
+  }
+ ]
+}

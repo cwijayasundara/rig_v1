@@ -17,7 +17,7 @@ function repo() {
   const stub = (code) => { fs.writeFileSync(path.join(bin, 'pytest'), `#!/bin/sh\nexit ${code}\n`, { mode: 0o755 }) }
   stub(0)
   const sb = {
-    dir, git, write,
+    dir, git, write, read: rel => (fs.existsSync(path.join(dir, rel)) ? fs.readFileSync(path.join(dir, rel), 'utf8') : ''),
     run: (cmd, args, opts = {}) => spawnSync(cmd, args, { cwd: dir, encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, ...opts }),
     sdlc: () => ({ status: 0, stdout: '[]', stderr: '' }),
   }
@@ -64,4 +64,22 @@ test('gateChart fails on a block finding and passes on warnings only', async () 
   sb.sdlc = () => ({ status: 0, stdout: JSON.stringify([{ severity: 'warn', rule: 'x', where: 'y' }]), stderr: '' })
   const ok = new Checks('t'); await gateChart(ok, sb, 1)
   assert.deepEqual(failed(ok), [])
+})
+
+test('gateBuilt accepts a merged change that status no longer lists, when its pr.md exists and its branch is in main', async () => {
+  const { sb, git, write } = repo()
+  write('src/a.py', 'a'); git('add', '-A'); git('commit', '-qm', 'base')
+  git('checkout', '-q', '-b', 'sdlc/x'); write('src/b.py', 'b'); write('.rig/changes/x/pr.md', 'pr'); git('add', '-A'); git('commit', '-qm', 'work')
+  git('checkout', '-q', 'main'); git('merge', '-q', '--ff-only', 'sdlc/x')
+  sb.sdlc = () => ({ status: 0, stdout: JSON.stringify({ changes: [] }), stderr: '' })
+  const c = new Checks('t'); await gateBuilt(c, sb, { slug: 'x', allowedPaths: ['src/**', '.rig/**'], baseRef: 'HEAD~1' })
+  assert.deepEqual(failed(c), [])
+})
+
+test('gateBuilt still fails a change that is neither listed nor merged', async () => {
+  const { sb, git, write } = repo()
+  write('src/a.py', 'a'); git('add', '-A'); git('commit', '-qm', 'base')
+  sb.sdlc = () => ({ status: 0, stdout: JSON.stringify({ changes: [] }), stderr: '' })
+  const c = new Checks('t'); await gateBuilt(c, sb, { slug: 'x', allowedPaths: ['src/**'], baseRef: 'main' })
+  assert.match(c.failed.map(f => f.name).join('|'), /reached review or shipped/)
 })

@@ -31,9 +31,11 @@ export async function gateApproved(c, sb, sprint) {
 // baseRef: where the change branched from. allowedPaths: globs the change may touch (the intent's source and its tests).
 export async function gateBuilt(c, sb, { slug, allowedPaths, baseRef = 'main' }) {
   await c.check(`${slug}: pytest passes`, () => { const r = sb.run('pytest', ['-q']); return r.status === 0 || (r.stdout + r.stderr).trim().split('\n').slice(-3).join(' ') })
+  // Merged changes drop out of `status`, so shipped is also read from the repo: the change's pr.md exists and its branch is in HEAD.
   await c.check(`${slug}: the change reached review or shipped`, () => {
     const st = (json(sb.sdlc(['status', '--json']).stdout)?.changes ?? []).find(x => x.slug === slug)?.status
-    return ['review', 'shipped'].includes(st) || `status ${st ?? '(no such change)'}`
+    const merged = sb.run('git', ['merge-base', '--is-ancestor', `sdlc/${slug}`, 'HEAD']).status === 0
+    return ['review', 'shipped'].includes(st) || (merged && Boolean(sb.read?.(`.rig/changes/${slug}/pr.md`))) || `status ${st ?? '(no such change)'}; merged ${merged}`
   })
   await c.check(`${slug}: only the intent's files changed`, () => {
     const files = sb.run('git', ['diff', '--name-only', `${baseRef}...HEAD`]).stdout.split('\n').filter(Boolean)
