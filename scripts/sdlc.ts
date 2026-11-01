@@ -42,6 +42,7 @@ import { cmdMaintain } from './maintain.ts'
 import { cmdReadiness } from './readiness.ts'
 import { cmdAutonomy, initAutonomy } from './autonomy.ts'
 import { cmdRisk, cmdWeight } from './risk.ts'
+import { cmdClaims } from './claims.ts'
 import { protect } from './protect.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'
 import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, intentSettled, nextChart, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, waiveChartFinding, changeRequirements, PRD_RE, isConverted, conversionRefusal } from './chart.ts'
@@ -475,6 +476,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   readiness: cmdReadiness,
   autonomy: cmdAutonomy,
   risk: cmdRisk,
+  claims: cmdClaims,
   weight: cmdWeight,
 }
 
