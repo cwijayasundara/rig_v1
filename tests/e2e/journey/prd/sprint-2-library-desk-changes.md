@@ -10,18 +10,14 @@ owner: rig-e2e
 
 The desk runs on the sprint 1 library. Books are now lent for 21 days, the "not on loan" error message is reworded, the librarian wants to renew a loan and to see overdue loans, and the old `raise_missing` flag of `find_book` is no longer wanted and is removed. Everything else in sprint 1 keeps working exactly as it does.
 
-Business rules of the desk now:
-
-- A book is lent for 21 days; the due date is 21 days after the day it is checked out.
-- A member may still hold at most 3 books on loan at the same time.
-- A loan can be renewed once: its due date moves forward by the loan period (21 days), counted from the old due date.
+The desk's changed rules are the data rules DR-5 and DR-7 below.
 
 **Changes since sprint 1**
 
 | Requirement | Kind | Change |
 |---|---|---|
 | FR-3 Find a book | modified | the `raise_missing` flag of `find_book` is removed; a missing isbn always raises |
-| FR-4 Check out a book | modified | loan period 14 days becomes 21; loans gain a `renewed` flag and data files written by sprint 1 (no flag) still load as not renewed |
+| FR-4 Check out a book (DR-5) | modified | loan period 14 days becomes 21; loans gain a `renewed` flag and data files written by sprint 1 (no flag) still load as not renewed |
 | FR-5 Return a book | modified | the error message for a book not on loan changes (see AC-5.2) |
 | FR-6 Renew a loan | new | |
 | FR-7 Overdue report | new | |
@@ -101,6 +97,9 @@ Depends on: FR-4
 ## Data rules
 
 - DR-4: A loan records whether it has been renewed; a missing field in a stored loan means not renewed.
+- DR-5: A book is lent for 21 days; the due date is 21 days after the day it is checked out.
+- DR-6: A member may still hold at most 3 books on loan at the same time.
+- DR-7: A loan can be renewed once: its due date moves forward by the loan period (21 days), counted from the old due date.
 
 ## Non-functional requirements
 

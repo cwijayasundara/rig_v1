@@ -22,11 +22,20 @@ test('sprint 1 defines exactly FR-1..FR-5 and every FR has an AC', () => {
   for (const fr of frs(S1)) assert.ok(crit.some(c => c.parent === fr), `${fr} has no criterion`)
 })
 
-test('sprint 1 states the loan limit and the loan period in prose, not as numbers in an AC', () => {
-  assert.match(S1, /at most 3 books/)
-  assert.match(S1, /14 days/)
+test('sprint 1 states the desk rules as numbered data rules (rig traces only numbered lines), not as numbers in an AC or in prose', () => {
+  assert.match(S1, /^- DR-4: A member may hold at most 3 books/m)
+  assert.match(S1, /^- DR-5: A book is lent for 14 days/m)
+  assert.match(S1, /^- DR-6: A member with an overdue loan cannot borrow/m)
+  assert.match(S1, /^- DR-7: A book can only be lent while at least one of its copies is free/m)
+  const context = S1.slice(S1.indexOf('## Context and problem'), S1.indexOf('## Goals'))
+  assert.doesNotMatch(context, /at most 3 books|14 days/)
   const acs = S1.split('\n').filter(l => l.startsWith('- AC-')).join('\n')
   assert.doesNotMatch(acs, /\b14\b|\b3 loans\b/)
+})
+
+test('sprint 2 states its changed rules as numbered data rules too', () => {
+  assert.match(S2, /^- DR-5: A book is lent for 21 days/m)
+  assert.match(S2, /^- DR-7: A loan can be renewed once/m)
 })
 
 test('sprint 1 carries one open question about overdue', () => {

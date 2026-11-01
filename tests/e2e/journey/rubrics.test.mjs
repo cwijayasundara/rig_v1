@@ -24,8 +24,15 @@ test('every rubric parses, has at least 4 items, at most 60 lines, and ids of it
   }
 })
 
-test('J1 requires prose business rules to be quoted and cited', () => {
-  assert.match(read('J1'), /prose business rule/)
+test('J1 requires the desk business rules (DR-4..DR-7) to be quoted and cited', () => {
+  assert.match(read('J1'), /business rule/)
+  assert.match(read('J1'), /DR-4/)
+})
+
+test('J1.2 follows rig: behaviours cite FR-n or NFR-n ids the PRD defines, and an AC id alone does not count', () => {
+  const line = read('J1').split('\n').find(l => l.startsWith('- J1.2'))
+  assert.match(line, /FR-n or NFR-n/)
+  assert.match(line, /AC id alone does not count/)
 })
 
 test('J6 pins read-only reports, sprint 1 data loading, one definition of the modified rules and unchanged tests', () => {

@@ -10,12 +10,7 @@ owner: rig-e2e
 
 A small library desk keeps its books and loans on paper, so staff lose track of who holds which book and how many copies are free. This sprint delivers a small Python library that keeps the catalogue and the loans in one JSON file and checks the desk's rules when a book is borrowed or returned.
 
-Business rules of the desk, as the librarian states them:
-
-- A member may hold at most 3 books on loan at the same time.
-- A book is lent for 14 days; the due date is 14 days after the day it is checked out.
-- A member with an overdue loan cannot borrow another book.
-- A book can only be lent while at least one of its copies is free.
+The desk's lending rules are the data rules DR-4 to DR-7 below.
 
 ## Goals and success metrics
 
@@ -99,6 +94,10 @@ Depends on: FR-4
 - DR-1: An isbn is a non-empty string, matched exactly, and unique in the catalogue.
 - DR-2: A loan records member id, isbn, the day it was checked out and its due date.
 - DR-3: copies is an integer of 1 or more.
+- DR-4: A member may hold at most 3 books on loan at the same time.
+- DR-5: A book is lent for 14 days; the due date is 14 days after the day it is checked out.
+- DR-6: A member with an overdue loan cannot borrow another book.
+- DR-7: A book can only be lent while at least one of its copies is free.
 
 ## Non-functional requirements
 
