@@ -8,7 +8,7 @@ import { journeyDriver, setupSandbox } from './driver-live.mjs'
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'dl-'))
 
 // A stub sandbox: sdlc answers come from a function so a test scripts the repo state.
-function world({ sdlc = () => ({ status: 0, stdout: '', stderr: '' }), files = {} } = {}) {
+function world({ sdlc = args => (args[0] === 'status' ? { status: 0, stdout: JSON.stringify({ changes: [{ slug: 'loans', status: 'review' }] }), stderr: '' } : { status: 0, stdout: '', stderr: '' }), files = {} } = {}) {
   const runs = [], sdlcCalls = [], git = []
   const sessions = { sessions: [], run: (label, prompt, opts) => { runs.push({ label, prompt, opts }); return { costUsd: 0.1 } } }
   const dir = tmp()
@@ -146,4 +146,12 @@ test('a plan the reviewer keeps rejecting fails after two revisions, without app
   await assert.rejects(async () => d.buildIntent(await d.startIntent('.rig/product/sprints/sprint-1/intents/loans.md')), /reviewer rejected the plan.*still wrong/)
   assert.equal(w.runs.filter(r => /revise/.test(r.label)).length, 2)
   assert.ok(!w.sdlcCalls.some(c => c.args[0] === 'approve'))
+})
+
+test('a change that stopped before the PR is not merged: buildIntent fails naming the status', async () => {
+  const w = world({ sdlc: args => (args[0] === 'status' ? { status: 0, stdout: JSON.stringify({ changes: [{ slug: 'loans', status: 'build' }] }), stderr: '' } : { status: 0, stdout: '', stderr: '' }) })
+  const live = { begin: async () => 'loans', plan: async () => {}, build: async () => {}, answer: async () => {} }
+  const d = journeyDriver({ sb: w.sb, sessions: w.sessions, answersDir, liveDriverFor: () => live })
+  await assert.rejects(async () => d.buildIntent(await d.startIntent('.rig/product/sprints/sprint-1/intents/loans.md')), /loans stopped at build/)
+  assert.ok(!w.git.some(g => g.startsWith('push')), 'nothing was pushed or merged')
 })

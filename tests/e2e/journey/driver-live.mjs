@@ -134,6 +134,9 @@ export function journeyDriver({ sb, sessions, answersDir = ANSWERS, reviewer = n
       if (a.status !== 0) throw new Error(`approve refused: ${first(a)}`)
       await live.build(slug)
       sb.commitAll('chore: session leftovers')
+      // The person merges a PR, not a half-built change: say where the model stopped instead of merging it.
+      const st = (json(sb.sdlc(['status', '--json']).stdout)?.changes ?? []).find(c => c.slug === slug)?.status
+      if (st !== 'review') throw new Error(`${slug} stopped at ${st ?? 'an unknown status'} without opening a PR`)
       await requireApproval(`pr-${slug}`, [`git diff main...HEAD`, `.rig/changes/${slug}/`], 'PR')
       mergeToMain(sb, slug)
     },
