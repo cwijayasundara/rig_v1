@@ -140,3 +140,19 @@ test('a review.md that records no agent review says so, instead of "nothing the 
   assert.match(b, /## What the checks would miss\n\nNo agent reviewed this change \(tier 0\)/)
   assert.doesNotMatch(b, /nothing the reviewer named/)
 })
+
+test('claims suggestions and the Repro count appear in Evidence; without claims the body is unchanged', () => {
+  const review = 'verdict: changes-needed\n## Findings\n- [severity: high] [category: tests] src/a.ts:1: p. Repro: node --test t.js → f\n- [severity: medium] [category: tests] src/b.ts:2: q → f\n'
+  const claims = [{ rule: 'C2' as const, claim: 'x', status: 'suggest' as const, detail: 'src/a.ts unchanged' }, { rule: 'C1' as const, claim: 'y', status: 'ok' as const, detail: 'fine' }]
+  const plain = prBody({ intent, spec, plan, verify, outline: '', review, risk })
+  const b = prBody({ intent, spec, plan, verify, outline: '', review, risk, claims })
+  assert.match(b, /Claims: 2 finding\(s\), 1 with a Repro\./)
+  assert.match(b, /- C2: src\/a\.ts unchanged/)
+  assert.doesNotMatch(b, /C1: fine/)
+  assert.doesNotMatch(plain, /Claims:/)
+})
+
+test('a body with claims but no findings and no suggestions adds nothing', () => {
+  const b = prBody({ intent, spec, plan, verify, outline: '', review: 'reviewer: none\nverdict: pass\n', risk, claims: [] })
+  assert.doesNotMatch(b, /Claims:/)
+})
