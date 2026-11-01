@@ -10,6 +10,7 @@ export const INIT_PROMPT = '/rig:init --quick'
 export const SKELETON = path.join(HERE, 'skeleton')
 export const ANSWERS = path.join(HERE, 'answers')
 const MAX_CONTINUATIONS = 3
+const MAX_REVISIONS = 2
 const json = t => { try { return JSON.parse(t) } catch { return null } }
 const first = r => (r.stderr || r.stdout || '').trim().split('\n')[0]
 const files = dir => (fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => !f.startsWith('.')).sort() : [])
@@ -63,10 +64,14 @@ export function journeyDriver({ sb, sessions, answersDir = ANSWERS, reviewer = n
     if (blocks.length) return { kind: 'findings', detail: blocks.map(f => `${f.rule}@${f.where}`).join(', ') }
     return { kind: 'none' }
   }
-  const requireApproval = async (stage, artefacts, what) => {
-    if (!reviewer) return
+  const decide = async (stage, artefacts) => {
+    if (!reviewer) return { decision: 'approve', reasons: [] }
     const d = await reviewer.review({ sb, stage, artefacts })
     extraUsd += d.costUsd ?? 0
+    return d
+  }
+  const requireApproval = async (stage, artefacts, what) => {
+    const d = await decide(stage, artefacts)
     if (d.decision !== 'approve') throw new Error(`reviewer rejected the ${what}: ${d.reasons.join('; ')}`)
   }
 
@@ -113,7 +118,14 @@ export function journeyDriver({ sb, sessions, answersDir = ANSWERS, reviewer = n
 
     async buildIntent(slug) {
       await live.plan(slug)
-      await requireApproval(`plan-${slug}`, [`.rig/changes/${slug}/spec.md`, `.rig/changes/${slug}/plan.md`], 'plan')
+      // A person who rejects a plan sends it back with their reasons; so does the reviewer, up to twice, before the change is given up on.
+      const planFiles = [`.rig/changes/${slug}/spec.md`, `.rig/changes/${slug}/plan.md`]
+      let d = await decide(`plan-${slug}`, planFiles)
+      for (let n = 1; d.decision !== 'approve' && n <= MAX_REVISIONS; n++) {
+        sessions.run(`J-${slug}-revise${n}`, `/rig-plan ${slug}. The reviewer rejected the plan: ${d.reasons.join('; ')}\nRevise spec.md and plan.md to fix exactly these points and add nothing else, then stop for approval.`, { cont: true })
+        d = await decide(`plan-${slug}`, planFiles)
+      }
+      if (d.decision !== 'approve') throw new Error(`reviewer rejected the plan: ${d.reasons.join('; ')}`)
       let a = sb.sdlc(['approve', slug], { human: true })
       if (a.status !== 0 && live.answer && /open question/.test(a.stderr + a.stdout)) {
         await live.answer(slug, (a.stderr || a.stdout).trim())

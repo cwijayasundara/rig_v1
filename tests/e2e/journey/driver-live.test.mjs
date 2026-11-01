@@ -125,3 +125,25 @@ test('blocking findings that never clear end as stuck-on-input after 3 continuat
   await assert.rejects(() => journeyDriver({ sb: w.sb, sessions: w.sessions, answersDir }).chart(1, 'docs/prd/p.md'), /stuck-on-input.*findings/)
   assert.equal(w.runs.length, 4)
 })
+
+test('a rejected plan goes back to the model with the reviewer reasons, once, and is re-reviewed before it is approved', async () => {
+  const w = world()
+  const live = { begin: async () => 'loans', plan: async () => {}, build: async () => {}, answer: async () => {} }
+  const verdicts = [{ decision: 'reject', reasons: ['plan adds a bool rule with no B-number'] }, { decision: 'approve', reasons: [] }, { decision: 'approve', reasons: [] }]
+  const d = journeyDriver({ sb: w.sb, sessions: w.sessions, answersDir, liveDriverFor: () => live, reviewer: { review: async () => verdicts.shift() } })
+  await d.buildIntent(await d.startIntent('.rig/product/sprints/sprint-1/intents/loans.md'))
+  const revise = w.runs.filter(r => /revise/.test(r.label))
+  assert.equal(revise.length, 1)
+  assert.match(revise[0].prompt, /plan adds a bool rule with no B-number/)
+  assert.equal(revise[0].opts.cont, true)
+  assert.ok(w.sdlcCalls.some(c => c.args[0] === 'approve'))
+})
+
+test('a plan the reviewer keeps rejecting fails after two revisions, without approving it', async () => {
+  const w = world()
+  const live = { begin: async () => 'loans', plan: async () => {}, build: async () => {}, answer: async () => {} }
+  const d = journeyDriver({ sb: w.sb, sessions: w.sessions, answersDir, liveDriverFor: () => live, reviewer: { review: async () => ({ decision: 'reject', reasons: ['still wrong'] }) } })
+  await assert.rejects(async () => d.buildIntent(await d.startIntent('.rig/product/sprints/sprint-1/intents/loans.md')), /reviewer rejected the plan.*still wrong/)
+  assert.equal(w.runs.filter(r => /revise/.test(r.label)).length, 2)
+  assert.ok(!w.sdlcCalls.some(c => c.args[0] === 'approve'))
+})

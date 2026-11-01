@@ -87,3 +87,9 @@ test('an unknown mode is refused, and --record only works in full mode', () => {
   assert.equal(rec.r.status, 2)
   assert.match(rec.r.stderr, /--record needs --mode full/)
 })
+
+test('--seed J2 in a full live run refuses before spending when that snapshot was never recorded', () => {
+  const { r } = go(['--driver', 'live', '--cap', '0', '--mode', 'full', '--seed', 'J2', '--recorded', 'synthetic'])
+  assert.equal(r.status, 2)
+  assert.match(r.stderr, /recorded J2 snapshot/)
+})

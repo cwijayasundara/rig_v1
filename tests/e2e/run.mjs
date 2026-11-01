@@ -1,5 +1,5 @@
 // The one e2e command: node tests/e2e/run.mjs [--driver live|scripted] [--intents N] [--from J0..J6] [--cap USD] [--minutes N]
-// [--mode fast|chart|full] [--record] [--out DIR] [--sandbox DIR] [--recorded SET] [--triage FILE] [--no-extras] [--no-notify]
+// [--mode fast|chart|full] [--seed J2|J3|J5] [--record] [--out DIR] [--sandbox DIR] [--recorded SET] [--triage FILE] [--no-extras] [--no-notify]
 // It drives rig through init, chart, approve and build for Library Desk sprint 1 (greenfield) and sprint 2 (brownfield) on one
 // sandbox. Each stage acts (Haiku, live), passes deterministic gates, then a Sonnet inspector judges the artefacts against a
 // rubric. Every violation is logged and alerted; the run never fixes anything. Scripted replays recorded snapshots at $0.
@@ -30,6 +30,11 @@ const live = arg('driver', 'scripted') === 'live'
 // charts. full: everything from nothing, and the way the snapshots are recorded. Scripted always replays the full journey.
 const mode = arg('mode', has('full') ? 'full' : 'fast')
 if (!MODES[mode]) { console.error(`unknown --mode ${mode}: fast, chart or full`); process.exit(2) }
+// --seed STAGE restarts a full run from that stage's recorded snapshot: the stages after it, in a fresh sandbox.
+const seedArg = arg('seed')
+const stageIds = STAGES.map(st => st.id)
+if (seedArg && !stageIds.includes(seedArg)) { console.error(`unknown --seed ${seedArg}: ${stageIds.join(', ')}`); process.exit(2) }
+const legs = !live ? MODES.full.legs : seedArg ? [{ seed: seedArg, stages: stageIds.slice(stageIds.indexOf(seedArg) + 1) }] : MODES[mode].legs
 if (has('record') && mode !== 'full') { console.error('--record needs --mode full: the snapshots the other modes start from come from a whole journey'); process.exit(2) }
 const stamp = new Date().toISOString().replace(/[:.]/g, '-')
 const out = path.resolve(arg('out', path.join(HERE, 'out', stamp)))
@@ -46,7 +51,7 @@ const recordedDir = path.join(recordedRoot, recordedSet)
 
 // Before anything is created or spent: every leg that starts from a snapshot needs it on disk.
 if (live) {
-  for (const leg of MODES[mode].legs) {
+  for (const leg of legs) {
     if (leg.seed && !fs.existsSync(snapshotFile(recordedDir, leg.seed))) { console.error(`mode ${mode} starts from the recorded ${leg.seed} snapshot, which is missing in ${recordedDir}. Record it once with: npm run e2e:full -- --record`); process.exit(2) }
   }
 }
@@ -76,7 +81,6 @@ if (live) {
 }
 let results = []
 let failure = null
-const legs = live ? MODES[mode].legs : MODES.full.legs
 const live_record = live && has('record') ? (r, { stage }) => recordStage({ sb, stage: stage.id, verdicts: r.verdicts, decision: stage.approve ? 'approve' : null, recordedDir: path.join(recordedRoot, 'real'), snapshot: SEEDS.includes(stage.id) }) : null
 try {
   for (const leg of legs) {
