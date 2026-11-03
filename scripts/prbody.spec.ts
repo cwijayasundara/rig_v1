@@ -156,3 +156,20 @@ test('a body with claims but no findings and no suggestions adds nothing', () =>
   const b = prBody({ intent, spec, plan, verify, outline: '', review: 'reviewer: none\nverdict: pass\n', risk, claims: [] })
   assert.doesNotMatch(b, /Claims:/)
 })
+
+// Step 1 leftover (2026-11-03): the reviewer sees which behaviours rest on a value nobody at the client said.
+test('the evidence names behaviours that cite a proposed ledger row or carry the marker, and says nothing when none do', () => {
+  const spec2 = spec.replace('- B1: export downloads a CSV\n- B2: empty report exports a header row', '- B1 (FR-1): export downloads a CSV\n- B2 (FR-1, AC-1.2): at most 500 rows\n- B3: header is bold (proposed at chart)')
+  const requirements = '# Requirements: demo\n\n- AC-1.1 [rule] prd.md:5 "WHEN a THE SYSTEM SHALL b"\n- AC-1.2 [rule, proposed] prd.md:6 "WHEN c THE SYSTEM SHALL cap at 500"\n'
+  const note = (spec3: string, req?: string): string => prBody({ intent, spec: spec3, plan, verify, outline: '', review: '', risk, ...(req === undefined ? {} : { requirements: req }) })
+  assert.match(note(spec2, requirements), /Rests on values nobody at the client said: B2 \(cites AC-1\.2\), B3 \(marked\)\. Ask the owner/)
+  assert.doesNotMatch(note(spec2, requirements.replace(', proposed', '')), /B2 \(cites/)
+  assert.doesNotMatch(note(spec), /Rests on/)
+  assert.doesNotMatch(note(spec, requirements), /Rests on/)
+})
+
+test('a legacy alias never matches inside a longer id', () => {
+  const requirements = '# Requirements: demo\n\n- FR-1.1 (AC-1.1) [rule, proposed] prd.md:5 "WHEN a THE SYSTEM SHALL b"\n'
+  const body = prBody({ intent, spec: spec.replace('- B1: export downloads a CSV\n- B2: empty report exports a header row', '- B1 (AC-1.1): a\n- B4 (AC-1.12): b'), plan, verify, outline: '', review: '', risk, requirements })
+  assert.match(body, /Rests on values nobody at the client said: B1 \(cites AC-1\.1\)\. Ask/)
+})

@@ -68,7 +68,9 @@ export function designDocOf(n: number): string | null {
   if (!mine && of !== undefined && Number(of) !== n) return null // the newest design belongs to another sprint
   return toPosix(path.relative(ROOT, mine ? path.join(named, mine) : path.join(ROOT, d)))
 }
-const designFile = (n: number): string[] => { const d = designDocOf(n); return d && !escapes(d) ? [path.join(ROOT, d)] : [] }
+// This sprint's ADRs: the files under adr/ whose frontmatter says `sprint: N` (quotes and brackets ignored).
+export const adrFilesOf = (n: number): string[] => walk(path.join(PRODUCT, 'adr')).filter(f => f.endsWith('.md') && String(frontmatter(read(f)).data.sprint ?? '').replace(/[\s\[\]"']/g, '') === String(n))
+export const designFile = (n: number): string[] => { const d = designDocOf(n); return d && !escapes(d) ? [path.join(ROOT, d)] : [] }
 
 function ownFiles(n: number): string[] {
   const own = intentsOf(n)
@@ -147,6 +149,10 @@ export function chartFindings(n: number, withCases: boolean): ChartFinding[] {
   if (unapproved && exists(sourcePath(n)) && format.length) found.push({ rule: 'prd-format', severity: 'block', where: 'prd', message: `prd.md is not in rig's PRD format (${format.length} finding(s)): run \`prd check ${n}\` and convert it` })
   if (unapproved && !format.length && exists(ledgerPath(n)) && read(ledgerPath(n)) !== prdLedger(prd, conversionMapOf(n))) found.push({ rule: 'ledger-stale', severity: 'block', where: 'ledger', message: `requirements.md is not what prd.md generates: run \`prd ledger ${n}\`, never edit it by hand` })
   if (unapproved && exists(sourcePath(n))) found.push(...coverageProblems({ source: read(sourcePath(n)), prd, coverage: exists(coveragePath(n)) ? read(coveragePath(n)) : null }))  // did the client write enough
+  if (unapproved) for (const f of [...intentsOf(n).map(i => i.file), ...designFile(n), ...adrFilesOf(n)]) {
+    const old = [...new Set(read(f).match(/\((?:default|decided) at chart\)/gi) ?? [])]
+    if (old.length) found.push({ rule: 'marker-legacy', severity: 'report', where: toPosix(path.relative(ROOT, f)), message: `${toPosix(path.relative(ROOT, f))} uses ${old.join(', ')}: write "(proposed at chart)" for a value the agent supplied, so \`prd proposed ${n}\` lists it` })
+  }
   for (const i of intentsOf(n)) if (i.declared !== n) found.push({ rule: 'sprint-mismatch', severity: 'block', where: i.slug, message: `${i.slug} sits in sprint-${n}/intents/ but its frontmatter says sprint: ${i.declared ?? 'nothing'}` })
   for (const i of intentsOf(n)) {
     const same = allIntents().filter(t => t.slug === i.slug)

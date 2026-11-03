@@ -44,7 +44,7 @@ test('parseIntent reads the canonical and the loose forms alike (CRLF, no bracke
   assert.deepEqual(block, canon, 'a block list is a list, not an empty field')
   assert.deepEqual(canon.prd, ['FR-3'])
   assert.deepEqual(canon.depends, ['a'])
-  assert.deepEqual(canon.behaviours, [{ id: 'B1', reqs: ['FR-3'], rules: [], text: 'x' }])
+  assert.deepEqual(canon.behaviours, [{ id: 'B1', reqs: ['FR-3'], rules: [], text: 'x', proposed: false }])
   assert.equal(canon.estimateDays, 1)
   assert.equal(canon.kind, 'internal')
 })

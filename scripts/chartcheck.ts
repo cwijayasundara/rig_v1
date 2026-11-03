@@ -4,7 +4,7 @@ import path from 'node:path'
 import { frontmatter, fmList, sha } from './core.ts'
 import { openQuestions, section } from './model.ts'
 
-export type Behaviour = { id: string; reqs: string[]; rules: string[]; text: string } // rules: ledger ids (FR-4.2, G-1) or AC aliases
+export type Behaviour = { id: string; reqs: string[]; rules: string[]; text: string; proposed: boolean } // rules: ledger ids (FR-4.2, G-1) or AC aliases
 export type Intent = {
   slug: string; sprint: number | null; prd: string[]; depends: string[]; estimateDays: number | null; kind: 'boundary' | 'internal' | null
   behaviours: Behaviour[]; contractFiles: string[]; exampleFiles: string[]; openQuestions: string[]
@@ -57,7 +57,7 @@ export function prdIds(text: string): string[] {
 function parseBehaviours(text: string): Behaviour[] {
   return section(text.replace(/\r\n/g, '\n'), 'Behaviours').split('\n').flatMap((l): Behaviour[] => {
     const m = /^\s*[-*]\s+(B\d+)\s*(?:\(([^)]*)\))?\s*:?\s*(.*)$/.exec(l)
-    return m?.[1] ? [{ id: m[1], reqs: (m[2] ?? '').match(REQ) ?? [], rules: (m[2] ?? '').match(RULE_ID) ?? [], text: (m[3] ?? '').trim() }] : []
+    return m?.[1] ? [{ id: m[1], reqs: (m[2] ?? '').match(REQ) ?? [], rules: (m[2] ?? '').match(RULE_ID) ?? [], text: (m[3] ?? '').trim(), proposed: /\((?:proposed|default|decided) at chart\)/i.test(m[3] ?? '') }] : []
   })
 }
 
