@@ -837,8 +837,12 @@ test('a proposed criterion is ledgered as proposed, listed by `prd proposed`, an
 // 2026-10-26 PRD format, one gate since 2026-10-27: the chart approval covers a converted PRD.
 const SOURCE_1 = '# Cart\n\nAdding works. Ids start at 1.\n'
 const CONV_1 = '- AC-1.1, AC-1.2 source.md:3 "Adding works."\n- DR-1 source.md:3 "Ids start at 1."\n'
+// Every topic marked not applicable: the sufficiency probe (plan 2026-11-03) is satisfied without saying anything about the product.
+const TOPIC_IDS = ['failure', 'escalation', 'ground-truth', 'security', 'rollout', 'accuracy', 'autonomy', 'fallback', 'budget', 'audit']
+const ALL_NA = TOPIC_IDS.map(id => `- ${id} n/a — a fixture with no such need`).join('\n') + '\n'
 const converted = (): void => {
   cleanChart()
+  write(repo, `${P}/sprints/sprint-1/coverage.md`, ALL_NA)
   write(repo, `${P}/sprints/sprint-1/prd.md`, FORMAT_PRD)
   write(repo, `${P}/sprints/sprint-1/source.md`, SOURCE_1)
   write(repo, `${P}/sprints/sprint-1/conversion.md`, CONV_1)
@@ -1023,4 +1027,39 @@ test('approve chart-N flips a linked ADR row in architecture.md', () => {
   const arch = fs.readFileSync(path.join(repo, P, 'architecture.md'), 'utf8')
   assert.match(arch, /\| \[0001\]\(adr\/0001-x\.md\) \| decision \| accepted \| 1 \|/)
   assert.match(arch, /\| 0002 \| other \| accepted \| 1 \|/)
+})
+
+// 2026-11-03 colleague feedback 3: did the client write enough. An open topic blocks the approval; answering or n/a clears it.
+test('coverage: a source with no coverage.md or an open topic cannot be approved; answered, covered or n/a can; an approved sprint is left alone', () => {
+  converted()
+  const cov = `${P}/sprints/sprint-1/coverage.md`
+  const rulesNow = (): string[] => (call('return C.chartFindings(1, false)') as { rule: string }[]).map(f => f.rule).filter(r => r.startsWith('coverage'))
+  assert.deepEqual(rulesNow(), [])
+  fs.rmSync(path.join(repo, cov))
+  assert.deepEqual(rulesNow(), ['coverage-missing'])
+  assert.notEqual(sdlc(repo, ['approve', 'chart-1'], HUMAN).code, 0)
+  write(repo, cov, ALL_NA.replace('- failure n/a — a fixture with no such need', '- failure open'))
+  assert.deepEqual(rulesNow(), ['coverage-open'])
+  const refused = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  assert.notEqual(refused.code, 0)
+  assert.match(refused.stderr + refused.stdout, /coverage-open|Failure handling/)
+  assert.match(sdlc(repo, ['prd', 'coverage', '1']).stdout, /\[coverage-open\] failure: Failure handling[^\n]*\nprd-1: 1 coverage finding\(s\)/)
+  assert.match(sdlc(repo, ['prd', 'gaps', '1']).stdout, /client-gaps\.md/)
+  assert.match(fs.readFileSync(path.join(repo, `${P}/sprints/sprint-1/client-gaps.md`), 'utf8'), /\*\*Failure handling\*\* \(failure\)/)
+  write(repo, cov, ALL_NA.replace('- failure n/a — a fixture with no such need', '- failure answered AC-1.1'))
+  write(repo, `${P}/sprints/sprint-1/prd.md`, FORMAT_PRD.replace('- AC-1.1: WHEN a THE SYSTEM SHALL b', '- AC-1.1: WHEN a THE SYSTEM SHALL b (confirmed at chart by Dana)'))
+  write(repo, `${P}/sprints/sprint-1/conversion.md`, CONV_1)
+  sdlc(repo, ['prd', 'ledger', '1'])
+  assert.deepEqual(rulesNow(), [])
+  const ok = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  assert.equal(ok.code, 0, ok.stderr)
+  assert.ok((call('return C.chartFiles(1)') as string[]).some(f => f.endsWith('/coverage.md')))
+  // Deleting it after approval makes the chart stale, so it is asked for again; a sprint approved before the probe existed has no such row.
+  fs.rmSync(path.join(repo, cov))
+  assert.deepEqual(rulesNow(), ['coverage-missing'])
+  const approval = path.join(repo, `${P}/sprints/sprint-1/approval.json`)
+  const row = JSON.parse(fs.readFileSync(approval, 'utf8')) as { files: { path: string }[] }
+  fs.writeFileSync(approval, JSON.stringify({ ...row, files: row.files.filter(f => !f.path.endsWith('/coverage.md')) }))
+  assert.equal(state(1).state, 'approved')
+  assert.deepEqual(rulesNow(), [])
 })

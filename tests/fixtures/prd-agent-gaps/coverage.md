@@ -1,0 +1,10 @@
+- failure open
+- escalation open
+- ground-truth open
+- security covered source.md:18 "Only users in the finance group may open the queues; invoice bank details are never written to logs."
+- rollout covered source.md:22 "Week 1 runs in shadow mode beside the clerks without moving any invoice."
+- accuracy open
+- autonomy covered source.md:11 "It must never pay an invoice or edit an amount."
+- fallback covered source.md:13 "When the model reports a confidence below 0.7, the assistant leaves the invoice unassigned and says so in the reason."
+- budget covered source.md:17 "Each invoice costs at most 0.05 EUR to triage and is answered within 10 seconds."
+- audit covered source.md:27 "Every triage decision is kept for 7 years with the invoice id, the model version, the queue, the reason and the confidence."

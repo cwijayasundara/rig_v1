@@ -39,6 +39,7 @@ The brief says "check the conversion for sprint N". Read `sprints/sprint-N/sourc
 - **weakened**: a rule of the original whose number, limit, start value, "never", "only", "every" or "unique" did not survive into its `AC`, `DR` or `NFR` line
 - **invented**: a criterion no sentence of the original supports and that carries no `(confirmed at chart by <who>)` or `(proposed at chart)` marker; also a `(proposed at chart)` value that contradicts a sentence of the original
 - **ledger**: a sentence of the original mapped to `context` that a test could assert
+- **missed-topic**: in `coverage.md`, a `covered` row whose quote is not about its topic, or an `open` or `n/a` row for a topic `source.md` does cover (quote the sentence)
 Never edit; raise nothing else.
 
 ## Confirm mode

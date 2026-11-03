@@ -32,7 +32,8 @@ import { cmdReport } from './report.ts'
 import { cmdArch, layerState, layerStateText } from './arch.ts'
 import { cmdQueue, conflictsFor } from './queue.ts'
 import { intentScope } from './scope.ts'
-import { prdFormatProblems, prdLedger, conversionProblems, prdProposed } from './prdformat.ts'
+import { prdFormatProblems, prdLedger, conversionProblems } from './prdformat.ts'
+import { cmdPrdMore } from './prdcmd.ts'
 import { parseLedger, parseIntent } from './chartcheck.ts'
 import { superpowersWarning } from './superpowers.ts'
 import { ARCH_REL, intentsDir, intentRelOf, prdRel, sprintRel, prdPath, reviewPath, ledgerPath, sourcePath } from './product.ts'
@@ -287,7 +288,7 @@ function cmdChart(args: Args): void {
 // The PRD format for coding agents (spec 2026-10-26): `prd check <N>` says whether the sprint PRD is in rig's template.
 function cmdPrd(args: Args): void {
   const [sub, num] = args.pos
-  if (!['check', 'map', 'ledger', 'status', 'proposed'].includes(sub ?? '') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: prd (check [--json] | map [--json] | ledger | status | proposed) <sprint number>')
+  if (!['check', 'map', 'ledger', 'status', 'proposed', 'coverage', 'gaps'].includes(sub ?? '') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: prd (check [--json] | map [--json] | ledger | status | proposed | coverage [--json] | gaps) <sprint number>')
   const n = Number(num)
   needPrd(n)
   if (sub === 'status') {
@@ -295,7 +296,7 @@ function cmdPrd(args: Args): void {
     const why = conversionRefusal(n)
     return out(why ? `converted, not ready: ${why}` : `converted: ready to decompose; ${skillRef('approve')} chart-${n} covers prd.md, source.md and conversion.md`)
   }
-  if (sub === 'proposed') return out(prdProposed(n, read(prdPath(n)), conversionMapOf(n)))  // the lines nobody at the client said, for the one review
+  if (sub === 'proposed' || sub === 'coverage' || sub === 'gaps') return cmdPrdMore(sub, n, Boolean(args.opt.json))
   if (sub === 'ledger') {
     const format = prdFormatProblems(read(prdPath(n)))
     if (format.length) fail(`prd.md is not in format, so no ledger can be generated: run \`prd check ${n}\``)

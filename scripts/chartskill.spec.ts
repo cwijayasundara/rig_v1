@@ -303,3 +303,9 @@ test('the confirm pass reopens a fix that bans a construct another behaviour nee
   assert.match(confirm, /contradicts no other behaviour of the intent/)
   assert.match(confirm, /bans named imports and calls, never a construct/)
 })
+
+// 2026-11-03 colleague feedback 3: the chart asks whether the client wrote enough, in the gap-pass batch, never as a new wave.
+test('chart step 1 writes coverage.md from source.md, asks at most the first 4 open topics in the existing batch, and blocks on open rows', () => {
+  for (const w of ['coverage.md', 'templates/prd-topics.md', 'S prd coverage <N>', 'S prd gaps <N>', 'client-gaps.md', '`source.md` only', 'first 4', 'never a second one', 'block `/rig:approve chart-<N>`', 'Never invent a value for an absent topic', 'never the `coverage-*` ones', 'coverage takes the slots first', 'on a re-run with no `coverage.md`']) assert.ok(skill.includes(w), w)
+  assert.match(fs.readFileSync(path.resolve(import.meta.dirname, '../agents/evaluator.md'), 'utf8'), /\*\*missed-topic\*\*/)
+})

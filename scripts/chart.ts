@@ -9,7 +9,8 @@ import { changeDir, isShipped } from './lifecycle.ts'
 import { stripGenerated, carriedIds } from './carry.ts'
 import { planText, type PlanRow } from './plan.ts'
 import { prdFormatProblems, prdLedger, conversionProblems } from './prdformat.ts'
-import { PRODUCT, ARCH_REL, archPath, prdPath, intentsDir, testplanDir, approvalPath, sprintDir, sprintsOnDisk, intentRel, planPath, implPlanPath, sprintRel, ledgerPath, waiversPath, reviewPath, sourcePath, conversionPath, conversionReviewPath } from './product.ts'
+import { coverageProblems } from './prdcoverage.ts'
+import { PRODUCT, ARCH_REL, archPath, prdPath, intentsDir, testplanDir, approvalPath, sprintDir, sprintsOnDisk, intentRel, planPath, implPlanPath, sprintRel, ledgerPath, coveragePath, waiversPath, reviewPath, sourcePath, conversionPath, conversionReviewPath } from './product.ts'
 import { designIntents, sharedScopeProblems, architectureProblems, implementationPlanProblems, accessProblems, parseAccess, parseIntent, parseCases, parkedDecisions, prdIds, traceReport, ledgerProblems, parseLedger, parentOf, parseReview, openFindings, type ReviewFinding, type ChartWaiver, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
 
 const SHARED_DIRS = ['adr'].map(d => `${toPosix(path.relative(ROOT, path.join(PRODUCT, d)))}/`)
@@ -71,7 +72,7 @@ const designFile = (n: number): string[] => { const d = designDocOf(n); return d
 
 function ownFiles(n: number): string[] {
   const own = intentsOf(n)
-  return rel([prdPath(n), sourcePath(n), conversionPath(n), ledgerPath(n), waiversPath(n), ...designFile(n), implPlanPath(n), ...walk(testplanDir(n)), ...own.map(i => i.file), ...own.flatMap(i => [...i.contractFiles, ...i.exampleFiles]).filter(f => !escapes(f)).map(f => path.join(ROOT, f))])
+  return rel([prdPath(n), sourcePath(n), conversionPath(n), coveragePath(n), ledgerPath(n), waiversPath(n), ...designFile(n), implPlanPath(n), ...walk(testplanDir(n)), ...own.map(i => i.file), ...own.flatMap(i => [...i.contractFiles, ...i.exampleFiles]).filter(f => !escapes(f)).map(f => path.join(ROOT, f))])
 }
 const sharedFiles = (): string[] => rel([archPath, ...walk(path.join(PRODUCT, 'adr')).filter(f => f.endsWith('.md'))])
 export const chartFiles = (n: number): string[] => [...new Set([...ownFiles(n), ...sharedFiles()])].sort()
@@ -145,6 +146,7 @@ export function chartFindings(n: number, withCases: boolean): ChartFinding[] {
   // The format flow (a sprint with source.md, or an in-format PRD with a ledger): the PRD must be in format and the ledger generated from it.
   if (unapproved && exists(sourcePath(n)) && format.length) found.push({ rule: 'prd-format', severity: 'block', where: 'prd', message: `prd.md is not in rig's PRD format (${format.length} finding(s)): run \`prd check ${n}\` and convert it` })
   if (unapproved && !format.length && exists(ledgerPath(n)) && read(ledgerPath(n)) !== prdLedger(prd, conversionMapOf(n))) found.push({ rule: 'ledger-stale', severity: 'block', where: 'ledger', message: `requirements.md is not what prd.md generates: run \`prd ledger ${n}\`, never edit it by hand` })
+  if (unapproved && exists(sourcePath(n))) found.push(...coverageProblems({ source: read(sourcePath(n)), prd, coverage: exists(coveragePath(n)) ? read(coveragePath(n)) : null }))  // did the client write enough
   for (const i of intentsOf(n)) if (i.declared !== n) found.push({ rule: 'sprint-mismatch', severity: 'block', where: i.slug, message: `${i.slug} sits in sprint-${n}/intents/ but its frontmatter says sprint: ${i.declared ?? 'nothing'}` })
   for (const i of intentsOf(n)) {
     const same = allIntents().filter(t => t.slug === i.slug)
