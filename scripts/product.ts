@@ -21,6 +21,8 @@ export const approvalPath = (n: number): string => path.join(sprintDir(n), 'appr
 export const sourcePath = (n: number): string => path.join(sprintDir(n), 'source.md')
 export const conversionPath = (n: number): string => path.join(sprintDir(n), 'conversion.md')
 export const conversionReviewPath = (n: number): string => path.join(sprintDir(n), 'conversion-review.md')
+export const coveragePath = (n: number): string => path.join(sprintDir(n), 'coverage.md')
+export const gapsPath = (n: number): string => path.join(sprintDir(n), 'client-gaps.md')
 export const ledgerPath = (n: number): string => path.join(sprintDir(n), 'requirements.md')
 export const waiversPath = (n: number): string => path.join(sprintDir(n), 'waivers.json')
 export const reviewPath = (n: number): string => path.join(sprintDir(n), 'chart-review.md')
