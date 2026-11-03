@@ -32,10 +32,10 @@ import { cmdReport } from './report.ts'
 import { cmdArch, layerState, layerStateText } from './arch.ts'
 import { cmdQueue, conflictsFor } from './queue.ts'
 import { intentScope } from './scope.ts'
-import { prdFormatProblems, prdLedger, conversionProblems } from './prdformat.ts'
+import { prdFormatProblems, prdLedger, conversionProblems, prdCriteria, prdOrigins } from './prdformat.ts'
 import { parseLedger, parseIntent } from './chartcheck.ts'
 import { superpowersWarning } from './superpowers.ts'
-import { ARCH_REL, intentsDir, intentRelOf, prdRel, sprintRel, prdPath, reviewPath, ledgerPath, sourcePath, conversionPath } from './product.ts'
+import { ARCH_REL, intentsDir, intentRelOf, prdRel, sprintRel, prdPath, reviewPath, ledgerPath, sourcePath } from './product.ts'
 import { cmdSlice } from './slice.ts'
 import { registerContracts } from './contracts.ts'
 import { cmdMaintain } from './maintain.ts'
@@ -45,7 +45,7 @@ import { cmdRisk, cmdWeight } from './risk.ts'
 import { cmdClaims } from './claims.ts'
 import { protect } from './protect.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'
-import { CHART_RE, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, intentSettled, nextChart, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, waiveChartFinding, changeRequirements, PRD_RE, isConverted, conversionRefusal } from './chart.ts'
+import { CHART_RE, conversionMapOf, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, intentSettled, nextChart, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, waiveChartFinding, changeRequirements, PRD_RE, isConverted, conversionRefusal } from './chart.ts'
 import { journey, journeyText } from './journey.ts'
 import { TYPES, changeDir, newChange, setActive, activeSlug, isShipped, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
 
@@ -287,7 +287,7 @@ function cmdChart(args: Args): void {
 // The PRD format for coding agents (spec 2026-10-26): `prd check <N>` says whether the sprint PRD is in rig's template.
 function cmdPrd(args: Args): void {
   const [sub, num] = args.pos
-  if (!['check', 'map', 'ledger', 'status'].includes(sub ?? '') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: prd (check [--json] | map [--json] | ledger | status) <sprint number>')
+  if (!['check', 'map', 'ledger', 'status', 'proposed'].includes(sub ?? '') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: prd (check [--json] | map [--json] | ledger | status | proposed) <sprint number>')
   const n = Number(num)
   needPrd(n)
   if (sub === 'status') {
@@ -295,14 +295,20 @@ function cmdPrd(args: Args): void {
     const why = conversionRefusal(n)
     return out(why ? `converted, not ready: ${why}` : `converted: ready to decompose; ${skillRef('approve')} chart-${n} covers prd.md, source.md and conversion.md`)
   }
+  if (sub === 'proposed') {
+    // The lines nobody at the client said, for the one review: the chart's final message opens with this table.
+    const origins = prdOrigins(read(prdPath(n)), conversionMapOf(n))
+    const rows = prdCriteria(read(prdPath(n))).filter(c => origins.get(c.id) === 'proposed')
+    return out([...(rows.length ? ['| id | line | requirement |', '|---|---|---|', ...rows.map(c => `| ${c.id} | prd.md:${c.line} | ${c.text.replace(/\|/g, '\\|')} |`)] : []), `prd-${n}: ${rows.length ? `${rows.length} proposed line(s)` : 'no proposed lines'}`].join('\n'))
+  }
   if (sub === 'ledger') {
     const format = prdFormatProblems(read(prdPath(n)))
     if (format.length) fail(`prd.md is not in format, so no ledger can be generated: run \`prd check ${n}\``)
-    fs.writeFileSync(ledgerPath(n), prdLedger(read(prdPath(n))))
+    fs.writeFileSync(ledgerPath(n), prdLedger(read(prdPath(n)), conversionMapOf(n)))
     return out(`wrote ${sprintRel(n)}/requirements.md: ${parseLedger(read(ledgerPath(n))).length} row(s) from prd.md`)
   }
   if (sub === 'map' && !exists(sourcePath(n))) fail(`sprint ${n} has no source.md: nothing was converted`)
-  const found = sub === 'map' ? conversionProblems({ source: read(sourcePath(n)), prd: read(prdPath(n)), map: exists(conversionPath(n)) ? read(conversionPath(n)) : null }) : prdFormatProblems(read(prdPath(n)))
+  const found = sub === 'map' ? conversionProblems({ source: read(sourcePath(n)), prd: read(prdPath(n)), map: conversionMapOf(n) }) : prdFormatProblems(read(prdPath(n)))
   if (args.opt.json) return out(JSON.stringify(found))
   out([...found.map(f => `[${f.rule}] ${f.where}: ${f.message}`), `prd-${n}: ${found.length ? `${found.length} finding(s)${sub === 'check' ? '; convert it into templates/prd-format.md' : ''}` : sub === 'check' ? 'in format' : 'every sentence of source.md is mapped'}`].join('\n'))
 }

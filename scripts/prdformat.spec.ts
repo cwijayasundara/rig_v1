@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { prdFormatProblems, prdCriteria, prdLedger, conversionProblems, parseMap } from './prdformat.ts'
+import { prdFormatProblems, prdCriteria, prdLedger, prdOrigins, conversionProblems, parseMap } from './prdformat.ts'
 import { parseLedger, ledgerProblems, parseIntent, parentOf } from './chartcheck.ts'
 
 const ROOT = path.resolve(import.meta.dirname, '..')
@@ -109,7 +109,8 @@ test('parentOf: an AC belongs to its FR, an NFR row to itself, a DR to no FR', (
 // The conversion map (spec 2026-10-26 PRD format): every sentence of the person's original is accounted for, by script.
 const SOURCE = ['# Cart PRD', '', '## Context', '', 'Shoppers lose carts today.', '', '## Items', '', 'Ids start at 1. Ids are never reused.', '',
   'Example:', '', '```json', '{"id": 1, "sku": "coffee"}', '```', ''].join('\n')
-const CONVERTED = PRD().replace('## Open questions', '## Examples\n\n```json\n{"id": 1, "sku": "coffee"}\n```\n\n## Open questions')
+// AC-4.1 and NFR-1 answer questions the source never raised, so a person confirms them; DR-1 and DR-2 are mapped.
+const CONVERTED = PRD().replace('give it the next id', 'give it the next id (confirmed at chart by Dana)').replace('under 200 ms |', 'under 200 ms (confirmed at chart by Dana) |').replace('## Open questions', '## Examples\n\n```json\n{"id": 1, "sku": "coffee"}\n```\n\n## Open questions')
 const MAP = ['- context source.md:5 "Shoppers lose carts today." — motivation, kept in Context',
   '- DR-1 source.md:9 "Ids start at 1."', '- DR-2 source.md:9 "Ids are never reused."', '- context source.md:11 "Example:" — caption of the example, copied to Examples', ''].join('\n')
 const conv = (o: { source?: string; prd?: string; map?: string | null } = {}) =>
@@ -121,14 +122,14 @@ test('a map that accounts for every sentence, with the example copied, has no fi
 })
 
 test('map-unquoted: dropping "never reused" blocks, and so does a lone number left out', () => {
-  assert.deepEqual(conv({ map: MAP.replace(/^- DR-2 .*\n/m, '') }), ['map-unquoted'])
+  assert.deepEqual(conv({ map: MAP.replace(/^- DR-2 .*\n/m, '') }), ['map-origin', 'map-unquoted'])
   assert.deepEqual(conv({ map: MAP.replace('"Ids start at 1."', '"Ids start at"') }), ['map-unquoted'])
 })
 
 test('map-reason, map-id, map-fence, map-missing and map-line', () => {
   assert.deepEqual(conv({ map: MAP.replace(' — motivation, kept in Context', '') }), ['map-reason'])
-  assert.deepEqual(conv({ map: MAP.replace('- DR-2 source.md:9', '- DR-7 source.md:9') }), ['map-id'])
-  assert.deepEqual(conv({ prd: PRD() }), ['map-fence'])
+  assert.deepEqual(conv({ map: MAP.replace('- DR-2 source.md:9', '- DR-7 source.md:9') }), ['map-id', 'map-origin'])
+  assert.deepEqual(conv({ prd: PRD() }), ['map-fence', 'map-origin', 'map-origin'])
   assert.deepEqual(conv({ map: null }), ['map-missing'])
   assert.deepEqual(conv({ map: MAP + '- garbled\n' }), ['map-line'])
 })
@@ -197,4 +198,40 @@ test('a required section inside a comment or a fence does not count', () => {
 
 test('EARS IF ... THEN THE SYSTEM SHALL is a testable shape', () => {
   assert.deepEqual(prdFormatProblems(PRD({ fr: '### FR-4: Items\n\n- AC-4.1: IF the file is corrupt THEN THE SYSTEM SHALL raise StorageError\n' })), [])
+})
+
+// 2026-11-03 colleague feedback 3: the agent's own inventions must be told apart from what the client wrote.
+const withAc = (marker: string): string => PRD().replace('under 200 ms |', 'under 200 ms (confirmed at chart by Dana) |').replace('give it the next id', `give it the next id${marker}`)
+test('prdOrigins: a marker wins; else mapped is client, unmapped is unattributed, and with no conversion every line is the client\'s', () => {
+  const origin = (marker: string, map: string | null = MAP): string | undefined => prdOrigins(withAc(marker), map).get('AC-4.1')
+  assert.equal(origin(' (proposed at chart)'), 'proposed')
+  assert.equal(origin(' (default at chart)'), 'proposed')
+  assert.equal(origin(' (decided at chart)'), 'proposed')
+  assert.equal(origin(' (confirmed at chart by Dana)'), 'confirmed')
+  assert.equal(origin(' (answered at chart)'), 'confirmed')
+  assert.equal(origin(''), 'unattributed')
+  assert.equal(origin('', MAP + '- AC-4.1 source.md:9 "Ids start at 1."\n'), 'client')
+  assert.equal(origin(' (proposed at chart)', MAP + '- AC-4.1 source.md:9 "Ids start at 1."\n'), 'proposed')
+  assert.equal(origin('', null), 'client')
+  assert.equal(prdOrigins(PRD().replace('under 200 ms |', 'under 200 ms (proposed at chart) |'), null).get('NFR-1'), 'proposed')
+})
+
+test('map-origin: a criterion with no source sentence and no marker blocks the conversion; either way out clears it', () => {
+  const rulesOf = (prd: string): string[] => conv({ prd: prd.replace('## Open questions', '## Examples\n\n```json\n{"id": 1, "sku": "coffee"}\n```\n\n## Open questions') })
+  assert.deepEqual(rulesOf(withAc('')), ['map-origin'])
+  assert.deepEqual(rulesOf(withAc(' (proposed at chart)')), [])
+  const f = conversionProblems({ source: SOURCE, prd: withAc(''), map: MAP }).find(x => x.rule === 'map-origin')!
+  assert.match(f.message, /AC-4\.1[^\n]*conversion\.md[^\n]*confirmed at chart by[^\n]*proposed at chart/)
+  assert.match(f.where, /^prd\.md:\d+$/)
+})
+
+test('prdLedger writes the origin only for proposed lines; markers never leak into the quote; parseLedger reads it back', () => {
+  const prd = withAc(' (proposed at chart)')
+  const text = prdLedger(prd, MAP)
+  assert.match(text, /- AC-4\.1 \[rule, proposed\] prd\.md:\d+ "WHEN an item is added THE SYSTEM SHALL give it the next id"\n/)
+  assert.deepEqual(parseLedger(text).map(r => [r.id, r.kind, r.origin]), [['AC-4.1', 'rule', 'proposed'], ['DR-1', 'rule', 'client'], ['DR-2', 'rule', 'client'], ['NFR-1', 'rule', 'confirmed']])
+  assert.match(prdLedger(withAc(''), MAP), /- AC-4\.1 \[rule, unattributed\]/)
+  assert.equal(prdLedger(PRD()), prdLedger(PRD(), null))
+  assert.deepEqual(parseLedger(prdLedger(withAc(' (confirmed at chart by Dana)'))).map(r => [r.id, r.kind, r.origin]).slice(0, 1), [['AC-4.1', 'answer', 'confirmed']])
+  assert.ok(!/\[[^\]]*proposed[^\]]*\]/.test(prdLedger(PRD())))
 })
