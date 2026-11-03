@@ -830,7 +830,7 @@ test('a proposed criterion is ledgered as proposed, listed by `prd proposed`, an
   assert.equal(sdlc(repo, ['prd', 'ledger', '1']).code, 0)
   assert.match(fs.readFileSync(path.join(repo, `${P}/sprints/sprint-1/requirements.md`), 'utf8'), /- AC-1\.2 \[rule, proposed\] prd\.md:\d+ "WHEN c THE SYSTEM SHALL d"/)
   const table = sdlc(repo, ['prd', 'proposed', '1']).stdout
-  assert.match(table, /\| id \| line \| requirement \|\n\|---\|---\|---\|\n\| AC-1\.2 \| prd\.md:\d+ \| WHEN c THE SYSTEM SHALL d \|\nprd-1: 1 proposed line\(s\)/)
+  assert.match(table, /\| id \| line \| requirement \|\n\|---\|---\|---\|\n\| AC-1\.2 \| prd\.md:\d+ \| WHEN c THE SYSTEM SHALL d \|\n\n\| behaviour \| why \| text \|\n\|---\|---\|---\|\n\| alpha#B1 \| cites AC-1\.2 \| works \|\nprd-1: 1 proposed line\(s\), 1 behaviour\(s\) resting on them/)
   assert.ok(!(call('return C.chartFindings(1, false)') as { rule: string }[]).some(f => f.rule === 'ledger-stale' || f.rule === 'ledger-missing'))
 })
 
@@ -1062,4 +1062,27 @@ test('coverage: a source with no coverage.md or an open topic cannot be approved
   fs.writeFileSync(approval, JSON.stringify({ ...row, files: row.files.filter(f => !f.path.endsWith('/coverage.md')) }))
   assert.equal(state(1).state, 'approved')
   assert.deepEqual(rulesNow(), [])
+})
+
+// Step 1 leftovers (2026-11-03): `prd proposed` also lists the behaviours that rest on a proposed line and the ADR decisions marked proposed;
+// a retired marker in an intent is reported so it is not missed.
+test('prd proposed lists proposed lines, the behaviours resting on them, and marked ADR decisions; a retired marker is reported', () => {
+  converted()
+  write(repo, `${P}/sprints/sprint-1/prd.md`, FORMAT_PRD.replace('- AC-1.2: WHEN c THE SYSTEM SHALL d', '- AC-1.2: WHEN c THE SYSTEM SHALL d (proposed at chart)'))
+  write(repo, `${P}/sprints/sprint-1/conversion.md`, '- AC-1.1 source.md:3 "Adding works."\n- DR-1 source.md:3 "Ids start at 1."\n')
+  write(repo, `${P}/sprints/sprint-1/intents/alpha.md`, intent(1).replace('- B1 (FR-1): works', '- B1 (FR-1, AC-1.1, AC-1.2, DR-1): works\n- B2 (FR-1): retries twice (default at chart)\n- B3 (FR-1): logs a line (proposed at chart)'))
+  write(repo, `${P}/adr/0001-lock.md`, '---\nsprint: 1\n---\n# ADR 1\n\n## Decision\n\nUse a lock file with a 5 second timeout (proposed at chart).\n')
+  write(repo, `${P}/adr/0002-other.md`, '---\nsprint: 2\n---\n# ADR 2\n\nA decision (proposed at chart) of another sprint.\n')
+  const text = sdlc(repo, ['prd', 'proposed', '1']).stdout
+  assert.match(text, /\| AC-1\.2 \| prd\.md:\d+ \| WHEN c THE SYSTEM SHALL d \|/)
+  assert.match(text, /\| alpha#B1 \| cites AC-1\.2 \|/)
+  assert.match(text, /\| alpha#B2 \| marked \|/)
+  assert.match(text, /\| alpha#B3 \| marked \|/)
+  assert.match(text, /\| \.rig\/product\/adr\/0001-lock\.md:\d+ \| Use a lock file with a 5 second timeout\. \|/)
+  assert.doesNotMatch(text, /0002-other/)
+  assert.match(text, /prd-1: 1 proposed line\(s\), 3 behaviour\(s\) resting on them, 1 design or ADR decision\(s\)/)
+  const legacy = (call('return C.chartFindings(1, false)') as { rule: string; severity: string; message: string }[]).filter(f => f.rule === 'marker-legacy')
+  assert.equal(legacy.length, 1)
+  assert.equal(legacy[0]!.severity, 'report')
+  assert.match(legacy[0]!.message, /\(default at chart\)[^\n]*\(proposed at chart\)/)
 })

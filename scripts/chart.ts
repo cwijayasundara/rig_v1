@@ -147,6 +147,10 @@ export function chartFindings(n: number, withCases: boolean): ChartFinding[] {
   if (unapproved && exists(sourcePath(n)) && format.length) found.push({ rule: 'prd-format', severity: 'block', where: 'prd', message: `prd.md is not in rig's PRD format (${format.length} finding(s)): run \`prd check ${n}\` and convert it` })
   if (unapproved && !format.length && exists(ledgerPath(n)) && read(ledgerPath(n)) !== prdLedger(prd, conversionMapOf(n))) found.push({ rule: 'ledger-stale', severity: 'block', where: 'ledger', message: `requirements.md is not what prd.md generates: run \`prd ledger ${n}\`, never edit it by hand` })
   if (unapproved && exists(sourcePath(n))) found.push(...coverageProblems({ source: read(sourcePath(n)), prd, coverage: exists(coveragePath(n)) ? read(coveragePath(n)) : null }))  // did the client write enough
+  if (unapproved) for (const f of [...intentsOf(n).map(i => i.file), ...designFile(n)]) {
+    const old = [...new Set(read(f).match(/\((?:default|decided|answered) at chart\)/gi) ?? [])]
+    if (old.length) found.push({ rule: 'marker-legacy', severity: 'report', where: toPosix(path.relative(ROOT, f)), message: `${toPosix(path.relative(ROOT, f))} uses ${old.join(', ')}: write "(proposed at chart)" for a value the agent supplied, so \`prd proposed ${n}\` lists it` })
+  }
   for (const i of intentsOf(n)) if (i.declared !== n) found.push({ rule: 'sprint-mismatch', severity: 'block', where: i.slug, message: `${i.slug} sits in sprint-${n}/intents/ but its frontmatter says sprint: ${i.declared ?? 'nothing'}` })
   for (const i of intentsOf(n)) {
     const same = allIntents().filter(t => t.slug === i.slug)

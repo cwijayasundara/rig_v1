@@ -110,12 +110,20 @@ export function prdOrigins(prd: string, map: string | null): Map<string, Origin>
 }
 
 // requirements.md generated from the criteria: the ledger line format chart check, the change copy and the PR review read.
-// The chart's "Proposed by the agent" table: one row per proposed line, then the count.
-export function prdProposed(n: number, prd: string, map: string | null): string {
+// The chart's "Proposed by the agent" report for the one review: the proposed lines of prd.md, then the behaviours that rest on them
+// (their own marker, or a cited proposed line) and the design and ADR decisions marked proposed. Empty parts are left out.
+export type ProposedMore = { behaviours?: { where: string; why: string; text: string }[]; decisions?: { where: string; text: string }[] }
+export function prdProposed(n: number, prd: string, map: string | null, more: ProposedMore = {}): string {
   const origins = prdOrigins(prd, map)
   const rows = prdCriteria(prd).filter(c => origins.get(c.id) === 'proposed')
-  return [...(rows.length ? ['| id | line | requirement |', '|---|---|---|', ...rows.map(c => `| ${c.id} | prd.md:${c.line} | ${c.text.replace(/\|/g, '\\|')} |`)] : []),
-    `prd-${n}: ${rows.length ? `${rows.length} proposed line(s)` : 'no proposed lines'}`].join('\n')
+  const cell = (t: string): string => t.replace(/\|/g, '\\|')
+  const table = (head: string[], body: string[][]): string[] => ['', `| ${head.join(' | ')} |`, `|${head.map(() => '---').join('|')}|`, ...body.map(r => `| ${r.map(cell).join(' | ')} |`)]
+  const behaviours = more.behaviours ?? [], decisions = more.decisions ?? []
+  const counts = [rows.length && `${rows.length} proposed line(s)`, behaviours.length && `${behaviours.length} behaviour(s) resting on them`, decisions.length && `${decisions.length} design or ADR decision(s)`].filter(Boolean)
+  return [...(rows.length ? table(['id', 'line', 'requirement'], rows.map(c => [c.id, `prd.md:${c.line}`, c.text])).slice(1) : []),
+    ...(behaviours.length ? table(['behaviour', 'why', 'text'], behaviours.map(b => [b.where, b.why, b.text])) : []),
+    ...(decisions.length ? table(['where', 'decision'], decisions.map(d => [d.where, d.text])) : []),
+    `prd-${n}: ${counts.length ? counts.join(', ') : 'no proposed lines'}`].join('\n')
 }
 
 // The origin is written only when the kind does not say it: `[rule]` is the client's and `[answer]` a person's, so `proposed`, `unattributed`

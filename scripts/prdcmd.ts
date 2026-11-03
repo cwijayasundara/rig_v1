@@ -1,13 +1,31 @@
 // The `prd` subcommands that read the sprint folder and print: the proposed table, the coverage check and the client-gaps document.
 import fs from 'node:fs'
-import { read, exists, out, fail } from './core.ts'
-import { prdPath, sourcePath, coveragePath, gapsPath, sprintRel } from './product.ts'
-import { prdProposed } from './prdformat.ts'
+import path from 'node:path'
+import { ROOT, read, exists, out, fail, toPosix } from './core.ts'
+import { PRODUCT, prdPath, sourcePath, coveragePath, gapsPath, sprintRel } from './product.ts'
+import { prdProposed, prdCriteria, prdOrigins, type ProposedMore } from './prdformat.ts'
 import { coverageProblems, clientGaps } from './prdcoverage.ts'
-import { conversionMapOf } from './chart.ts'
+import { conversionMapOf, intentsOf, designDocOf } from './chart.ts'
+
+const MARK = /\(proposed at chart\)/i
+// What rests on a value nobody at the client said: behaviours with the marker or citing a proposed line, and the design doc's and this sprint's
+// ADRs' marked decisions.
+function proposedMore(n: number, prd: string, map: string | null): ProposedMore {
+  const origins = prdOrigins(prd, map)
+  const proposed = new Set(prdCriteria(prd).filter(c => origins.get(c.id) === 'proposed').map(c => c.id))
+  const behaviours = intentsOf(n).flatMap(i => i.behaviours.flatMap(b => {
+    const via = [...new Set([...b.rules, ...b.reqs].filter(id => proposed.has(id)))]
+    return b.proposed || via.length ? [{ where: `${i.slug}#${b.id}`, why: [b.proposed && 'marked', via.length && `cites ${via.join(', ')}`].filter(Boolean).join(', '), text: b.text }] : []
+  }))
+  const adr = path.join(PRODUCT, 'adr')
+  const design = designDocOf(n)
+  const files = [...(design ? [path.join(ROOT, design)] : []), ...(exists(adr) ? fs.readdirSync(adr).filter(f => f.endsWith('.md')).map(f => path.join(adr, f)).filter(f => new RegExp(`^sprint:\\s*${n}\\s*$`, 'm').test(read(f))) : [])].filter(exists)
+  const decisions = files.flatMap(f => read(f).split('\n').flatMap((l, k) => MARK.test(l) ? [{ where: `${toPosix(path.relative(ROOT, f))}:${k + 1}`, text: l.replace(MARK, '').replace(/\s+([.,;])/g, '$1').replace(/^[\s>*-]+/, '').trim() }] : []))
+  return { behaviours, decisions }
+}
 
 export function cmdPrdMore(sub: string, n: number, json: boolean): void {
-  if (sub === 'proposed') return out(prdProposed(n, read(prdPath(n)), conversionMapOf(n)))  // the lines nobody at the client said, for the one review
+  if (sub === 'proposed') return out(prdProposed(n, read(prdPath(n)), conversionMapOf(n), proposedMore(n, read(prdPath(n)), conversionMapOf(n))))  // the lines nobody at the client said, for the one review
   if (!exists(sourcePath(n))) fail(`sprint ${n} has no source.md: the chart copies the person's PRD there first`)
   if (sub === 'gaps') {
     if (!exists(coveragePath(n))) fail(`sprint ${n} has no coverage.md: write it from source.md first (templates/prd-topics.md)`)

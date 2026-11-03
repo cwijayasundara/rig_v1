@@ -5,8 +5,9 @@ import type { Risk } from './risk.ts'
 import type { RunRow } from './runs.ts'
 import { behaviourIds, missingBehaviours } from './sensors.ts'
 import { parseFindings, type ClaimRow } from './claims.ts'
+import { parseLedger } from './chartcheck.ts'
 
-type PrBodyInput = { claims?: ClaimRow[]; intent: string; spec: string; plan: string; verify: { pass: boolean; tree: string | null; blocks: string[]; from?: string } | null; outline: string; review: string; risk: Risk; amendments?: string; runs?: RunRow[]; tests?: string }
+type PrBodyInput = { requirements?: string; claims?: ClaimRow[]; intent: string; spec: string; plan: string; verify: { pass: boolean; tree: string | null; blocks: string[]; from?: string } | null; outline: string; review: string; risk: Risk; amendments?: string; runs?: RunRow[]; tests?: string }
 
 const firstSentence = (text: string): string => /^[\s\S]*?[.!?](?=\s|$)/.exec(text.trim())?.[0].replace(/\s+/g, ' ') ?? text.trim().replace(/\s+/g, ' ')
 
@@ -73,6 +74,18 @@ function claimsNote(review: string, claims: ClaimRow[] | undefined): string {
   return [`Claims: ${found.length} finding(s), ${found.filter(f => f.repro).length} with a Repro.`, ...suggest.map(c => `- ${c.rule}: ${c.detail}`)].join('\n')
 }
 
+// Behaviours of the change that rest on a value nobody at the client said: the marker on the behaviour, or a cited proposed ledger row.
+function proposedNote(spec: string, requirements: string | undefined): string {
+  if (!requirements) return ''
+  const proposed = parseLedger(requirements).filter(r => r.origin === 'proposed' || r.origin === 'unattributed')
+  const rows = bullets(section(spec, 'Behaviours')).flatMap(l => {
+    const id = /\bB\d+\b/.exec(l)?.[0]
+    const via = proposed.filter(r => new RegExp(`\\b${r.id.replace(/[.]/g, '\\.')}\\b`).test(l) || (r.alias !== null && l.includes(r.alias))).map(r => r.alias ?? r.id)
+    return id && (/\((?:proposed|default|decided) at chart\)/i.test(l) || via.length) ? [`${id}${via.length ? ` (cites ${via.join(', ')})` : ' (marked)'}`] : []
+  })
+  return rows.length ? `Rests on values nobody at the client said: ${rows.join(', ')}. Ask the owner to confirm them before merging.` : ''
+}
+
 export function prBody(i: PrBodyInput): string {
   const why = firstSentence(section(i.intent, 'Intent')) || 'none recorded'
   const behaviours = bullets(section(i.spec, 'Behaviours'))
@@ -90,7 +103,7 @@ export function prBody(i: PrBodyInput): string {
     `## Risk\n\n${i.risk.reasons.length ? `Tier ${i.risk.tier}\n\n${i.risk.reasons.map(r => `- ${r}`).join('\n')}` : 'Tier 0: none of the signals'}`,
     `## How to revert\n\n${revert(i.plan)}`,
     `## What the checks would miss\n\n${!i.review.trim() ? 'no review.md' : /^reviewer:\s*none\b/.test(i.review) ? `No agent reviewed this change (tier ${i.risk.tier}): the sensors and the tests are the evidence.` : missed.length ? missed.join('\n') : 'nothing the reviewer named'}`,
-    `## Evidence\n\n${[evidence, baseProof(runs), headChecks(runs), behaviourTests(i.spec, i.tests), claimsNote(i.review, i.claims)].filter(Boolean).join('\n\n')}`,
+    `## Evidence\n\n${[evidence, baseProof(runs), headChecks(runs), behaviourTests(i.spec, i.tests), claimsNote(i.review, i.claims), proposedNote(i.spec, i.requirements)].filter(Boolean).join('\n\n')}`,
     i.outline.trim(),
   ]
   return parts.filter(Boolean).join('\n\n') + '\n'
