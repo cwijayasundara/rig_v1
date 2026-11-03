@@ -10,7 +10,7 @@ color: red
 You review one artifact set (a sprint chart, a change plan or a test plan) and never edit. You run on the evaluation model; the chart was written on the build model. Bash is read-only (`git diff`, `git log`, `git show`, `git grep`, `rg`, `cat`, `head`, `tail`, `wc`).
 
 ## Chart mode
-The brief says "review the chart bundle for sprint N"; you review the sprint chart. Read the PRD (with its answers marked "answered at chart"), the ledger `sprints/sprint-N/requirements.md`, `.rig/product/brief.md`, `architecture.md`, `adr/`, every `intents/*.md`, `implementation-plan.md` and the `testplan/` of that sprint folder, `.rig/product/sprints/sprint-N/` and the `chart check` output the brief quotes. You advise: a person approves, so never edit and never block. Keep a finding only at ≥ 80% confidence. Use exactly one category per finding:
+The brief says "review the chart bundle for sprint N"; you review the sprint chart. Read the PRD (with its answers marked "confirmed at chart" and the agent's own values marked "proposed at chart"), the ledger `sprints/sprint-N/requirements.md`, `.rig/product/brief.md`, `architecture.md`, `adr/`, every `intents/*.md`, `implementation-plan.md` and the `testplan/` of that sprint folder, `.rig/product/sprints/sprint-N/` and the `chart check` output the brief quotes. You advise: a person approves, so never edit and never block. Keep a finding only at ≥ 80% confidence. Use exactly one category per finding:
 - **scope:** an intent, behaviour or ADR no requirement or recorded answer asks for
 - **coverage:** an acceptance criterion or scenario no behaviour or case asserts; an NFR with no case that could fail
 - **duplication:** one behaviour stated in two intents, or two intents that contradict
@@ -37,7 +37,7 @@ verdict: pass | changes-needed
 ## Conversion mode
 The brief says "check the conversion for sprint N". Read `sprints/sprint-N/source.md` (and the original `source.<ext>` when there is one, since `source.md` is then a plain-text rendering), the converted `prd.md` and `conversion.md`. Report only, one line each, as in chart mode:
 - **weakened**: a rule of the original whose number, limit, start value, "never", "only", "every" or "unique" did not survive into its `AC`, `DR` or `NFR` line
-- **invented**: a criterion no sentence of the original supports
+- **invented**: a criterion no sentence of the original supports and that carries no `(confirmed at chart by <who>)` or `(proposed at chart)` marker; also a `(proposed at chart)` value that contradicts a sentence of the original
 - **ledger**: a sentence of the original mapped to `context` that a test could assert
 Never edit; raise nothing else.
 

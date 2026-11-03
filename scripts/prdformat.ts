@@ -109,6 +109,14 @@ export function prdOrigins(prd: string, map: string | null): Map<string, Origin>
 }
 
 // requirements.md generated from the criteria: the ledger line format chart check, the change copy and the PR review read.
+// The chart's "Proposed by the agent" table: one row per proposed line, then the count.
+export function prdProposed(n: number, prd: string, map: string | null): string {
+  const origins = prdOrigins(prd, map)
+  const rows = prdCriteria(prd).filter(c => origins.get(c.id) === 'proposed')
+  return [...(rows.length ? ['| id | line | requirement |', '|---|---|---|', ...rows.map(c => `| ${c.id} | prd.md:${c.line} | ${c.text.replace(/\|/g, '\\|')} |`)] : []),
+    `prd-${n}: ${rows.length ? `${rows.length} proposed line(s)` : 'no proposed lines'}`].join('\n')
+}
+
 // The origin is written only when the kind does not say it: `[rule]` is the client's and `[answer]` a person's, so `proposed`, `unattributed`
 // and a confirmed NFR row (kind rule) carry a suffix.
 export const prdLedger = (prd: string, map: string | null = null): string => {

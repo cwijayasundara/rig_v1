@@ -40,7 +40,7 @@ test('chart skill: asks the person for the technology and the NFRs the PRD lacks
 // The first live run of `/rig-chart 1` found four PRD gaps only after the architect ran, kept the answers out of the PRD, ended at
 // "Next: /rig:testplan" and had no independent review (design 2026-10-18-chart-one-turn-and-reviewer).
 test('chart skill: runs gap pass, architect, QA and review before one commit', () => {
-  for (const w of ['answered at chart', 'chart-review.md', 'rig:evaluator', 'general-purpose', 'sonnet']) assert.ok(skill.includes(w), w)
+  for (const w of ['confirmed at chart', 'proposed at chart', 'prd proposed', 'chart-review.md', 'rig:evaluator', 'general-purpose', 'sonnet']) assert.ok(skill.includes(w), w)
   assert.ok(skill.indexOf('chart-review.md') < skill.lastIndexOf('git commit'), 'the commit comes after the review')
   assert.equal(skill.match(/git commit/g)?.length, 3, 'the allowed-tools grant, the base commit of init output and the one chart commit')
 })

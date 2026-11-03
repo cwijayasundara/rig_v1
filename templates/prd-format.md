@@ -79,7 +79,7 @@ Priority: must
 
 ## Decisions
 
-<!-- - YYYY-MM-DD: <decision> — <why>. Answers given at chart are added here or as criteria, marked "(answered at chart)". -->
+<!-- - YYYY-MM-DD: <decision> — <why>. Answers given at chart are added here or as criteria, marked "(confirmed at chart by <who>)", or "(proposed at chart)" when the agent supplied the value and nobody has confirmed it. -->
 
 ## Open questions
 
