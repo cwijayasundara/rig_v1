@@ -1086,3 +1086,21 @@ test('prd proposed lists proposed lines, the behaviours resting on them, and mar
   assert.equal(legacy[0]!.severity, 'report')
   assert.match(legacy[0]!.message, /\(default at chart\)[^\n]*\(proposed at chart\)/)
 })
+
+test('prd proposed and chart check read legacy markers in ADRs, quoted or bracketed sprint numbers, and ignore a body line that looks like frontmatter', () => {
+  converted()
+  write(repo, `${P}/adr/0001-a.md`, '---\nsprint: "1"\n---\n# A\n\nUse a 5s timeout (default at chart).\n')
+  write(repo, `${P}/adr/0002-b.md`, '---\nsprint: 2\n---\n# B\n\nsprint: 1\nA value (proposed at chart) of another sprint.\n')
+  write(repo, `${P}/adr/0003-c.md`, '---\nsprint: [1]\n---\n# C\n\nA lock (proposed at chart).\n')
+  const text = sdlc(repo, ['prd', 'proposed', '1']).stdout
+  assert.match(text, /0001-a\.md:\d+ \| Use a 5s timeout\./)
+  assert.match(text, /0003-c\.md:\d+ \| A lock\./)
+  assert.doesNotMatch(text, /0002-b/)
+  const legacy = (call('return C.chartFindings(1, false)') as { rule: string; where: string }[]).filter(f => f.rule === 'marker-legacy')
+  assert.deepEqual(legacy.map(f => f.where), ['.rig/product/adr/0001-a.md'])
+})
+test('an answered marker in an intent is a person\'s answer, not a retired marker', () => {
+  converted()
+  write(repo, `${P}/sprints/sprint-1/intents/alpha.md`, intent(1).replace('- B1 (FR-1): works', '- B1 (FR-1, AC-1.1, AC-1.2, DR-1): Python 3.11 (answered at chart)'))
+  assert.deepEqual((call('return C.chartFindings(1, false)') as { rule: string }[]).filter(f => f.rule === 'marker-legacy'), [])
+})

@@ -167,3 +167,9 @@ test('the evidence names behaviours that cite a proposed ledger row or carry the
   assert.doesNotMatch(note(spec), /Rests on/)
   assert.doesNotMatch(note(spec, requirements), /Rests on/)
 })
+
+test('a legacy alias never matches inside a longer id', () => {
+  const requirements = '# Requirements: demo\n\n- FR-1.1 (AC-1.1) [rule, proposed] prd.md:5 "WHEN a THE SYSTEM SHALL b"\n'
+  const body = prBody({ intent, spec: spec.replace('- B1: export downloads a CSV\n- B2: empty report exports a header row', '- B1 (AC-1.1): a\n- B4 (AC-1.12): b'), plan, verify, outline: '', review: '', risk, requirements })
+  assert.match(body, /Rests on values nobody at the client said: B1 \(cites AC-1\.1\)\. Ask/)
+})
