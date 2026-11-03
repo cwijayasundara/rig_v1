@@ -75,3 +75,22 @@ test('the agent-PRD fixture: the ideal coverage.md leaves exactly failure, escal
   assert.deepEqual(found.map(f => [f.rule, f.where]), [['coverage-open', 'failure'], ['coverage-open', 'escalation'], ['coverage-open', 'ground-truth'], ['coverage-open', 'accuracy']])
   assert.match(clientGaps(fs.readFileSync(path.join(dir, 'coverage.md'), 'utf8')), /Failure handling[\s\S]*Escalation[\s\S]*Ground truth[\s\S]*Accuracy benchmark/)
 })
+
+// Opus review of feat/prd-sufficiency 2026-11-03.
+test('a covered quote may be curly-quoted, carry a trailing note, be a table row with outer pipes, or be a fenced sample', () => {
+  const source = SOURCE + '\n| Topic | Rule |\n| --- | --- |\n| Security | Only **finance** users may open queues. |\n\n```json\n{"invoice": 1, "expected": "duplicate"}\n```\n'
+  const lineOf = (needle: string): number => source.split('\n').findIndex(l => l.includes(needle)) + 1
+  const row = (id: string, tail: string): string => FULL.replace(new RegExp(`^- ${id} .*$`, 'm'), `- ${id} covered ${tail}`)
+  const ok = (cov: string): string[] => coverageProblems({ source, prd: PRD(), coverage: cov }).map(f => f.rule).filter(r => r !== 'coverage-open')
+  assert.deepEqual(ok(row('failure', 'source.md:9 \u201cIf the file is corrupt, exit 3 and change nothing.\u201d')), [])
+  assert.deepEqual(ok(row('failure', 'source.md:9 "If the file is corrupt, exit 3 and change nothing." — the file rule')), [])
+  assert.deepEqual(ok(row('security', `source.md:${lineOf('Only **finance**')} "| Security | Only finance users may open queues. |"`)), [])
+  assert.deepEqual(ok(row('ground-truth', `source.md:${lineOf('"invoice"')} "{"invoice": 1, "expected": "duplicate"}"`)), [])
+  assert.deepEqual(ok(row('failure', 'source.md:9 no quotes at all')), ['coverage-row'])
+})
+
+test('answered takes ids out of any text, and an out-of-scope criterion is not an answer', () => {
+  assert.deepEqual(parseCoverage('- escalation answered AC-4.1, DR-2 (confirmed by Jane)\n')[0]!.ids, ['AC-4.1', 'DR-2'])
+  const prd = PRD().replace('give it the next id', 'give it the next id (out of scope: v2, decided by Bob — later)')
+  assert.deepEqual(rules(FULL.replace('- escalation open', '- escalation answered AC-4.1'), prd), ['coverage-answer', 'coverage-open'])
+})

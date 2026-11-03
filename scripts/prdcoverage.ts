@@ -3,6 +3,10 @@
 import { normalise, prdBlocks, type ChartFinding } from './chartcheck.ts'
 import { prdCriteria, prdOrigins } from './prdformat.ts'
 
+// The inner text of each fenced block with its first and last line: ground truth is often a fenced sample, and it counts as said.
+const fenced = (text: string): { line: number; end: number; text: string }[] => [...text.replace(/\r\n/g, '\n').matchAll(/^(\s*)(```|~~~)[^\n]*\n([\s\S]*?)^\s*\2\s*$/gm)]
+  .map(m => { const line = text.slice(0, m.index).split('\n').length; return { line, end: line + (m[0].match(/\n/g)?.length ?? 0), text: normalise(m[3] ?? '') } })
+
 export type Topic = { id: string; label: string; agent: boolean; question: string }
 // In the order the chart asks them: the first four absent ones join the gap-pass batch.
 export const TOPICS: Topic[] = [
@@ -20,7 +24,8 @@ export const TOPICS: Topic[] = [
 
 export type CoverageRow = { id: string; state: 'covered' | 'answered' | 'open' | 'n/a'; line?: number; quote?: string; ids?: string[]; by?: string; reason?: string }
 const ROW = /^\s*[-*]\s+(\S+)\s+(covered|answered|open|n\/a)\b(.*)$/
-const COVERED = /^\s+source\.md:(\d+)\s+"(.*)"\s*$/
+// Straight or curly quotes, and an optional note after the closing one.
+const COVERED = /^\s+source\.md:(\d+)\s+["\u201c](.*)["\u201d](?:\s+[—–]+\s*[^"\u201d]*)?\s*$/
 const NA = /^(?:\s+by\s+(.+?))?(?:\s+[—–-]+\s*(.*))?\s*$/
 const SLACK = 3
 
@@ -31,7 +36,7 @@ export const parseCoverage = (text: string): CoverageRow[] => text.replace(/\r\n
   const state = m[2] as CoverageRow['state']
   const rest = m[3] ?? ''
   if (state === 'covered') { const c = COVERED.exec(rest); return [{ id, state, line: c ? Number(c[1]) : 0, quote: c?.[2] ?? '' }] }
-  if (state === 'answered') return [{ id, state, ids: rest.split(/[\s,]+/).filter(Boolean) }]
+  if (state === 'answered') return [{ id, state, ids: rest.match(/\b(?:AC|DR|NFR)-[\d.]+/g) ?? [] }]
   if (state === 'n/a') { const n = NA.exec(rest); return [{ id, state, ...(n?.[1] ? { by: n[1] } : {}), reason: (n?.[2] ?? '').trim() }] }
   return [{ id, state }]
 })
@@ -47,22 +52,24 @@ export function coverageProblems(i: { source: string; prd: string; coverage: str
   for (const r of rows) { seen.set(r.id, (seen.get(r.id) ?? 0) + 1); if (!known.has(r.id)) add('coverage-topic', r.id, `"${r.id}" is not a topic; the topics are ${TOPICS.map(t => t.id).join(', ')}`) }
   for (const [id, n] of seen) if (n > 1 && known.has(id)) add('coverage-row', id, `${id} has ${n} rows; write one`)
   for (const t of TOPICS) if (!seen.has(t.id)) add('coverage-row', t.id, `${t.label} (${t.id}) has no row in coverage.md`)
-  const blocks = prdBlocks(i.source, { allSections: true })
+  const blocks = [...prdBlocks(i.source, { allSections: true }), ...fenced(i.source)]
   const origins = prdOrigins(i.prd, null)
-  const defined = new Set(prdCriteria(i.prd).map(c => c.id))
+  const crits = new Map(prdCriteria(i.prd).map(c => [c.id, c]))
   for (const r of rows.filter(x => known.has(x.id))) {
     const t = TOPICS.find(x => x.id === r.id)!
     if (r.state === 'open') add('coverage-open', r.id, `${t.label}: the source says nothing. Ask the client: ${t.question}`)
     else if (r.state === 'n/a' && !r.reason) add('coverage-reason', r.id, `${r.id} is n/a: add " — <why it does not apply>"`)
     else if (r.state === 'covered') {
-      const q = normalise(r.quote ?? '')
+      if (!r.line) { add('coverage-row', r.id, `${r.id} is covered but the row does not read as \`covered source.md:<line> "<quote>"\` (a table row is quoted as its cells joined by " | ")`); continue }
+      const q = normalise(r.quote ?? '').replace(/^\s*\|\s*|\s*\|\s*$/g, '')
       const near = blocks.filter(b => q && b.text.includes(q))
       if (!near.length) add('coverage-quote', r.id, `${r.id}: "${r.quote}" is not in source.md word for word`)
       else if (!near.some(b => Math.abs(b.line - (r.line ?? 0)) <= SLACK || ((r.line ?? 0) >= b.line && (r.line ?? 0) <= b.end))) add('coverage-quote', r.id, `${r.id}: "${r.quote}" is at source.md:${near.map(b => b.line).join(', ')}, not ${r.line}`)
     } else if (r.state === 'answered') {
       if (!r.ids?.length) add('coverage-answer', r.id, `${r.id} is answered but names no criterion: write \`answered AC-n.m\``)
       for (const id of r.ids ?? []) {
-        if (!defined.has(id)) add('coverage-answer', r.id, `${r.id} is answered by ${id}, which prd.md does not define`)
+        if (crits.get(id)?.kind === 'out-of-scope') add('coverage-answer', r.id, `${r.id} is answered by ${id}, which is out of scope: a topic a person defers is \`n/a by <who> — <reason>\``)
+        else if (!crits.has(id)) add('coverage-answer', r.id, `${r.id} is answered by ${id}, which prd.md does not define`)
         else if (origins.get(id) !== 'confirmed') add('coverage-answer', r.id, `${r.id} is answered by ${id}, which no person confirmed: it needs "(confirmed at chart by <who>)", not the agent's own value`)
       }
     }
