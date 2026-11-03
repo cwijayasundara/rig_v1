@@ -41,7 +41,7 @@ function lines(prd: string, heads: string[] = []): Line[] {
   return out
 }
 
-const markerOf = (raw: string): Origin | null => PROPOSED.test(raw) ? 'proposed' : CONFIRMED.test(raw) ? 'confirmed' : null
+const markerOf = (raw: string): Origin | null => CONFIRMED.test(raw) ? 'confirmed' : PROPOSED.test(raw) ? 'proposed' : null
 
 // Each criterion with its continuation lines (indented, not a new bullet) joined into one text.
 function criteria(ls: Line[]): (Criterion & { shaped: boolean; fr: string | null; num: string | null; marker: Origin | null })[] {
@@ -102,10 +102,11 @@ export function prdFormatProblems(prd: string): ChartFinding[] {
 }
 
 // Where each criterion came from: its marker, else the client when no conversion exists (the PRD is the client's own) or conversion.md
-// maps a source sentence to it, else nobody (a blocking finding of the conversion). The marker wins over a map row.
+// maps a source sentence to it, else nobody; an out-of-scope line names who decided it, so it is confirmed. A person confirms a proposed
+// line by adding their marker: confirmed wins when both are on the line. Legacy markers are stripped from quotes exactly as before, so old ledgers match (a blocking finding of the conversion). The marker wins over a map row.
 export function prdOrigins(prd: string, map: string | null): Map<string, Origin> {
   const mapped = new Set(map === null ? [] : parseMap(map).flatMap(r => r.ids))
-  return new Map(criteria(lines(prd)).map(c => [c.id, c.marker ?? (map === null || mapped.has(c.id) ? 'client' : 'unattributed')]))
+  return new Map(criteria(lines(prd)).map(c => [c.id, c.kind === 'out-of-scope' ? 'confirmed' : c.marker ?? (map === null || mapped.has(c.id) ? 'client' : 'unattributed')]))
 }
 
 // requirements.md generated from the criteria: the ledger line format chart check, the change copy and the PR review read.

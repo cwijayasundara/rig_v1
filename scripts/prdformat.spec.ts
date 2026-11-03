@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { prdFormatProblems, prdCriteria, prdLedger, prdOrigins, conversionProblems, parseMap } from './prdformat.ts'
+import { prdFormatProblems, prdCriteria, prdLedger, prdOrigins, prdProposed, conversionProblems, parseMap } from './prdformat.ts'
 import { parseLedger, ledgerProblems, parseIntent, parentOf } from './chartcheck.ts'
 
 const ROOT = path.resolve(import.meta.dirname, '..')
@@ -234,4 +234,20 @@ test('prdLedger writes the origin only for proposed lines; markers never leak in
   assert.equal(prdLedger(PRD()), prdLedger(PRD(), null))
   assert.deepEqual(parseLedger(prdLedger(withAc(' (confirmed at chart by Dana)'))).map(r => [r.id, r.kind, r.origin]).slice(0, 1), [['AC-4.1', 'answer', 'confirmed']])
   assert.ok(!/\[[^\]]*proposed[^\]]*\]/.test(prdLedger(PRD())))
+})
+
+// Opus review of feat/prd-provenance 2026-11-03.
+test('a line with both markers is confirmed; an out-of-scope line is confirmed, needs no map row and is never listed as proposed', () => {
+  const both = PRD().replace('give it the next id', 'give it the next id (proposed at chart) (confirmed at chart by Ann)')
+  assert.equal(prdOrigins(both, MAP).get('AC-4.1'), 'confirmed')
+  assert.match(prdLedger(both, MAP), /- AC-4\.1 \[answer\] /)
+  const oos = PRD().replace('give it the next id', 'give it the next id (out of scope: v2, decided by Bob — later) (proposed at chart)').replace('under 200 ms |', 'under 200 ms (confirmed at chart by Dana) |')
+  assert.equal(prdOrigins(oos, MAP).get('AC-4.1'), 'confirmed')
+  assert.ok(!conversionProblems({ source: SOURCE, prd: oos, map: MAP }).some(f => f.rule === 'map-origin'))
+  assert.equal(prdProposed(1, oos, MAP), 'prd-1: no proposed lines')
+})
+
+test('a legacy "(answered at chart)" keeps the quote an old ledger holds: the space before the marker stays', () => {
+  const prd = PRD().replace('give it the next id', 'give it the next id (answered at chart).')
+  assert.match(prdLedger(prd), /"WHEN an item is added THE SYSTEM SHALL give it the next id \."/)
 })
