@@ -1053,7 +1053,7 @@ test('coverage: a source with no coverage.md or an open topic cannot be approved
   assert.deepEqual(rulesNow(), [])
   const ok = sdlc(repo, ['approve', 'chart-1'], HUMAN)
   assert.equal(ok.code, 0, ok.stderr)
-  assert.ok(call('return C.chartFiles(1)').toString().includes('coverage.md'))
+  assert.ok((call('return C.chartFiles(1)') as string[]).some(f => f.endsWith('/coverage.md')))
   // Deleting it after approval makes the chart stale, so it is asked for again; a sprint approved before the probe existed has no such row.
   fs.rmSync(path.join(repo, cov))
   assert.deepEqual(rulesNow(), ['coverage-missing'])

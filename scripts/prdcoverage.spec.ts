@@ -66,3 +66,12 @@ test('the template names every topic id and label, so the table and the template
   for (const t of TOPICS) { assert.ok(tpl.includes(`| ${t.id} | ${t.label} |`), t.id); assert.ok(t.question.length > 20, t.id) }
   assert.deepEqual(TOPICS.filter(t => t.agent).map(t => t.id), ['accuracy', 'autonomy', 'fallback', 'budget', 'audit'])
 })
+
+// The baseline for the live eval: a synthetic agent PRD with four topics deliberately missing. A probe that finds exactly these four,
+// and none of the six the source does say, is what the eval scores; the checker accepts the ideal file and flags the four.
+test('the agent-PRD fixture: the ideal coverage.md leaves exactly failure, escalation, ground-truth and accuracy open', () => {
+  const dir = path.join(ROOT, 'tests/fixtures/prd-agent-gaps')
+  const found = coverageProblems({ source: fs.readFileSync(path.join(dir, 'source.md'), 'utf8'), prd: PRD(), coverage: fs.readFileSync(path.join(dir, 'coverage.md'), 'utf8') })
+  assert.deepEqual(found.map(f => [f.rule, f.where]), [['coverage-open', 'failure'], ['coverage-open', 'escalation'], ['coverage-open', 'ground-truth'], ['coverage-open', 'accuracy']])
+  assert.match(clientGaps(fs.readFileSync(path.join(dir, 'coverage.md'), 'utf8')), /Failure handling[\s\S]*Escalation[\s\S]*Ground truth[\s\S]*Accuracy benchmark/)
+})
