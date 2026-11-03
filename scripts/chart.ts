@@ -144,7 +144,7 @@ export function chartFindings(n: number, withCases: boolean): ChartFinding[] {
   found.push(...ledgerProblems({ prd, ledger: exists(ledgerPath(n)) ? read(ledgerPath(n)) : null, intents: intentsOf(n), cases, required: chartState(n).state === 'missing' || Boolean(readRow(n)?.files.some(f => f.path.endsWith('/requirements.md'))), inFormat: !format.length }))
   // The format flow (a sprint with source.md, or an in-format PRD with a ledger): the PRD must be in format and the ledger generated from it.
   if (unapproved && exists(sourcePath(n)) && format.length) found.push({ rule: 'prd-format', severity: 'block', where: 'prd', message: `prd.md is not in rig's PRD format (${format.length} finding(s)): run \`prd check ${n}\` and convert it` })
-  if (unapproved && !format.length && exists(ledgerPath(n)) && read(ledgerPath(n)) !== prdLedger(prd)) found.push({ rule: 'ledger-stale', severity: 'block', where: 'ledger', message: `requirements.md is not what prd.md generates: run \`prd ledger ${n}\`, never edit it by hand` })
+  if (unapproved && !format.length && exists(ledgerPath(n)) && read(ledgerPath(n)) !== prdLedger(prd, conversionMapOf(n))) found.push({ rule: 'ledger-stale', severity: 'block', where: 'ledger', message: `requirements.md is not what prd.md generates: run \`prd ledger ${n}\`, never edit it by hand` })
   for (const i of intentsOf(n)) if (i.declared !== n) found.push({ rule: 'sprint-mismatch', severity: 'block', where: i.slug, message: `${i.slug} sits in sprint-${n}/intents/ but its frontmatter says sprint: ${i.declared ?? 'nothing'}` })
   for (const i of intentsOf(n)) {
     const same = allIntents().filter(t => t.slug === i.slug)
@@ -203,11 +203,13 @@ export const PRD_RE = /^prd-(\d{1,4})$/
 // Judged on the text, and a sprint stays converted once conversion.md exists, so deleting or overwriting source.md cannot
 // skip that check; an original that was already in format (answers added at chart aside) is the person's own PRD.
 export const isConverted = (n: number): boolean => exists(conversionPath(n)) || (exists(sourcePath(n)) && prdFormatProblems(read(sourcePath(n))).length > 0)
+// conversion.md when the sprint was converted, else null (the PRD is then the person's own, so every line of it is the client's).
+export const conversionMapOf = (n: number): string | null => exists(sourcePath(n)) && exists(conversionPath(n)) ? read(conversionPath(n)) : null
 // Why the conversion of a converted sprint stops its chart approval, or null.
 export function conversionRefusal(n: number): string | null {
   if (!exists(sourcePath(n))) return `chart-${n} decomposes a converted PRD but source.md, the person's original, is missing: restore it from git`
   const prd = read(prdPath(n))
-  const found = [...prdFormatProblems(prd), ...conversionProblems({ source: read(sourcePath(n)), prd, map: exists(conversionPath(n)) ? read(conversionPath(n)) : null })]
+  const found = [...prdFormatProblems(prd), ...conversionProblems({ source: read(sourcePath(n)), prd, map: conversionMapOf(n) })]
   if (found.length) return `the conversion of prd-${n} has ${found.length} finding(s):\n${found.map(f => `  [${f.rule}] ${f.where}: ${f.message}`).join('\n')}`
   const open = openQuestions(prd)
   if (open.length) return `prd.md has open question(s); answer each in prd.md first:\n${open.map(q => `  - ${q}`).join('\n')}`

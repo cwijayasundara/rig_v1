@@ -10,6 +10,6 @@ test('start skill: a settled intent asks nothing; the chart skill and edge-case 
   assert.match(read('skills/start/SKILL.md'), /`settled: yes`: ask nothing/)
   const chart = read('skills/chart/SKILL.md')
   assert.match(chart, /templates\/edge-cases\.md/)
-  assert.match(chart, /\(default at chart\)/)
+  assert.match(chart, /\(proposed at chart\)/)
   for (const item of ['Concurrent commands', 'File and path edge cases', 'Option parsing', 'Failure exit codes']) assert.match(read('templates/edge-cases.md'), new RegExp(`\\| ${item} \\|`))
 })

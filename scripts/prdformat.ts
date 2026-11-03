@@ -1,9 +1,12 @@
 // The PRD format for coding agents (spec 2026-10-26 PRD format and conversion): every rule a numbered, testable line, so the
 // requirements ledger can be generated from it and nothing rides on prose. Pure over text; no repo, no model.
-import { normalise, prdBlocks, prdLines, cells, unquoted, prdIds, type ChartFinding } from './chartcheck.ts'
+import { normalise, prdBlocks, prdLines, cells, unquoted, prdIds, type ChartFinding, type Origin } from './chartcheck.ts'
 
 export type Criterion = { id: string; parent: string | null; kind: 'rule' | 'answer' | 'out-of-scope'; line: number; text: string; when?: string; by?: string; reason?: string }
 // `(out of scope: <when>, decided by <who> — <reason>)` on a criterion: kept in the PRD and the ledger, owed no behaviour or test.
+// Who a line came from, written on the line: a named person answered at chart, or the agent proposed it. The older markers still count.
+const CONFIRMED = /\((?:confirmed at chart(?: by [^)]*)?|answered at chart)\)/i
+const PROPOSED = /\((?:proposed|default|decided) at chart\)/i
 const OUT_OF_SCOPE = /\s*\(out of scope:\s*(.*?),\s*decided by\s+(.*?)\s+[—–-]+\s*(.*?)\)\s*/i
 
 // The template's sections, in order; the strict ones must be present (Data rules, NFRs and Boundaries may hold `none`).
@@ -38,14 +41,16 @@ function lines(prd: string, heads: string[] = []): Line[] {
   return out
 }
 
+const markerOf = (raw: string): Origin | null => CONFIRMED.test(raw) ? 'confirmed' : PROPOSED.test(raw) ? 'proposed' : null
+
 // Each criterion with its continuation lines (indented, not a new bullet) joined into one text.
-function criteria(ls: Line[]): (Criterion & { shaped: boolean; fr: string | null; num: string | null })[] {
-  const out: (Criterion & { shaped: boolean; fr: string | null; num: string | null })[] = []
+function criteria(ls: Line[]): (Criterion & { shaped: boolean; fr: string | null; num: string | null; marker: Origin | null })[] {
+  const out: (Criterion & { shaped: boolean; fr: string | null; num: string | null; marker: Origin | null })[] = []
   for (let i = 0; i < ls.length; i++) {
     const l = ls[i]!
     if (l.h2 === 'Non-functional requirements') {
       const m = NFR_ROW.exec(l.text)
-      if (m?.[1]) out.push({ id: m[1], parent: m[1], kind: 'rule', line: l.n, text: normalise(cells(l.text).join(' | ')), shaped: true, fr: null, num: null })
+      if (m?.[1]) out.push({ id: m[1], parent: m[1], kind: 'rule', line: l.n, text: normalise(cells(l.text).join(' | ')), shaped: true, fr: null, num: null, marker: markerOf(l.text) })
       continue
     }
     const m = CRITERION.exec(l.text)
@@ -56,12 +61,12 @@ function criteria(ls: Line[]): (Criterion & { shaped: boolean; fr: string | null
     const oos = OUT_OF_SCOPE.exec(raw)
     const text = normalise(raw.replace(OUT_OF_SCOPE, ''))
     const id = m[1]!
-    out.push({ id, parent: m[2] ? `FR-${m[2]}` : null, kind: oos ? 'out-of-scope' : /\(answered at chart\)/i.test(raw) ? 'answer' : 'rule', line: l.n, text, ...(oos ? { when: oos[1]!, by: oos[2]!, reason: oos[3]! } : {}), shaped: id.startsWith('DR-') || SHAPE(text), fr: l.fr, num: m[2] ?? null })
+    out.push({ id, parent: m[2] ? `FR-${m[2]}` : null, kind: oos ? 'out-of-scope' : CONFIRMED.test(raw) ? 'answer' : 'rule', line: l.n, text, ...(oos ? { when: oos[1]!, by: oos[2]!, reason: oos[3]! } : {}), shaped: id.startsWith('DR-') || SHAPE(text), fr: l.fr, num: m[2] ?? null, marker: markerOf(raw) })
   }
   return out
 }
 
-export const prdCriteria = (prd: string): Criterion[] => criteria(lines(prd)).map(({ shaped: _s, fr: _f, num: _n, ...c }) => c)
+export const prdCriteria = (prd: string): Criterion[] => criteria(lines(prd)).map(({ shaped: _s, fr: _f, num: _n, marker: _m, ...c }) => c)
 
 export function prdFormatProblems(prd: string): ChartFinding[] {
   const out: ChartFinding[] = []
@@ -96,9 +101,31 @@ export function prdFormatProblems(prd: string): ChartFinding[] {
   return out
 }
 
+// Where each criterion came from: its marker, else the client when no conversion exists (the PRD is the client's own) or conversion.md
+// maps a source sentence to it, else nobody; an out-of-scope line names who decided it, so it is confirmed. A person confirms a proposed
+// line by adding their marker: confirmed wins when both are on the line. Legacy markers are stripped from quotes exactly as before, so old ledgers match (a blocking finding of the conversion). The marker wins over a map row.
+export function prdOrigins(prd: string, map: string | null): Map<string, Origin> {
+  const mapped = new Set(map === null ? [] : parseMap(map).flatMap(r => r.ids))
+  return new Map(criteria(lines(prd)).map(c => [c.id, c.kind === 'out-of-scope' ? 'confirmed' : c.marker ?? (map === null || mapped.has(c.id) ? 'client' : 'unattributed')]))
+}
+
 // requirements.md generated from the criteria: the ledger line format chart check, the change copy and the PR review read.
-export const prdLedger = (prd: string): string => ['# Requirements (generated from prd.md by rig: never edit)', '',
-  ...prdCriteria(prd).map(c => c.kind === 'out-of-scope' ? `- ${c.id} [out-of-scope: ${c.when}, decided by ${c.by}] prd.md:${c.line} "${c.text}" — ${c.reason}` : `- ${c.id} [${c.kind}] prd.md:${c.line} "${c.text}"`), ''].join('\n')
+// The chart's "Proposed by the agent" table: one row per proposed line, then the count.
+export function prdProposed(n: number, prd: string, map: string | null): string {
+  const origins = prdOrigins(prd, map)
+  const rows = prdCriteria(prd).filter(c => origins.get(c.id) === 'proposed')
+  return [...(rows.length ? ['| id | line | requirement |', '|---|---|---|', ...rows.map(c => `| ${c.id} | prd.md:${c.line} | ${c.text.replace(/\|/g, '\\|')} |`)] : []),
+    `prd-${n}: ${rows.length ? `${rows.length} proposed line(s)` : 'no proposed lines'}`].join('\n')
+}
+
+// The origin is written only when the kind does not say it: `[rule]` is the client's and `[answer]` a person's, so `proposed`, `unattributed`
+// and a confirmed NFR row (kind rule) carry a suffix.
+export const prdLedger = (prd: string, map: string | null = null): string => {
+  const origins = prdOrigins(prd, map)
+  const tag = (c: Criterion): string => { const o = origins.get(c.id); return o && c.kind !== 'out-of-scope' && (o === 'proposed' || o === 'unattributed' || (o === 'confirmed' && c.kind === 'rule')) ? `${c.kind}, ${o}` : c.kind }
+  return ['# Requirements (generated from prd.md by rig: never edit)', '',
+    ...prdCriteria(prd).map(c => c.kind === 'out-of-scope' ? `- ${c.id} [out-of-scope: ${c.when}, decided by ${c.by}] prd.md:${c.line} "${c.text}" — ${c.reason}` : `- ${c.id} [${tag(c)}] prd.md:${c.line} "${c.text}"`), ''].join('\n')
+}
 
 // ---------- the conversion map: every sentence of the person's original accounted for ----------
 // `- <id>[, <id>...] source.md:<line> "<quote>"` or `- context source.md:<line> "<quote>" — <reason>`.
@@ -137,6 +164,8 @@ export function conversionProblems(i: { source: string; prd: string; map: string
   }
   const quotes = rows.map(r => normalise(r.quote))
   for (const b of blocks) for (const piece of unquoted(b.text, quotes)) add('map-unquoted', `source.md:${b.line}`, `source.md:${b.line} says "${piece}", which conversion.md does not map`)
+  const origins = prdOrigins(i.prd, i.map)
+  for (const c of prdCriteria(i.prd)) if (origins.get(c.id) === 'unattributed') add('map-origin', `prd.md:${c.line}`, `${c.id} has no source sentence mapped to it in conversion.md and no "(confirmed at chart by <who>)" or "(proposed at chart)" marker: map the sentence it came from, or mark who it came from`)
   const target = normalise(i.prd)
   for (const f of fences(i.source)) if (!target.includes(f.body)) add('map-fence', `source.md:${f.line}`, `the fenced block at source.md:${f.line} is not in prd.md word for word: copy it under ## Examples`)
   return out

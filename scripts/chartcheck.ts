@@ -111,7 +111,10 @@ export function parseCases(text: string): TestCase[] {
 // sprint-N/requirements.md quotes every in-scope sentence of the PRD copy word for word, so a dropped rule is a blocking finding
 // rather than a judgement call: `- <id>[ (<alias>)] [<kind>] prd.md:<line> "<quote>"[ — <reason>]`.
 type LedgerKind = 'rule' | 'context' | 'answer' | 'out-of-scope'
-type LedgerRow = { id: string; alias: string | null; kind: LedgerKind; when: string; by: string; line: number; quote: string; reason: string }
+// Who said a rule: the client's source (default), a named person who answered at chart (kind `answer`), the agent (`[rule, proposed]`),
+// or nobody (`unattributed`, a blocking finding of the conversion).
+export type Origin = 'client' | 'confirmed' | 'proposed' | 'unattributed'
+type LedgerRow = { id: string; alias: string | null; kind: LedgerKind; origin: Origin; when: string; by: string; line: number; quote: string; reason: string }
 type LedgerLine = LedgerRow | { bad: string } | { unknownKind: string; row: LedgerRow }
 
 // Sections that hold motivation, not requirements; every other section, including ones the person invented, is in scope.
@@ -122,15 +125,16 @@ const LINE_SLACK = 3
 // Markup and spacing never decide whether a quote matches: emphasis, backticks, curly quotes, spaces around table pipes and the
 // "(answered at chart)" marker are dropped on both sides.
 export const normalise = (s: string): string => s.replace(/[\u201c\u201d]/g, '"').replace(/[\u2018\u2019]/g, "'").replace(/\*\*|__|[*`]/g, '')
-  .replace(/\(answered at chart\)/gi, '').replace(/\s*\(out of scope:[^)]*\)/gi, '').replace(/\s*\|\s*/g, ' | ').replace(/\s+/g, ' ').trim()
+  .replace(/\((?:answered|default|decided) at chart\)/gi, '').replace(/\s*\((?:confirmed|proposed) at chart(?: by [^)]*)?\)/gi, '').replace(/\s*\(out of scope:[^)]*\)/gi, '').replace(/\s*\|\s*/g, ' | ').replace(/\s+/g, ' ').trim()
 
 function readLedgerLine(l: string): LedgerLine | null {
   if (!/^\s*[-*]\s+\S/.test(l)) return null
   const m = LEDGER_LINE.exec(l)
   if (!m) return { bad: l.trim() }
-  const kind = (m[3] ?? '').trim()
-  const row: LedgerRow = { id: m[1]!, alias: m[2]?.trim() || null, kind: 'rule', when: '', by: '', line: Number(m[4]), quote: m[5] ?? '', reason: (m[6] ?? '').trim() }
-  if (kind === 'rule' || kind === 'context' || kind === 'answer') return { ...row, kind }
+  const [kindPart = '', originPart] = (m[3] ?? '').split(/\s*,\s*(?=(?:confirmed|proposed|unattributed)$)/)
+  const kind = kindPart.trim()
+  const row: LedgerRow = { id: m[1]!, alias: m[2]?.trim() || null, kind: 'rule', origin: originPart ? originPart.trim() as Origin : 'client', when: '', by: '', line: Number(m[4]), quote: m[5] ?? '', reason: (m[6] ?? '').trim() }
+  if (kind === 'rule' || kind === 'context' || kind === 'answer') return { ...row, kind, origin: kind === 'answer' && row.origin === 'client' ? 'confirmed' : row.origin }
   const oos = /^out-of-scope(?::\s*(.*?))?(?:,\s*decided by\s+(.+))?$/.exec(kind)
   return oos ? { ...row, kind: 'out-of-scope', when: (oos[1] ?? '').trim(), by: (oos[2] ?? '').trim() } : { unknownKind: kind, row }
 }

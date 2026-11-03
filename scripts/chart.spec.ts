@@ -814,8 +814,24 @@ test('prd map checks source.md against conversion.md, and refuses a sprint with 
   write(repo, `${P}/sprints/sprint-1/source.md`, '# Cart\n\nIds start at 1.\n')
   const missing = sdlc(repo, ['prd', 'map', '1', '--json'])
   assert.deepEqual((JSON.parse(missing.stdout) as { rule: string }[]).map(f => f.rule), ['map-missing'])
+  write(repo, `${P}/sprints/sprint-1/source.md`, '# Cart\n\nAdding works. Ids start at 1.\n')
   write(repo, `${P}/sprints/sprint-1/conversion.md`, '- DR-1 source.md:3 "Ids start at 1."\n')
+  assert.match(sdlc(repo, ['prd', 'map', '1', '--json']).stdout, /map-origin/)
+  write(repo, `${P}/sprints/sprint-1/conversion.md`, CONV_1)
   assert.match(sdlc(repo, ['prd', 'map', '1']).stdout, /every sentence of source\.md is mapped/)
+})
+
+// 2026-11-03 colleague feedback 3: a line the agent proposed is in the ledger and in the one review's table, and approval still stands.
+test('a proposed criterion is ledgered as proposed, listed by `prd proposed`, and the ledger is not stale', () => {
+  converted()
+  assert.match(sdlc(repo, ['prd', 'proposed', '1']).stdout, /^prd-1: no proposed lines/)
+  write(repo, `${P}/sprints/sprint-1/prd.md`, FORMAT_PRD.replace('- AC-1.2: WHEN c THE SYSTEM SHALL d', '- AC-1.2: WHEN c THE SYSTEM SHALL d (proposed at chart)'))
+  write(repo, `${P}/sprints/sprint-1/conversion.md`, '- AC-1.1 source.md:3 "Adding works."\n- DR-1 source.md:3 "Ids start at 1."\n')
+  assert.equal(sdlc(repo, ['prd', 'ledger', '1']).code, 0)
+  assert.match(fs.readFileSync(path.join(repo, `${P}/sprints/sprint-1/requirements.md`), 'utf8'), /- AC-1\.2 \[rule, proposed\] prd\.md:\d+ "WHEN c THE SYSTEM SHALL d"/)
+  const table = sdlc(repo, ['prd', 'proposed', '1']).stdout
+  assert.match(table, /\| id \| line \| requirement \|\n\|---\|---\|---\|\n\| AC-1\.2 \| prd\.md:\d+ \| WHEN c THE SYSTEM SHALL d \|\nprd-1: 1 proposed line\(s\)/)
+  assert.ok(!(call('return C.chartFindings(1, false)') as { rule: string }[]).some(f => f.rule === 'ledger-stale' || f.rule === 'ledger-missing'))
 })
 
 // 2026-10-26 PRD format, one gate since 2026-10-27: the chart approval covers a converted PRD.

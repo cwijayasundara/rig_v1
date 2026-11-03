@@ -355,7 +355,7 @@ test('prdUnits: bullets and paragraphs of in-scope sections with their line, nev
 
 test('parseLedger reads id, alias, kind, line, quote and reason; out-of-scope carries when and who', () => {
   const rows = parseLedger(LEDGER_OK + '- FR-6.1 [out-of-scope: sprint 2, decided by Ana] prd.md:30 "Export to CSV." — export is sprint 2\n')
-  assert.deepEqual(rows[0], { id: 'FR-4.1', alias: 'AC-4.1', kind: 'rule', when: '', by: '', line: 15, quote: 'Each item has an integer id starting at 1.', reason: '' })
+  assert.deepEqual(rows[0], { id: 'FR-4.1', alias: 'AC-4.1', kind: 'rule', origin: 'client', when: '', by: '', line: 15, quote: 'Each item has an integer id starting at 1.', reason: '' })
   assert.equal(rows[2]?.reason, 'restates persistence, covered by G-1')
   assert.deepEqual([rows[3]?.kind, rows[3]?.when, rows[3]?.by, rows[3]?.reason], ['out-of-scope', 'sprint 2', 'Ana', 'export is sprint 2'])
 })

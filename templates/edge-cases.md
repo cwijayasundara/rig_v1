@@ -7,7 +7,7 @@ all items below that nobody asked at chart.
 
 An item applies only when the intent has that surface (it writes a shared file, takes a path, parses options, can fail). Where
 it does and the PRD is silent, write the default as a behaviour under `## Behaviours` or `### Failure behaviour`, cite the
-FR-n it refines, and end the line with `(default at chart)`. Do not write the default, and return a question, when the
+FR-n it refines, and end the line with `(proposed at chart)`. Do not write the default, and return a question, when the
 default needs a mechanism the PRD and the ADRs do not name (a lock, a queue, a new exit code) or when the PRD states the
 opposite (for example "last writer wins").
 
