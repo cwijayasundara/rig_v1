@@ -16,9 +16,25 @@ export const TAMPER_PATTERNS: { id: string; re: RegExp; what: string }[] = [
   { id: 'rspec-pending', re: /^\s*(?:pending|skip)\b(?:\s+["']|\s*$|\s+do\b)/, what: 'RSpec pending/skip' },
 ]
 
+// A green exit that executed nothing proves nothing (code-modernization's "zero executed = not proven"). Each pattern is the
+// summary line a runner prints when it found no tests; registryhooks.spec.ts shows the runner behind each.
+const RAN_NOTHING = [
+  /^\s*# tests 0\s*$/m, // node --test (TAP)
+  /^\s*ℹ tests 0\s*$/m, // node --test (spec reporter)
+  /\bRan 0 tests?\b/i, // python unittest
+  /\bcollected 0 items\b|\bno tests ran\b/i,
+  /\bNo tests found\b|\bno test files found\b/i,
+  /^Tests:\s+0 total\s*$/m,
+  /\[no test files\]/,
+  /\bTests run: 0,/,
+  /\brunning 0 tests\b/i,
+  /\bNo tests were executed\b|\bTotal tests: 0\b/i,
+]
+export const ranNothing = (tail: string): boolean => RAN_NOTHING.some(re => re.test(tail))
+
 export const SUPPRESSIONS: RegExp[] = [
-  /eslint-disable/, /@ts-(?:ignore|expect-error|nocheck)\b/, /#\s*type:\s*ignore/, /#\s*noqa\b/, /pylint:\s*disable/, // -- the detector's own patterns
-  /\/\/\s*nolint\b/, /@SuppressWarnings\b/, /rubocop:disable/, /#\s*pragma:\s*no\s*cover/, /istanbul\s+ignore/, /\bnosemgrep\b/, // -- the detector's own patterns
+  /eslint-disable/, /@ts-(?:ignore|expect-error|nocheck)\b/, /#\s*type:\s*ignore/, /#\s*noqa\b/, /pylint:\s*disable/,
+  /\/\/\s*nolint\b/, /@SuppressWarnings\b/, /rubocop:disable/, /#\s*pragma:\s*no\s*cover/, /istanbul\s+ignore/, /\bnosemgrep\b/,
 ]
 
 const REASONED = /(?:\s--\s*|\bbecause\b\s*)\S/i

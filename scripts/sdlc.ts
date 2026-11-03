@@ -202,6 +202,7 @@ function cmdApprove(args: Args): void {
   if (!given && args.opt.ask) return out(approveTarget())
   const chart = CHART_RE.exec(given ?? '')?.[1]
   if (chart) return approveChart(Number(chart), args)
+  if ((given === 'arch' || given === 'app') && !exists(changeDir(given))) return (given === 'arch' ? cmdArch : cmdApp)({ pos: ['approve', ...words(args).slice(1)], opt: args.opt }) // same door for layers and journeys
   const prd = PRD_RE.exec(given ?? '')?.[1]
   if (prd) fail(`there is no separate PRD approval: ${skillRef('approve')} chart-${prd} covers prd.md, source.md and conversion.md with the rest of the chart. Run ${skillRef('chart')} ${prd} to its end, then approve chart-${prd}`)
   const slug = given ? checkSlug(given) : activeSlug()
@@ -394,7 +395,6 @@ function waiveChart(n: number, args: Args): void {
   waiveChartFinding(n, f, by, reason.join(' '))
   out(`waived chart-${n} finding ${f.n}: ${reason.join(' ')} (by ${by})`)
 }
-
 
 function sensorStatus(): { blocks: number; warns: number; bySensor: Record<string, number>; unresolved: number; knownRed: number; waivers: number; inert: Inert[]; layers: string } | null {
   if (!exists(SDLC)) return null

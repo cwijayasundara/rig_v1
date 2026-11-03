@@ -1,7 +1,7 @@
 ---
 name: approve
-description: Human only. Approve a change (its spec.md, plan.md and contract files) or a sprint chart (chart-N, which covers a converted PRD too). The model cannot run this.
-argument-hint: <slug | chart-N>
+description: Human only. Approve a change (its spec.md, plan.md and contract files), a sprint chart (chart-N, which covers a converted PRD too), the dependency layers (arch) or an app's journeys (app <name>). The model cannot run this.
+argument-hint: <slug | chart-N | arch | app <name>>
 disable-model-invocation: true
 allowed-tools: Bash(SDLC_HUMAN=1 node --disable-warning=ExperimentalWarning "${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts" approve *), AskUserQuestion, Skill
 ---
@@ -12,5 +12,7 @@ If the result above starts with `ASK`, no argument was given: name the target in
 - `ASK chart-<N>`: no change is in flight, so ask about the chart: options "Approve chart-<N>" (first), "Cancel". Say what the approval covers, in reading order: for a converted PRD, `prd.md` beside `source.md` and `conversion-review.md`; then `requirements.md`, the intents, the test plan and `chart-review.md`.
 - `ASK none ...`: say so in one line and stop.
 Then run `SDLC_HUMAN=1 node --disable-warning=ExperimentalWarning "${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts" approve <target>` as its own Bash call and tell the person its result in one line. After "Approve and build" succeeds, invoke `/rig:build <slug>` with the Skill tool. On Cancel do nothing.
+
+`arch` approves the layers block that `/rig:arch` proposed, and `app <name>` approves that app's journeys after one more driver run: neither is asked about, the person typed the target. Run it as above, tell the person the result in one line and stop.
 
 Otherwise tell the person the result above in one line. Do nothing else.

@@ -167,6 +167,20 @@ test('an advisory sensor never blocks, even when it times out or the budget runs
   assert.ok(findings.every(f => f.severity === 'warn'), JSON.stringify(findings))
 })
 
+// code-modernization: "zero executed = not proven". A green exit from a runner that found no tests is not a pass.
+test('the unit sensor exiting 0 after executing no tests blocks; a normal pass and other sensors are untouched', () => {
+  const run = (id: string, out: string) => runSensors(parseRegistry(JSON.stringify({ sensors: [sensor(id, 'turn', `printf '%s\\n' '${out}'`, {})] })).registry, 'turn', null, 5000)
+  for (const out of ['# tests 0', 'Ran 0 tests in 0.000s', 'collected 0 items', 'No tests found, exiting with code 0', 'Tests:       0 total', 'ok  \tpkg\t[no test files]', 'running 0 tests']) {
+    const f = run('unit', out)
+    assert.equal(f.length, 1, out)
+    assert.equal(f[0]?.severity, 'block', out)
+    assert.match(f[0]?.message ?? '', /ran no tests/, out)
+  }
+  assert.deepEqual(run('unit', '# tests 12'), [])
+  assert.deepEqual(run('unit', 'Ran 3 tests in 0.1s'), [])
+  assert.deepEqual(run('lint', '# tests 0'), [])
+})
+
 test('a passing advisory sensor leaves a hand-formatted registry byte-for-byte alone', () => {
   const text = '{\n    "sensors": [ { "id": "dup", "cmd": "node -e \\"\\"", "cadence": "turn", "blocks": false, "count": "exit", "guide": "g" } ]\n}\n'
   write(repo, '.rig/sensors.json', text); gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'cfg')

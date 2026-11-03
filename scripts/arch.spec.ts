@@ -105,6 +105,17 @@ test('arch: a proposed block enforces nothing, and only a person can approve it'
   assert.equal(fs.existsSync(path.join(repo, '.rig/layers.approved.json')), false)
 })
 
+// code-modernization's one front door: the layers are approved with the same slash command as a change, not a typed shell line.
+test('arch: /rig:approve arch approves the layers like arch approve does, and only for a person', () => {
+  const via = (env: Record<string, string>) => { const r = sdlc(repo, ['approve', 'arch'], { env }); hook(repo, 'prompt-submit', {}); return r }
+  const refused = via({})
+  assert.equal(refused.code, 3)
+  assert.match(refused.stderr, /human-only/)
+  assert.equal(fs.existsSync(path.join(repo, '.rig/layers.approved.json')), false)
+  assert.match(via({ SDLC_HUMAN: '1' }).stdout, /layers approved by .*: 1 layer rule\(s\) enforced/)
+  assert.equal(fs.existsSync(path.join(repo, '.rig/layers.approved.json')), true)
+})
+
 test('arch: once approved, an import across the boundary blocks at Stop with the example, and a lawful one passes', () => {
   assert.match(approve().stdout, /layers approved by .*: 1 layer rule\(s\) enforced/)
   assert.match(sdlc(repo, ['sensors']).stdout, /layers: approved by/)

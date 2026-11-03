@@ -17,6 +17,6 @@ allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_R
    - `features/<feature>.md`, one per feature, seeded with each journey: `entry: <a source path>` lines (the check fails when one no longer exists), how a user reaches it, the observable end state, and the side effects to check (rows, files, messages).
 4. Hold to these rules in the driver: assert the end state, and the side effects, never only a status code; stop only what it started, never by process name; do not weaken a journey to make it pass.
 5. Run it with `S app run <app>`. Fix the driver or report a real app bug to the person. A driver that has never run is a draft, and a draft is not enforced.
-6. Hand over: tell the person to review the files and run `! SDLC_HUMAN=1 node .rig/bin/sdlc.ts app approve <app>` (the path of the script you ran, when the harness is not vendored). Approval runs the driver once more and records its hash; verify, ship and CI then run it. A later edit to the driver or the map shows as a warning in the PR until it is approved again.
+6. Hand over: tell the person to review the files and run `/rig:approve app <app>`. Approval runs the driver once more and records its hash; verify, ship and CI then run it. A later edit to the driver or the map shows as a warning in the PR until it is approved again.
 
 End with: `Next: review and approve the journeys (you), then /rig:start for the next change`.

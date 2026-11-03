@@ -17,6 +17,37 @@
 
 rig makes Claude Code work like a careful engineer and adds as little code of its own as it can ([docs/GOAL.md](docs/GOAL.md)). It is a **behavioural harness**. Work starts from a stated intent with numbered, testable behaviours. A person approves the plan, and the approval freezes the contracts. Deterministic sensors check every edit, turn, commit and PR. Every decision is a file committed to the repo, and every approval is a person's. rig follows [the AI-native SDLC playbook](https://claude.com/blog/the-ai-native-sdlc-playbook) and uses what Claude Code already provides (plan mode, subagents, `/code-review`, `/security-review`, worktrees) wherever it can. [DESIGN.md](DESIGN.md) gives the evidence and reasoning behind each choice.
 
+## The path
+
+Where you are decides the next command. Everything after `/rig:init` is a file in the repo, so a new session, or a colleague a week later, picks up from `sdlc.ts status`.
+
+| You are | Run | Then |
+|---|---|---|
+| In a repo with no `.rig/` | `/rig:init` (an empty repo: `/rig:init greenfield "<stack and goal>"`) | `/rig:start "<task>"` |
+| Starting one change | `/rig:start "<task>"`, or `/rig:start <intent file>` for a charted intent | `/rig:plan` |
+| Holding a plan | review `spec.md` and `plan.md`, then **you** run `/rig:approve <slug>` | `/rig:build` (it continues into `/rig:test` and `/rig:pr`) |
+| Planning a sprint from a PRD | `/rig:chart <N>`, then **you** run `/rig:approve chart-<N>` | `sdlc.ts ready` lists the intents to start |
+| Setting up the guards | `/rig:arch`, then **you** run `/rig:approve arch`; `/rig:app`, then **you** run `/rig:approve app <name>` | `/rig:start` |
+| Blocked by a sensor you disagree with | **you** run `/rig:waive <sensor> <file|*> <reason>` | continue |
+| Back after a break | `node .rig/bin/sdlc.ts status` | it names the next command |
+
+Install is [below](#install); the step-by-step guides are under [User guide](#user-guide).
+
+### Words you will see
+
+| Word | Meaning |
+|---|---|
+| **intent** | What a change is for: `intent.md`, with numbered behaviours B1, B2…, each one testable. |
+| **chart** | A sprint's PRD turned into intents, architecture, ADRs and a test plan, approved once by a person. |
+| **sprint** | One PRD and the intents charted from it, `sprints/sprint-<N>/`. Small work needs none. |
+| **ledger** | The generated list of every PRD requirement and where it went (an intent, a test case or out of scope), so none is silently dropped. |
+| **sensor** | A check rig runs for you: a command (lint, tests, mutation) or a built-in (layering, size, test-tamper), each with a cadence. |
+| **floor** | The quality floor: the sensors, secret and test-tamper checks, git hooks and CI `rig-check` that run on all work, planned or not. |
+| **knownRed** | A check that already failed when rig joined the repo. It warns instead of blocking, so old debt is never blamed on new work. |
+| **tier** | The risk of a PR, printed by `rig-check`: 0 is routine, 1 is a one-way door, a missing review, an unresolved finding or a large diff, 2 touches an always-human path (harness files, workflows). |
+| **rung** | The autonomy setting (0 to 3, `/rig:autonomy`): how far a session goes before it waits for a person. |
+| **approval / waiver** | A person's recorded decision, with hashes of what it covered. A model cannot make either. |
+
 ## Is it worth using?
 
 Measured on 2026-10-31 (`eval/results/2026-10-31-*.jsonl`), on small tasks that plain Claude Code already passes:
@@ -127,7 +158,7 @@ All of it is committed: the repo is the record. CI (`rig-check`) re-judges it wi
 
 ## Status
 
-As of 2026-10-21. `.claude-plugin/plugin.json` says **0.6.0**; the last git tag is `v0.4.1`. Everything since is on `main` under *Unreleased* in [CHANGELOG.md](CHANGELOG.md). The measured progress against the goal is in [docs/GOAL.md](docs/GOAL.md).
+As of 2026-11-03. `.claude-plugin/plugin.json` says **0.7.0**; the last git tag is `v0.4.1`. Everything since is on `main` under *Unreleased* in [CHANGELOG.md](CHANGELOG.md). The measured progress against the goal is in [docs/GOAL.md](docs/GOAL.md).
 
 | Area | State | Evidence |
 |---|---|---|
@@ -168,7 +199,8 @@ These are the principles, and [DESIGN.md](DESIGN.md) §2 gives the reason for ea
  │ YOU            /rig:start  /rig:approve  /rig:waive                    │  intent, approval
  ├────────────────────────────────────────────────────────────────────────┤
  │ SKILLS (17)    start plan build test pr · chart testplan · wiki learn  │  the stages: prompts
- │                rule init app arch autonomy · approve waive (human only)│
+ │                rule init upgrade app arch autonomy                     │
+ │                approve waive (human only)                              │
  ├────────────────────────────────────────────────────────────────────────┤
  │ AGENTS (2)     architect (Sonnet, charts a sprint)                     │  small fresh contexts
  │                evaluator (Opus, reviews each sprint chart)             │

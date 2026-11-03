@@ -70,7 +70,7 @@ These come from the research (`docs/research/`) and from the one week this repo 
    was not rebuilt; the wiki is judged on accuracy and staleness (`npm run eval:wiki`). `init` on an existing repo should index it.
 4. **CI evals and the PR review loop** (playbook plays 10, 11, 13): built. The dry evals run in `ci.yml` on every push and pull request;
    the live paired eval runs nightly and on demand (`.github/workflows/eval.yml`, gated by `eval/gate.mjs`, whose `eval/baseline.json`
-   is still empty). The review loop is the clean-context reviewer in `/rig:pr`; there is no `claude-code-action` workflow.
+   holds the `links` variant's two nightly arms, set from the 2026-10-21 runs: 3 runs, at least 67% accepted, $0.10 (bare) and $1.50 (rig) per accepted task). The review loop is the clean-context reviewer in `/rig:pr`; there is no `claude-code-action` workflow.
 5. **Maintain** (plays 14 to 16): built (`scripts/maintain.ts`; `templates/rig-maintain.yml` runs it nightly, off until `RIG_MAINTAIN` is set, one PR a day at most; no `bands.yaml`). One detection script; a finding becomes an
    `intent.md`. Scheduled scans use native routines and `/security-review`.
 6. **Learning loop** (was `brain/memory`): built on `rig/learn`, not yet shown to lift. `sdlc.ts learn mine|replay|check|status` mines

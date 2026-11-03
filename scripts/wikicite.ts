@@ -19,13 +19,19 @@ function parseOne(tok: string): Cite | null {
 
 // The citations a line ends with, in order. Any malformed one, or none at the end, gives [].
 export function parseCites(line: string): Cite[] {
-  const tail = /((?:\s*\[[^\]\s]+\])+)\s*$/.exec(line)?.[1]
-  if (!tail) return []
+  // Scanned from the end, one citation at a time: the regex this replaced was quadratic on a long run of spaces or brackets.
   const out: Cite[] = []
-  for (const m of tail.matchAll(/\[([^\]\s]+)\]/g)) {
-    const c = parseOne(m[1]!)
-    if (!c) return []
-    out.push(c)
+  let end = line.trimEnd().length
+  while (line[end - 1] === ']') {
+    let start = end - 1
+    while (start > 0 && !/[\]\s]/.test(line[start - 1] ?? '')) start--
+    const open = line.indexOf('[', start)
+    if (open < 0 || open >= end - 1) break
+    const cite = parseOne(line.slice(open + 1, end - 1))
+    if (!cite) return []
+    out.unshift(cite)
+    end = open
+    while (end > 0 && /\s/.test(line[end - 1] ?? '')) end--
   }
   return out
 }

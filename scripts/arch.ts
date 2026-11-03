@@ -4,7 +4,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { ROOT, SENSORS_PATH, PLUGIN_ROOT, ownerOrFail, out, fail, read, readJson, exists, sha, writeAtomic, sanctionWrites, type Args } from './core.ts'
+import { ROOT, SENSORS_PATH, PLUGIN_ROOT, ownerOrFail, out, fail, read, readJson, exists, sha, writeAtomic, sanctionWrites, skillRef, type Args } from './core.ts'
 import { parseRegistry } from './registry.ts'
 import { escapeRe, type Layer } from './model.ts'
 import { ARCH_REL } from './product.ts'
@@ -195,7 +195,7 @@ export function cmdArch(args: Args): void {
     return out([`layers: ${layerStateText(layerState())}`, ...problems.map(p => `[layers] ${p}`), ...notes.map(n => `[layers] note: ${n}`), ...(problems.length ? [] : deriveLayering(raw.def).map(l => `  ${l.from} must not import ${l.mustNotImport.join(', ')}`))].join('\n'))
   }
   if (sub === 'approve') {
-    if (process.env.SDLC_HUMAN !== '1') fail('layer approvals are human-only: the person runs `! SDLC_HUMAN=1 node .rig/bin/sdlc.ts arch approve`', 3)
+    if (process.env.SDLC_HUMAN !== '1') fail(`layer approvals are human-only: the person runs ${skillRef('approve')} arch`, 3)
     if (!raw.def) fail(`no \`\`\`rig-layers block under "## Layers" in ${ARCH_REL}: run \`sdlc.ts arch propose\``)
     if (problems.length) fail(problems.map(p => `[layers] ${p}`).join('\n'))
     let tool = toolOf(stack)

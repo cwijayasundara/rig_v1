@@ -113,7 +113,8 @@ export function matchesAny(file: string, globs: string[]): boolean {
   return globs.some(g => {
     let re = compiled.get(g)
     if (!re) compiled.set(g, (re = globToRegex(g)))
-    return re.test(file)
+    // V8 compiles lazily, so "Regular expression too large" (a hostile sensors.json) surfaces here: such a glob matches nothing, not a hook crash.
+    try { return re.test(file) } catch { return false }
   })
 }
 export const isTest = (file: string, paths: Paths): boolean => matchesAny(file, paths.tests)

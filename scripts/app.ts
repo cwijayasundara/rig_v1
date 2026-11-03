@@ -134,7 +134,7 @@ export function cmdApp(args: Args): void {
     return
   }
   if (sub === 'approve') {
-    if (process.env.SDLC_HUMAN !== '1') fail('journey approvals are human-only: the person runs `! SDLC_HUMAN=1 node .rig/bin/sdlc.ts app approve <app>`', 3)
+    if (process.env.SDLC_HUMAN !== '1') fail(`journey approvals are human-only: the person runs ${skillRef('approve')} app <app>`, 3)
     const a = pick(args, apps)
     const by = ownerOrFail(args, 'journey approvals')
     const miss = missingEntries(a)

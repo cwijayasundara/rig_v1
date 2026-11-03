@@ -1,1 +1,6 @@
-{}
+{
+  "links": {
+    "haiku-bare": { "minRuns": 3, "minAcceptedRate": 0.67, "maxUsdPerAccepted": 0.1 },
+    "haiku-rig": { "minRuns": 3, "minAcceptedRate": 0.67, "maxUsdPerAccepted": 1.5 }
+  }
+}

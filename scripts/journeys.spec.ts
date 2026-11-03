@@ -49,6 +49,15 @@ test('approval is a person\'s, needs a passing run, and records the driver\'s ha
   assert.ok(fs.existsSync(path.join(repo, '.rig/verify/shop.approved.json')))
 })
 
+test('/rig:approve app <name> approves the journeys like app approve, and only for a person', () => {
+  const refused = sdlc(repo, ['approve', 'app shop'])
+  assert.equal(refused.code, 3)
+  assert.match(refused.stderr, /human-only/)
+  const ok = sdlc(repo, ['approve', 'app shop'], { env: HUMAN })
+  assert.equal(ok.code, 0, ok.stderr)
+  assert.match(state(), /shop: current/)
+})
+
 test('a unit-green change that breaks the running app is blocked by journeys, and only by journeys', () => {
   sdlc(repo, ['app', 'approve', 'shop'], { env: HUMAN })
   gitIn(repo, 'add', '-A')

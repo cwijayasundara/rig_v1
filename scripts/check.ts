@@ -6,7 +6,7 @@ import { waiverLive,
   type Args, type Waiver,
 } from './core.ts'
 import { parseRules, formatFindings, warnLines, matchesAny, isTest, isSource, ghPages, planFiles, type FileDiff, type Finding, type Rule } from './model.ts'
-import { withoutFixtures, testTamper, suppressions, layering, size, secretsInDiff, rulesSensor, harnessTamper, isProtected, behaviourIds, behaviourText, missingBehaviours } from './sensors.ts'
+import { withoutFixtures, testTamper, suppressions, layering, size, secretsInDiff, rulesSensor, harnessTamper, isProtected, behaviourIds, behaviourText, missingBehaviours, ranNothing } from './sensors.ts'
 import { readBaseline, snapshot, turnDiff, fileDiff, branchDiff, showAt, fileLines, stagedDiff, showStaged } from './diffs.ts'
 import { runCommand, recordRun, normCmd } from './runs.ts'
 import { withBaseTree } from './basetree.ts'
@@ -119,6 +119,11 @@ export function runSensors(r: Registry, at: Cadence, slug: string | null, budget
     const row = runCommand(cmd, { timeoutMs: Math.min(left, s.timeoutMs ?? left) })
     left -= row.ms
     if (slug) recordRun(slug, { ...row, sensor: s.id, source: at === 'turn' ? 'gate' : 'ship' })
+    // The unit suite exiting 0 after executing no test is a failed run, not a pass.
+    if (row.exit === 0 && s.id === 'unit' && ranNothing(row.tail)) {
+      findings.push({ sensor: s.id, severity: s.blocks ? 'block' : 'warn', message: `${s.id} ran no tests (exit 0, but the runner reports none executed): ${s.guide}`, fix: `make the runner find and execute the tests, then rerun: ${cmd}` })
+      continue
+    }
     if (row.exit === 0) {
       if (known) cleared.push(s.id)
       if (s.ratchet) findings.push(...ratchetFinding(s, s.ratchet, lastNumber(row.tail), r.ratchets ?? {}, ratchetWrite))

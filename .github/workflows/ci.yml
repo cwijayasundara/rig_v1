@@ -20,6 +20,16 @@ jobs:
       - run: npm ci || npm install
       - run: npm run typecheck
       - run: node --disable-warning=ExperimentalWarning --test scripts/*.spec.ts
+  validate:
+    # The official marketplace's required check: the manifest, skill and agent frontmatter and hooks.json, by the Claude Code validator.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18'
+      - run: npm install -g @anthropic-ai/claude-code
+      - run: npm run validate
   e2e-fast:
     # The e2e unit tests and the scripted acceptance flow (a fake model, $0): install, brief, two changes through approval,
     # verify and PR (with the contract stage and an HTTP acceptance), the deploy gate and the policy stage. The real-model run is `npm run e2e`, by a person.
