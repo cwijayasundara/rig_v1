@@ -1,0 +1,18 @@
+[
+  { "type": "bugfix", "request": "Cart total throws a TypeError when the cart is empty.", "expect": "quick" },
+  { "type": "bugfix", "request": "Applying the SAVE10 code returns the wrong total: it takes 10 off each line instead of off the order.", "expect": "quick" },
+  { "type": "bugfix", "request": "`removeItem` fails with a 500 when the item id is unknown.", "expect": "quick" },
+  { "type": "bugfix", "request": "Make the checkout flow feel less clunky.", "expect": "full" },
+  { "type": "bugfix", "request": "Improve how the cart handles discounts.", "expect": "full" },
+  { "type": "refactor", "request": "Extract price formatting from cart.ts into its own helper.", "expect": "quick" },
+  { "type": "refactor", "request": "Rename CartItem.qty to quantity across the module.", "expect": "quick" },
+  { "type": "refactor", "request": "Move the discount calculation out of checkout() into a pure function.", "expect": "quick" },
+  { "type": "refactor", "request": "Split the cart module in two and add a currency option while you are at it.", "expect": "full" },
+  { "type": "refactor", "request": "Restructure the pricing code so it also supports tiered discounts.", "expect": "full" },
+  { "type": "feature", "request": "Add a wishlist that persists between sessions.", "expect": "full" },
+  { "type": "feature", "request": "Let shoppers save a cart for later.", "expect": "full" },
+  { "type": "feature", "request": "Show estimated delivery dates at checkout.", "expect": "full" },
+  { "type": "feature", "request": "Add a retry when the payment API throws.", "expect": "full" },
+  { "type": "chore", "request": "Bump the test runner to the latest minor.", "expect": "full" },
+  { "type": "chore", "request": "Update the README install section.", "expect": "full" }
+]

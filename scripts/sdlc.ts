@@ -42,8 +42,7 @@ import { registerContracts } from './contracts.ts'
 import { cmdMaintain } from './maintain.ts'
 import { cmdReadiness } from './readiness.ts'
 import { cmdAutonomy, initAutonomy } from './autonomy.ts'
-import { cmdRisk, cmdWeight } from './risk.ts'
-import { cmdRouteCheck } from './route.ts'
+import { cmdRisk, cmdWeight, cmdRouteCheck } from './risk.ts'
 import { cmdClaims } from './claims.ts'
 import { protect } from './protect.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'
@@ -480,8 +479,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   autonomy: cmdAutonomy,
   risk: cmdRisk,
   claims: cmdClaims,
-  weight: cmdWeight,
-  'route-check': cmdRouteCheck,
+  weight: cmdWeight, 'route-check': cmdRouteCheck,
 }
 
 const [command = '', ...rest] = process.argv.slice(2)

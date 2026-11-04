@@ -88,3 +88,15 @@ test('a missing or empty type or request fails with a usage line', () => {
     assert.equal(r.stdout.includes('quick'), false)
   }
 })
+
+test('corpus: no labelled-full request routes quick, and at least 80% of labelled-quick requests do', () => {
+  type Entry = { type: string; request: string; expect: 'quick' | 'full' }
+  const corpus = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '../eval/fixtures/route/requests.json'), 'utf8')) as Entry[]
+  const routed = corpus.map(e => ({ ...e, got: routeCheck(e.type, e.request).path }))
+  const falseQuick = routed.filter(e => e.expect === 'full' && e.got === 'quick')
+  assert.deepEqual(falseQuick, [], 'a request labelled full took the quick path')
+  const quick = routed.filter(e => e.expect === 'quick')
+  const hit = quick.filter(e => e.got === 'quick')
+  assert.ok(quick.length >= 6 && corpus.length >= 15, 'the corpus is too small to mean anything')
+  assert.ok(hit.length / quick.length >= 0.8, `quick recall ${hit.length}/${quick.length}; missed: ${quick.filter(e => e.got !== 'quick').map(e => e.request).join(' | ')}`)
+})

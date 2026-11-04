@@ -8,6 +8,7 @@ import { isProtected, PROTECTED } from './sensors.ts'
 import { parseAccess, type AccessRule } from './chartcheck.ts'
 import { branchDiff } from './diffs.ts'
 import { activeSlug } from './lifecycle.ts'
+import { routeCheck } from './route.ts'
 import { archPath } from './product.ts'
 import { isHarnessPath } from './vendor.ts'
 
@@ -112,4 +113,12 @@ export function cmdWeight(args: Args): void {
   const asked = frontmatter(read(path.join(CHANGES, slug, 'intent.md'))).data.weight === 'full'
   const w = predictWeight({ slug, radius, access: parseAccess(read(archPath)), risk: parseRegistry(read(path.join(ROOT, SENSORS_JSON))).registry.risk, asked })
   out(args.opt.json ? JSON.stringify(w) : [`weight: ${w.weight}`, ...w.reasons.map(x => `- ${x}`)].join('\n'))
+}
+
+// The start path (quick or full) for a free-text request: see route.ts. Flags go after the request, as parseArgs reads them.
+export function cmdRouteCheck(args: Args): void {
+  const [type, request] = args.pos
+  if (!type || !request?.trim()) return fail('usage: route-check <type> "<request>" [--no-route] [--json]')
+  const route = routeCheck(type, request, { noRoute: args.opt['no-route'] === true })
+  out(args.opt.json ? JSON.stringify(route) : [`route: ${route.path}`, ...route.reasons.map(r => `- ${r}`)].join('\n'))
 }

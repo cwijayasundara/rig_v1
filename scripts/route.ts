@@ -1,7 +1,6 @@
 // The start path router (spec 2026-11-04 task-router): which way /rig:start takes a free-text request. The model proposes a
 // change type; this check decides whether the quick path (no brainstorm, no question batch) is allowed. It only narrows:
 // any doubt is 'full', and nothing here touches approval, the red/green proof or the final gate.
-import { out, fail, type Args } from './core.ts'
 import { TYPES } from './lifecycle.ts'
 
 export type Route = { path: 'quick' | 'full'; type: string; reasons: string[] }
@@ -21,11 +20,4 @@ export function routeCheck(type: string, request: string, opts: { noRoute?: bool
   }
   const word = NEW_BEHAVIOUR.exec(request)?.[1]
   return word ? full(`mentions new behaviour: ${word.toLowerCase()}`) : { path: 'quick', type, reasons: ['refactor names no new behaviour'] }
-}
-
-export function cmdRouteCheck(args: Args): void {
-  const [type, request] = args.pos
-  if (!type || !request?.trim()) return fail('usage: route-check <type> "<request>" [--no-route] [--json]')
-  const route = routeCheck(type, request, { noRoute: args.opt['no-route'] === true })
-  out(args.opt.json ? JSON.stringify(route) : [`route: ${route.path}`, ...route.reasons.map(r => `- ${r}`)].join('\n'))
 }
