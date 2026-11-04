@@ -43,6 +43,7 @@ import { cmdMaintain } from './maintain.ts'
 import { cmdReadiness } from './readiness.ts'
 import { cmdAutonomy, initAutonomy } from './autonomy.ts'
 import { cmdRisk, cmdWeight } from './risk.ts'
+import { cmdRouteCheck } from './route.ts'
 import { cmdClaims } from './claims.ts'
 import { protect } from './protect.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'
@@ -480,6 +481,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   risk: cmdRisk,
   claims: cmdClaims,
   weight: cmdWeight,
+  'route-check': cmdRouteCheck,
 }
 
 const [command = '', ...rest] = process.argv.slice(2)
