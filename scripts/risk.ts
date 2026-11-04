@@ -118,7 +118,7 @@ export function cmdWeight(args: Args): void {
 // The start path (quick or full) for a free-text request: see route.ts. Flags go after the request, as parseArgs reads them.
 export function cmdRouteCheck(args: Args): void {
   const [type, request] = args.pos
-  if (!type || !request?.trim()) return fail('usage: route-check <type> "<request>" [--no-route] [--json]')
+  if (args.pos.length !== 2 || !type || !request?.trim()) return fail('usage: route-check <type> "<request>" [--no-route] [--json]')
   const route = routeCheck(type, request, { noRoute: args.opt['no-route'] === true })
   out(args.opt.json ? JSON.stringify(route) : [`route: ${route.path}`, ...route.reasons.map(r => `- ${r}`)].join('\n'))
 }

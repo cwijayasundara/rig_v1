@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { makeRepo, sdlc } from './testkit.ts'
 import { routeCheck } from './route.ts'
 
@@ -99,4 +100,52 @@ test('corpus: no labelled-full request routes quick, and at least 80% of labelle
   const hit = quick.filter(e => e.got === 'quick')
   assert.ok(quick.length >= 6 && corpus.length >= 15, 'the corpus is too small to mean anything')
   assert.ok(hit.length / quick.length >= 0.8, `quick recall ${hit.length}/${quick.length}; missed: ${quick.filter(e => e.got !== 'quick').map(e => e.request).join(' | ')}`)
+})
+
+test('review fix: refactors with inflected or synonymous new behaviour, no structural verb, or non-English text are full', () => {
+  for (const request of [
+    'Restructure pricing so it handles tiered discounts',
+    'Extract the helper, adding a currency option',
+    'Rename qty to quantity and implement bulk pricing',
+    'Extract a helper that enables caching',
+    'Split the cart module and make it accept a currency parameter',
+    'Move pricing into a module plus a CLI flag',
+    'Extraire le calcul et ajouter une option de devise',
+    'Clean up the cart',
+  ]) assert.equal(routeCheck('refactor', request).path, 'full', request)
+})
+
+test('review fix: bugfix requests with no real symptom, or a negated one, are full', () => {
+  for (const request of [
+    'Make the error messages friendlier',
+    'Improve how `cart.ts` handles discounts',
+    'Make the "Checkout" button look nicer',
+    'Redesign the 404 page',
+    'Use a modal instead of a page for login',
+    'Checkout never fails, but make it faster',
+    'Make sure the cart does not throw',
+  ]) assert.equal(routeCheck('bugfix', request).path, 'full', request)
+  assert.deepEqual(routeCheck('bugfix', 'Checkout never fails').reasons, ['negated symptom'])
+})
+
+test('review fix: new-behaviour words match in upper case too', () => {
+  assert.equal(routeCheck('refactor', 'EXTRACT A HELPER AND ADD CURRENCY').path, 'full')
+})
+
+test('review fix: an unquoted request (extra positionals) fails with usage, never quick', () => {
+  const r = sdlc(makeRepo(), ['route-check', 'refactor', 'extract', 'helper', 'and', 'add', 'currency', 'support'])
+  assert.notEqual(r.code, 0)
+  assert.match(r.stderr, /usage: route-check/)
+  assert.equal(r.stdout.includes('quick'), false)
+})
+
+test('review fix: the single-quoted form the skill prescribes runs nothing inside a shell', () => {
+  const repo = makeRepo()
+  const script = path.resolve(import.meta.dirname, 'sdlc.ts')
+  const cmd = `node --disable-warning=ExperimentalWarning ${script} route-check bugfix '\`touch marker\` fails with a 500 $(touch marker2) it'\\''s bad'`
+  const r = spawnSync('sh', ['-c', cmd], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo } })
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(r.stdout, /^route: quick/)
+  assert.equal(fs.existsSync(path.join(repo, 'marker')), false)
+  assert.equal(fs.existsSync(path.join(repo, 'marker2')), false)
 })
