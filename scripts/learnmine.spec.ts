@@ -2,7 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { makeRepo, write, gitIn } from './testkit.ts'
-import { mineCandidates, lessonStatus, shippedChanges, ladderFor } from './learnmine.ts'
+import { mineCandidates, lessonStatus, shippedChanges, ladderFor, unheldLessons } from './learnmine.ts'
 import type { Lesson } from './learnfile.ts'
 
 const shipAll = (repo: string, ...slugs: string[]): void => {
@@ -136,4 +136,23 @@ test('an unmapped finding in two shipped changes is a candidate at the lesson ru
   shipAll(repo, 'cart-add', 'cart-remove')
   const got = mineCandidates(repo)
   assert.deepEqual(got.map(c => [c.key, c.rung]), [['unmapped', 'lesson']])
+})
+
+test('an active lesson whose key recurs in 2 later changes is not holding; one later change, an earning change, or an old one is not enough', () => {
+  const l = lesson()
+  const two = [ship('c', '2026-10-05', ['contract']), ship('d', '2026-10-09', ['contract', 'tests'])]
+  assert.deepEqual(unheldLessons([l], two), [{ id: 'L1', key: 'contract', recurredIn: ['c', 'd'] }])
+  assert.deepEqual(unheldLessons([l], two.slice(0, 1)), [])
+  assert.deepEqual(unheldLessons([l], [...two, ship('old', '2026-09-20', ['contract'])]).map(u => u.recurredIn), [['c', 'd']])
+  assert.deepEqual(unheldLessons([lesson({ seen: ['c', 'd'] })], two), [])
+  assert.deepEqual(unheldLessons([lesson({ status: 'retired' }), lesson({ id: 'L2', status: 'promoted:no-x' })], two), [])
+})
+
+test('a change that shipped with or before the lesson'+"'"+'s own evidence is not a recurrence, and a rewrite citing the recurring changes holds', () => {
+  const l = lesson({ first: '2026-10-01', seen: ['a', 'b'] })
+  const shippedList = [ship('a', '2026-10-01', ['contract']), ship('b', '2026-10-03', ['contract']), ship('c', '2026-10-03', ['contract']), ship('d', '2026-10-02', ['contract'])]
+  assert.deepEqual(unheldLessons([l], shippedList), [])
+  const later = [...shippedList, ship('e', '2026-10-06', ['contract']), ship('f', '2026-10-08', ['contract'])]
+  assert.deepEqual(unheldLessons([l], later).map(u => u.recurredIn), [['e', 'f']])
+  assert.deepEqual(unheldLessons([lesson({ ...l, seen: ['e', 'f'] })], later), [])
 })

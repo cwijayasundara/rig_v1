@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { ROOT, SDLC, WAIVERS, ensureGitignore, out, fail, read, listChanges, readJsonl, writeAtomic, usdOpt, sha, type Args, type Waiver } from './core.ts'
 import { parseLessons, checkLessons, type Lesson } from './learnfile.ts'
-import { mineCandidates, shippedChanges, lessonStatus } from './learnmine.ts'
+import { mineCandidates, shippedChanges, lessonStatus, unheldLessons, findingLinesFor } from './learnmine.ts'
 import { replayRule, replayLayers } from './learnreplay.ts'
 import { mineTranscripts, projectDirs, repeated } from './learntranscripts.ts'
 import { parseRules, ghBin, type Rule } from './model.ts'
@@ -116,6 +116,16 @@ function replay(args: Args): void {
   process.exitCode = pass ? 0 : 1
 }
 
+// `learn verify`: the active lessons whose key keeps recurring in later changes, with the finding lines that show it, for the skill to judge.
+function verify(): void {
+  ensureGitignore()
+  const active = parseLessons(read(LESSONS)).lessons.filter(l => l.status === 'active')
+  const unheld = unheldLessons(active, shippedChanges(ROOT)).map(u => ({ ...u, text: active.find(l => l.id === u.id)?.text ?? '', samples: u.recurredIn.flatMap(s => findingLinesFor(ROOT, s, u.key).slice(0, 1)) }))
+  fs.mkdirSync(LEARN, { recursive: true })
+  writeAtomic(path.join(LEARN, 'verify.json'), JSON.stringify({ unheld }, null, 2) + '\n')
+  out([unheld.length ? unheld.map(u => `not holding: ${u.id} (key ${u.key}) recurred in ${u.recurredIn.join(', ')}`).join('\n') : `all ${active.length} active lesson(s) hold`, 'written: .rig/learn/verify.json'].join('\n'))
+}
+
 function status(): void {
   const a = analyse()
   const active = parseLessons(read(LESSONS)).lessons.filter(l => l.status === 'active').length
@@ -134,6 +144,7 @@ export function cmdLearn(args: Args): void {
   if (sub === 'proposal') { const p = proposalCheck(); out(p.length ? p.map(x => `[learn] ${x}`).join('\n') : 'learn proposal: every promotion carries a passing replay'); process.exitCode = p.length ? 1 : 0; return }
   if (sub === 'replay') return replay(args)
   if (sub === 'status') return status()
+  if (sub === 'verify') return verify()
   if (sub === 'review-eval') {
     const maxUsd = usdOpt(args, Number.MIN_VALUE) // any positive amount
     if (maxUsd === null || Number.isNaN(maxUsd)) fail('learn review-eval costs money: pass --max-usd <dollars> (a positive number), the most this run may spend')
@@ -146,5 +157,5 @@ export function cmdLearn(args: Args): void {
     return
   }
   if (sub === 'reverts') { const labelled = revertLabelled(); const r = writeCandidates(ROOT, labelled ?? []); const bad = readCases(ROOT).bad; out([`review cases: ${r.added.length} new, ${r.total} total, ${r.confirmed} confirmed (.rig/learn/review-cases/)`, ...r.added.map(n => `  + ${n}`), ...bad.map(n => `  ! ${n}: unreadable, skipped`), labelled ? '' : 'note: could not list merged PRs labelled revert (gh); only `This reverts commit` reverts were read', r.total > r.confirmed ? 'to confirm one: a person who knows the code sets defect.file, defect.pattern and confirmed: true in its file' : ''].filter(Boolean).join('\n')); return }
-  fail('usage: learn <mine [--transcripts]|replay <rule.json>|--layers <block.md> --earned a,b|proposal|check|status|reverts|review-eval --max-usd <n> [--model <id>]>')
+  fail('usage: learn <mine [--transcripts]|replay <rule.json>|--layers <block.md> --earned a,b|proposal|check|status|verify|reverts|review-eval --max-usd <n> [--model <id>]>')
 }

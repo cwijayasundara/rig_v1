@@ -86,3 +86,17 @@ export function lessonStatus(lessons: Lesson[], shipped: Shipped[], waivers: { s
   }
   return { lastFired, retire }
 }
+
+// Verify (cookbook "dreaming", 2026-11): an active lesson is not holding when its own key recurs in 2 or more shipped changes made after the
+// lesson was first written and not cited by it. Deterministic; the skill judges whether to rewrite, promote or retire.
+export function unheldLessons(lessons: Lesson[], shipped: Shipped[]): { id: string; key: string; recurredIn: string[] }[] {
+  return lessons.flatMap(l => {
+    if (l.status !== 'active') return []
+    // The lesson's own evidence and anything shipped that day or earlier is what earned it, so only a later date can show it failed.
+    const cutoff = [l.first, ...shipped.filter(s => l.seen.includes(s.slug)).map(s => s.date)].sort().pop() as string
+    const recurredIn = shipped.filter(s => s.date > cutoff && !l.seen.includes(s.slug) && s.keys.includes(l.key)).map(s => s.slug)
+    return recurredIn.length >= MIN_CHANGES ? [{ id: l.id, key: l.key, recurredIn }] : []
+  })
+}
+
+export const findingLinesFor = (root: string, slug: string, key: string): string[] => findingsOf(reviewOf(root, slug)).filter(f => f.key === key).map(f => f.line)

@@ -72,3 +72,12 @@ test('/rig:learn mines reverts into review cases and leaves the paid eval to the
   assert.match(t, /S learn reverts/)
   assert.match(t, /learn review-eval --max-usd[\s\S]*never run it yourself/)
 })
+
+test('/rig:learn verifies active lessons against later changes and proposes a REWRITE or RETIRE for one that is not holding', () => {
+  const skill = at('skills/learn/SKILL.md')
+  assert.match(skill, /S learn verify/)
+  assert.match(skill, /`REWRITE <id>:/)
+  assert.match(skill, /not holding/i)
+  assert.match(skill, /\bRETIRE\b/)
+  assert.match(skill, /cite the changes it recurred in/i)
+})

@@ -2,6 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { makeRepo, write, sdlc, gitIn } from './testkit.ts'
 import { formatLesson, type Lesson } from './learnfile.ts'
@@ -149,3 +150,26 @@ test('learn mine --transcripts makes sure .rig/learn/ is gitignored before it wr
   assert.match(r.stdout, /read: .*nope/)
 })
 
+
+function shippedOn(repo: string, slug: string, iso: string): void {
+  write(repo, `.rig/changes/${slug}/review.md`, finding('contract'))
+  write(repo, `.rig/changes/${slug}/pr.md`, 'pr\n')
+  gitIn(repo, 'add', '-A')
+  execFileSync('git', ['commit', '-qm', `ship ${slug}`], { cwd: repo, env: { ...process.env, GIT_COMMITTER_DATE: iso, GIT_AUTHOR_DATE: iso } })
+}
+
+test('learn verify names the lessons whose key recurred in 2 later changes, with the finding lines, and says so when all hold', () => {
+  const repo = repoWithTwo()
+  write(repo, '.rig/lessons.md', formatLesson({ ...LESSON, first: '2026-01-01' }) + '\n')
+  const holding = sdlc(repo, ['learn', 'verify'])
+  assert.equal(holding.code, 0, holding.stderr)
+  assert.match(holding.stdout, /all 1 active lesson\(s\) hold/)
+  shippedOn(repo, 'cart-pay', '2099-01-02T10:00:00Z')
+  shippedOn(repo, 'cart-list', '2099-01-03T10:00:00Z')
+  const r = sdlc(repo, ['learn', 'verify'])
+  assert.equal(r.code, 0, r.stderr)
+  assert.match(r.stdout, /not holding: L1.*cart-pay, cart-list/)
+  const got = JSON.parse(fs.readFileSync(path.join(repo, '.rig/learn/verify.json'), 'utf8')) as { unheld: { id: string; recurredIn: string[]; samples: string[] }[] }
+  assert.deepEqual(got.unheld.map(u => [u.id, u.recurredIn]), [['L1', ['cart-pay', 'cart-list']]])
+  assert.match(got.unheld[0]?.samples[0] ?? '', /bare string/)
+})
