@@ -11,6 +11,8 @@ node_modules/
 /tsconfig.json
 .env
 .env.*
+.vscode
+.venv
 
 # internal analysis, not part of the harness
 docs/stuff.eml
