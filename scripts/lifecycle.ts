@@ -1,5 +1,6 @@
 // The slim lifecycle (behavioural harness spec 2026-10-16 §8): a change is a folder under .rig/changes/<slug>/ and its
 // status is which files it has. Only a person writes approval.json; verify writes verify.json for the tree it judged.
+import { check, freezeFor } from './intentmap.ts'
 import fs from 'node:fs'
 import path from 'node:path'
 import { ROOT, SENSORS_PATH, SDLC, CHANGES, read, readJson, exists, isTrunk, trunkName, sha, now, git, defaultBase, frontmatter, skillRef as k } from './core.ts'
@@ -16,7 +17,8 @@ type Verify = { at: string; from?: string; tree: string | null; base: string | n
 const ACTIVE = path.join(SDLC, 'state', 'active')
 const APPROVED = ['spec.md', 'plan.md']
 // A charted change's copy of the PRD rows its intent cites: approved with it when present, never required (an ad-hoc change has none).
-const OPTIONAL = ['requirements.md']
+// intent-map.md and its freeze.json (design 2026-11-07) are approved with the plan when the change opts in.
+const OPTIONAL = ['requirements.md', 'intent-map.md', 'freeze.json']
 // Types earlier rig versions wrote, folded into the four the proof rules need.
 const LEGACY: Record<string, ChangeType> = { greenfield: 'feature', incident: 'bugfix', migration: 'chore', spike: 'chore' }
 
@@ -70,7 +72,9 @@ export function approvalRefusal(slug: string): string | null {
   if (unsettled.length) return `carried item(s) not settled in spec.md: ${unsettled.join(', ')} (put each in a behaviour or under ## Out of scope with the person's reason)`
   const radius = blastRadius(read(file(slug, 'spec.md')))
   const outside = radius ? outsideRadius(planFiles(read(file(slug, 'plan.md'))), radius) : []
-  return outside.length ? `plan touches a file outside the blast radius: ${outside.join(', ')} (add it to spec.md ## Blast radius or drop it from plan.md ## Files)` : null
+  if (outside.length) return `plan touches a file outside the blast radius: ${outside.join(', ')} (add it to spec.md ## Blast radius or drop it from plan.md ## Files)`
+  const map = exists(file(slug, 'intent-map.md')) ? check(read(file(slug, 'intent-map.md')), { phase: 'plan' }).findings : []
+  return map.length ? `intent-map.md is not ready to approve:\n${map.map(f => `  - ${f.rule}: ${f.detail}`).join('\n')}` : null
 }
 // Plan paths that neither equal a radius entry nor sit under a radius directory (an entry ending in /, or a bare directory path) or glob.
 export function outsideRadius(planPaths: string[], radius: string[]): string[] {
@@ -95,6 +99,8 @@ export function unapprovedBuild(slugs: string[], touched: string[], planGate: bo
 }
 
 export function writeApproval(slug: string, by: string): Approval {
+  // The scenario hashes are written before the files are hashed, so freeze.json is approved with the map it came from.
+  if (exists(file(slug, 'intent-map.md'))) fs.writeFileSync(file(slug, 'freeze.json'), JSON.stringify(freezeFor(read(file(slug, 'intent-map.md'))), null, 2) + '\n')
   const a: Approval = { by, at: now(), hashes: hashes(slug), contracts: freezeRecord() }
   fs.writeFileSync(file(slug, 'approval.json'), JSON.stringify(a, null, 2) + '\n')
   return a
