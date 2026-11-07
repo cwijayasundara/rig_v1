@@ -243,3 +243,8 @@ test('the breaker knobs and trusted authors parse, and loosening them is a weake
   assert.match(loose, /risk.window raised/)
   assert.match(loose, /humanApproval.trusted added dev/)
 })
+
+test('a command sensor cannot take an intent-map rule id', () => {
+  const { errors } = parseRegistry(JSON.stringify({ sensors: [{ id: 'vacuous', cmd: 'true', cadence: 'ci', blocks: true, guide: 'g' }] }))
+  assert.ok(errors.some(e => /vacuous/.test(e)), errors.join('\n'))
+})
