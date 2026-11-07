@@ -1,6 +1,7 @@
 // The pure data model for sensors: diffs, globs, config, rules and findings. No fs or git access (the gh helpers run the gh binary).
 import { execFileSync } from 'node:child_process'
 import type { Paths } from './registry.ts'
+import { RULES } from './intentmap.ts'
 export type Line = { n: number; text: string }
 type FileStatus = 'A' | 'M' | 'D' | 'R'
 export type FileDiff = { file: string; from?: string; status: FileStatus; added: Line[]; removed: Line[]; binary?: true; oversize?: true }
@@ -9,6 +10,7 @@ export type Severity = 'block' | 'warn'
 export const SENSOR_NAMES = [
   'test-tamper', 'suppression', 'layering', 'size', 'secrets', 'rules', 'harness-tamper',
   'traceability', 'red-proof', 'unscanned', 'config', 'contracts', 'model-role', 'journeys', 'scope',
+  ...RULES, // the intent map's rule ids are its sensor ids (design 2026-11-07)
 ]
 
 // The environment for an inner `claude`: none of the outer Claude Code session (its id, port, effort, entrypoint, messaging) or the test

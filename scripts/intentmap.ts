@@ -8,10 +8,10 @@ export type IntentFinding = { rule: RuleId; detail: string }
 export type Scenario = { id: string; title?: string; given?: string; when?: string; then?: string; status?: string; command?: string; commit?: string }
 export type Row = { id: string; said: string; decision: string; kind: string; clauses: string[]; scenarios: string[] }
 export type Clause = { id: string; direction: string; text: string }
-export type IntentMap = { said: { id: string; text: string }[]; decisions: { id: string; text: string }[]; rows: Row[]; clauses: Clause[]; scenarios: Scenario[]; notPromised: { id: string; text: string }[] }
+export type IntentMap = { formalCommand: string; said: { id: string; text: string }[]; decisions: { id: string; text: string }[]; rows: Row[]; clauses: Clause[]; scenarios: Scenario[]; notPromised: { id: string; text: string }[] }
 export type Mutant = { id: string; clause: string; holds: boolean }
 export type Results = Record<string, { status: string; command?: string; commit?: string }>
-export type CheckOpts = { phase: 'plan' | 'ship'; freeze?: Record<string, string>; clauses?: Record<string, boolean>; mutants?: Mutant[]; tests?: string[] }
+export type CheckOpts = { phase: 'plan' | 'ship'; freeze?: Record<string, string>; clauses?: Record<string, boolean>; mutants?: Mutant[]; tests?: string[]; formalError?: string }
 
 const rowHead = /^- ([RSTN]\d+): (.+)$/
 const saidHead = /^- (S\d+): (.+)$/
@@ -39,7 +39,7 @@ function fieldsOf(rest: string): Record<string, string> {
 
 export function parse(raw: string): IntentMap {
   const lines = normalize(raw).split('\n')
-  const map: IntentMap = { said: [], decisions: [], rows: [], clauses: [], scenarios: [], notPromised: [] }
+  const map: IntentMap = { said: [], decisions: [], rows: [], clauses: [], scenarios: [], notPromised: [], formalCommand: '' }
   let section = ''
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? ''
@@ -70,6 +70,7 @@ export function parse(raw: string): IntentMap {
       }
       map.scenarios.push(scenario)
     }
+    if (section === 'Formal command' && !map.formalCommand && line.trim()) map.formalCommand = line.trim().replace(/^`|`$/g, '')
     if (section === 'Not promised') { const m = promisedHead.exec(line); if (m) map.notPromised.push({ id: m[1]!, text: m[2]! }) }
   }
   return map
@@ -119,10 +120,10 @@ function freezeFindings(map: IntentMap, freeze: Record<string, string> | undefin
 }
 
 // Fail closed: a formal row with no verdicts at all (the command did not run) is formal-failed, never a pass.
-function formalFindings(map: IntentMap, holds: Record<string, boolean> | undefined, mutants: Mutant[] | undefined): IntentFinding[] {
+function formalFindings(map: IntentMap, holds: Record<string, boolean> | undefined, mutants: Mutant[] | undefined, why: string): IntentFinding[] {
   const wanted = [...new Set(map.rows.filter(r => r.kind === 'formal').flatMap(r => r.clauses))]
   if (!wanted.length) return []
-  if (!holds) return [finding('formal-failed', 'no formal verdicts: the formal command did not run, so no formal clause is checked')]
+  if (!holds) return [finding('formal-failed', `no formal verdicts (${why}), so no formal clause is checked`)]
   const out: IntentFinding[] = []
   for (const id of wanted) if (holds[id] !== true) out.push(finding('formal-failed', `${id} ${holds[id] === false ? 'has a counterexample on the implementation' : 'has no verdict from the formal command'}`))
   const byClause = new Map((mutants ?? []).map(m => [m.clause, m]))
@@ -159,7 +160,7 @@ export function receipt(map: IntentMap, holds: Record<string, boolean> = {}): st
 
 export function check(text: string, opts: CheckOpts): { map: IntentMap; findings: IntentFinding[]; pass: boolean; receipt: string } {
   const map = parse(text)
-  const findings = [...structure(map, opts.phase), ...freezeFindings(map, opts.freeze), ...(opts.phase === 'ship' ? formalFindings(map, opts.clauses, opts.mutants) : []), ...pruneFindings(opts.tests ?? [])]
+  const findings = [...structure(map, opts.phase), ...freezeFindings(map, opts.freeze), ...(opts.phase === 'ship' ? formalFindings(map, opts.clauses, opts.mutants, opts.formalError ?? 'no formal command ran') : []), ...pruneFindings(opts.tests ?? [])]
   return { map, findings, pass: !findings.length, receipt: receipt(map, opts.clauses) }
 }
 
@@ -183,4 +184,24 @@ export function applyResults(raw: string, results: Results): string {
   }
   close()
   return out.join('\n')
+}
+
+// Ship phase for a real change: merge the script-recorded results, run the map's own formal command once and judge.
+// The command (the line under `## Formal command`, frozen with the map) prints one last JSON line:
+// {"clauses": {"C2": true}, "mutants": [{"id": "...", "clause": "C2", "holds": false}]}. Any other outcome fails closed.
+export type ShipInput = { text: string; results: Results; freeze?: Record<string, string>; tests: string[]; run: (cmd: string) => { exit: number; tail: string } }
+export function shipCheck(i: ShipInput): ReturnType<typeof check> {
+  const text = applyResults(i.text, i.results)
+  const map = parse(text)
+  const needsFormal = map.rows.some(r => r.kind === 'formal')
+  const base = { phase: 'ship' as const, freeze: i.freeze, tests: i.tests }
+  if (!needsFormal) return check(text, base)
+  if (!map.formalCommand) return check(text, { ...base, formalError: 'the map has no ## Formal command' })
+  const r = i.run(map.formalCommand)
+  if (r.exit !== 0) return check(text, { ...base, formalError: `the formal command exited ${r.exit}` })
+  try {
+    const out = JSON.parse(r.tail.trim().split('\n').at(-1) ?? '') as { clauses?: Record<string, boolean>; mutants?: Mutant[] }
+    if (!out.clauses || typeof out.clauses !== 'object') throw new Error('no clauses')
+    return check(text, { ...base, clauses: out.clauses, mutants: Array.isArray(out.mutants) ? out.mutants : [] })
+  } catch { return check(text, { ...base, formalError: 'the formal command did not print a JSON verdict as its last line' }) }
 }

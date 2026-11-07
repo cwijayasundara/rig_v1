@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { check, applyResults, freezeFor, parse, scenarioHash } from './intentmap.ts'
+import { check, applyResults, freezeFor, parse, scenarioHash, shipCheck, type Results } from './intentmap.ts'
 
 const FIX = path.resolve(import.meta.dirname, '../eval/fixtures/intent-map')
 const read = (...p: string[]): string => fs.readFileSync(path.join(FIX, ...p), 'utf8')
@@ -73,4 +73,26 @@ test('applyResults merges recorded results into planned scenarios', () => {
   const r = check(noCommit, { phase: 'ship', clauses: ALL, mutants: [] })
   assert.ok(rules(r).includes('empirical-unrecorded'))
   assert.ok(rules(r).includes('empirical-open'))
+})
+
+const good = (ok = true) => JSON.stringify({ clauses: ALL, mutants: ['C2', 'C3', 'C7', 'C8', 'C9'].map(clause => ({ id: `m-${clause}`, clause, holds: !ok })) })
+const withCmd = (text: string): string => text.replace('## Not promised', '## Formal command\npython3 formal.py\n\n## Not promised')
+const recorded = (): Results => Object.fromEntries(parse(read('login/intent.md')).scenarios.map(s => [s.id, { status: s.status!, command: s.command, commit: s.commit }]))
+const ship = (over: Partial<Parameters<typeof shipCheck>[0]> = {}) => shipCheck({ text: withCmd(read('login/intent-plan.md')), results: recorded(), freeze: JSON.parse(read('login/freeze.json')), tests: [], run: () => ({ exit: 0, tail: `noise\n${good()}` }), ...over })
+
+test('shipCheck: planned map plus recorded results plus a good formal verdict has no findings', () => {
+  assert.deepEqual(ship().findings, [])
+})
+
+test('shipCheck fails closed: no command, non-zero exit, invalid JSON and a vacuous mutant are formal-failed or vacuous', () => {
+  assert.ok(rules(shipCheck({ text: read('login/intent-plan.md'), results: recorded(), tests: [], run: () => ({ exit: 0, tail: good() }) })).includes('formal-failed'))
+  assert.ok(rules(ship({ run: () => ({ exit: 1, tail: good() }) })).includes('formal-failed'))
+  assert.ok(rules(ship({ run: () => ({ exit: 0, tail: 'not json' }) })).includes('formal-failed'))
+  assert.ok(rules(ship({ run: () => ({ exit: 0, tail: good(false) }) })).includes('vacuous'))
+})
+
+test('shipCheck: open scenario, a pass with no commit, and a prune test are each reported', () => {
+  assert.ok(rules(ship({ results: {} })).includes('empirical-open'))
+  assert.ok(rules(ship({ results: { E1: { status: 'pass', command: 'x' }, E2: { status: 'pass', command: 'x', commit: 'abc1234' } } })).includes('empirical-unrecorded'))
+  assert.ok(rules(ship({ tests: [read('cases/prune.py')] })).includes('prune'))
 })
