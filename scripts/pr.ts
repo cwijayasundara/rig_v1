@@ -10,6 +10,7 @@ import type { RunRow } from './runs.ts'
 import { treeStamp } from './stamp.ts'
 import { activeSlug, setActive, approvalState, verifyFresh, isShipped, changeDir } from './lifecycle.ts'
 import { prBody } from './prbody.ts'
+import { intentReceipt } from './intentmapio.ts'
 import { claimRows, type ClaimRow } from './claims.ts'
 import { riskOf, ships } from './risk.ts'
 import { parseAccess } from './chartcheck.ts'
@@ -80,7 +81,7 @@ export function cmdPr(args: Args): void {
     // Suggestions only: a failure here must never stop a ship.
     let claims: ClaimRow[] | undefined
     try { claims = claimRows(slug); fs.writeFileSync(path.join(CHANGES, slug, 'claims.json'), JSON.stringify(claims, null, 2) + '\n') } catch { claims = undefined }
-    fs.writeFileSync(path.join(CHANGES, slug, 'pr-body.md'), prBody({ claims, requirements: c('requirements.md'), intent: c('intent.md'), spec: c('spec.md'), plan: c('plan.md'), verify, outline: c('pr-outline.md'), review: c('review.md'), amendments: c('amendments.md'), runs: readJsonl<RunRow>(path.join(CHANGES, slug, 'evidence', 'runs.jsonl')), tests, risk: riskOf(diff.filter(d => ships(slug)(d.file)), [slug], registry, parseAccess(read(archPath)), false) }))
+    fs.writeFileSync(path.join(CHANGES, slug, 'pr-body.md'), prBody({ claims, requirements: c('requirements.md'), intent: c('intent.md'), spec: c('spec.md'), plan: c('plan.md'), verify, outline: c('pr-outline.md'), review: c('review.md'), amendments: c('amendments.md'), runs: readJsonl<RunRow>(path.join(CHANGES, slug, 'evidence', 'runs.jsonl')), tests, intentMap: intentReceipt(slug), risk: riskOf(diff.filter(d => ships(slug)(d.file)), [slug], registry, parseAccess(read(archPath)), false) }))
   }
   // The merge ships this change: write the sprint plan as it will read then, so nothing regenerates dirty afterwards.
   // Another change of the sprint in flight would find the plan changed under it, so the plan waits for the last one.

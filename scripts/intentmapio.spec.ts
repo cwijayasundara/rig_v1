@@ -2,6 +2,8 @@ import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
+import { pathToFileURL } from 'node:url'
 import { makeRepo, sdlc, write } from './testkit.ts'
 
 const FIX = path.resolve(import.meta.dirname, '../eval/fixtures/intent-map')
@@ -39,4 +41,20 @@ test('a change with a formal row and no ## Formal command fails verify closed wi
   const v = sdlc(repo, ['verify', 'demo'])
   assert.match(v.stdout + v.stderr, /formal-failed/)
   assert.notEqual(v.code, 0)
+})
+
+test('intentReceipt prints the recorded evidence and the last formal verdict, and nothing without a map', () => {
+  const run = (code: string): string => {
+    const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', `import * as M from ${JSON.stringify(pathToFileURL(path.resolve(import.meta.dirname, 'intentmapio.ts')).href)}; console.log(JSON.stringify(await (async () => { ${code} })()))`], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo } })
+    assert.equal(r.status, 0, r.stderr)
+    return JSON.parse(r.stdout.trim())
+  }
+  assert.equal(run(`return M.intentReceipt('demo')`), '')
+  write(repo, '.rig/changes/demo/intent-map.md', plan.replace('## Not promised', '## Formal command\npython3 formal.py\n\n## Not promised'))
+  write(repo, '.rig/changes/demo/intent-results.json', JSON.stringify({ E1: { status: 'pass', command: 'x', commit: 'abc1234' }, E2: { status: 'pass', command: 'x', commit: 'abc1234' } }))
+  assert.match(run(`return M.intentReceipt('demo')`), /R1 formal: C2 fails, C3 fails/)
+  write(repo, '.rig/changes/demo/evidence/runs.jsonl', JSON.stringify({ at: 't', cmd: 'python3 formal.py', exit: 0, ms: 1, tail: JSON.stringify({ clauses: { C2: true, C3: false, C7: true, C8: true, C9: true } }) }) + '\n')
+  const text = run(`return M.intentReceipt('demo')`)
+  assert.match(text, /R1 formal: C2 holds, C3 fails/)
+  assert.match(text, /T1 empirical: E1 evidence @ abc1234, E2 evidence @ abc1234 \(evidence, not proof\)/)
 })

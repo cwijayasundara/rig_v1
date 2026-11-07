@@ -7,7 +7,7 @@ import { behaviourIds, missingBehaviours } from './sensors.ts'
 import { parseFindings, type ClaimRow } from './claims.ts'
 import { parseLedger } from './chartcheck.ts'
 
-type PrBodyInput = { requirements?: string; claims?: ClaimRow[]; intent: string; spec: string; plan: string; verify: { pass: boolean; tree: string | null; blocks: string[]; from?: string } | null; outline: string; review: string; risk: Risk; amendments?: string; runs?: RunRow[]; tests?: string }
+type PrBodyInput = { requirements?: string; claims?: ClaimRow[]; intent: string; spec: string; plan: string; verify: { pass: boolean; tree: string | null; blocks: string[]; from?: string } | null; outline: string; review: string; risk: Risk; amendments?: string; runs?: RunRow[]; tests?: string; intentMap?: string }
 
 const firstSentence = (text: string): string => /^[\s\S]*?[.!?](?=\s|$)/.exec(text.trim())?.[0].replace(/\s+/g, ' ') ?? text.trim().replace(/\s+/g, ' ')
 
@@ -104,6 +104,7 @@ export function prBody(i: PrBodyInput): string {
     `## How to revert\n\n${revert(i.plan)}`,
     `## What the checks would miss\n\n${!i.review.trim() ? 'no review.md' : /^reviewer:\s*none\b/.test(i.review) ? `No agent reviewed this change (tier ${i.risk.tier}): the sensors and the tests are the evidence.` : missed.length ? missed.join('\n') : 'nothing the reviewer named'}`,
     `## Evidence\n\n${[evidence, baseProof(runs), headChecks(runs), behaviourTests(i.spec, i.tests), claimsNote(i.review, i.claims), proposedNote(i.spec, i.requirements)].filter(Boolean).join('\n\n')}`,
+    i.intentMap?.trim() ? `## Intent map\n\n${i.intentMap.trim()}` : '',
     i.outline.trim(),
   ]
   return parts.filter(Boolean).join('\n\n') + '\n'

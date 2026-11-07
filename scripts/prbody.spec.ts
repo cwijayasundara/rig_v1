@@ -173,3 +173,12 @@ test('a legacy alias never matches inside a longer id', () => {
   const body = prBody({ intent, spec: spec.replace('- B1: export downloads a CSV\n- B2: empty report exports a header row', '- B1 (AC-1.1): a\n- B4 (AC-1.12): b'), plan, verify, outline: '', review: '', risk, requirements })
   assert.match(body, /Rests on values nobody at the client said: B1 \(cites AC-1\.1\)\. Ask/)
 })
+
+test('an intent-map receipt becomes its own section, and no receipt leaves the body unchanged', () => {
+  const receipt = '- R1 formal: C2 holds, C3 holds\n- T1 empirical: E1 evidence @ 8b8b70f (evidence, not proof)'
+  const b = prBody({ intent, spec, plan, verify, outline: '', review: '', risk, intentMap: receipt })
+  assert.match(b, /## Intent map\n\n- R1 formal: C2 holds, C3 holds\n- T1 empirical: E1 evidence @ 8b8b70f \(evidence, not proof\)\n/)
+  assert.ok(b.indexOf('## Evidence') < b.indexOf('## Intent map'))
+  assert.equal(prBody({ intent, spec, plan, verify, outline: '', review: '', risk, intentMap: '' }), prBody({ intent, spec, plan, verify, outline: '', review: '', risk }))
+  assert.doesNotMatch(prBody({ intent, spec, plan, verify, outline: '', review: '', risk }), /Intent map/)
+})

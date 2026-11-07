@@ -6,7 +6,7 @@ import { CHANGES, ROOT, exists, git, out, fail, checkSlug } from './core.ts'
 import { runCommand, recordRun } from './runs.ts'
 import { isTest, type Finding, type FileDiff } from './model.ts'
 import type { Registry } from './registry.ts'
-import { shipCheck, parse, type Results } from './intentmap.ts'
+import { shipCheck, parse, receipt, applyResults, type Results } from './intentmap.ts'
 
 const dir = (slug: string): string => path.join(CHANGES, slug)
 const readJson = <T>(file: string, fallback: T): T => { try { return JSON.parse(fs.readFileSync(file, 'utf8')) as T } catch { return fallback } }
@@ -64,4 +64,19 @@ export function cmdIntentRecord(): void {
     out(`${scenario}: ${r.status} (exit ${r.exit}), recorded in .rig/changes/${slug}/intent-results.json`)
     process.exitCode = r.exit === 0 ? 0 : 1
   } catch (e) { fail((e as Error).message) }
+}
+
+// The receipt block for the PR body, from the map, the recorded results and the last recorded run of the formal command (no new run).
+export function intentReceipt(slug: string): string {
+  const mapPath = path.join(dir(slug), 'intent-map.md')
+  if (!exists(mapPath)) return ''
+  const map = parse(applyResults(fs.readFileSync(mapPath, 'utf8'), readResults(slug)))
+  const runsFile = path.join(dir(slug), 'evidence', 'runs.jsonl')
+  const runs = (exists(runsFile) ? fs.readFileSync(runsFile, 'utf8') : '').split('\n').filter(Boolean).flatMap(l => { try { return [JSON.parse(l) as { cmd: string; tail: string }] } catch { return [] } })
+  const last = runs.findLast(r => r.cmd === map.formalCommand)
+  let clauses: Record<string, boolean> = {}
+  try { clauses = (JSON.parse(last?.tail.trim().split('\n').at(-1) ?? '{}') as { clauses?: Record<string, boolean> }).clauses ?? {} } catch { /* no verdict recorded: every clause reads as holds only if the check passed, so say nothing false */ }
+  // A clause with no recorded verdict never reads as holding.
+  const wanted = map.rows.flatMap(r => r.kind === 'formal' ? r.clauses : [])
+  return receipt(map, Object.fromEntries(wanted.map(id => [id, clauses[id] === true])))
 }
