@@ -1,0 +1,186 @@
+// Intent map (design 2026-11-07): the contract of a change that opts in. Port of the acceptance oracle eval/intent-map.mjs;
+// both must return the same rule ids. Pure functions: callers run the formal command and the tests, and pass the results in.
+import crypto from 'node:crypto'
+
+export const RULES = ['unmapped-said', 'unknown-kind', 'missing-clause', 'orphan-clause', 'both-ways', 'missing-scenario', 'empirical-early', 'empirical-open', 'empirical-unrecorded', 'stale-scenario', 'missing-not-promised', 'formal-failed', 'unmutated', 'vacuous', 'prune'] as const
+export type RuleId = typeof RULES[number]
+export type IntentFinding = { rule: RuleId; detail: string }
+export type Scenario = { id: string; title?: string; given?: string; when?: string; then?: string; status?: string; command?: string; commit?: string }
+export type Row = { id: string; said: string; decision: string; kind: string; clauses: string[]; scenarios: string[] }
+export type Clause = { id: string; direction: string; text: string }
+export type IntentMap = { said: { id: string; text: string }[]; decisions: { id: string; text: string }[]; rows: Row[]; clauses: Clause[]; scenarios: Scenario[]; notPromised: { id: string; text: string }[] }
+export type Mutant = { id: string; clause: string; holds: boolean }
+export type Results = Record<string, { status: string; command?: string; commit?: string }>
+export type CheckOpts = { phase: 'plan' | 'ship'; freeze?: Record<string, string>; clauses?: Record<string, boolean>; mutants?: Mutant[]; tests?: string[] }
+
+const rowHead = /^- ([RSTN]\d+): (.+)$/
+const saidHead = /^- (S\d+): (.+)$/
+const decisionHead = /^- (D\d+): (.+)$/
+const clauseHead = /^### (C\d+)(?: (only-when|always))?$/
+const scenarioHead = /^### (E\d+)$/
+const promisedHead = /^- (N\d+): (.+)$/
+
+const normalize = (text: string): string => text.replace(/\r\n/g, '\n')
+const finding = (rule: RuleId, detail: string): IntentFinding => ({ rule, detail })
+const list = (value: string | undefined): string[] => value ? value.split(',').map(s => s.trim()).filter(Boolean) : []
+
+export function scenarioHash(s: { given?: string; when?: string; then?: string }): string {
+  return crypto.createHash('sha256').update(`given: ${s.given}\nwhen: ${s.when}\nthen: ${s.then}\n`).digest('hex')
+}
+
+function fieldsOf(rest: string): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const part of rest.replace(/\.$/, '').split('. ')) {
+    const [key, ...value] = part.split(' ')
+    out[key ?? ''] = value.join(' ').replace(/\.$/, '')
+  }
+  return out
+}
+
+export function parse(raw: string): IntentMap {
+  const lines = normalize(raw).split('\n')
+  const map: IntentMap = { said: [], decisions: [], rows: [], clauses: [], scenarios: [], notPromised: [] }
+  let section = ''
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? ''
+    if (line.startsWith('## ')) { section = line.slice(3).trim(); continue }
+    if (section === 'Said') { const m = saidHead.exec(line); if (m) map.said.push({ id: m[1]!, text: m[2]! }) }
+    if (section === 'Decisions') { const m = decisionHead.exec(line); if (m) map.decisions.push({ id: m[1]!, text: m[2]! }) }
+    if (section === 'Map') {
+      const m = rowHead.exec(line)
+      if (!m) continue
+      const f = fieldsOf(m[2]!)
+      map.rows.push({ id: m[1]!, said: f.said ?? '', decision: f.decision ?? '', kind: f.kind ?? '', clauses: list(f.clauses), scenarios: list(f.scenarios) })
+    }
+    if (section === 'Formal') {
+      const m = clauseHead.exec(line)
+      const last = map.clauses.at(-1)
+      if (m) map.clauses.push({ id: m[1]!, direction: m[2] ?? '', text: '' })
+      else if (last && line.trim()) last.text += (last.text ? ' ' : '') + line.trim()
+    }
+    if (section === 'Empirical') {
+      const m = scenarioHead.exec(line)
+      if (!m) continue
+      const scenario: Scenario = { id: m[1]! }
+      for (i += 1; i < lines.length; i++) {
+        const next = lines[i] ?? ''
+        if (next.startsWith('#') || next.startsWith('- ')) { i -= 1; break }
+        const field = /^(\w+): (.*)$/.exec(next)
+        if (field) (scenario as Record<string, string>)[field[1]!] = field[2]!
+      }
+      map.scenarios.push(scenario)
+    }
+    if (section === 'Not promised') { const m = promisedHead.exec(line); if (m) map.notPromised.push({ id: m[1]!, text: m[2]! }) }
+  }
+  return map
+}
+
+export function freezeFor(text: string): Record<string, string> {
+  return Object.fromEntries(parse(text).scenarios.map(s => [s.id, scenarioHash(s)]))
+}
+
+function structure(map: IntentMap, phase: 'plan' | 'ship'): IntentFinding[] {
+  const out: IntentFinding[] = []
+  const clauseById = new Map(map.clauses.map(c => [c.id, c]))
+  const scenarioById = new Map(map.scenarios.map(s => [s.id, s]))
+  const promised = new Set(map.notPromised.map(n => n.id))
+  const seenSaid = new Set(map.rows.map(r => r.said).filter(Boolean))
+  for (const s of map.said) if (!seenSaid.has(s.id)) out.push(finding('unmapped-said', `${s.id} is in Said and on no row`))
+  for (const row of map.rows) {
+    if (!['formal', 'empirical', 'not-promised'].includes(row.kind)) out.push(finding('unknown-kind', `${row.id} has kind ${row.kind || '(none)'}`))
+    if (row.kind === 'formal') {
+      if (!row.clauses.length) out.push(finding('missing-clause', `${row.id} is formal and names no clause`))
+      for (const id of row.clauses) if (!clauseById.has(id)) out.push(finding('missing-clause', `${row.id} names ${id}, which has no Formal section`))
+      if (map.decisions.find(d => d.id === row.decision)?.text.startsWith('both-ways')) {
+        const dirs = row.clauses.map(id => clauseById.get(id)?.direction)
+        if (!dirs.includes('only-when') || !dirs.includes('always')) out.push(finding('both-ways', `${row.id} records ${row.decision} both-ways and needs an only-when clause and an always clause`))
+      }
+    }
+    if (row.kind === 'empirical') {
+      if (!row.scenarios.length) out.push(finding('missing-scenario', `${row.id} is empirical and names no scenario`))
+      for (const id of row.scenarios) {
+        const sc = scenarioById.get(id)
+        if (!sc) { out.push(finding('missing-scenario', `${row.id} names ${id}, which has no Empirical section`)); continue }
+        if (phase === 'plan' && sc.status !== 'planned') out.push(finding('empirical-early', `${id} is ${sc.status || 'unset'} at plan time; the scenario is written before the test runs`))
+        if (phase === 'ship' && sc.status === 'planned') out.push(finding('empirical-open', `${id} is still planned at ship time`))
+        if (phase === 'ship' && sc.status === 'pass' && (!sc.command || !sc.commit)) out.push(finding('empirical-unrecorded', `${id} says pass without a command and a commit`))
+      }
+    }
+    if (row.kind === 'not-promised' && !promised.has(row.id)) out.push(finding('missing-not-promised', `${row.id} is not-promised and is absent from Not promised`))
+  }
+  const used = new Set(map.rows.flatMap(r => r.clauses))
+  for (const c of map.clauses) if (!used.has(c.id)) out.push(finding('orphan-clause', `${c.id} is in Formal and on no row`))
+  return out
+}
+
+function freezeFindings(map: IntentMap, freeze: Record<string, string> | undefined): IntentFinding[] {
+  if (!freeze) return []
+  return map.scenarios.flatMap(s => freeze[s.id] && scenarioHash(s) !== freeze[s.id] ? [finding('stale-scenario', `${s.id} differs from the text hashed at approval`)] : [])
+}
+
+// Fail closed: a formal row with no verdicts at all (the command did not run) is formal-failed, never a pass.
+function formalFindings(map: IntentMap, holds: Record<string, boolean> | undefined, mutants: Mutant[] | undefined): IntentFinding[] {
+  const wanted = [...new Set(map.rows.filter(r => r.kind === 'formal').flatMap(r => r.clauses))]
+  if (!wanted.length) return []
+  if (!holds) return [finding('formal-failed', 'no formal verdicts: the formal command did not run, so no formal clause is checked')]
+  const out: IntentFinding[] = []
+  for (const id of wanted) if (holds[id] !== true) out.push(finding('formal-failed', `${id} ${holds[id] === false ? 'has a counterexample on the implementation' : 'has no verdict from the formal command'}`))
+  const byClause = new Map((mutants ?? []).map(m => [m.clause, m]))
+  for (const id of wanted) {
+    const m = byClause.get(id)
+    if (!m) out.push(finding('unmutated', `${id} has no planted bug`))
+    else if (m.holds) out.push(finding('vacuous', `${id} still holds under ${m.id}, so the clause rules nothing out`))
+  }
+  return out
+}
+
+function pruneFindings(tests: string[]): IntentFinding[] {
+  const out: IntentFinding[] = []
+  for (const src of tests) {
+    const clauses = [...src.matchAll(/\b(C\d+)\b/g)].map(m => m[1]!)
+    if (clauses.length && !/\bE\d+\b/.test(src)) out.push(finding('prune', `a test names ${[...new Set(clauses)].join(', ')} and no empirical scenario; the formal check already covers it`))
+  }
+  return out
+}
+
+export function receipt(map: IntentMap, holds: Record<string, boolean> = {}): string {
+  return map.rows.map(row => {
+    if (row.kind === 'formal') return `- ${row.id} formal: ${row.clauses.map(id => `${id} ${holds[id] === false ? 'fails' : 'holds'}`).join(', ')}`
+    if (row.kind === 'empirical') {
+      const bits = row.scenarios.map(id => {
+        const sc = map.scenarios.find(s => s.id === id)
+        return sc?.status === 'pass' ? `${id} evidence @ ${sc.commit}` : `${id} ${sc?.status ?? 'missing'}`
+      })
+      return `- ${row.id} empirical: ${bits.join(', ')} (evidence, not proof)`
+    }
+    return `- ${row.id} not promised: ${map.notPromised.find(n => n.id === row.id)?.text ?? ''}`
+  }).join('\n')
+}
+
+export function check(text: string, opts: CheckOpts): { map: IntentMap; findings: IntentFinding[]; pass: boolean; receipt: string } {
+  const map = parse(text)
+  const findings = [...structure(map, opts.phase), ...freezeFindings(map, opts.freeze), ...(opts.phase === 'ship' ? formalFindings(map, opts.clauses, opts.mutants) : []), ...pruneFindings(opts.tests ?? [])]
+  return { map, findings, pass: !findings.length, receipt: receipt(map, opts.clauses) }
+}
+
+// Merge script-recorded results into the (frozen) map text. The agent never writes these lines; unknown ids are ignored.
+// A scenario's old status/command/commit lines are dropped and the recorded ones written at the end of its block.
+export function applyResults(raw: string, results: Results): string {
+  const out: string[] = []
+  let section = '', current: string | null = null
+  const close = (): void => {
+    const r = current ? results[current] : undefined
+    if (!r) return
+    const blanks: string[] = []
+    while (out.at(-1) === '') blanks.push(out.pop()!)
+    out.push(`status: ${r.status}`, ...(r.command ? [`command: ${r.command}`] : []), ...(r.commit ? [`commit: ${r.commit}`] : []), ...blanks)
+  }
+  for (const line of normalize(raw).split('\n')) {
+    const head = section === 'Empirical' ? scenarioHead.exec(line) : null
+    if (line.startsWith('## ') || head) { close(); current = head ? head[1]! : null; if (!head) section = line.slice(3).trim() }
+    if (current && results[current] && /^(status|command|commit): /.test(line)) continue
+    out.push(line)
+  }
+  close()
+  return out.join('\n')
+}
