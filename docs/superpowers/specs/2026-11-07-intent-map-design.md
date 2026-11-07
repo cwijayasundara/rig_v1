@@ -1,6 +1,6 @@
 # Intent map: formal, empirical, and not promised
 
-Date: 2026-11-07. Status: design, with a runnable acceptance oracle. The harness does not enforce this yet. Nothing in `scripts/`, `skills/`, or `templates/` changed.
+Date: 2026-11-07. Status: built and merged to `main` on 2026-11-07. The oracle (`eval/intent-map.mjs`) is the acceptance test, `scripts/intentmap.ts` is its port, and approve, verify and the PR body enforce it for a change that has an `intent-map.md`. Plan: `docs/superpowers/plans/2026-11-07-intent-map.md`.
 
 Source: the recommendation after reading [PDD Kit](https://githubnext.com/projects/pdd-kit/) and the [Microsoft Research post](https://www.microsoft.com/en-us/research/blog/formally-verifying-agent-written-full-stack-web-apps-with-pdd-kit/). PDD Kit itself is not a dependency. It has no public installer, and it only checks Rust with Verus. This design takes the review shift those pages describe and puts it on the Python work rig already runs.
 
@@ -57,7 +57,7 @@ Sections, in order:
 
 Kinds are `formal`, `empirical`, and `not-promised`. A formal row names clause ids. An empirical row names scenario ids. A not-promised row's id appears in Not promised and names no clause.
 
-At plan time every empirical `status` is `planned`, with no `command` and no `commit`. At ship time `status` is `pass`, and `command` and `commit` are present. Those three result fields are written by the script from the process it ran.
+At plan time every empirical `status` is `planned`, with no `command` and no `commit`. At ship time `status` is `pass`, and `command` and `commit` are present. Those three result fields are written by the script from the process it ran. They are stored in `.rig/changes/<slug>/intent-results.json` (`{E1: {status, command, commit}}`) and `applyResults` merges them into the map text before the ship check. They are not written into `intent-map.md`, because approval hashes that file and a recorded `pass` inside it would make the approval stale. The oracle fixtures keep the results inline.
 
 `spec.md` `## Behaviours`, when a map exists, lists the same ids and the same words. `/rig:plan` writes that section from the map. A hand edit that drifts is a block. Traceability then looks for those ids in tests only for empirical rows. A formal row is traced to its clause, not to a unit test.
 
@@ -74,18 +74,21 @@ At plan time every empirical `status` is `planned`, with no `command` and no `co
 | `both-ways` | The row's decision is both-ways, and its clauses lack `only-when` or lack `always` |
 | `missing-scenario` | An empirical row names no scenario, or names one with no Empirical section |
 | `empirical-early` | Plan time, and a scenario status is not `planned` |
-| `empirical-open` | Ship time, and a scenario is still `planned` |
+| `empirical-open` | Ship time, and a scenario is not `pass` (still `planned`, or recorded `fail`) |
 | `empirical-unrecorded` | Ship time, status `pass`, and the command or the commit is missing |
 | `stale-scenario` | The hash of `given` / `when` / `then` differs from the hash stored at approval |
 | `missing-not-promised` | A not-promised row is absent from Not promised |
 | `formal-failed` | Ship time, and the implementation breaks the clause |
 | `unmutated` | Ship time, and a formal clause has no planted bug |
 | `vacuous` | The planted bug still satisfies the clause |
-| `prune` | A test file names a formal clause id and no empirical scenario id |
+| `prune` | A changed test file names one of the map's formal clause ids and no empirical scenario id. A token like `C12` that is not a clause of the map does not count |
+| `behaviours-drift` | Wiring only, not in the oracle: `spec.md` `## Behaviours` differs from `behavioursFrom(map)` |
 
-Approval hashes `intent-map.md` and a `freeze.json` of the scenario hashes (`scenarioHash` in the oracle). It does not hash the implementation. A later edit of the map or of a scenario's given/when/then goes stale, which is today's `frozenFindings` once the map is listed in `contracts.files`.
+Approval writes `freeze.json` (the scenario hashes, `scenarioHash` in the oracle) and hashes it with `intent-map.md` among the approved files, next to `spec.md` and `plan.md`. It does not hash the implementation. A later edit of either file makes the approval stale, and the plan gate blocks. `contracts.files` is not used.
 
-The receipt is `receipt()` in the oracle. Formal lines say `holds` or `fails`. Empirical lines say `evidence @ <commit>` and end with `(evidence, not proof)`. Not-promised lines quote the sentence. `scripts/prbody.ts` appends that block. It does not ask a model to summarise it.
+The map's `## Formal command` section holds one line: the checker that runs at ship. It is frozen with the map and prints, as its last line, `{"clauses": {"C2": true}, "mutants": [{"id": "...", "clause": "C2", "holds": false}]}`. A missing command, a non-zero exit, or output that is not that JSON is `formal-failed`. The run is recorded in `evidence/runs.jsonl` like any other sensor.
+
+The receipt is `receipt()` in the oracle. Formal lines say `holds` or `fails`. Empirical lines say `evidence @ <commit>` and end with `(evidence, not proof)`. Not-promised lines quote the sentence. `scripts/prbody.ts` appends that block as `## Intent map`, built from the map, the recorded results and the last recorded formal run, plus a `Commands:` line naming each scenario's recorded command. A clause with no recorded verdict reads `fails`. It does not ask a model to summarise it.
 
 ## The login oracle
 
@@ -111,23 +114,20 @@ The good implementation is `lookup_target` plus `decide`. The planted bugs, in `
 
 `check_password` stays empirical (`E1`, `E2`), status `planned` in `intent-plan.md` and recorded against commit `8b8b70f` in `intent.md`. "Login finishes" is `N1`.
 
-This grid is finite, so the oracle enumerates it in Python and does not need CrossHair. A property that is not a finite grid uses a formal command, recorded like any other sensor. **(guess: the command is `crosshair check`, cadence `ci`, blocks, and only on changes that have a map.)** If that command is not installed, ship of a formal row fails closed. The row is not relabelled empirical to get around it.
+This grid is finite, so the oracle enumerates it in Python and does not need CrossHair. A property that is not a finite grid uses a formal command, the line under `## Formal command` (for example one that wraps `crosshair check`). If that command is missing or cannot run, ship of a formal row fails closed. The row is not relabelled empirical to get around it.
 
-## Where the wiring goes
-
-Not built. The next change, after this design is approved, is the one that makes a real repo fail these checks.
+## Where the wiring went
 
 | Piece | Change |
 |---|---|
-| `scripts/intentmap.ts` | Port `parse`, `check`, `receipt`, and `scenarioHash`. Same rule ids |
-| `scripts/intentmap.spec.ts` | The cases in `eval/intent-map.test.mjs`, against the port |
-| `scripts/verify.ts` | Plan phase at approve time. Ship phase inside verify. Findings use the rule id as the sensor id |
-| `scripts/prbody.ts` | Append `receipt()` |
-| `scripts/registry.ts` | Reserve the new sensor id. Do not add a built-in that runs on repos with no map |
-| `skills/plan/SKILL.md` | Write `intent-map.md` from the grill, project `## Behaviours` from it, leave empirical status `planned`, leave formal bodies empty |
-| `skills/build/SKILL.md` | Bodies only after approval. The script fills empirical result lines after the command exits. Plant the mutants in a scratch copy, never on the branch |
-| `skills/approve/SKILL.md` | Hash the map and `freeze.json`. Refuse while plan-phase findings exist |
-| Python stack pack | The formal command, absent until a map exists |
+| `scripts/intentmap.ts` | `parse`, `check`, `receipt`, `scenarioHash`, `applyResults`, `shipCheck`, `behavioursFrom`. Same rule ids as the oracle |
+| `scripts/intentmapio.ts` | Reads the change files, runs the formal command, `intent-record`, `intent-project`, `intentReceipt` |
+| `scripts/lifecycle.ts` | `approvalRefusal` runs the plan phase and the Behaviours check. `writeApproval` writes `freeze.json`. `intent-map.md` and `freeze.json` are approved files |
+| `scripts/check.ts` | `shipVerdicts` runs the ship phase. Findings use the rule id as the sensor id, and are not waivable |
+| `scripts/prbody.ts`, `scripts/pr.ts` | Append the receipt |
+| `scripts/registry.ts` | Reserves the rule ids so a command sensor cannot take one. No built-in was added |
+| `skills/plan`, `skills/build`, `skills/approve` | Write the map and project Behaviours; record results with `intent-record` and plant mutants in a scratch copy; name what approval hashes |
+| Python stack pack | Not needed. The formal command lives in the map |
 
 A map is opt-in. `check` returns no findings when the file is absent. **(guess.)** Forcing every change through a map would make a one-line fix pay for a proof, which fights the task-router design.
 
@@ -153,7 +153,7 @@ node --test eval/intent-map.test.mjs
 | Mutants that still satisfy their clauses | `vacuous` |
 | `cases/prune.py` | `prune`, because the test names C2 and no `E` id |
 
-Run on 2026-11-07: 5 tests, 5 passed, `node --test eval/intent-map.test.mjs`.
+Run on 2026-11-07: 5 tests, 5 passed, `node --test eval/intent-map.test.mjs`. The port has the same cases in `scripts/intentmap.spec.ts`, plus parity with the oracle, CRLF, `applyResults`, `shipCheck`, and the review fixes (a `fail` result blocks ship, `prune` ignores tokens that are not map clauses).
 
 The lift arm is not this oracle. It is a later `eval/` task whose hidden checks are "refuse everyone fails" and "email loses fails", while the tests an agent is likely to write can pass for a login that refuses everyone. Keep the map only if that arm accepts more than the bare model at a cost that is still worth paying. Do not use the shop tasks from 2026-10-31. Those already pass bare.
 
@@ -162,8 +162,20 @@ The lift arm is not this oracle. It is a later `eval/` task whose hidden checks 
 1. **(my call)** The map is opt-in, per change, under `.rig/changes/<slug>/intent-map.md`.
 2. **(my call)** The login oracle enumerates a finite grid. CrossHair is only the command for a property that grid cannot cover, and a missing command fails the ship.
 3. **(my call)** `spec.md` behaviours are generated from the map when the map exists. They are not a second contract to approve.
-4. **(my call)** Wiring into approve, verify, and the PR body waits until this design is approved. The oracle is the contract for that wiring.
+4. **(my call)** Wiring into approve, verify, and the PR body waited until this design was approved. The oracle was the contract for that wiring.
+5. **(plan time)** Recorded results live in `intent-results.json`, not in the frozen map.
+6. **(plan time)** The formal command is a line in the frozen map, not a `sensors.json` built-in.
+
+## Known gaps
+
+- `intent-results.json` is not protected. A hand-written `pass` is possible, as a hand-run `S run` is. The receipt lists the recorded commands so a reviewer can see them.
+- The formal checker is written during build and is not hashed. Only its command line is frozen.
+- Empirical rows are traced to tests only by `intent-record`. The B-number traceability sensor ignores the `S` ids in a projected `## Behaviours`.
+- A mutant with no `holds` field counts as killed, and only the last mutant of a clause is read.
+- The receipt misses its formal run if the command text is changed by secret masking.
+- Only a lowercase `both-ways` starts a both-ways decision.
+- The live lift arm is still not built.
 
 ## Next step
 
-On approval: port the oracle into `scripts/intentmap.ts` with the tests above, then the skill and verify wiring as one change. `npm test` once. One review of `git diff main...HEAD`.
+Build the lift arm in `eval/` (hidden checks: "refuse everyone fails", "email loses fails"), and keep the map only if it accepts more than the bare model at a cost worth paying.
