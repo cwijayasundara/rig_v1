@@ -6,7 +6,7 @@ import { CHANGES, ROOT, exists, git, out, fail, checkSlug } from './core.ts'
 import { runCommand, recordRun } from './runs.ts'
 import { isTest, type Finding, type FileDiff } from './model.ts'
 import type { Registry } from './registry.ts'
-import { shipCheck, parse, receipt, applyResults, type Results } from './intentmap.ts'
+import { shipCheck, parse, receipt, applyResults, behavioursFrom, type Results } from './intentmap.ts'
 
 const dir = (slug: string): string => path.join(CHANGES, slug)
 const readJson = <T>(file: string, fallback: T): T => { try { return JSON.parse(fs.readFileSync(file, 'utf8')) as T } catch { return fallback } }
@@ -79,4 +79,14 @@ export function intentReceipt(slug: string): string {
   // A clause with no recorded verdict never reads as holding.
   const wanted = map.rows.flatMap(r => r.kind === 'formal' ? r.clauses : [])
   return receipt(map, Object.fromEntries(wanted.map(id => [id, clauses[id] === true])))
+}
+
+// `intent-project <slug>`: prints the ## Behaviours section the map generates, for plan to write into spec.md.
+export function cmdIntentProject(): void {
+  const given = process.argv[3]
+  if (!given) fail('usage: intent-project <slug>')
+  const slug = checkSlug(given)
+  const mapPath = path.join(dir(slug), 'intent-map.md')
+  if (!exists(mapPath)) fail(`${slug} has no intent-map.md`)
+  out(behavioursFrom(parse(fs.readFileSync(mapPath, 'utf8'))))
 }

@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { check, applyResults, freezeFor, parse, scenarioHash, shipCheck, type Results } from './intentmap.ts'
+import { check, applyResults, freezeFor, parse, scenarioHash, shipCheck, behavioursFrom, type Results } from './intentmap.ts'
 
 const FIX = path.resolve(import.meta.dirname, '../eval/fixtures/intent-map')
 const read = (...p: string[]): string => fs.readFileSync(path.join(FIX, ...p), 'utf8')
@@ -95,4 +95,12 @@ test('shipCheck: open scenario, a pass with no commit, and a prune test are each
   assert.ok(rules(ship({ results: {} })).includes('empirical-open'))
   assert.ok(rules(ship({ results: { E1: { status: 'pass', command: 'x' }, E2: { status: 'pass', command: 'x', commit: 'abc1234' } } })).includes('empirical-unrecorded'))
   assert.ok(rules(ship({ tests: [read('cases/prune.py')] })).includes('prune'))
+})
+
+test('behavioursFrom lists each said sentence with its id, words and kind', () => {
+  assert.equal(behavioursFrom(parse(read('login/intent-plan.md'))), [
+    '- S1: You only get a token with the right password. (formal C2, C3)',
+    '- S2: Only admin accounts get admin tokens. (formal C7, C8)',
+    '- S3: Email wins when both an email and a username are sent. (formal C9)',
+  ].join('\n'))
 })

@@ -125,3 +125,14 @@ test('Opus reviews are gated on risk: plan evaluates only a full or contract pla
   assert.match(pr, /tier 1: the code review only/i)
   assert.match(pr, /tier 2: both reviews/i)
 })
+
+test('intent map: plan writes the map and projects Behaviours, build records results by script and plants mutants off-branch, approve names what it hashes', () => {
+  const plan = text('skills/plan/SKILL.md'), build = text('skills/build/SKILL.md'), approve = text('skills/approve/SKILL.md')
+  assert.match(plan, /intent-map\.md/)
+  assert.match(plan, /intent-project/)
+  assert.match(plan, /planned/)
+  assert.match(build, /intent-record/)
+  assert.match(build, /scratch copy/)
+  assert.match(approve, /intent-map\.md/)
+  assert.match(approve, /freeze\.json/)
+})

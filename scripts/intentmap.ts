@@ -2,7 +2,8 @@
 // both must return the same rule ids. Pure functions: callers run the formal command and the tests, and pass the results in.
 import crypto from 'node:crypto'
 
-export const RULES = ['unmapped-said', 'unknown-kind', 'missing-clause', 'orphan-clause', 'both-ways', 'missing-scenario', 'empirical-early', 'empirical-open', 'empirical-unrecorded', 'stale-scenario', 'missing-not-promised', 'formal-failed', 'unmutated', 'vacuous', 'prune'] as const
+export const RULES = ['unmapped-said', 'unknown-kind', 'missing-clause', 'orphan-clause', 'both-ways', 'missing-scenario', 'empirical-early', 'empirical-open', 'empirical-unrecorded', 'stale-scenario', 'missing-not-promised', 'formal-failed', 'unmutated', 'vacuous', 'prune', 'behaviours-drift'] as const
+// behaviours-drift is the wiring's own rule (spec.md ## Behaviours against the map); the oracle has no spec.md, so it has no such rule.
 export type RuleId = typeof RULES[number]
 export type IntentFinding = { rule: RuleId; detail: string }
 export type Scenario = { id: string; title?: string; given?: string; when?: string; then?: string; status?: string; command?: string; commit?: string }
@@ -204,4 +205,13 @@ export function shipCheck(i: ShipInput): ReturnType<typeof check> {
     if (!out.clauses || typeof out.clauses !== 'object') throw new Error('no clauses')
     return check(text, { ...base, clauses: out.clauses, mutants: Array.isArray(out.mutants) ? out.mutants : [] })
   } catch { return check(text, { ...base, formalError: 'the formal command did not print a JSON verdict as its last line' }) }
+}
+
+// The `## Behaviours` of a spec whose change has a map: one line per said sentence, in Said order. Generated, never hand-edited.
+export function behavioursFrom(map: IntentMap): string {
+  return map.said.map(s => {
+    const row = map.rows.find(r => r.said === s.id)
+    const refs = row ? (row.kind === 'empirical' ? row.scenarios : row.clauses).join(', ') : ''
+    return `- ${s.id}: ${s.text}${row ? ` (${row.kind}${refs ? ` ${refs}` : ''})` : ''}`
+  }).join('\n')
 }

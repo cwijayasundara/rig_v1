@@ -6,6 +6,7 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { makeRepo, sdlc, write, gitIn, hook } from './testkit.ts'
 import { pathToFileURL } from 'node:url'
+import { behavioursFrom, parse as parseMap } from './intentmap.ts'
 
 let repo: string
 beforeEach(() => { repo = makeRepo(); sdlc(repo, ['init']) })
@@ -300,7 +301,7 @@ const FIXTURES = path.resolve(import.meta.dirname, '../eval/fixtures/intent-map'
 const fixture = (rel: string): string => fs.readFileSync(path.join(FIXTURES, rel), 'utf8')
 const mapChange = (map: string | null): void => {
   call(`L.newChange('demo', 'feature', 'Demo')`)
-  write(repo, '.rig/changes/demo/spec.md', SPEC)
+  write(repo, '.rig/changes/demo/spec.md', map === null ? SPEC : `# Spec\n\n## Behaviours\n${behavioursFrom(parseMap(map))}\n\n## Open questions\nnone\n`)
   write(repo, '.rig/changes/demo/plan.md', PLAN)
   if (map !== null) write(repo, '.rig/changes/demo/intent-map.md', map)
 }
@@ -322,4 +323,11 @@ test('intent map: approval writes freeze.json, hashes both files, and an edit of
   assert.equal(call(`return L.approvalState('demo')`), 'approved')
   write(repo, '.rig/changes/demo/intent-map.md', fixture('login/intent-plan.md').replace('hunter2', 'hunter9'))
   assert.equal(call(`return L.approvalState('demo')`), 'stale')
+})
+
+test('intent map: a hand-edited Behaviours section that drifts from the map refuses approval as behaviours-drift', () => {
+  mapChange(fixture('login/intent-plan.md'))
+  assert.equal(call(`return L.approvalRefusal('demo')`), null)
+  write(repo, '.rig/changes/demo/spec.md', SPEC)
+  assert.match(String(call(`return L.approvalRefusal('demo')`)), /behaviours-drift/)
 })
