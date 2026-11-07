@@ -6,6 +6,7 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { makeRepo, sdlc, write, gitIn, hook } from './testkit.ts'
 import { pathToFileURL } from 'node:url'
+import { behavioursFrom, parse as parseMap } from './intentmap.ts'
 
 let repo: string
 beforeEach(() => { repo = makeRepo(); sdlc(repo, ['init']) })
@@ -294,4 +295,39 @@ test('the stop check honours gates.plan: off lets a planned file through, on blo
   assert.match(stop().stdout, /plan-gate/)
   write(repo, '.rig/sensors.json', JSON.stringify({ gates: { plan: false } }))
   assert.doesNotMatch(stop().stdout, /plan-gate/)
+})
+
+const FIXTURES = path.resolve(import.meta.dirname, '../eval/fixtures/intent-map')
+const fixture = (rel: string): string => fs.readFileSync(path.join(FIXTURES, rel), 'utf8')
+const mapChange = (map: string | null): void => {
+  call(`L.newChange('demo', 'feature', 'Demo')`)
+  write(repo, '.rig/changes/demo/spec.md', map === null ? SPEC : `# Spec\n\n## Behaviours\n${behavioursFrom(parseMap(map))}\n\n## Open questions\nnone\n`)
+  write(repo, '.rig/changes/demo/plan.md', PLAN)
+  if (map !== null) write(repo, '.rig/changes/demo/intent-map.md', map)
+}
+
+test('intent map: a gap in the map refuses approval with the rule id; a change with no map is unchanged', () => {
+  mapChange(fixture('cases/gap.md'))
+  assert.match(String(call(`return L.approvalRefusal('demo')`)), /unmapped-said/)
+  fs.rmSync(path.join(repo, '.rig/changes/demo/intent-map.md'))
+  assert.equal(call(`return L.approvalRefusal('demo')`), null)
+})
+
+test('intent map: approval writes freeze.json, hashes both files, and an edit of the map goes stale', () => {
+  mapChange(fixture('login/intent-plan.md'))
+  assert.equal(call(`return L.approvalRefusal('demo')`), null)
+  call(`L.writeApproval('demo', 'Ana')`)
+  const freeze = JSON.parse(fs.readFileSync(path.join(repo, '.rig/changes/demo/freeze.json'), 'utf8'))
+  assert.deepEqual(Object.keys(freeze), ['E1', 'E2'])
+  assert.deepEqual(Object.keys((call(`return L.readApproval('demo')`) as { hashes: object }).hashes).sort(), ['freeze.json', 'intent-map.md', 'plan.md', 'spec.md'])
+  assert.equal(call(`return L.approvalState('demo')`), 'approved')
+  write(repo, '.rig/changes/demo/intent-map.md', fixture('login/intent-plan.md').replace('hunter2', 'hunter9'))
+  assert.equal(call(`return L.approvalState('demo')`), 'stale')
+})
+
+test('intent map: a hand-edited Behaviours section that drifts from the map refuses approval as behaviours-drift', () => {
+  mapChange(fixture('login/intent-plan.md'))
+  assert.equal(call(`return L.approvalRefusal('demo')`), null)
+  write(repo, '.rig/changes/demo/spec.md', SPEC)
+  assert.match(String(call(`return L.approvalRefusal('demo')`)), /behaviours-drift/)
 })

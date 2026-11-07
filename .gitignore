@@ -18,3 +18,4 @@ node_modules/
 docs/stuff.eml
 docs/stuff.eml.gz
 tests/e2e/out/
+__pycache__/

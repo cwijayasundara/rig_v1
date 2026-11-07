@@ -17,6 +17,7 @@ import { scopeFindings, intentScope } from './scope.ts'
 import { RATCHET_FILE, lastNumber, loadRatchets, judge, tighten, type RatchetWrite } from './counts.ts'
 import { isRegistryShape, parseRegistry, defaultRegistry, updateKnownRed, activeSensors, commandFor, builtinOptions, type Changed, inertSensors, type Registry, type RegistrySensor, type Cadence, type Inert } from './registry.ts'
 import { frozenFindings, runContracts } from './contracts.ts'
+import { intentShipFindings } from './intentmapio.ts'
 import { syncFindings } from './sync.ts'
 import { riskOf, formatRisk, type Risk } from './risk.ts'
 import { changeHistory, breaker } from './reverts.ts'
@@ -215,6 +216,7 @@ function shipVerdicts(slug: string, config: Registry, diffs: FileDiff[], base: s
     findings.push({ sensor: 'traceability', severity: 'block', message: `${id}${what ? ` (${what})` : ''} has no test that names it`, fix: `add a test whose name or comment says ${id} and proves it` })
   }
   // Red for new behaviour, green-on-base for a refactor, nothing extra for a chore (its full suite already ran).
+  findings.push(...intentShipFindings(slug, config, diffs, budgetMs))
   const type = changeType(slug)
   const mode = type === 'feature' || type === 'bugfix' ? 'red' : type === 'refactor' ? 'green' : null
   if (mode && !base) findings.push({ sensor: 'red-proof', severity: 'warn', message: 'no base branch found; proof against the base skipped', fix: 'pass --base <branch>' })

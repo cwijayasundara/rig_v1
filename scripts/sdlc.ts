@@ -47,7 +47,7 @@ import { cmdClaims } from './claims.ts'
 import { protect } from './protect.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'
 import { CHART_RE, conversionMapOf, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, intentSettled, nextChart, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, waiveChartFinding, changeRequirements, PRD_RE, isConverted, conversionRefusal } from './chart.ts'
-import { journey, journeyText } from './journey.ts'
+import { journey, journeyText } from './journey.ts'; import { cmdIntentRecord, cmdIntentProject } from './intentmapio.ts'
 import { TYPES, changeDir, newChange, setActive, activeSlug, isShipped, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
 
 // ---------- commands ----------
@@ -479,7 +479,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   autonomy: cmdAutonomy,
   risk: cmdRisk,
   claims: cmdClaims,
-  weight: cmdWeight, 'route-check': cmdRouteCheck,
+  weight: cmdWeight, 'route-check': cmdRouteCheck, 'intent-record': cmdIntentRecord, 'intent-project': cmdIntentProject,
 }
 
 const [command = '', ...rest] = process.argv.slice(2)

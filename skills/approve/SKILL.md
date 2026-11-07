@@ -13,6 +13,8 @@ If the result above starts with `ASK`, no argument was given: name the target in
 - `ASK none ...`: say so in one line and stop.
 Then run `SDLC_HUMAN=1 node --disable-warning=ExperimentalWarning "${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts" approve <target>` as its own Bash call and tell the person its result in one line. After "Approve and build" succeeds, invoke `/rig:build <slug>` with the Skill tool. On Cancel do nothing.
 
+A change with an `intent-map.md` approves it and its `freeze.json` (the scenario hashes) with spec.md and plan.md; a refusal names the rule id (`unmapped-said`, `both-ways`, `behaviours-drift`), and a later edit of either file makes the approval stale.
+
 `arch` approves the layers block that `/rig:arch` proposed, and `app <name>` approves that app's journeys after one more driver run: neither is asked about, the person typed the target. Run it as above, tell the person the result in one line and stop.
 
 Otherwise tell the person the result above in one line. Do nothing else.

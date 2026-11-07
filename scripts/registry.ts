@@ -1,6 +1,7 @@
 // The sensor registry (behavioural harness spec 2026-10-16 §3): one .rig/sensors.json, language-free.
 // A sensor is a command or a built-in, a cadence, a blocks flag and one guide sentence. Tool commands live in templates/stacks/.
 import { skillRef } from './core.ts'
+import { RULES } from './intentmap.ts'
 import { isObject, isStringList, posInt, SENSOR_NAMES } from './model.ts'
 
 export type Cadence = 'edit' | 'turn' | 'commit' | 'ci' | 'nightly'
@@ -10,7 +11,7 @@ export const BUILTIN_IDS = ['secrets', 'test-tamper', 'suppression', 'harness-ta
 type BuiltinId = typeof BUILTIN_IDS[number]
 // Harness finding names that are not built-ins: a command sensor with one of these ids would inherit that finding's gate rules.
 // Derived from SENSOR_NAMES so a new harness finding is reserved the day it is added.
-const RESERVED_IDS: readonly string[] = [...new Set(['commands', 'plan-gate', 'human-approval', 'sync', ...SENSOR_NAMES.filter(n => !(BUILTIN_IDS as readonly string[]).includes(n))])]
+const RESERVED_IDS: readonly string[] = [...new Set(['commands', 'plan-gate', 'human-approval', 'sync', ...RULES, ...SENSOR_NAMES.filter(n => !(BUILTIN_IDS as readonly string[]).includes(n))])]
 export const ALWAYS_ON: BuiltinId[] = ['secrets', 'harness-tamper']
 
 export type RegistrySensor = { id: string; cmd?: string; builtin?: true; cadence: Cadence; blocks: boolean; guide: string; timeoutMs?: number; enabled: boolean; options?: Record<string, unknown>; ratchet?: 'down' | 'up' }
