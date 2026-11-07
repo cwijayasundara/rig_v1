@@ -103,7 +103,7 @@ export function structure(text, phase) {
         const scenario = scenarioById.get(id)
         if (!scenario) { out.push(finding('missing-scenario', `${row.id} names ${id}, which has no Empirical section`)); continue }
         if (phase === 'plan' && scenario.status !== 'planned') out.push(finding('empirical-early', `${id} is ${scenario.status || 'unset'} at plan time; the scenario is written before the test runs`))
-        if (phase === 'ship' && scenario.status === 'planned') out.push(finding('empirical-open', `${id} is still planned at ship time`))
+        if (phase === 'ship' && scenario.status !== 'pass') out.push(finding('empirical-open', `${id} is ${scenario.status || 'unset'} at ship time; only a recorded pass ships`))
         if (phase === 'ship' && scenario.status === 'pass' && (!scenario.command || !scenario.commit)) out.push(finding('empirical-unrecorded', `${id} says pass without a command and a commit`))
       }
     }
@@ -140,10 +140,10 @@ export function formalFindings(map, clauseHolds, mutants) {
   return out
 }
 
-export function pruneFindings(testSources) {
+export function pruneFindings(testSources, mapClauses) {
   const out = []
   for (const source of testSources) {
-    const clauses = [...source.matchAll(/\b(C\d+)\b/g)].map(m => m[1])
+    const clauses = [...source.matchAll(/\b(C\d+)\b/g)].map(m => m[1]).filter(id => !mapClauses || mapClauses.has(id))
     const scenarios = [...source.matchAll(/\b(E\d+)\b/g)].map(m => m[1])
     if (clauses.length && !scenarios.length) out.push(finding('prune', `a test names ${[...new Set(clauses)].join(', ')} and no empirical scenario; the formal check already covers it`))
   }
@@ -174,7 +174,7 @@ export function check(text, opts) {
     ...findings,
     ...freezeFindings(map, opts.freeze),
     ...(opts.phase === 'ship' ? formalFindings(map, opts.clauses, opts.mutants) : []),
-    ...pruneFindings(opts.tests ?? []),
+    ...pruneFindings(opts.tests ?? [], new Set(map.clauses.map(c => c.id))),
   ]
   return { map, findings: all, pass: all.length === 0, receipt: receipt(map, opts.clauses) }
 }

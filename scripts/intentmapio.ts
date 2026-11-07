@@ -78,7 +78,8 @@ export function intentReceipt(slug: string): string {
   try { clauses = (JSON.parse(last?.tail.trim().split('\n').at(-1) ?? '{}') as { clauses?: Record<string, boolean> }).clauses ?? {} } catch { /* no verdict recorded: every clause reads as holds only if the check passed, so say nothing false */ }
   // A clause with no recorded verdict never reads as holding.
   const wanted = map.rows.flatMap(r => r.kind === 'formal' ? r.clauses : [])
-  return receipt(map, Object.fromEntries(wanted.map(id => [id, clauses[id] === true])))
+  const commands = map.scenarios.flatMap(sc => sc.status === 'pass' && sc.command ? [`${sc.id} \`${sc.command}\``] : [])
+  return receipt(map, Object.fromEntries(wanted.map(id => [id, clauses[id] === true]))) + (commands.length ? `\n\nCommands: ${commands.join(', ')}` : '')
 }
 
 // `intent-project <slug>`: prints the ## Behaviours section the map generates, for plan to write into spec.md.

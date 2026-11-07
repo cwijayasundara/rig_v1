@@ -104,3 +104,9 @@ test('behavioursFrom lists each said sentence with its id, words and kind', () =
     '- S3: Email wins when both an email and a username are sent. (formal C9)',
   ].join('\n'))
 })
+
+test('review: a scenario recorded as fail blocks ship, and a test naming a C-looking token outside the map is not pruned', () => {
+  assert.ok(rules(ship({ results: { E1: { status: 'fail', command: 'x', commit: 'abc1234' }, E2: { status: 'pass', command: 'x', commit: 'abc1234' } } })).includes('empirical-open'))
+  assert.deepEqual(rules(ship({ tests: ['def test_sku():\n    assert sku == "C12"\n'] })), [])
+  assert.ok(rules(ship({ tests: ['# proves C2\n'] })).includes('prune'))
+})

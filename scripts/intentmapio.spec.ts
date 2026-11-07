@@ -56,5 +56,6 @@ test('intentReceipt prints the recorded evidence and the last formal verdict, an
   write(repo, '.rig/changes/demo/evidence/runs.jsonl', JSON.stringify({ at: 't', cmd: 'python3 formal.py', exit: 0, ms: 1, tail: JSON.stringify({ clauses: { C2: true, C3: false, C7: true, C8: true, C9: true } }) }) + '\n')
   const text = run(`return M.intentReceipt('demo')`)
   assert.match(text, /R1 formal: C2 holds, C3 fails/)
+  assert.match(text, /Commands: E1 `x`/)
   assert.match(text, /T1 empirical: E1 evidence @ abc1234, E2 evidence @ abc1234 \(evidence, not proof\)/)
 })

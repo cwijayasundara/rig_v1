@@ -104,7 +104,7 @@ function structure(map: IntentMap, phase: 'plan' | 'ship'): IntentFinding[] {
         const sc = scenarioById.get(id)
         if (!sc) { out.push(finding('missing-scenario', `${row.id} names ${id}, which has no Empirical section`)); continue }
         if (phase === 'plan' && sc.status !== 'planned') out.push(finding('empirical-early', `${id} is ${sc.status || 'unset'} at plan time; the scenario is written before the test runs`))
-        if (phase === 'ship' && sc.status === 'planned') out.push(finding('empirical-open', `${id} is still planned at ship time`))
+        if (phase === 'ship' && sc.status !== 'pass') out.push(finding('empirical-open', `${id} is ${sc.status || 'unset'} at ship time; only a recorded pass ships`))
         if (phase === 'ship' && sc.status === 'pass' && (!sc.command || !sc.commit)) out.push(finding('empirical-unrecorded', `${id} says pass without a command and a commit`))
       }
     }
@@ -136,10 +136,10 @@ function formalFindings(map: IntentMap, holds: Record<string, boolean> | undefin
   return out
 }
 
-function pruneFindings(tests: string[]): IntentFinding[] {
+function pruneFindings(tests: string[], mapClauses: Set<string>): IntentFinding[] {
   const out: IntentFinding[] = []
   for (const src of tests) {
-    const clauses = [...src.matchAll(/\b(C\d+)\b/g)].map(m => m[1]!)
+    const clauses = [...src.matchAll(/\b(C\d+)\b/g)].map(m => m[1]!).filter(id => mapClauses.has(id))
     if (clauses.length && !/\bE\d+\b/.test(src)) out.push(finding('prune', `a test names ${[...new Set(clauses)].join(', ')} and no empirical scenario; the formal check already covers it`))
   }
   return out
@@ -161,7 +161,7 @@ export function receipt(map: IntentMap, holds: Record<string, boolean> = {}): st
 
 export function check(text: string, opts: CheckOpts): { map: IntentMap; findings: IntentFinding[]; pass: boolean; receipt: string } {
   const map = parse(text)
-  const findings = [...structure(map, opts.phase), ...freezeFindings(map, opts.freeze), ...(opts.phase === 'ship' ? formalFindings(map, opts.clauses, opts.mutants, opts.formalError ?? 'no formal command ran') : []), ...pruneFindings(opts.tests ?? [])]
+  const findings = [...structure(map, opts.phase), ...freezeFindings(map, opts.freeze), ...(opts.phase === 'ship' ? formalFindings(map, opts.clauses, opts.mutants, opts.formalError ?? 'no formal command ran') : []), ...pruneFindings(opts.tests ?? [], new Set(map.clauses.map(c => c.id)))]
   return { map, findings, pass: !findings.length, receipt: receipt(map, opts.clauses) }
 }
 
