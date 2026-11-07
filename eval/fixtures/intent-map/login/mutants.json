@@ -1,0 +1,7 @@
+[
+  { "id": "wrong-password-tokens", "clause": "C2", "lookup": "lookup_target", "decide": "wrong_password_tokens" },
+  { "id": "refuse-everyone", "clause": "C3", "lookup": "lookup_target", "decide": "refuse_everyone" },
+  { "id": "username-before-email", "clause": "C7", "lookup": "email_loses", "decide": "decide" },
+  { "id": "always-admin-role", "clause": "C8", "lookup": "lookup_target", "decide": "always_admin_role" },
+  { "id": "email-loses", "clause": "C9", "lookup": "email_loses", "decide": "decide" }
+]

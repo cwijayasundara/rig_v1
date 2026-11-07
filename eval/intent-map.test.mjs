@@ -1,0 +1,53 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import path from 'node:path'
+import { check, checkLogin, freezeFor, parse } from './intent-map.mjs'
+
+const HERE = import.meta.dirname
+const LOGIN = path.join(HERE, 'fixtures/intent-map/login')
+const CASES = path.join(HERE, 'fixtures/intent-map/cases')
+const read = file => fs.readFileSync(file, 'utf8')
+const rules = result => result.findings.map(f => f.rule)
+
+test('the plan-time login map is acceptable before any body or test result exists', () => {
+  const result = checkLogin('plan')
+  assert.deepEqual(result.findings, [])
+  assert.equal(parse(read(path.join(LOGIN, 'intent-plan.md'))).scenarios.every(s => s.status === 'planned'), true)
+})
+
+test('the ship-time login map passes only with the good implementation, rejected mutants, and recorded evidence', () => {
+  const result = checkLogin('ship')
+  assert.deepEqual(result.findings, [], result.findings.map(f => f.detail).join('\n'))
+  assert.match(result.receipt, /R1 formal: C2 holds, C3 holds/)
+  assert.match(result.receipt, /T1 empirical: E1 evidence @ 8b8b70f, E2 evidence @ 8b8b70f \(evidence, not proof\)/)
+  assert.match(result.receipt, /N1 not promised: Login finishes/)
+  assert.equal(result.receipt.includes('proof)') && result.receipt.includes('E1 evidence'), true)
+})
+
+test('the committed freeze is the hash of the approved scenario text', () => {
+  const text = read(path.join(LOGIN, 'intent.md'))
+  assert.deepEqual(JSON.parse(read(path.join(LOGIN, 'freeze.json'))), freezeFor(text))
+})
+
+test('a said sentence with no row is a gap, and both-ways with only one direction is refused', () => {
+  assert.ok(rules(check(read(path.join(CASES, 'gap.md')), { phase: 'plan' })).includes('unmapped-said'))
+  const oneWay = check(read(path.join(CASES, 'one-way.md')), { phase: 'plan' })
+  assert.ok(rules(oneWay).includes('both-ways'))
+})
+
+test('a result recorded before ship, a stale scenario, a vacuous clause, and a test that repeats a formal clause each fail', () => {
+  const plan = read(path.join(LOGIN, 'intent-plan.md')).replace('status: planned', 'status: pass')
+  assert.ok(rules(check(plan, { phase: 'plan' })).includes('empirical-early'))
+
+  const ship = read(path.join(LOGIN, 'intent.md'))
+  const freeze = freezeFor(ship)
+  freeze.E1 = 'deadbeef'
+  assert.ok(rules(check(ship, { phase: 'ship', freeze, clauses: { C2: true, C3: true, C7: true, C8: true, C9: true }, mutants: [] })).includes('stale-scenario'))
+
+  const parsed = parse(ship)
+  const mutants = parsed.clauses.map(c => ({ id: 'noop', clause: c.id, holds: true }))
+  assert.ok(rules(check(ship, { phase: 'ship', freeze: freezeFor(ship), clauses: { C2: true, C3: true, C7: true, C8: true, C9: true }, mutants })).includes('vacuous'))
+
+  assert.ok(rules(check(ship, { phase: 'ship', freeze: freezeFor(ship), clauses: { C2: true, C3: true, C7: true, C8: true, C9: true }, mutants: parsed.clauses.map(c => ({ id: c.id, clause: c.id, holds: false })), tests: [read(path.join(CASES, 'prune.py'))] })).includes('prune'))
+})
