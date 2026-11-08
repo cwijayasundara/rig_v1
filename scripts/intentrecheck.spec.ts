@@ -105,3 +105,13 @@ test('a change slug with a dot keeps it in the proposal name, and an empty ## Pr
   write(repo, 'check.mjs', 'process.exit(1)\n')
   assert.match(recheck().proposed[0]!.slug, /^recheck-1-v2-1-api/)
 })
+
+test('two planted bugs surviving at once are two proposals, and a later different survivor is not suppressed by them', () => {
+  verdict([{ id: 'm-a', clause: 'C2', holds: true }, { id: 'm-b', clause: 'C3', holds: true }])
+  assert.equal(recheck().proposed.length, 2)
+  assert.deepEqual(recheck().proposed, [])
+  verdict([{ id: 'm-a', clause: 'C2', holds: true }, { id: 'm-b', clause: 'C3', holds: true }, { id: 'm-c', clause: 'C7', holds: true }])
+  const next = recheck().proposed
+  assert.equal(next.length, 1)
+  assert.match(fs.readFileSync(path.join(repo, '.rig/maintain/proposals', `${next[0]!.slug}.md`), 'utf8'), /m-c/)
+})

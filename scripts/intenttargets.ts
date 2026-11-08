@@ -62,10 +62,13 @@ function targetsOf(command: string, root: string): string[] {
 // make target expands to the commands it runs. No runner is named here; the script name is the data.
 function expand(command: string, root: string): string[] {
   const words = command.trim().split(/\s+/)
-  if (!INTERPRETERS.has(words[0] ?? '') && words[0] !== 'make') {
+  // A command that already names a file is checking that file, not running a script (`crosshair check src/a.py` with a script called check).
+  const namesFile = words.slice(1).some(w => isFile(path.join(root, w.replace(/^\.\//, ''))))
+  if (!INTERPRETERS.has(words[0] ?? '') && words[0] !== 'make' && !namesFile) {
     try {
       const scripts = (JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) as { scripts?: Record<string, string> }).scripts ?? {}
-      const name = words.slice(1).find(w => typeof scripts[w] === 'string')
+      // `<runner> <name>` or `<runner> run <name>`: only the word where the script name sits, never a later argument.
+      const name = [words[1] === 'run' || words[1] === 'run-script' ? words[2] : words[1]].find((w): w is string => typeof w === 'string' && typeof scripts[w] === 'string')
       if (name) return [scripts[name]!]
     } catch { /* no package.json */ }
   }

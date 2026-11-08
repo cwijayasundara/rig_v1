@@ -25,10 +25,11 @@ export function recheckFindings(slug: string): Finding[] {
   // An empty ## Property command section was never runnable (ship refuses it now); an old map with one is not drift.
   const drift = shipCheck({ text, results, adjudications: readAdjudications(slug), tests: [], run }).findings
     .filter(f => DRIFT.has(f.rule) && !(f.rule === 'property-failed' && !map.propertyCommand))
-    .map((f): { id: string; line: string } => ({ id: f.rule, line: `${f.rule}: ${f.detail}` }))
-  for (const sc of map.scenarios) if (sc.status === 'pass' && sc.command && run(sc.command).exit !== 0) drift.push({ id: sc.id, line: `${sc.id}: \`${sc.command}\` now fails` })
+    // A survivor's detail names its clause and mutant, so each is its own key; the others keep a rule-only key (their detail may carry an exit code).
+    .map((f): { id: string; key: string; line: string } => ({ id: f.rule, key: f.rule === 'vacuous' ? `${f.rule} ${f.detail}` : f.rule, line: `${f.rule}: ${f.detail}` }))
+  for (const sc of map.scenarios) if (sc.status === 'pass' && sc.command && run(sc.command).exit !== 0) drift.push({ id: sc.id, key: sc.id, line: `${sc.id}: \`${sc.command}\` now fails` })
   const file = `.rig/changes/${slug}/intent-map.md`
-  return drift.map(d => ({ kind: 'recheck', key: sha(`recheck ${slug} ${d.id}`), title: `Recheck ${slug}: ${d.id} no longer holds`, files: [file], evidence: `A frozen check of the shipped change ${slug} fails on the trunk now:\n\n- ${d.line}\n\nThe map is frozen and unchanged; the code, a dependency or the environment moved.` }))
+  return drift.map(d => ({ kind: 'recheck', key: sha(`recheck ${slug} ${d.key}`), title: `Recheck ${slug}: ${d.id} no longer holds`, files: [file], evidence: `A frozen check of the shipped change ${slug} fails on the trunk now:\n\n- ${d.line}\n\nThe map is frozen and unchanged; the code, a dependency or the environment moved.` }))
 }
 
 export function cmdIntentRecheck(args: Args): void {

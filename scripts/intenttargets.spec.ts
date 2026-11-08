@@ -65,3 +65,10 @@ test('npm run, make and python -m resolve to the checker they run', () => {
   assert.deepEqual(formalTargets('npm run other', root), [])
   assert.deepEqual(formalTargets('make lint', root), [])
 })
+
+test('only the script a runner names is expanded: a later word that happens to be a script name is not', () => {
+  const root = tree({ 'package.json': JSON.stringify({ scripts: { check: 'node tools/check.mjs' } }), 'tools/check.mjs': "import '../src/auth.js'\n", 'src/auth.js': '', 'copy/auth.py': '' })
+  assert.deepEqual(formalTargets('crosshair check copy/auth.py', root), ['copy/auth.py'])
+  assert.deepEqual(formalTargets('npm run check', root), ['src/auth.js'])
+  assert.deepEqual(formalTargets('yarn check', root), ['src/auth.js'])
+})

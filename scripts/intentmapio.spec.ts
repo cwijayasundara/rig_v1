@@ -118,3 +118,8 @@ test('a ledger id is one past the highest id on the ledger, so removed lines nev
   assert.equal(sdlc(repo, ['intent-record', 'demo', 'E1', '--', 'node -e "process.exit(0)"']).code, 0)
   assert.equal(JSON.parse(fs.readFileSync(path.join(repo, '.rig/changes/demo/intent-results.json'), 'utf8')).E1.run, 'r6')
 })
+
+test('the build skill tells a person the whole intent-adjudicate command, --clause included', () => {
+  const text = fs.readFileSync(path.resolve(import.meta.dirname, '../skills/build/SKILL.md'), 'utf8')
+  assert.match(text, /intent-adjudicate <slug> <mutant-id> non-bug --clause <C-id> --by <name>/)
+})
