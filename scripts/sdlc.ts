@@ -475,11 +475,11 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   app: cmdApp,
   slice: cmdSlice,
   maintain: cmdMaintain,
-  readiness: cmdReadiness,
-  autonomy: cmdAutonomy,
+  readiness: cmdReadiness, autonomy: cmdAutonomy,
   risk: cmdRisk,
   claims: cmdClaims,
-  weight: cmdWeight, 'route-check': cmdRouteCheck, 'intent-record': cmdIntentRecord, 'intent-adjudicate': cmdIntentAdjudicate, 'intent-recheck': cmdIntentRecheck, 'intent-project': cmdIntentProject,
+  weight: cmdWeight, 'route-check': cmdRouteCheck, 'intent-record': cmdIntentRecord, 'intent-adjudicate': cmdIntentAdjudicate,
+  'intent-recheck': cmdIntentRecheck, 'intent-project': cmdIntentProject,
 }
 
 const [command = '', ...rest] = process.argv.slice(2)
