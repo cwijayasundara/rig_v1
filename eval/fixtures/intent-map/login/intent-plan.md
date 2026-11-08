@@ -7,11 +7,13 @@
 
 ## Decisions
 - D1: both-ways. A right password gets a token and a wrong one is refused.
+- D2: one-way-because: the words only say which role an admin gets, not that a login succeeds.
+- D3: one-way-because: the words only say which table wins when both identities are sent, not how a token is made.
 
 ## Map
 - R1: said S1. decision D1. kind formal. clauses C2, C3.
-- R2: said S2. kind formal. clauses C7, C8.
-- R3: said S3. kind formal. clauses C9.
+- R2: said S2. decision D2. kind formal. clauses C7, C8.
+- R3: said S3. decision D3. kind formal. clauses C9.
 - T1: kind empirical. scenarios E1, E2.
 - N1: kind not-promised.
 

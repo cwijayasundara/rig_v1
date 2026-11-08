@@ -51,7 +51,7 @@ test('early result, stale scenario, vacuous clause, missing mutant and prune eac
 
 test('parity: the port returns the oracle rule list on the fixtures', async () => {
   const oracle = await import(path.join(FIX, '../../intent-map.mjs'))
-  for (const [file, phase] of [['login/intent-plan.md', 'plan'], ['cases/gap.md', 'plan'], ['cases/one-way.md', 'plan']] as const) {
+  for (const [file, phase] of [['login/intent-plan.md', 'plan'], ['cases/gap.md', 'plan'], ['cases/one-way.md', 'plan'], ['cases/silent-one-way.md', 'plan']] as const) {
     const text = read(file)
     assert.deepEqual(rules(check(text, { phase })), rules(oracle.check(text, { phase })), file)
   }
@@ -209,4 +209,16 @@ test('formal-targets-diff: no changed source among the formal targets fails; one
   assert.deepEqual(t(['src/auth.py'], ['src/auth.py', 'src/other.py']).findings, [])
   assert.deepEqual(ship().findings, [])
   assert.ok(RULES.includes('formal-targets-diff'))
+})
+
+// Wave 2, item 5: a one-way decision is said, not silent.
+test('one-way-unjustified: a formal row with no decision, an empty reason or an unknown decision fails; a stated reason and both-ways pass', () => {
+  const silent = read('cases/silent-one-way.md')
+  const one = (text: string): string[] => rules(check(text, { phase: 'plan' })).filter(r => r === 'one-way-unjustified')
+  assert.deepEqual(one(silent), ['one-way-unjustified'])
+  const withDecision = (d: string, text = silent): string => text.replace('## Decisions\n', `## Decisions\n${d}\n`).replace('said S1. kind', 'said S1. decision D2. kind')
+  assert.deepEqual(one(withDecision('- D2: one-way-because:')), ['one-way-unjustified'])
+  assert.deepEqual(one(silent.replace('said S1. kind', 'said S1. decision D9. kind')), ['one-way-unjustified'])
+  assert.deepEqual(one(withDecision('- D2: one-way-because: the words only say which role an admin gets')), [])
+  assert.deepEqual(one(read('login/intent-plan.md')), [])
 })

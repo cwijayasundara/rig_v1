@@ -71,3 +71,11 @@ test('an adjudicated non-bug with a by and a reason clears a surviving mutant; c
   assert.deepEqual(rules(run({ verdict: 'clause-vacuous' })), ['vacuous'])
   assert.deepEqual(rules(run({ by: '' })), ['vacuous'])
 })
+
+test('one-way-unjustified: a silent one-way formal row fails, a stated reason clears it, and the login map is clean', () => {
+  const silent = read(path.join(CASES, 'silent-one-way.md'))
+  assert.deepEqual(rules(check(silent, { phase: 'plan' })).filter(r => r === 'one-way-unjustified'), ['one-way-unjustified'])
+  const said = silent.replace('## Decisions\n', '## Decisions\n- D2: one-way-because: the words only say which role an admin gets\n').replace('said S1. kind', 'said S1. decision D2. kind')
+  assert.equal(rules(check(said, { phase: 'plan' })).includes('one-way-unjustified'), false)
+  assert.equal(rules(check(read(path.join(LOGIN, 'intent-plan.md')), { phase: 'plan' })).includes('one-way-unjustified'), false)
+})

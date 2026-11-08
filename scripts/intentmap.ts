@@ -2,7 +2,7 @@
 // both must return the same rule ids. Pure functions: callers run the formal command and the tests, and pass the results in.
 import crypto from 'node:crypto'
 
-export const RULES = ['unmapped-said', 'unknown-kind', 'missing-clause', 'orphan-clause', 'both-ways', 'missing-scenario', 'empirical-early', 'empirical-open', 'empirical-unrecorded', 'stale-scenario', 'missing-not-promised', 'formal-failed', 'unmutated', 'vacuous', 'prune', 'behaviours-drift', 'result-unbacked', 'formal-targets-diff'] as const
+export const RULES = ['unmapped-said', 'unknown-kind', 'missing-clause', 'orphan-clause', 'both-ways', 'missing-scenario', 'empirical-early', 'empirical-open', 'empirical-unrecorded', 'stale-scenario', 'missing-not-promised', 'formal-failed', 'unmutated', 'vacuous', 'prune', 'behaviours-drift', 'result-unbacked', 'formal-targets-diff', 'one-way-unjustified'] as const
 // behaviours-drift is the wiring's own rule (spec.md ## Behaviours against the map); the oracle has no spec.md, so it has no such rule.
 export type RuleId = typeof RULES[number]
 export type IntentFinding = { rule: RuleId; detail: string }
@@ -100,7 +100,9 @@ function structure(map: IntentMap, phase: 'plan' | 'ship'): IntentFinding[] {
     if (row.kind === 'formal') {
       if (!row.clauses.length) out.push(finding('missing-clause', `${row.id} is formal and names no clause`))
       for (const id of row.clauses) if (!clauseById.has(id)) out.push(finding('missing-clause', `${row.id} names ${id}, which has no Formal section`))
-      if (map.decisions.find(d => d.id === row.decision)?.text.startsWith('both-ways')) {
+      const decision = map.decisions.find(d => d.id === row.decision)
+      if (!decision || !(decision.text.startsWith('both-ways') || /one-way-because:\s*\S/.test(decision.text))) out.push(finding('one-way-unjustified', `${row.id} is formal and its decision ${row.decision || '(none)'} is neither both-ways nor says one-way-because: <why only one direction>`))
+      if (decision?.text.startsWith('both-ways')) {
         const dirs = row.clauses.map(id => clauseById.get(id)?.direction)
         if (!dirs.includes('only-when') || !dirs.includes('always')) out.push(finding('both-ways', `${row.id} records ${row.decision} both-ways and needs an only-when clause and an always clause`))
       }

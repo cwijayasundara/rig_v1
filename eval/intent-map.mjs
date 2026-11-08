@@ -92,6 +92,7 @@ export function structure(text, phase) {
       if (!row.clauses.length) out.push(finding('missing-clause', `${row.id} is formal and names no clause`))
       for (const id of row.clauses) if (!clauseById.has(id)) out.push(finding('missing-clause', `${row.id} names ${id}, which has no Formal section`))
       const decision = map.decisions.find(d => d.id === row.decision)
+      if (!decision || !(decision.text.startsWith('both-ways') || /one-way-because:\s*\S/.test(decision.text))) out.push(finding('one-way-unjustified', `${row.id} is formal and its decision ${row.decision || '(none)'} is neither both-ways nor says one-way-because: <why only one direction>`))
       if (decision?.text.startsWith('both-ways')) {
         const dirs = row.clauses.map(id => clauseById.get(id)?.direction)
         if (!dirs.includes('only-when') || !dirs.includes('always')) out.push(finding('both-ways', `${row.id} records ${row.decision} both-ways and needs an only-when clause and an always clause`))
