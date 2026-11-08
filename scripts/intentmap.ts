@@ -2,7 +2,7 @@
 // both must return the same rule ids. Pure functions: callers run the formal command and the tests, and pass the results in.
 import crypto from 'node:crypto'
 
-export const RULES = ['unmapped-said', 'unknown-kind', 'missing-clause', 'orphan-clause', 'both-ways', 'missing-scenario', 'empirical-early', 'empirical-open', 'empirical-unrecorded', 'stale-scenario', 'missing-not-promised', 'formal-failed', 'unmutated', 'vacuous', 'prune', 'behaviours-drift', 'result-unbacked', 'formal-targets-diff', 'one-way-unjustified', 'trusted-unpinned'] as const
+export const RULES = ['unmapped-said', 'unknown-kind', 'missing-clause', 'orphan-clause', 'both-ways', 'missing-scenario', 'empirical-early', 'empirical-open', 'empirical-unrecorded', 'stale-scenario', 'missing-not-promised', 'formal-failed', 'unmutated', 'vacuous', 'prune', 'behaviours-drift', 'result-unbacked', 'formal-targets-diff', 'one-way-unjustified', 'trusted-unpinned', 'property-failed'] as const
 // behaviours-drift is the wiring's own rule (spec.md ## Behaviours against the map); the oracle has no spec.md, so it has no such rule.
 export type RuleId = typeof RULES[number]
 export type IntentFinding = { rule: RuleId; detail: string }
@@ -10,7 +10,8 @@ export type Scenario = { id: string; title?: string; given?: string; when?: stri
 export type Row = { id: string; said: string; decision: string; kind: string; clauses: string[]; scenarios: string[] }
 export type Clause = { id: string; direction: string; text: string }
 export type Trusted = { name: string; contract: string; pin: string }
-export type IntentMap = { formalCommand: string; trusted: Trusted[]; said: { id: string; text: string }[]; decisions: { id: string; text: string }[]; rows: Row[]; clauses: Clause[]; scenarios: Scenario[]; notPromised: { id: string; text: string }[] }
+// propertyCommand: the optional ## Property command line; propertySection is true when the section exists, even if its line is empty.
+export type IntentMap = { formalCommand: string; propertyCommand: string; propertySection: boolean; trusted: Trusted[]; said: { id: string; text: string }[]; decisions: { id: string; text: string }[]; rows: Row[]; clauses: Clause[]; scenarios: Scenario[]; notPromised: { id: string; text: string }[] }
 export type Mutant = { id: string; clause: string; holds: boolean }
 export type Results = Record<string, { status: string; command?: string; commit?: string; run?: string }>
 // One line of evidence/runs.jsonl: the ledger a recorded pass must be found in.
@@ -54,11 +55,11 @@ function fieldsOf(rest: string): Record<string, string> {
 
 export function parse(raw: string): IntentMap {
   const lines = normalize(raw).split('\n')
-  const map: IntentMap = { said: [], decisions: [], rows: [], clauses: [], scenarios: [], notPromised: [], formalCommand: '', trusted: [] }
+  const map: IntentMap = { said: [], decisions: [], rows: [], clauses: [], scenarios: [], notPromised: [], formalCommand: '', propertyCommand: '', propertySection: false, trusted: [] }
   let section = ''
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? ''
-    if (line.startsWith('## ')) { section = line.slice(3).trim(); continue }
+    if (line.startsWith('## ')) { section = line.slice(3).trim(); if (section === 'Property command') map.propertySection = true; continue }
     if (section === 'Said') { const m = saidHead.exec(line); if (m) map.said.push({ id: m[1]!, text: m[2]! }) }
     if (section === 'Decisions') { const m = decisionHead.exec(line); if (m) map.decisions.push({ id: m[1]!, text: m[2]! }) }
     if (section === 'Map') {
@@ -86,6 +87,7 @@ export function parse(raw: string): IntentMap {
       map.scenarios.push(scenario)
     }
     if (section === 'Formal command' && !map.formalCommand && line.trim()) map.formalCommand = line.trim().replace(/^`|`$/g, '')
+    if (section === 'Property command' && !map.propertyCommand && line.trim()) map.propertyCommand = line.trim().replace(/^`|`$/g, '')
     if (section === 'Trusted') { const t = trustedLine(line); if (t) map.trusted.push(t) }
     if (section === 'Not promised') { const m = promisedHead.exec(line); if (m) map.notPromised.push({ id: m[1]!, text: m[2]! }) }
   }
@@ -248,10 +250,21 @@ function targetFindings(map: IntentMap, targets: ShipInput['targets']): IntentFi
   return targets.files.some(f => targets.diffSource.includes(f)) ? [] : [finding('formal-targets-diff', `\`${map.formalCommand}\` checks no source file this change edits, so its verdicts are about something else`)]
 }
 
+// The sampled tier (hypothesis, fast-check): optional, run once at ship, exit 0 passes. It is evidence over generated inputs, never proof.
+export const PROPERTY_LABEL = '(evidence, sampled, not exhaustive)'
+function propertyResult(map: IntentMap, run: ShipInput['run']): { findings: IntentFinding[]; line: string } | undefined {
+  if (!map.propertySection) return undefined
+  if (!map.propertyCommand) return { findings: [finding('property-failed', 'the ## Property command section has no command')], line: '- property: fails' }
+  const r = run(map.propertyCommand)
+  return r.exit === 0 ? { findings: [], line: `- property: pass ${PROPERTY_LABEL}` } : { findings: [finding('property-failed', `\`${map.propertyCommand}\` exited ${r.exit}`)], line: '- property: fails' }
+}
+
 export function shipCheck(i: ShipInput): ReturnType<typeof check> {
   const r = shipCore(i)
-  const extra = [...resultFindings(r.map, i.results, i.runs), ...targetFindings(r.map, i.targets)]
-  return extra.length ? { ...r, findings: [...r.findings, ...extra], pass: false } : r
+  const prop = propertyResult(r.map, i.run)
+  const extra = [...resultFindings(r.map, i.results, i.runs), ...targetFindings(r.map, i.targets), ...(prop?.findings ?? [])]
+  const out = prop ? { ...r, receipt: `${r.receipt}\n${prop.line}` } : r
+  return extra.length ? { ...out, findings: [...r.findings, ...extra], pass: false } : out
 }
 
 function shipCore(i: ShipInput): ReturnType<typeof check> {

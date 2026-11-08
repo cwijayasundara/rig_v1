@@ -95,3 +95,17 @@ test('intent-record stores a run id that names its ledger line, and a result wit
   const v = sdlc(repo, ['verify', 'demo'])
   assert.match(v.stdout + v.stderr, /result-unbacked/)
 })
+
+test('intentReceipt reports the property command from its last ledger run, with the sampled label, and never from a new run', () => {
+  const run = (code: string): string => {
+    const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', `import * as M from ${JSON.stringify(pathToFileURL(path.resolve(import.meta.dirname, 'intentmapio.ts')).href)}; console.log(JSON.stringify(await (async () => { ${code} })()))`], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo } })
+    assert.equal(r.status, 0, r.stderr)
+    return JSON.parse(r.stdout.trim())
+  }
+  write(repo, '.rig/changes/demo/intent-map.md', plan.replace('## Not promised', '## Property command\nnode prop.mjs\n\n## Not promised'))
+  assert.match(run(`return M.intentReceipt('demo')`), /- property: not run/)
+  write(repo, '.rig/changes/demo/evidence/runs.jsonl', JSON.stringify({ at: 't', cmd: 'node prop.mjs', exit: 0, ms: 1, tail: '' }) + '\n')
+  assert.match(run(`return M.intentReceipt('demo')`), /- property: pass \(evidence, sampled, not exhaustive\)/)
+  write(repo, '.rig/changes/demo/evidence/runs.jsonl', JSON.stringify({ at: 't', cmd: 'node prop.mjs', exit: 1, ms: 1, tail: '' }) + '\n')
+  assert.match(run(`return M.intentReceipt('demo')`), /- property: fails/)
+})

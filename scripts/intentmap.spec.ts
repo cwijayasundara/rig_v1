@@ -255,3 +255,21 @@ test('review fixes: a Trusted name may be dotted, a contract may mention pin:, a
   const oracle = await import(path.join(FIX, '../../intent-map.mjs'))
   assert.deepEqual(oracle.parse(text.replace(/\n/g, '\r\n')).trusted, oracle.parse(text).trusted)
 })
+
+// Wave 3, item 7: an optional sampled-evidence tier between scenarios and the formal command.
+const withProp = (line = 'node prop.mjs'): string => `${withCmd(read('login/intent-plan.md'))}\n## Property command\n${line}\n`
+const shipProp = (propExit: number, text = withProp()): ReturnType<typeof ship> => ship({ text, run: cmd => cmd === 'node prop.mjs' ? { exit: propExit, tail: 'properties checked' } : { exit: 0, tail: good() } })
+
+test('property command: exit 0 passes with the sampled label, non-zero is property-failed, an empty section is property-failed, no section is silent', () => {
+  const ok = shipProp(0)
+  assert.deepEqual(ok.findings, [])
+  assert.match(ok.receipt, /- property: pass \(evidence, sampled, not exhaustive\)/)
+  assert.doesNotMatch(ok.receipt.split('\n').find(l => l.includes('property'))!, /proof/)
+  const bad = shipProp(1)
+  assert.deepEqual(rules(bad), ['property-failed'])
+  assert.match(bad.receipt, /- property: fails/)
+  assert.deepEqual(rules(shipProp(0, withProp(''))), ['property-failed'])
+  assert.deepEqual(ship().findings, [])
+  assert.doesNotMatch(ship().receipt, /property/)
+  assert.ok(RULES.includes('property-failed'))
+})

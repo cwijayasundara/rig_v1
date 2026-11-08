@@ -123,3 +123,20 @@ test('plan phase: a silent one-way row and an unnamed clause symbol refuse appro
   assert.match(planCheck(unnamed), /trusted-unpinned/)
   assert.doesNotMatch(planCheck(MAP), /one-way-unjustified|trusted-unpinned/)
 })
+
+test('a property command that fails blocks verify as property-failed; one that passes ships and is in the ledger', () => {
+  verdict(CLAUSES.map(c => killed(c)))
+  record('E1'); record('E2')
+  const withProperty = (exit: number): void => {
+    write(repo, '.rig/changes/demo/intent-map.md', MAP.replace('## Not promised', '## Property command\nnode prop.mjs\n\n## Not promised'))
+    write(repo, 'prop.mjs', `console.log('sampled 200 inputs')\nprocess.exit(${exit})\n`)
+  }
+  withProperty(1)
+  const bad = verify()
+  assert.match(bad.text, /property-failed/)
+  assert.notEqual(bad.code, 0)
+  withProperty(0)
+  assert.doesNotMatch(verify().text, /property-failed/)
+  const ledger = fs.readFileSync(path.join(repo, '.rig/changes/demo/evidence/runs.jsonl'), 'utf8')
+  assert.match(ledger, /node prop\.mjs/)
+})

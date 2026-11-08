@@ -7,7 +7,7 @@ import { runCommand, recordRun } from './runs.ts'
 import { isTest, isSource, type Finding, type FileDiff } from './model.ts'
 import { formalTargets } from './intenttargets.ts'
 import type { Registry } from './registry.ts'
-import { shipCheck, parse, receipt, applyResults, behavioursFrom, type Results, type Adjudications, type Mutant, type LedgerRun } from './intentmap.ts'
+import { PROPERTY_LABEL, shipCheck, parse, receipt, applyResults, behavioursFrom, type Results, type Adjudications, type Mutant, type LedgerRun } from './intentmap.ts'
 
 const dir = (slug: string): string => path.join(CHANGES, slug)
 const readJson = <T>(file: string, fallback: T): T => { try { return JSON.parse(fs.readFileSync(file, 'utf8')) as T } catch { return fallback } }
@@ -74,6 +74,7 @@ const FIX: Record<string, string> = {
   'formal-targets-diff': 'point the ## Formal command at a checker that imports the code this change edits (or name that file in the command); a checker that imports a copy of it proves the copy, and a map edit needs a re-approval',
   'one-way-unjustified': 'give the formal row a decision in ## Decisions that starts both-ways, or says `one-way-because: <why only one direction is promised>` (a map edit needs a re-approval)',
   'trusted-unpinned': 'add a `- <name>: <contract>. pin: <command>` line under ## Trusted for the symbol, with a command that pins its contract (a map edit needs a re-approval)',
+  'property-failed': 'make the property hold (the generated counterexample is in the run output), or fix the ## Property command; a map edit needs a re-approval',
   'unmutated': 'plant one bug for the clause in a scratch copy and add it to the formal command output',
   'empirical-open': 'run the scenario with `S intent-record <slug> <E-id> -- "<command>"`',
   'empirical-unrecorded': 'record the result with `S intent-record`, never by hand',
@@ -126,7 +127,8 @@ export function intentReceipt(slug: string): string {
   // A clause with no recorded verdict never reads as holding.
   const wanted = map.rows.flatMap(r => r.kind === 'formal' ? r.clauses : [])
   const commands = map.scenarios.flatMap(sc => sc.status === 'pass' && sc.command ? [`${sc.id} \`${sc.command}\``] : [])
-  return receipt(map, Object.fromEntries(wanted.map(id => [id, clauses[id] === true])), mutants, readAdjudications(slug)) + (commands.length ? `\n\nCommands: ${commands.join(', ')}` : '')
+  const prop = !map.propertySection ? '' : (() => { const l = runs.findLast(r => r.cmd === map.propertyCommand); return `\n- property: ${!l ? 'not run' : l.exit === 0 ? `pass ${PROPERTY_LABEL}` : 'fails'}` })()
+  return receipt(map, Object.fromEntries(wanted.map(id => [id, clauses[id] === true])), mutants, readAdjudications(slug)) + prop + (commands.length ? `\n\nCommands: ${commands.join(', ')}` : '')
 }
 
 // `intent-project <slug>`: prints the ## Behaviours section the map generates, for plan to write into spec.md.
