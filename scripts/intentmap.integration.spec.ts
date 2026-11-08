@@ -106,3 +106,20 @@ test('a checker that only imports a copy beside it is formal-targets-diff, even 
   assert.match(v.text, /formal-targets-diff/)
   assert.notEqual(v.code, 0)
 })
+
+// Plan phase: `approve --check` is where a person's approval is refused for a gap in the map.
+const planCheck = (map: string): string => {
+  write(repo, '.rig/changes/demo/intent-map.md', map)
+  write(repo, '.rig/changes/demo/spec.md', `# Spec\n\n## Behaviours\n${sdlc(repo, ['intent-project', 'demo']).stdout.trim()}\n\n## Open questions\nnone\n`)
+  write(repo, '.rig/changes/demo/plan.md', '# Plan\n\n## Files\n- src/login.js\n\n## Open questions\nnone\n')
+  const r = sdlc(repo, ['approve', 'demo', '--check'])
+  return r.stdout + r.stderr
+}
+
+test('plan phase: a silent one-way row and an unnamed clause symbol refuse approval; the fixed map is accepted', () => {
+  const silent = MAP.replace('decision D2. ', '')
+  assert.match(planCheck(silent), /one-way-unjustified/)
+  const unnamed = MAP.replace(/## Trusted\n(?:- .*\n)+/, '')
+  assert.match(planCheck(unnamed), /trusted-unpinned/)
+  assert.doesNotMatch(planCheck(MAP), /one-way-unjustified|trusted-unpinned/)
+})
