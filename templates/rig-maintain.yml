@@ -49,10 +49,16 @@ jobs:
       - name: Recheck shipped intent maps (Mondays or a manual run; off until RIG_INTENT_RECHECK is on)
         if: steps.open.outputs.open == '0' && vars.RIG_INTENT_RECHECK == 'on'
         shell: bash
+        timeout-minutes: 10
+        continue-on-error: true # a hung or failing recheck must not stop the pull request for the proposals found above
         # This step RUNS the commands recorded in shipped changes (formal checkers, scenario tests), so it is a separate opt-in:
         #   gh variable set RIG_INTENT_RECHECK --body on
+        # Those commands run without the checkout's git credentials (removed here, put back on exit), so a recorded command cannot push.
         run: |
           if [ "$(date -u +%u)" != "1" ] && [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]; then echo "::notice::the intent recheck runs on Mondays"; exit 0; fi
+          header=$(git config --local --get-all http.https://github.com/.extraheader || true)
+          trap '[ -z "$header" ] || git config --local http.https://github.com/.extraheader "$header"' EXIT
+          git config --local --unset-all http.https://github.com/.extraheader || true
           node --disable-warning=ExperimentalWarning .rig/bin/sdlc.ts intent-recheck --cap 5 | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Open one pull request for the new proposals
         if: steps.open.outputs.open == '0'

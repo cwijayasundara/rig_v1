@@ -12,7 +12,9 @@ import { propose, type Finding } from './maintain.ts'
 
 // Only rules a moved world can break. Structure rules added after a change shipped (a newer map rule) are not drift.
 const DRIFT = new Set(['formal-failed', 'vacuous', 'property-failed'])
-const run = (cmd: string): { exit: number; tail: string } => { const r = runCommand(cmd, { timeoutMs: 600_000 }); return { exit: r.exit, tail: r.tail } }
+// Short per command: the workflow step has its own 10 minute cap, and a hang must not sink the day's maintain proposals.
+const RECHECK_TIMEOUT_MS = 180_000
+const run = (cmd: string): { exit: number; tail: string } => { const r = runCommand(cmd, { timeoutMs: RECHECK_TIMEOUT_MS }); return { exit: r.exit, tail: r.tail } }
 
 export function recheckFindings(slug: string): Finding[] {
   const mapPath = path.join(CHANGES, slug, 'intent-map.md')

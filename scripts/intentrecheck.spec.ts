@@ -55,3 +55,22 @@ test('a change that has not shipped is never rechecked, even when its checks fai
   write(repo, 'check.mjs', 'process.exit(1)\n')
   assert.deepEqual(recheck().proposed, [])
 })
+
+// Review fixes (wave 3): the proposal must not forbid the work, and the unattended step must be contained.
+test('a recheck proposal does not scope the work to the frozen map or forbid touching what moved', () => {
+  write(repo, 'check.mjs', 'process.exit(1)\n')
+  const slug = recheck().proposed[0]!.slug
+  const text = fs.readFileSync(path.join(repo, '.rig/maintain/proposals', `${slug}.md`), 'utf8')
+  assert.match(text, /^scope: \[\]$/m)
+  assert.doesNotMatch(text, /Do not touch files outside/)
+  assert.match(text, /Do not edit the frozen intent map/)
+})
+
+test('the workflow step that runs recorded commands has no git credentials, its own timeout, and cannot sink the maintain proposals', () => {
+  const yml = fs.readFileSync(path.resolve(import.meta.dirname, '../templates/rig-maintain.yml'), 'utf8')
+  const step = yml.slice(yml.indexOf('- name: Recheck shipped intent maps'), yml.indexOf('- name: Open one pull request'))
+  assert.match(step, /extraheader/)
+  assert.match(step, /timeout-minutes: 10/)
+  assert.match(step, /continue-on-error: true/)
+  assert.match(step, /trap/)
+})
