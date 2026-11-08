@@ -59,3 +59,39 @@ test('intentReceipt prints the recorded evidence and the last formal verdict, an
   assert.match(text, /Commands: E1 `x`/)
   assert.match(text, /T1 empirical: E1 evidence @ abc1234, E2 evidence @ abc1234 \(evidence, not proof\)/)
 })
+
+const adjFile = (): string => path.join(repo, '.rig/changes/demo/adjudications.json')
+
+test('intent-adjudicate records the verdict, the reason and the approver; without --by or a reason it refuses and writes nothing', () => {
+  write(repo, '.rig/changes/demo/intent-map.md', plan)
+  const r = sdlc(repo, ['intent-adjudicate', 'demo', 'm1', 'non-bug', '--by', 'Ana', '--', 'the reorder commutes'])
+  assert.equal(r.code, 0, r.stderr)
+  assert.deepEqual(JSON.parse(fs.readFileSync(adjFile(), 'utf8')), { m1: { verdict: 'non-bug', because: 'the reorder commutes', by: 'Ana' } })
+  fs.rmSync(adjFile())
+  assert.notEqual(sdlc(repo, ['intent-adjudicate', 'demo', 'm1', 'non-bug', '--', 'why']).code, 0)
+  assert.notEqual(sdlc(repo, ['intent-adjudicate', 'demo', 'm1', 'non-bug', '--by', 'Ana']).code, 0)
+  assert.notEqual(sdlc(repo, ['intent-adjudicate', 'demo', 'm1', 'maybe', '--by', 'Ana', '--', 'why']).code, 0)
+  assert.equal(fs.existsSync(adjFile()), false)
+})
+
+test('a malformed adjudications.json reads as no adjudication, and the file is protected from hand edits', () => {
+  write(repo, '.rig/changes/demo/adjudications.json', '{not json')
+  const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', `import * as M from ${JSON.stringify(pathToFileURL(path.resolve(import.meta.dirname, 'intentmapio.ts')).href)}; import { isProtected } from ${JSON.stringify(pathToFileURL(path.resolve(import.meta.dirname, 'sensors.ts')).href)}; console.log(JSON.stringify([M.readAdjudications('demo'), isProtected('.rig/changes/demo/adjudications.json'), isProtected('.rig/changes/demo/plan.md')]))`], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo } })
+  assert.equal(r.status, 0, r.stderr)
+  assert.deepEqual(JSON.parse(r.stdout.trim()), [{}, true, false])
+})
+
+test('intent-record stores a run id that names its ledger line, and a result without one fails verify as result-unbacked', () => {
+  write(repo, '.rig/changes/demo/intent-map.md', plan)
+  assert.equal(sdlc(repo, ['intent-record', 'demo', 'E1', '--', 'node -e "process.exit(0)"']).code, 0)
+  const resFile = path.join(repo, '.rig/changes/demo/intent-results.json')
+  const res = JSON.parse(fs.readFileSync(resFile, 'utf8'))
+  assert.equal(res.E1.run, 'r1')
+  const ledger = fs.readFileSync(path.join(repo, '.rig/changes/demo/evidence/runs.jsonl'), 'utf8').trim().split('\n').map(l => JSON.parse(l))
+  assert.equal(ledger[0].id, 'r1')
+  assert.equal(ledger[0].commit, res.E1.commit)
+  delete res.E1.run
+  fs.writeFileSync(resFile, JSON.stringify(res))
+  const v = sdlc(repo, ['verify', 'demo'])
+  assert.match(v.stdout + v.stderr, /result-unbacked/)
+})

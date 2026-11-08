@@ -1,6 +1,6 @@
 # Intent map incorporations from the PDD trial and the 2026 verification literature
 
-Date: 2026-11-08. Status: proposal. Builds on `2026-11-07-intent-map-design.md` (built, merged).
+Date: 2026-11-08. Status: wave 1 built (items 1, 6, 8; plan `../plans/2026-11-08-intent-map-incorporations-wave1.md`), items 2 to 5 and 7 proposal. Builds on `2026-11-07-intent-map-design.md` (built, merged).
 Evidence base: the Verus-only trial at `../pdd_kit_research_v1.0/trial/` (protocol, mutants, smoke
 lesson), the survey note `../pdd_kit_research_v1.0/research_notes/PDD kit trial plan/related_work_formal_plus_empirical.md`,
 and a read of `scripts/intentmap.ts` + `eval/fixtures/intent-map/login/`. Nothing here re-opens a

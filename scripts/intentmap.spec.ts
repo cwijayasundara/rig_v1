@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { check, applyResults, freezeFor, parse, scenarioHash, shipCheck, behavioursFrom, type Results } from './intentmap.ts'
+import { RULES, check, applyResults, freezeFor, parse, scenarioHash, shipCheck, behavioursFrom, type Results, type Adjudication } from './intentmap.ts'
 
 const FIX = path.resolve(import.meta.dirname, '../eval/fixtures/intent-map')
 const read = (...p: string[]): string => fs.readFileSync(path.join(FIX, ...p), 'utf8')
@@ -109,4 +109,92 @@ test('review: a scenario recorded as fail blocks ship, and a test naming a C-loo
   assert.ok(rules(ship({ results: { E1: { status: 'fail', command: 'x', commit: 'abc1234' }, E2: { status: 'pass', command: 'x', commit: 'abc1234' } } })).includes('empirical-open'))
   assert.deepEqual(rules(ship({ tests: ['def test_sku():\n    assert sku == "C12"\n'] })), [])
   assert.ok(rules(ship({ tests: ['# proves C2\n'] })).includes('prune'))
+})
+
+// Wave 1, item 8: every mutant of a clause is read, not only the last.
+const SHIP = read('login/intent.md')
+const killed = (id: string, clause: string): { id: string; clause: string; holds: boolean } => ({ id, clause, holds: false })
+const rejectedAll = ['C2', 'C3', 'C7', 'C8', 'C9'].map(c => killed(`m-${c}`, c))
+const shipWith = (mutants: { id: string; clause: string; holds: boolean }[], extra = {}): ReturnType<typeof check> => check(SHIP, { phase: 'ship', freeze: freezeFor(SHIP), clauses: ALL, mutants, ...extra })
+
+test('two mutants for one clause: a surviving second one is vacuous even when the first is rejected', () => {
+  const r = shipWith([...rejectedAll, { id: 'm-C2-late', clause: 'C2', holds: true }])
+  assert.deepEqual(rules(r), ['vacuous'])
+  assert.match(r.findings[0]!.detail, /m-C2-late/)
+})
+
+test('a duplicate mutant id is formal-failed, and only a clause with zero mutants is unmutated', () => {
+  const dup = shipWith([...rejectedAll, killed('m-C2', 'C2')])
+  assert.deepEqual(rules(dup), ['formal-failed'])
+  assert.match(dup.findings[0]!.detail, /duplicate mutant id m-C2/)
+  const none = shipWith(rejectedAll.filter(m => m.clause !== 'C3'))
+  assert.deepEqual(rules(none), ['unmutated'])
+  assert.match(none.findings[0]!.detail, /C3/)
+})
+
+test('the receipt lists each planted bug of a formal row', () => {
+  const r = shipWith([...rejectedAll, killed('m-C2-b', 'C2')])
+  assert.match(r.receipt, /R1 formal: C2 holds, C3 holds \(planted: m-C2 rejected, m-C3 rejected, m-C2-b rejected\)/)
+})
+
+// Wave 1, item 1: a surviving mutant can be adjudicated; only a non-bug with a named approver and a reason clears it.
+const survivor = [...rejectedAll.filter(m => m.clause !== 'C2'), { id: 'm1', clause: 'C2', holds: true }]
+const adjudicated = (a: Partial<Adjudication>): ReturnType<typeof check> => shipWith(survivor, { adjudications: { m1: { verdict: 'non-bug', because: 'commutes', by: 'Ana', ...a } } })
+
+test('a non-bug adjudication with a by and a reason clears the survivor and the receipt says so', () => {
+  const r = adjudicated({})
+  assert.deepEqual(r.findings, [])
+  assert.match(r.receipt, /m1 adjudicated non-bug: commutes/)
+})
+
+test('clause-vacuous, a missing by, a missing reason, or an unrelated id leave the survivor vacuous', () => {
+  assert.deepEqual(rules(adjudicated({ verdict: 'clause-vacuous' })), ['vacuous'])
+  assert.deepEqual(rules(adjudicated({ by: ' ' })), ['vacuous'])
+  assert.deepEqual(rules(adjudicated({ because: '' })), ['vacuous'])
+  assert.deepEqual(rules(shipWith(survivor, { adjudications: { other: { verdict: 'non-bug', because: 'x', by: 'Ana' } } })), ['vacuous'])
+})
+
+test('an adjudication does not suppress a different surviving mutant of the same clause', () => {
+  const r = shipWith([...survivor, { id: 'm2', clause: 'C2', holds: true }], { adjudications: { m1: { verdict: 'non-bug', because: 'commutes', by: 'Ana' } } })
+  assert.deepEqual(rules(r), ['vacuous'])
+  assert.match(r.findings[0]!.detail, /m2/)
+})
+
+// Wave 1, item 6: a pass must be backed by a line of the run ledger.
+const backed = (): Results => Object.fromEntries(Object.entries(recorded()).map(([id, r], i) => [id, { ...r, run: `r${i + 1}` }]))
+const ledgerOf = (results: Results): { id?: string; cmd: string; exit: number; commit?: string; scenario?: string }[] => Object.entries(results).map(([id, r]) => ({ id: r.run, cmd: r.command!, exit: 0, commit: r.commit, scenario: id }))
+const shipBacked = (results: Results, runs: ReturnType<typeof ledgerOf>): ReturnType<typeof ship> => ship({ results, runs })
+
+test('result-unbacked: a pass with a matching ledger line is clean', () => {
+  const results = backed()
+  assert.deepEqual(shipBacked(results, ledgerOf(results)).findings, [])
+})
+
+test('result-unbacked: a missing run id, an unknown run id, another command, a failed run, another commit and an empty ledger each fail the scenario', () => {
+  const results = backed()
+  const ledger = ledgerOf(results)
+  const one = (r: ReturnType<typeof ship>): string[] => r.findings.filter(f => f.rule === 'result-unbacked').map(f => f.detail)
+  const { run: _dropped, ...noRun } = results.E1!
+  assert.equal(one(shipBacked({ ...results, E1: noRun }, ledger)).length, 1)
+  assert.equal(one(shipBacked({ ...results, E1: { ...results.E1!, run: 'r99' } }, ledger)).length, 1)
+  assert.equal(one(shipBacked(results, ledger.map(l => l.id === 'r1' ? { ...l, cmd: 'something else' } : l))).length, 1)
+  assert.equal(one(shipBacked(results, ledger.map(l => l.id === 'r1' ? { ...l, exit: 1 } : l))).length, 1)
+  assert.equal(one(shipBacked(results, ledger.map(l => l.id === 'r1' ? { ...l, commit: 'deadbee' } : l))).length, 1)
+  const empty = one(shipBacked(results, []))
+  assert.equal(empty.length, 2)
+  assert.match(empty[0]!, /E1/)
+})
+
+test('result-unbacked: a pass cannot borrow another scenario\'s run, nor an older run once a newer one exists for the scenario', () => {
+  const results = backed()
+  const ledger = ledgerOf(results)
+  const borrowed = { ...results, E2: { ...results.E1! } }
+  assert.deepEqual(rules(shipBacked(borrowed, ledger)), ['result-unbacked'])
+  const newer = [...ledger, { id: 'r9', cmd: results.E1!.command!, exit: 1, commit: results.E1!.commit, scenario: 'E1' }]
+  assert.deepEqual(rules(shipBacked(results, newer)), ['result-unbacked'])
+})
+
+test('result-unbacked is a reserved sensor id and a ledger that is not passed is not checked (the pure oracle path)', () => {
+  assert.ok(RULES.includes('result-unbacked'))
+  assert.deepEqual(ship().findings, [])
 })

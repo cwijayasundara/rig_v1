@@ -23,3 +23,5 @@
 /.github/CODEOWNERS               @your-org/platform
 # The waiver ledger is evidence a person adds to; CI already wants an independent reviewer for new rows.
 /.rig/waivers.jsonl               @your-org/platform
+# An intent-map adjudication (a mutant ruled not a bug) is a person's ruling, so it gets the same reviewer as a waiver.
+/.rig/changes/*/adjudications.json @your-org/platform
