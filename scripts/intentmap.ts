@@ -127,11 +127,12 @@ function formalFindings(map: IntentMap, holds: Record<string, boolean> | undefin
   if (!holds) return [finding('formal-failed', `no formal verdicts (${why}), so no formal clause is checked`)]
   const out: IntentFinding[] = []
   for (const id of wanted) if (holds[id] !== true) out.push(finding('formal-failed', `${id} ${holds[id] === false ? 'has a counterexample on the implementation' : 'has no verdict from the formal command'}`))
-  const byClause = new Map((mutants ?? []).map(m => [m.clause, m]))
+  const ids = new Set<string>()
+  for (const m of mutants ?? []) { if (ids.has(m.id)) out.push(finding('formal-failed', `duplicate mutant id ${m.id}`)); ids.add(m.id) }
   for (const id of wanted) {
-    const m = byClause.get(id)
-    if (!m) out.push(finding('unmutated', `${id} has no planted bug`))
-    else if (m.holds) out.push(finding('vacuous', `${id} still holds under ${m.id}, so the clause rules nothing out`))
+    const planted = (mutants ?? []).filter(m => m.clause === id)
+    if (!planted.length) out.push(finding('unmutated', `${id} has no planted bug`))
+    for (const m of planted) if (m.holds) out.push(finding('vacuous', `${id} still holds under ${m.id}, so the clause rules nothing out`))
   }
   return out
 }
@@ -145,9 +146,12 @@ function pruneFindings(tests: string[], mapClauses: Set<string>): IntentFinding[
   return out
 }
 
-export function receipt(map: IntentMap, holds: Record<string, boolean> = {}): string {
+export function receipt(map: IntentMap, holds: Record<string, boolean> = {}, mutants: Mutant[] = []): string {
   return map.rows.map(row => {
-    if (row.kind === 'formal') return `- ${row.id} formal: ${row.clauses.map(id => `${id} ${holds[id] === false ? 'fails' : 'holds'}`).join(', ')}`
+    if (row.kind === 'formal') {
+      const planted = mutants.filter(m => row.clauses.includes(m.clause)).map(m => `${m.id} ${m.holds ? 'survives' : 'rejected'}`)
+      return `- ${row.id} formal: ${row.clauses.map(id => `${id} ${holds[id] === false ? 'fails' : 'holds'}`).join(', ')}${planted.length ? ` (planted: ${planted.join(', ')})` : ''}`
+    }
     if (row.kind === 'empirical') {
       const bits = row.scenarios.map(id => {
         const sc = map.scenarios.find(s => s.id === id)
@@ -162,7 +166,7 @@ export function receipt(map: IntentMap, holds: Record<string, boolean> = {}): st
 export function check(text: string, opts: CheckOpts): { map: IntentMap; findings: IntentFinding[]; pass: boolean; receipt: string } {
   const map = parse(text)
   const findings = [...structure(map, opts.phase), ...freezeFindings(map, opts.freeze), ...(opts.phase === 'ship' ? formalFindings(map, opts.clauses, opts.mutants, opts.formalError ?? 'no formal command ran') : []), ...pruneFindings(opts.tests ?? [], new Set(map.clauses.map(c => c.id)))]
-  return { map, findings, pass: !findings.length, receipt: receipt(map, opts.clauses) }
+  return { map, findings, pass: !findings.length, receipt: receipt(map, opts.clauses, opts.mutants) }
 }
 
 // Merge script-recorded results into the (frozen) map text. The agent never writes these lines; unknown ids are ignored.

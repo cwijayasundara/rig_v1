@@ -131,11 +131,12 @@ export function formalFindings(map, clauseHolds, mutants) {
   const wanted = [...new Set(map.rows.filter(r => r.kind === 'formal').flatMap(r => r.clauses))]
   for (const id of wanted) if (clauseHolds && clauseHolds[id] === false) out.push(finding('formal-failed', `${id} has a counterexample on the implementation`))
   if (!mutants) return out
-  const byClause = new Map(mutants.map(m => [m.clause, m]))
+  const ids = new Set()
+  for (const m of mutants) { if (ids.has(m.id)) out.push(finding('formal-failed', `duplicate mutant id ${m.id}`)); ids.add(m.id) }
   for (const id of wanted) {
-    const mutant = byClause.get(id)
-    if (!mutant) out.push(finding('unmutated', `${id} has no planted bug`))
-    else if (mutant.holds) out.push(finding('vacuous', `${id} still holds under ${mutant.id}, so the clause rules nothing out`))
+    const planted = mutants.filter(m => m.clause === id)
+    if (!planted.length) out.push(finding('unmutated', `${id} has no planted bug`))
+    for (const m of planted) if (m.holds) out.push(finding('vacuous', `${id} still holds under ${m.id}, so the clause rules nothing out`))
   }
   return out
 }

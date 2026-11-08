@@ -110,3 +110,29 @@ test('review: a scenario recorded as fail blocks ship, and a test naming a C-loo
   assert.deepEqual(rules(ship({ tests: ['def test_sku():\n    assert sku == "C12"\n'] })), [])
   assert.ok(rules(ship({ tests: ['# proves C2\n'] })).includes('prune'))
 })
+
+// Wave 1, item 8: every mutant of a clause is read, not only the last.
+const SHIP = read('login/intent.md')
+const killed = (id: string, clause: string): { id: string; clause: string; holds: boolean } => ({ id, clause, holds: false })
+const rejectedAll = ['C2', 'C3', 'C7', 'C8', 'C9'].map(c => killed(`m-${c}`, c))
+const shipWith = (mutants: { id: string; clause: string; holds: boolean }[], extra = {}): ReturnType<typeof check> => check(SHIP, { phase: 'ship', freeze: freezeFor(SHIP), clauses: ALL, mutants, ...extra })
+
+test('two mutants for one clause: a surviving second one is vacuous even when the first is rejected', () => {
+  const r = shipWith([...rejectedAll, { id: 'm-C2-late', clause: 'C2', holds: true }])
+  assert.deepEqual(rules(r), ['vacuous'])
+  assert.match(r.findings[0]!.detail, /m-C2-late/)
+})
+
+test('a duplicate mutant id is formal-failed, and only a clause with zero mutants is unmutated', () => {
+  const dup = shipWith([...rejectedAll, killed('m-C2', 'C2')])
+  assert.deepEqual(rules(dup), ['formal-failed'])
+  assert.match(dup.findings[0]!.detail, /duplicate mutant id m-C2/)
+  const none = shipWith(rejectedAll.filter(m => m.clause !== 'C3'))
+  assert.deepEqual(rules(none), ['unmutated'])
+  assert.match(none.findings[0]!.detail, /C3/)
+})
+
+test('the receipt lists each planted bug of a formal row', () => {
+  const r = shipWith([...rejectedAll, killed('m-C2-b', 'C2')])
+  assert.match(r.receipt, /R1 formal: C2 holds, C3 holds \(planted: m-C2 rejected, m-C3 rejected, m-C2-b rejected\)/)
+})

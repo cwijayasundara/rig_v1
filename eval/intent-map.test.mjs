@@ -51,3 +51,13 @@ test('a result recorded before ship, a stale scenario, a vacuous clause, and a t
 
   assert.ok(rules(check(ship, { phase: 'ship', freeze: freezeFor(ship), clauses: { C2: true, C3: true, C7: true, C8: true, C9: true }, mutants: parsed.clauses.map(c => ({ id: c.id, clause: c.id, holds: false })), tests: [read(path.join(CASES, 'prune.py'))] })).includes('prune'))
 })
+
+test('every mutant of a clause is read: a surviving second mutant is vacuous, a duplicate id is formal-failed, only zero mutants is unmutated', () => {
+  const ship = read(path.join(LOGIN, 'intent.md'))
+  const all = { C2: true, C3: true, C7: true, C8: true, C9: true }
+  const rejected = Object.keys(all).map(c => ({ id: `m-${c}`, clause: c, holds: false }))
+  const run = mutants => check(ship, { phase: 'ship', freeze: freezeFor(ship), clauses: all, mutants })
+  assert.deepEqual(rules(run([...rejected, { id: 'late', clause: 'C2', holds: true }])), ['vacuous'])
+  assert.deepEqual(rules(run([...rejected, { id: 'm-C2', clause: 'C2', holds: false }])), ['formal-failed'])
+  assert.deepEqual(rules(run(rejected.filter(m => m.clause !== 'C3'))), ['unmutated'])
+})
