@@ -5,7 +5,9 @@ import path from 'node:path'
 
 const INTERPRETERS = new Set(['python', 'python3', 'node', 'tsx', 'ts-node', 'bun', 'deno', 'ruby', 'sh', 'bash'])
 const SCRIPT = /\.(py|js|mjs|cjs|ts)$/
+const DATA = /\.(json|md|txt|ya?ml|toml|lock|csv)$/i
 const EXT = ['', '.ts', '.js', '.mjs', '.cjs', '/index.js']
+const DEPTH = 3
 const posix = (p: string): string => p.split(path.sep).join('/')
 const isFile = (p: string): boolean => { try { return fs.statSync(p).isFile() } catch { return false } }
 
@@ -21,17 +23,34 @@ function importsOf(file: string, root: string): string[] {
       if (rel) first([path.join(dir, `${rel}.py`), path.join(dir, rel, '__init__.py'), `${rel}.py`, path.join(rel, '__init__.py')])
     }
   } else {
-    for (const m of text.matchAll(/(?:from\s+|require\(\s*|import\(\s*)['"](\.{1,2}\/[^'"]+)['"]/g)) first(EXT.map(e => path.join(dir, `${m[1]}${e}`)))
+    for (const m of text.matchAll(/(?:from\s+|require\(\s*|import\(\s*|import\s+)['"](\.{1,2}\/[^'"]+)['"]/g)) {
+      const spec = m[1]!
+      // A .js specifier may name a TypeScript file.
+      first([...EXT.map(e => path.join(dir, `${spec}${e}`)), ...(/\.[mc]?js$/.test(spec) ? [path.join(dir, spec.replace(/\.[mc]?js$/, '.ts'))] : [])])
+    }
   }
   return found
 }
 
+// The code a ## Formal command checks. The checker is the script an interpreter runs (or the command itself when it is a file); it
+// is never a target. Files reached through its imports (three levels) are targets, except its own directory tree, where a side copy
+// or helper lives; a checker at the repo root excludes only its exact siblings, since everything is under the root.
 export function formalTargets(command: string, root: string): string[] {
   const words = command.trim().split(/\s+/)
-  const fileAt = (i: number): string | undefined => { const w = (words[i] ?? '').replace(/^\.\//, ''); return w && isFile(path.join(root, w)) ? posix(path.normalize(w)) : undefined }
-  const at = INTERPRETERS.has(words[0] ?? '') ? 1 : 0
-  const checker = fileAt(at)
-  const named = words.map((_, i) => fileAt(i)).filter((f): f is string => Boolean(f) && f !== checker)
-  const imported = checker && SCRIPT.test(checker) ? importsOf(checker, root).filter(f => path.dirname(f) !== path.dirname(checker)) : []
-  return [...new Set([...named, ...imported])]
+  const fileAt = (i: number): string | undefined => { const w = (words[i] ?? '').replace(/^["']|["']$/g, '').replace(/^\.\//, ''); return w && isFile(path.join(root, w)) ? posix(path.normalize(w)) : undefined }
+  const interp = words.findIndex(w => INTERPRETERS.has(w))
+  const checkerAt = interp >= 0 ? words.findIndex((_, i) => i > interp && fileAt(i) && SCRIPT.test(fileAt(i)!)) : fileAt(0) ? 0 : -1
+  const checker = checkerAt >= 0 ? fileAt(checkerAt) : undefined
+  const named = words.map((_, i) => fileAt(i)).filter((f): f is string => f !== undefined && f !== checker && !DATA.test(f))
+  const reached = new Set<string>()
+  if (checker) {
+    let frontier = [checker]
+    for (let d = 0; d < DEPTH; d++) {
+      frontier = frontier.flatMap(f => importsOf(f, root)).filter(f => f !== checker && !reached.has(f))
+      frontier.forEach(f => reached.add(f))
+    }
+  }
+  const cdir = checker ? path.posix.dirname(checker) : ''
+  const own = (f: string): boolean => Boolean(checker) && (cdir === '.' ? path.posix.dirname(f) === '.' : f.startsWith(`${cdir}/`))
+  return [...new Set([...named, ...[...reached].filter(f => !own(f))])]
 }

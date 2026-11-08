@@ -35,7 +35,7 @@ test('green path: recorded scenarios, a rejected mutant for every clause and a v
   verdict(CLAUSES.map(c => killed(c)))
   record('E1'); record('E2')
   const v = verify()
-  assert.doesNotMatch(v.text, /vacuous|unmutated|formal-failed|result-unbacked|empirical-/)
+  assert.doesNotMatch(v.text, /vacuous|unmutated|formal-failed|formal-targets-diff|result-unbacked|empirical-/)
 })
 
 test('an equivalent mutant blocks as vacuous until a person adjudicates it non-bug with a named approver', () => {

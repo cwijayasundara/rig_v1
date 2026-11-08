@@ -31,8 +31,8 @@ const promisedHead = /^- (N\d+): (.+)$/
 
 // `- <name>: <contract>. pin: <command>`; a line with no `pin:` has an empty pin, which trusted-unpinned reports.
 function trustedLine(line: string): Trusted | undefined {
-  const m = /^- (\w+): (.*?)\.?\s*pin:\s*(.*)$/.exec(line) ?? /^- (\w+): (.*)$/.exec(line)
-  return m ? { name: m[1]!, contract: (m[2] ?? '').replace(/\.$/, '').trim(), pin: (m[3] ?? '').trim() } : undefined
+  const m = /^- ([\w.]+): (.*)\.?\s*pin:\s*(.*)$/.exec(line) ?? /^- ([\w.]+): (.*)$/.exec(line)
+  return m ? { name: m[1]!, contract: (m[2] ?? '').trim().replace(/\.$/, ''), pin: (m[3] ?? '').trim() } : undefined
 }
 
 const normalize = (text: string): string => text.replace(/\r\n/g, '\n')

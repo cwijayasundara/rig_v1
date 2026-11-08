@@ -34,7 +34,7 @@ function list(value) {
 }
 
 export function parse(text) {
-  const lines = text.split('\n')
+  const lines = text.replace(/\r\n/g, '\n').split('\n')
   const said = []
   const decisions = []
   const rows = []
@@ -71,8 +71,8 @@ export function parse(text) {
       scenarios.push(scenario)
     }
     if (section === 'Trusted') {
-      const t = /^- (\w+): (.*?)\.?\s*pin:\s*(.*)$/.exec(line) ?? /^- (\w+): (.*)$/.exec(line)
-      if (t) trusted.push({ name: t[1], contract: (t[2] ?? '').replace(/\.$/, '').trim(), pin: (t[3] ?? '').trim() })
+      const t = /^- ([\w.]+): (.*)\.?\s*pin:\s*(.*)$/.exec(line) ?? /^- ([\w.]+): (.*)$/.exec(line)
+      if (t) trusted.push({ name: t[1], contract: (t[2] ?? '').trim().replace(/\.$/, ''), pin: (t[3] ?? '').trim() })
     }
     if (section === 'Not promised') { const m = promisedHead.exec(line); if (m) notPromised.push({ id: m[1], text: m[2] }) }
   }

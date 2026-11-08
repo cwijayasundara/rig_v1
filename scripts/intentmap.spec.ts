@@ -247,3 +247,11 @@ test('trusted-unpinned: the login map names lookup, signer, clock and check_pass
   assert.deepEqual(login.trusted.map(t => t.name).sort(), ['check_password', 'clock', 'lookup', 'signer'])
   assert.equal(login.trusted.every(t => t.pin), true)
 })
+
+test('review fixes: a Trusted name may be dotted, a contract may mention pin:, and the oracle reads CRLF', async () => {
+  const text = trusted('The admin role only when `jwt.sign` accepts it.', '## Trusted\n- jwt.sign: maps. pin: x. pin: pytest -q\n\n')
+  assert.deepEqual(unpinned(text), [])
+  assert.deepEqual(parse(text).trusted, [{ name: 'jwt.sign', contract: 'maps. pin: x', pin: 'pytest -q' }])
+  const oracle = await import(path.join(FIX, '../../intent-map.mjs'))
+  assert.deepEqual(oracle.parse(text.replace(/\n/g, '\r\n')).trusted, oracle.parse(text).trusted)
+})
