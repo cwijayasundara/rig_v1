@@ -2,14 +2,15 @@
 // both must return the same rule ids. Pure functions: callers run the formal command and the tests, and pass the results in.
 import crypto from 'node:crypto'
 
-export const RULES = ['unmapped-said', 'unknown-kind', 'missing-clause', 'orphan-clause', 'both-ways', 'missing-scenario', 'empirical-early', 'empirical-open', 'empirical-unrecorded', 'stale-scenario', 'missing-not-promised', 'formal-failed', 'unmutated', 'vacuous', 'prune', 'behaviours-drift', 'result-unbacked', 'formal-targets-diff', 'one-way-unjustified'] as const
+export const RULES = ['unmapped-said', 'unknown-kind', 'missing-clause', 'orphan-clause', 'both-ways', 'missing-scenario', 'empirical-early', 'empirical-open', 'empirical-unrecorded', 'stale-scenario', 'missing-not-promised', 'formal-failed', 'unmutated', 'vacuous', 'prune', 'behaviours-drift', 'result-unbacked', 'formal-targets-diff', 'one-way-unjustified', 'trusted-unpinned'] as const
 // behaviours-drift is the wiring's own rule (spec.md ## Behaviours against the map); the oracle has no spec.md, so it has no such rule.
 export type RuleId = typeof RULES[number]
 export type IntentFinding = { rule: RuleId; detail: string }
 export type Scenario = { id: string; title?: string; given?: string; when?: string; then?: string; status?: string; command?: string; commit?: string }
 export type Row = { id: string; said: string; decision: string; kind: string; clauses: string[]; scenarios: string[] }
 export type Clause = { id: string; direction: string; text: string }
-export type IntentMap = { formalCommand: string; said: { id: string; text: string }[]; decisions: { id: string; text: string }[]; rows: Row[]; clauses: Clause[]; scenarios: Scenario[]; notPromised: { id: string; text: string }[] }
+export type Trusted = { name: string; contract: string; pin: string }
+export type IntentMap = { formalCommand: string; trusted: Trusted[]; said: { id: string; text: string }[]; decisions: { id: string; text: string }[]; rows: Row[]; clauses: Clause[]; scenarios: Scenario[]; notPromised: { id: string; text: string }[] }
 export type Mutant = { id: string; clause: string; holds: boolean }
 export type Results = Record<string, { status: string; command?: string; commit?: string; run?: string }>
 // One line of evidence/runs.jsonl: the ledger a recorded pass must be found in.
@@ -27,6 +28,12 @@ const decisionHead = /^- (D\d+): (.+)$/
 const clauseHead = /^### (C\d+)(?: (only-when|always))?$/
 const scenarioHead = /^### (E\d+)$/
 const promisedHead = /^- (N\d+): (.+)$/
+
+// `- <name>: <contract>. pin: <command>`; a line with no `pin:` has an empty pin, which trusted-unpinned reports.
+function trustedLine(line: string): Trusted | undefined {
+  const m = /^- (\w+): (.*?)\.?\s*pin:\s*(.*)$/.exec(line) ?? /^- (\w+): (.*)$/.exec(line)
+  return m ? { name: m[1]!, contract: (m[2] ?? '').replace(/\.$/, '').trim(), pin: (m[3] ?? '').trim() } : undefined
+}
 
 const normalize = (text: string): string => text.replace(/\r\n/g, '\n')
 const finding = (rule: RuleId, detail: string): IntentFinding => ({ rule, detail })
@@ -47,7 +54,7 @@ function fieldsOf(rest: string): Record<string, string> {
 
 export function parse(raw: string): IntentMap {
   const lines = normalize(raw).split('\n')
-  const map: IntentMap = { said: [], decisions: [], rows: [], clauses: [], scenarios: [], notPromised: [], formalCommand: '' }
+  const map: IntentMap = { said: [], decisions: [], rows: [], clauses: [], scenarios: [], notPromised: [], formalCommand: '', trusted: [] }
   let section = ''
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? ''
@@ -79,6 +86,7 @@ export function parse(raw: string): IntentMap {
       map.scenarios.push(scenario)
     }
     if (section === 'Formal command' && !map.formalCommand && line.trim()) map.formalCommand = line.trim().replace(/^`|`$/g, '')
+    if (section === 'Trusted') { const t = trustedLine(line); if (t) map.trusted.push(t) }
     if (section === 'Not promised') { const m = promisedHead.exec(line); if (m) map.notPromised.push({ id: m[1]!, text: m[2]! }) }
   }
   return map
@@ -86,6 +94,22 @@ export function parse(raw: string): IntentMap {
 
 export function freezeFor(text: string): Record<string, string> {
   return Object.fromEntries(parse(text).scenarios.map(s => [s.id, scenarioHash(s)]))
+}
+
+// Every symbol a formal clause leans on (written in backticks) is a Trusted entry or the subject of an Empirical scenario, and every
+// Trusted entry is pinned by a command. The pin is not run here; naming and pinning is the promise.
+function trustedFindings(map: IntentMap): IntentFinding[] {
+  const out: IntentFinding[] = []
+  for (const t of map.trusted) if (!t.pin) out.push(finding('trusted-unpinned', `Trusted ${t.name} has no pin: <command>`))
+  const names = new Set(map.trusted.map(t => t.name))
+  const subjects = map.scenarios.map(s => [s.title, s.given, s.when, s.then].join(' ')).join(' ')
+  const wanted = new Set(map.rows.filter(r => r.kind === 'formal').flatMap(r => r.clauses))
+  for (const c of map.clauses.filter(c => wanted.has(c.id))) {
+    for (const sym of new Set([...c.text.matchAll(/`([A-Za-z_][\w.]*)`/g)].map(m => m[1]!))) {
+      if (!names.has(sym) && !new RegExp(`\\b${sym.replace(/\./g, '\\.')}\\b`).test(subjects)) out.push(finding('trusted-unpinned', `${c.id} leans on ${sym}, which is in no Trusted entry and no empirical scenario`))
+    }
+  }
+  return out
 }
 
 function structure(map: IntentMap, phase: 'plan' | 'ship'): IntentFinding[] {
@@ -119,6 +143,7 @@ function structure(map: IntentMap, phase: 'plan' | 'ship'): IntentFinding[] {
     }
     if (row.kind === 'not-promised' && !promised.has(row.id)) out.push(finding('missing-not-promised', `${row.id} is not-promised and is absent from Not promised`))
   }
+  out.push(...trustedFindings(map))
   const used = new Set(map.rows.flatMap(r => r.clauses))
   for (const c of map.clauses) if (!used.has(c.id)) out.push(finding('orphan-clause', `${c.id} is in Formal and on no row`))
   return out

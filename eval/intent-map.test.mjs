@@ -79,3 +79,12 @@ test('one-way-unjustified: a silent one-way formal row fails, a stated reason cl
   assert.equal(rules(check(said, { phase: 'plan' })).includes('one-way-unjustified'), false)
   assert.equal(rules(check(read(path.join(LOGIN, 'intent-plan.md')), { phase: 'plan' })).includes('one-way-unjustified'), false)
 })
+
+test('trusted-unpinned: an unnamed backticked symbol fails, a pinned Trusted entry clears it, and the login map is clean', () => {
+  const base = read(path.join(CASES, 'silent-one-way.md')).replace('## Decisions\n', '## Decisions\n- D2: one-way-because: only the admin role is promised\n').replace('said S1. kind', 'said S1. decision D2. kind').replace('The admin role only for a username with no email sent.', 'The admin role only when `lookup` finds an admin row.')
+  const hits = text => rules(check(text, { phase: 'plan' })).filter(r => r === 'trusted-unpinned')
+  assert.deepEqual(hits(base), ['trusted-unpinned'])
+  assert.deepEqual(hits(base.replace('## Not promised', '## Trusted\n- lookup: returns the row. pin: pytest -q\n\n## Not promised')), [])
+  assert.deepEqual(hits(base.replace('## Not promised', '## Trusted\n- lookup: returns the row. pin: \n\n## Not promised')), ['trusted-unpinned'])
+  assert.deepEqual(hits(read(path.join(LOGIN, 'intent-plan.md'))), [])
+})

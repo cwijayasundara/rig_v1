@@ -19,9 +19,9 @@
 
 ## Formal
 ### C2 only-when
-A token only for the account the login names, with its right password, carrying that account's id and its table's role.
+A token only for the account the login names, with the right password as `check_password` judges it, carrying that account's id and its table's role, issued by `signer` at `clock` time.
 ### C3 always
-The right password for the named account gets a token, unless lookup or signing failed.
+The right password for the named account gets a token, unless `lookup` or `signer` failed.
 ### C7
 The admin role only for a username with no email sent.
 ### C8
@@ -43,6 +43,12 @@ given: a hash bcrypt cannot read
 when: check_password is called with any password
 then: an error, and never Ok
 status: planned
+
+## Trusted
+- check_password: answers with bcrypt's verdict and errors only on an unreadable hash. pin: python3 -m pytest -q tests/test_check_password.py
+- lookup: returns the row of the named account in the table the identity selects. pin: python3 -m pytest -q tests/test_trusted_boundary.py
+- signer: signs a token carrying the id and role it is given, or fails. pin: python3 -m pytest -q tests/test_trusted_boundary.py
+- clock: gives the time a token is issued at. pin: python3 -m pytest -q tests/test_trusted_boundary.py
 
 ## Not promised
 - N1: Login finishes, and how fast. Other endpoints reading the role. The rate of attempts.

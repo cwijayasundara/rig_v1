@@ -222,3 +222,28 @@ test('one-way-unjustified: a formal row with no decision, an empty reason or an 
   assert.deepEqual(one(withDecision('- D2: one-way-because: the words only say which role an admin gets')), [])
   assert.deepEqual(one(read('login/intent-plan.md')), [])
 })
+
+// Wave 2, item 4: every symbol a formal clause leans on is named in ## Trusted with a pin, or is an empirical scenario's subject.
+const trusted = (clause: string, section = ''): string => read('cases/silent-one-way.md').replace('## Decisions\n', '## Decisions\n- D2: one-way-because: only the admin role is promised\n').replace('said S1. kind', 'said S1. decision D2. kind').replace('The admin role only for a username with no email sent.', clause).replace('## Not promised', `${section}## Not promised`)
+const unpinned = (text: string): string[] => check(text, { phase: 'plan' }).findings.filter(f => f.rule === 'trusted-unpinned').map(f => f.detail)
+
+test('trusted-unpinned: an unnamed backticked symbol, an entry with no pin, and a scenario-covered symbol', () => {
+  const clause = 'The admin role only when `lookup` finds an admin row.'
+  const named = unpinned(trusted(clause))
+  assert.equal(named.length, 1)
+  assert.match(named[0]!, /lookup/)
+  assert.deepEqual(unpinned(trusted(clause, '## Trusted\n- lookup: returns the row for the named account. pin: pytest -q tests/test_lookup.py\n\n')), [])
+  assert.equal(unpinned(trusted(clause, '## Trusted\n- lookup: returns the row for the named account.\n\n')).length, 1)
+  assert.equal(unpinned(trusted(clause, '## Trusted\n- lookup: returns the row. pin: \n\n')).length, 1)
+  assert.deepEqual(unpinned(trusted('The admin role only for a username with no email sent.')), [])
+  const scenario = '## Empirical\n### E1\ntitle: lookup answers for the named account\ngiven: g\nwhen: w\nthen: t\nstatus: planned\n\n'
+  assert.deepEqual(unpinned(trusted(clause).replace('## Empirical\n', scenario)), [])
+  assert.ok(RULES.includes('trusted-unpinned'))
+  assert.deepEqual(parse(trusted(clause, '## Trusted\n- lookup: returns the row. pin: pytest -q\n\n')).trusted, [{ name: 'lookup', contract: 'returns the row', pin: 'pytest -q' }])
+})
+
+test('trusted-unpinned: the login map names lookup, signer, clock and check_password, each pinned', () => {
+  const login = parse(read('login/intent-plan.md'))
+  assert.deepEqual(login.trusted.map(t => t.name).sort(), ['check_password', 'clock', 'lookup', 'signer'])
+  assert.equal(login.trusted.every(t => t.pin), true)
+})

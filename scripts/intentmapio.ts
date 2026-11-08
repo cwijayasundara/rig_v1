@@ -73,6 +73,7 @@ const FIX: Record<string, string> = {
   'vacuous': 'tighten the clause so the planted bug is rejected (a map edit needs a re-approval); if the mutant is equivalent (not a bug), a person records it: `S intent-adjudicate <slug> <mutant-id> non-bug --by <name> -- "<reason>"`',
   'formal-targets-diff': 'point the ## Formal command at a checker that imports the code this change edits (or name that file in the command); a checker that imports a copy of it proves the copy, and a map edit needs a re-approval',
   'one-way-unjustified': 'give the formal row a decision in ## Decisions that starts both-ways, or says `one-way-because: <why only one direction is promised>` (a map edit needs a re-approval)',
+  'trusted-unpinned': 'add a `- <name>: <contract>. pin: <command>` line under ## Trusted for the symbol, with a command that pins its contract (a map edit needs a re-approval)',
   'unmutated': 'plant one bug for the clause in a scratch copy and add it to the formal command output',
   'empirical-open': 'run the scenario with `S intent-record <slug> <E-id> -- "<command>"`',
   'empirical-unrecorded': 'record the result with `S intent-record`, never by hand',

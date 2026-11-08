@@ -41,6 +41,7 @@ export function parse(text) {
   const clauses = []
   const scenarios = []
   const notPromised = []
+  const trusted = []
   let section = ''
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
@@ -69,13 +70,31 @@ export function parse(text) {
       }
       scenarios.push(scenario)
     }
+    if (section === 'Trusted') {
+      const t = /^- (\w+): (.*?)\.?\s*pin:\s*(.*)$/.exec(line) ?? /^- (\w+): (.*)$/.exec(line)
+      if (t) trusted.push({ name: t[1], contract: (t[2] ?? '').replace(/\.$/, '').trim(), pin: (t[3] ?? '').trim() })
+    }
     if (section === 'Not promised') { const m = promisedHead.exec(line); if (m) notPromised.push({ id: m[1], text: m[2] }) }
   }
-  return { said, decisions, rows, clauses, scenarios, notPromised }
+  return { said, decisions, rows, clauses, scenarios, notPromised, trusted }
 }
 
 function finding(rule, detail) {
   return { rule, detail }
+}
+
+function trustedFindings(map) {
+  const out = []
+  for (const t of map.trusted) if (!t.pin) out.push(finding('trusted-unpinned', `Trusted ${t.name} has no pin: <command>`))
+  const names = new Set(map.trusted.map(t => t.name))
+  const subjects = map.scenarios.map(s => [s.title, s.given, s.when, s.then].join(' ')).join(' ')
+  const wanted = new Set(map.rows.filter(r => r.kind === 'formal').flatMap(r => r.clauses))
+  for (const c of map.clauses.filter(c => wanted.has(c.id))) {
+    for (const sym of new Set([...c.text.matchAll(/`([A-Za-z_][\w.]*)`/g)].map(m => m[1]))) {
+      if (!names.has(sym) && !new RegExp(`\\b${sym.replace(/\./g, '\\.')}\\b`).test(subjects)) out.push(finding('trusted-unpinned', `${c.id} leans on ${sym}, which is in no Trusted entry and no empirical scenario`))
+    }
+  }
+  return out
 }
 
 export function structure(text, phase) {
@@ -85,6 +104,7 @@ export function structure(text, phase) {
   const scenarioById = new Map(map.scenarios.map(s => [s.id, s]))
   const promised = new Set(map.notPromised.map(n => n.id))
   const seenSaid = new Set(map.rows.map(r => r.said).filter(Boolean))
+  out.push(...trustedFindings(map))
   for (const s of map.said) if (!seenSaid.has(s.id)) out.push(finding('unmapped-said', `${s.id} is in Said and on no row`))
   for (const row of map.rows) {
     if (!['formal', 'empirical', 'not-promised'].includes(row.kind)) out.push(finding('unknown-kind', `${row.id} has kind ${row.kind || '(none)'}`))
