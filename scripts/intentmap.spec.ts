@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { check, applyResults, freezeFor, parse, scenarioHash, shipCheck, behavioursFrom, type Results, type Adjudication } from './intentmap.ts'
+import { RULES, check, applyResults, freezeFor, parse, scenarioHash, shipCheck, behavioursFrom, type Results, type Adjudication } from './intentmap.ts'
 
 const FIX = path.resolve(import.meta.dirname, '../eval/fixtures/intent-map')
 const read = (...p: string[]): string => fs.readFileSync(path.join(FIX, ...p), 'utf8')
@@ -158,4 +158,34 @@ test('an adjudication does not suppress a different surviving mutant of the same
   const r = shipWith([...survivor, { id: 'm2', clause: 'C2', holds: true }], { adjudications: { m1: { verdict: 'non-bug', because: 'commutes', by: 'Ana' } } })
   assert.deepEqual(rules(r), ['vacuous'])
   assert.match(r.findings[0]!.detail, /m2/)
+})
+
+// Wave 1, item 6: a pass must be backed by a line of the run ledger.
+const backed = (): Results => Object.fromEntries(Object.entries(recorded()).map(([id, r], i) => [id, { ...r, run: `r${i + 1}` }]))
+const ledgerOf = (results: Results): { id?: string; cmd: string; exit: number; commit?: string }[] => Object.values(results).map(r => ({ id: r.run, cmd: r.command!, exit: 0, commit: r.commit }))
+const shipBacked = (results: Results, runs: ReturnType<typeof ledgerOf>): ReturnType<typeof ship> => ship({ results, runs })
+
+test('result-unbacked: a pass with a matching ledger line is clean', () => {
+  const results = backed()
+  assert.deepEqual(shipBacked(results, ledgerOf(results)).findings, [])
+})
+
+test('result-unbacked: a missing run id, an unknown run id, another command, a failed run, another commit and an empty ledger each fail the scenario', () => {
+  const results = backed()
+  const ledger = ledgerOf(results)
+  const one = (r: ReturnType<typeof ship>): string[] => r.findings.filter(f => f.rule === 'result-unbacked').map(f => f.detail)
+  const { run: _dropped, ...noRun } = results.E1!
+  assert.equal(one(shipBacked({ ...results, E1: noRun }, ledger)).length, 1)
+  assert.equal(one(shipBacked({ ...results, E1: { ...results.E1!, run: 'r99' } }, ledger)).length, 1)
+  assert.equal(one(shipBacked(results, ledger.map(l => l.id === 'r1' ? { ...l, cmd: 'something else' } : l))).length, 1)
+  assert.equal(one(shipBacked(results, ledger.map(l => l.id === 'r1' ? { ...l, exit: 1 } : l))).length, 1)
+  assert.equal(one(shipBacked(results, ledger.map(l => l.id === 'r1' ? { ...l, commit: 'deadbee' } : l))).length, 1)
+  const empty = one(shipBacked(results, []))
+  assert.equal(empty.length, 2)
+  assert.match(empty[0]!, /E1/)
+})
+
+test('result-unbacked is a reserved sensor id and a ledger that is not passed is not checked (the pure oracle path)', () => {
+  assert.ok(RULES.includes('result-unbacked'))
+  assert.deepEqual(ship().findings, [])
 })

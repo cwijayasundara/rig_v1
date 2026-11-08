@@ -6,12 +6,18 @@ import { CHANGES, ROOT, exists, git, out, fail, checkSlug, sanctionWrites } from
 import { runCommand, recordRun } from './runs.ts'
 import { isTest, type Finding, type FileDiff } from './model.ts'
 import type { Registry } from './registry.ts'
-import { shipCheck, parse, receipt, applyResults, behavioursFrom, type Results, type Adjudications, type Mutant } from './intentmap.ts'
+import { shipCheck, parse, receipt, applyResults, behavioursFrom, type Results, type Adjudications, type Mutant, type LedgerRun } from './intentmap.ts'
 
 const dir = (slug: string): string => path.join(CHANGES, slug)
 const readJson = <T>(file: string, fallback: T): T => { try { return JSON.parse(fs.readFileSync(file, 'utf8')) as T } catch { return fallback } }
 
 export const readResults = (slug: string): Results => readJson<Results>(path.join(dir(slug), 'intent-results.json'), {})
+
+// The change's run ledger (evidence/runs.jsonl), one parsed line per run; unreadable lines are skipped.
+export function readRuns(slug: string): (LedgerRun & { tail: string })[] {
+  const f = path.join(dir(slug), 'evidence', 'runs.jsonl')
+  return (exists(f) ? fs.readFileSync(f, 'utf8') : '').split('\n').filter(Boolean).flatMap(l => { try { return [JSON.parse(l) as LedgerRun & { tail: string }] } catch { return [] } })
+}
 
 const adjPath = (slug: string): string => path.join(dir(slug), 'adjudications.json')
 const VERDICTS = ['non-bug', 'clause-vacuous']
@@ -35,10 +41,11 @@ export function recordResult(slug: string, scenario: string, cmd: string): { sta
   if (!exists(map)) throw new Error(`${slug} has no intent-map.md`)
   if (!parse(fs.readFileSync(map, 'utf8')).scenarios.some(s => s.id === scenario)) throw new Error(`${scenario} is not an Empirical scenario of ${slug}`)
   const row = runCommand(cmd)
-  recordRun(slug, { ...row, source: 'ship' })
+  const commit = git(['rev-parse', '--short', 'HEAD']) ?? ''
+  const run = recordRun(slug, { ...row, source: 'ship', commit })
   const status = row.exit === 0 ? 'pass' : 'fail'
   const results = readResults(slug)
-  results[scenario] = { status, command: row.cmd, commit: git(['rev-parse', '--short', 'HEAD']) ?? '' }
+  results[scenario] = { status, command: row.cmd, commit, run }
   fs.writeFileSync(path.join(dir(slug), 'intent-results.json'), JSON.stringify(results, null, 2) + '\n')
   return { status, exit: row.exit }
 }
@@ -51,7 +58,7 @@ export function intentShipFindings(slug: string, config: Registry, diffs: FileDi
   const freeze = readJson<Record<string, string> | undefined>(path.join(dir(slug), 'freeze.json'), undefined)
   const result = shipCheck({
     text: fs.readFileSync(mapPath, 'utf8'), results: readResults(slug), freeze, tests,
-    adjudications: readAdjudications(slug),
+    adjudications: readAdjudications(slug), runs: readRuns(slug),
     run: cmd => { const row = runCommand(cmd, { timeoutMs: Math.max(budgetMs, 600_000) }); recordRun(slug, { ...row, source: 'ship' }); return { exit: row.exit, tail: row.tail } },
   })
   return result.findings.map(f => ({ sensor: f.rule, severity: 'block' as const, file: `.rig/changes/${slug}/intent-map.md`, message: f.detail, fix: fixFor(f.rule) }))
@@ -63,6 +70,7 @@ const FIX: Record<string, string> = {
   'unmutated': 'plant one bug for the clause in a scratch copy and add it to the formal command output',
   'empirical-open': 'run the scenario with `S intent-record <slug> <E-id> -- "<command>"`',
   'empirical-unrecorded': 'record the result with `S intent-record`, never by hand',
+  'result-unbacked': 'record the scenario with `S intent-record <slug> <E-id> -- "<command>"`; a result written by hand has no ledger run and never ships',
   'stale-scenario': 'revert the scenario text, or ask a person to re-approve the plan',
   'prune': 'drop the test that only repeats a proved clause, or make it name an empirical scenario',
 }
@@ -103,8 +111,7 @@ export function intentReceipt(slug: string): string {
   const mapPath = path.join(dir(slug), 'intent-map.md')
   if (!exists(mapPath)) return ''
   const map = parse(applyResults(fs.readFileSync(mapPath, 'utf8'), readResults(slug)))
-  const runsFile = path.join(dir(slug), 'evidence', 'runs.jsonl')
-  const runs = (exists(runsFile) ? fs.readFileSync(runsFile, 'utf8') : '').split('\n').filter(Boolean).flatMap(l => { try { return [JSON.parse(l) as { cmd: string; tail: string }] } catch { return [] } })
+  const runs = readRuns(slug)
   const last = runs.findLast(r => r.cmd === map.formalCommand)
   let clauses: Record<string, boolean> = {}
   let mutants: Mutant[] = []

@@ -80,3 +80,18 @@ test('a malformed adjudications.json reads as no adjudication, and the file is p
   assert.equal(r.status, 0, r.stderr)
   assert.deepEqual(JSON.parse(r.stdout.trim()), [{}, true, false])
 })
+
+test('intent-record stores a run id that names its ledger line, and a result without one fails verify as result-unbacked', () => {
+  write(repo, '.rig/changes/demo/intent-map.md', plan)
+  assert.equal(sdlc(repo, ['intent-record', 'demo', 'E1', '--', 'node -e "process.exit(0)"']).code, 0)
+  const resFile = path.join(repo, '.rig/changes/demo/intent-results.json')
+  const res = JSON.parse(fs.readFileSync(resFile, 'utf8'))
+  assert.equal(res.E1.run, 'r1')
+  const ledger = fs.readFileSync(path.join(repo, '.rig/changes/demo/evidence/runs.jsonl'), 'utf8').trim().split('\n').map(l => JSON.parse(l))
+  assert.equal(ledger[0].id, 'r1')
+  assert.equal(ledger[0].commit, res.E1.commit)
+  delete res.E1.run
+  fs.writeFileSync(resFile, JSON.stringify(res))
+  const v = sdlc(repo, ['verify', 'demo'])
+  assert.match(v.stdout + v.stderr, /result-unbacked/)
+})

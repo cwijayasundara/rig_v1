@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process'
 import { maskSecrets } from './model.ts'
 import { ROOT, CHANGES, now } from './core.ts'
 
-export type RunRow = { at: string; cmd: string; sensor?: string; cwd?: string; exit: number; ms: number; tail: string; expectFail?: true; timedOut?: true; source?: 'gate' | 'ship'; tree?: string }
+export type RunRow = { at: string; cmd: string; sensor?: string; cwd?: string; exit: number; ms: number; tail: string; expectFail?: true; timedOut?: true; source?: 'gate' | 'ship'; tree?: string; id?: string; commit?: string }
 
 const TAIL_LINES = 30
 const TIMED_OUT = 124
@@ -63,9 +63,13 @@ export const SHELL = process.platform !== 'win32' ? '' : process.env.RIG_SHELL |
 
 const runsFile = (slug: string): string => path.join(CHANGES, slug, 'evidence', 'runs.jsonl')
 
-export function recordRun(slug: string, row: RunRow): void {
+// Appends the row and returns its id, `r<n>` for the n-th line of the change's ledger; the id is stored on the line.
+export function recordRun(slug: string, row: RunRow): string {
   fs.mkdirSync(path.dirname(runsFile(slug)), { recursive: true })
-  fs.appendFileSync(runsFile(slug), JSON.stringify(row) + '\n')
+  const have = fs.existsSync(runsFile(slug)) ? fs.readFileSync(runsFile(slug), 'utf8').split('\n').filter(Boolean).length : 0
+  const id = `r${have + 1}`
+  fs.appendFileSync(runsFile(slug), JSON.stringify({ ...row, id }) + '\n')
+  return id
 }
 
 export const normCmd = (cmd: string): string => cmd.trim().replace(/\s+/g, ' ')
