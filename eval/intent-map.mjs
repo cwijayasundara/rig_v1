@@ -90,7 +90,7 @@ function trustedFindings(map) {
   const subjects = map.scenarios.map(s => [s.title, s.given, s.when, s.then].join(' ')).join(' ')
   const wanted = new Set(map.rows.filter(r => r.kind === 'formal').flatMap(r => r.clauses))
   for (const c of map.clauses.filter(c => wanted.has(c.id))) {
-    for (const sym of new Set([...c.text.matchAll(/`([A-Za-z_][\w.]*)`/g)].map(m => m[1]))) {
+    for (const sym of new Set([...c.text.matchAll(/`([A-Za-z_][\w.]*)\(\)`/g)].map(m => m[1]))) {
       if (!names.has(sym) && !new RegExp(`\\b${sym.replace(/\./g, '\\.')}\\b`).test(subjects)) out.push(finding('trusted-unpinned', `${c.id} leans on ${sym}, which is in no Trusted entry and no empirical scenario`))
     }
   }
@@ -147,7 +147,7 @@ export function freezeFindings(map, freeze) {
   return out
 }
 
-const clears = a => a?.verdict === 'non-bug' && Boolean(a.by?.trim()) && Boolean(a.because?.trim())
+const clears = (a, m) => a?.verdict === 'non-bug' && a.clause === m.clause && Boolean(a.by?.trim()) && Boolean(a.because?.trim())
 
 export function formalFindings(map, clauseHolds, mutants, adjudications = {}) {
   const out = []
@@ -159,7 +159,7 @@ export function formalFindings(map, clauseHolds, mutants, adjudications = {}) {
   for (const id of wanted) {
     const planted = mutants.filter(m => m.clause === id)
     if (!planted.length) out.push(finding('unmutated', `${id} has no planted bug`))
-    for (const m of planted) if (m.holds && !clears(adjudications[m.id])) out.push(finding('vacuous', `${id} still holds under ${m.id}, so the clause rules nothing out`))
+    for (const m of planted) if (m.holds && !clears(adjudications[m.id], m)) out.push(finding('vacuous', `${id} still holds under ${m.id}, so the clause rules nothing out`))
   }
   return out
 }

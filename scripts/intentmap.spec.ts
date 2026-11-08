@@ -139,7 +139,7 @@ test('the receipt lists each planted bug of a formal row', () => {
 
 // Wave 1, item 1: a surviving mutant can be adjudicated; only a non-bug with a named approver and a reason clears it.
 const survivor = [...rejectedAll.filter(m => m.clause !== 'C2'), { id: 'm1', clause: 'C2', holds: true }]
-const adjudicated = (a: Partial<Adjudication>): ReturnType<typeof check> => shipWith(survivor, { adjudications: { m1: { verdict: 'non-bug', because: 'commutes', by: 'Ana', ...a } } })
+const adjudicated = (a: Partial<Adjudication>): ReturnType<typeof check> => shipWith(survivor, { adjudications: { m1: { verdict: 'non-bug', because: 'commutes', by: 'Ana', clause: 'C2', ...a } } })
 
 test('a non-bug adjudication with a by and a reason clears the survivor and the receipt says so', () => {
   const r = adjudicated({})
@@ -151,11 +151,14 @@ test('clause-vacuous, a missing by, a missing reason, or an unrelated id leave t
   assert.deepEqual(rules(adjudicated({ verdict: 'clause-vacuous' })), ['vacuous'])
   assert.deepEqual(rules(adjudicated({ by: ' ' })), ['vacuous'])
   assert.deepEqual(rules(adjudicated({ because: '' })), ['vacuous'])
-  assert.deepEqual(rules(shipWith(survivor, { adjudications: { other: { verdict: 'non-bug', because: 'x', by: 'Ana' } } })), ['vacuous'])
+  // keyed by clause too: an id reused for another clause, or an adjudication with no clause (an old file), clears nothing
+  assert.deepEqual(rules(adjudicated({ clause: 'C3' })), ['vacuous'])
+  assert.deepEqual(rules(adjudicated({ clause: undefined })), ['vacuous'])
+  assert.deepEqual(rules(shipWith(survivor, { adjudications: { other: { verdict: 'non-bug', because: 'x', by: 'Ana', clause: 'C2' } } })), ['vacuous'])
 })
 
 test('an adjudication does not suppress a different surviving mutant of the same clause', () => {
-  const r = shipWith([...survivor, { id: 'm2', clause: 'C2', holds: true }], { adjudications: { m1: { verdict: 'non-bug', because: 'commutes', by: 'Ana' } } })
+  const r = shipWith([...survivor, { id: 'm2', clause: 'C2', holds: true }], { adjudications: { m1: { verdict: 'non-bug', because: 'commutes', by: 'Ana', clause: 'C2' } } })
   assert.deepEqual(rules(r), ['vacuous'])
   assert.match(r.findings[0]!.detail, /m2/)
 })
@@ -228,7 +231,7 @@ const trusted = (clause: string, section = ''): string => read('cases/silent-one
 const unpinned = (text: string): string[] => check(text, { phase: 'plan' }).findings.filter(f => f.rule === 'trusted-unpinned').map(f => f.detail)
 
 test('trusted-unpinned: an unnamed backticked symbol, an entry with no pin, and a scenario-covered symbol', () => {
-  const clause = 'The admin role only when `lookup` finds an admin row.'
+  const clause = 'The admin role only when `lookup()` finds an admin row.'
   const named = unpinned(trusted(clause))
   assert.equal(named.length, 1)
   assert.match(named[0]!, /lookup/)
@@ -236,6 +239,8 @@ test('trusted-unpinned: an unnamed backticked symbol, an entry with no pin, and 
   assert.equal(unpinned(trusted(clause, '## Trusted\n- lookup: returns the row for the named account.\n\n')).length, 1)
   assert.equal(unpinned(trusted(clause, '## Trusted\n- lookup: returns the row. pin: \n\n')).length, 1)
   assert.deepEqual(unpinned(trusted('The admin role only for a username with no email sent.')), [])
+  // a backticked literal is a value, not a dependency: only `name()` is
+  assert.deepEqual(unpinned(trusted('The `admin` role only when the email is `None` and the flag is `true`.')), [])
   const scenario = '## Empirical\n### E1\ntitle: lookup answers for the named account\ngiven: g\nwhen: w\nthen: t\nstatus: planned\n\n'
   assert.deepEqual(unpinned(trusted(clause).replace('## Empirical\n', scenario)), [])
   assert.ok(RULES.includes('trusted-unpinned'))
@@ -249,7 +254,7 @@ test('trusted-unpinned: the login map names lookup, signer, clock and check_pass
 })
 
 test('review fixes: a Trusted name may be dotted, a contract may mention pin:, and the oracle reads CRLF', async () => {
-  const text = trusted('The admin role only when `jwt.sign` accepts it.', '## Trusted\n- jwt.sign: maps. pin: x. pin: pytest -q\n\n')
+  const text = trusted('The admin role only when `jwt.sign()` accepts it.', '## Trusted\n- jwt.sign: maps. pin: x. pin: pytest -q\n\n')
   assert.deepEqual(unpinned(text), [])
   assert.deepEqual(parse(text).trusted, [{ name: 'jwt.sign', contract: 'maps. pin: x', pin: 'pytest -q' }])
   const oracle = await import(path.join(FIX, '../../intent-map.mjs'))

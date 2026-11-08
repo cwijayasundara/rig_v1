@@ -68,7 +68,7 @@ export function scan(files: Record<string, string>, isTestFile: (f: string) => b
   return found
 }
 
-const slugOf = (f: Finding, n: number): string => `${f.kind}-${n}-${path.basename(f.kind === 'recheck' ? path.dirname(f.files[0] ?? 'x') : f.files[0] ?? 'x').replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`
+const slugOf = (f: Finding, n: number): string => `${f.kind}-${n}-${(f.kind === 'recheck' ? path.basename(path.dirname(f.files[0] ?? 'x')) : path.basename(f.files[0] ?? 'x').replace(/\.[^.]+$/, '')).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`
 
 function proposalText(f: Finding, slug: string, tool: string): string {
   return `---\nkind: maintain\ntype: chore\nstatus: proposed\nfound: ${new Date().toISOString().slice(0, 10)}\nscope: [${f.kind === 'recheck' ? '' : f.files.join(', ')}]\n---\n# ${f.title}\n\n## Intent\n\n${f.evidence}\n\nFound by \`sdlc.ts ${tool}\`, not by a person: confirm it is real before acting on it.\n\n## Non-goals\n\n${f.kind === 'recheck' ? 'Do not edit the frozen intent map or its recorded results. Fix the code, dependency or environment that moved, or ask a person to supersede the change.' : 'Do not change behaviour. Do not touch files outside \`scope\`.'}\n\n## How to start\n\n\`${skillRef('start')} ${slug.replace(/^[a-z]+-\d+-/, `${f.kind}-`)}\` with this file as the intent, then plan, approve and build as for any chore.\n`

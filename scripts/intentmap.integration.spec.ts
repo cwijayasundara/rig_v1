@@ -42,11 +42,11 @@ test('an equivalent mutant blocks as vacuous until a person adjudicates it non-b
   verdict([...CLAUSES.filter(c => c !== 'C2').map(c => killed(c)), { id: 'm1', clause: 'C2', holds: true }])
   record('E1'); record('E2')
   assert.match(verify().text, /vacuous/)
-  assert.equal(sdlc(repo, ['intent-adjudicate', 'demo', 'm1', 'clause-vacuous', '--by', 'Ana', '--', 'the clause is too loose']).code, 0)
+  assert.equal(sdlc(repo, ['intent-adjudicate', 'demo', 'm1', 'clause-vacuous', '--clause', 'C2', '--by', 'Ana', '--', 'the clause is too loose']).code, 0)
   assert.match(verify().text, /vacuous/)
   assert.notEqual(sdlc(repo, ['intent-adjudicate', 'demo', 'm1', 'non-bug', '--', 'commutes']).code, 0)
   assert.match(verify().text, /vacuous/)
-  assert.equal(sdlc(repo, ['intent-adjudicate', 'demo', 'm1', 'non-bug', '--by', 'Ana', '--', 'the reorder commutes']).code, 0)
+  assert.equal(sdlc(repo, ['intent-adjudicate', 'demo', 'm1', 'non-bug', '--clause', 'C2', '--by', 'Ana', '--', 'the reorder commutes']).code, 0)
   assert.doesNotMatch(verify().text, /vacuous/)
 })
 

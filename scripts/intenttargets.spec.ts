@@ -49,3 +49,19 @@ test('imports are followed through helpers, a .js specifier finds the .ts file, 
   const root = tree({ 'check.mjs': "import './lib/h.mjs'\n", 'lib/h.mjs': "import '../src/login.js'\n", 'src/login.ts': '', 'v.json': '{}' })
   assert.deepEqual(formalTargets('node check.mjs v.json', root).sort(), ['lib/h.mjs', 'src/login.ts'])
 })
+
+// Follow-ups (wave 2 limits): commands that reach the checker through a package script, a make target or python -m.
+test('npm run, make and python -m resolve to the checker they run', () => {
+  const root = tree({
+    'package.json': JSON.stringify({ scripts: { formal: 'node tools/check.mjs', other: 'echo hi' } }),
+    'Makefile': 'formal:\n\tnode tools/check.mjs\n\nlint:\n\techo lint\n',
+    'tools/check.mjs': "import '../src/login.js'\n", 'src/login.js': '',
+    'pkg/formal.py': 'from src.auth import decide\n', 'src/auth.py': '',
+  })
+  assert.deepEqual(formalTargets('npm run formal', root), ['src/login.js'])
+  assert.deepEqual(formalTargets('pnpm formal', root), ['src/login.js'])
+  assert.deepEqual(formalTargets('make formal', root), ['src/login.js'])
+  assert.deepEqual(formalTargets('python3 -m pkg.formal', root), ['src/auth.py'])
+  assert.deepEqual(formalTargets('npm run other', root), [])
+  assert.deepEqual(formalTargets('make lint', root), [])
+})

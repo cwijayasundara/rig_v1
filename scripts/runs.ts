@@ -63,11 +63,13 @@ export const SHELL = process.platform !== 'win32' ? '' : process.env.RIG_SHELL |
 
 const runsFile = (slug: string): string => path.join(CHANGES, slug, 'evidence', 'runs.jsonl')
 
-// Appends the row and returns its id, `r<n>` for the n-th line of the change's ledger; the id is stored on the line.
+// Appends the row and returns its id, `r<n>` with n one past the highest id of the change's ledger; the id is stored on the line.
 export function recordRun(slug: string, row: RunRow): string {
   fs.mkdirSync(path.dirname(runsFile(slug)), { recursive: true })
-  const have = fs.existsSync(runsFile(slug)) ? fs.readFileSync(runsFile(slug), 'utf8').split('\n').filter(Boolean).length : 0
-  const id = `r${have + 1}`
+  // One past the highest id on the ledger (not the line count), so a removed line never makes an id repeat.
+  const lines = fs.existsSync(runsFile(slug)) ? fs.readFileSync(runsFile(slug), 'utf8').split('\n').filter(Boolean) : []
+  const top = Math.max(0, ...lines.map(l => Number(/"id":"r(\d+)"/.exec(l)?.[1] ?? 0)))
+  const id = `r${top + 1}`
   fs.appendFileSync(runsFile(slug), JSON.stringify({ ...row, id }) + '\n')
   return id
 }

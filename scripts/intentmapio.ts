@@ -25,13 +25,13 @@ const VERDICTS = ['non-bug', 'clause-vacuous']
 // A missing or malformed file reads as no adjudication, so a surviving mutant stays vacuous.
 export const readAdjudications = (slug: string): Adjudications => { const a = readJson<unknown>(adjPath(slug), {}); return a && typeof a === 'object' && !Array.isArray(a) ? a as Adjudications : {} }
 
-// A person's ruling on a surviving mutant. by and because are required; the script writes the file and sanctions the write,
+// A person's ruling on a surviving mutant of a clause. by and because are required; the script writes the file and sanctions the write,
 // so a hand edit is what harness-tamper sees (the path is PROTECTED).
-export function adjudicate(slug: string, mutant: string, verdict: string, because: string, by: string): void {
+export function adjudicate(slug: string, mutant: string, clause: string, verdict: string, because: string, by: string): void {
   if (!VERDICTS.includes(verdict)) throw new Error(`verdict must be one of ${VERDICTS.join(', ')}`)
   if (!by.trim() || !because.trim()) throw new Error('an adjudication needs --by <approver> and a reason after --')
   const all = readAdjudications(slug)
-  all[mutant] = { verdict: verdict as 'non-bug' | 'clause-vacuous', because: because.trim(), by: by.trim() }
+  all[mutant] = { verdict: verdict as 'non-bug' | 'clause-vacuous', because: because.trim(), by: by.trim(), clause }
   fs.writeFileSync(adjPath(slug), JSON.stringify(all, null, 2) + '\n')
   sanctionWrites([path.relative(ROOT, adjPath(slug))])
 }
@@ -70,7 +70,7 @@ export function intentShipFindings(slug: string, config: Registry, diffs: FileDi
 
 const FIX: Record<string, string> = {
   'formal-failed': 'make the implementation meet the clause, or fix the ## Formal command; a clause is never moved to not-promised without a person re-approving the map',
-  'vacuous': 'tighten the clause so the planted bug is rejected (a map edit needs a re-approval); if the mutant is equivalent (not a bug), a person records it: `S intent-adjudicate <slug> <mutant-id> non-bug --by <name> -- "<reason>"`',
+  'vacuous': 'tighten the clause so the planted bug is rejected (a map edit needs a re-approval); if the mutant is equivalent (not a bug), a person records it: `S intent-adjudicate <slug> <mutant-id> non-bug --clause <C-id> --by <name> -- "<reason>"`',
   'formal-targets-diff': 'point the ## Formal command at a checker that imports the code this change edits (or name that file in the command); a checker that imports a copy of it proves the copy, and a map edit needs a re-approval',
   'one-way-unjustified': 'give the formal row a decision in ## Decisions that starts both-ways, or says `one-way-because: <why only one direction is promised>` (a map edit needs a re-approval)',
   'trusted-unpinned': 'add a `- <name>: <contract>. pin: <command>` line under ## Trusted for the symbol, with a command that pins its contract (a map edit needs a re-approval)',
@@ -99,7 +99,7 @@ export function cmdIntentRecord(): void {
   } catch (e) { fail((e as Error).message) }
 }
 
-// `intent-adjudicate <slug> <mutant-id> <non-bug|clause-vacuous> --by <name> -- "<reason>"`.
+// `intent-adjudicate <slug> <mutant-id> <non-bug|clause-vacuous> --clause <C-id> --by <name> -- "<reason>"`.
 export function cmdIntentAdjudicate(): void {
   const argv = process.argv.slice(3)
   const dash = argv.indexOf('--')
@@ -107,11 +107,15 @@ export function cmdIntentAdjudicate(): void {
   const byAt = head.indexOf('--by')
   const [given, mutant, verdict] = head
   const by = byAt < 0 ? '' : head[byAt + 1] ?? ''
-  const usage = 'usage: intent-adjudicate <slug> <mutant-id> <non-bug|clause-vacuous> --by <name> -- "<reason>"'
+  const clauseAt = head.indexOf('--clause')
+  const clause = clauseAt < 0 ? '' : head[clauseAt + 1] ?? ''
+  const usage = 'usage: intent-adjudicate <slug> <mutant-id> <non-bug|clause-vacuous> --clause <C-id> --by <name> -- "<reason>"'
   if (!given || !mutant || !verdict || dash < 0 || dash === argv.length - 1) fail(usage)
   const slug = checkSlug(given)
   if (!exists(path.join(dir(slug), 'intent-map.md'))) fail(`${slug} has no intent-map.md`)
-  try { adjudicate(slug, mutant, verdict, argv.slice(dash + 1).join(' '), by); out(`${mutant}: ${verdict}, recorded in .rig/changes/${slug}/adjudications.json`) } catch (e) { fail((e as Error).message) }
+  if (!clause) fail(usage)
+  if (!parse(fs.readFileSync(path.join(dir(slug), 'intent-map.md'), 'utf8')).clauses.some(c => c.id === clause)) fail(`${clause} is not a clause of ${slug}`)
+  try { adjudicate(slug, mutant, clause, verdict, argv.slice(dash + 1).join(' '), by); out(`${mutant}: ${verdict}, recorded in .rig/changes/${slug}/adjudications.json`) } catch (e) { fail((e as Error).message) }
 }
 
 // The receipt block for the PR body, from the map, the recorded results and the last recorded run of the formal command (no new run).

@@ -16,18 +16,23 @@ const DRIFT = new Set(['formal-failed', 'vacuous', 'property-failed'])
 const RECHECK_TIMEOUT_MS = 180_000
 const run = (cmd: string): { exit: number; tail: string } => { const r = runCommand(cmd, { timeoutMs: RECHECK_TIMEOUT_MS }); return { exit: r.exit, tail: r.tail } }
 
+// One finding per drifting check, keyed by it: E1 proposed last week does not come back when E2 drifts too.
 export function recheckFindings(slug: string): Finding[] {
   const mapPath = path.join(CHANGES, slug, 'intent-map.md')
   const results = readResults(slug)
   const text = applyResults(fs.readFileSync(mapPath, 'utf8'), results)
-  const drift = shipCheck({ text, results, adjudications: readAdjudications(slug), tests: [], run }).findings.filter(f => DRIFT.has(f.rule)).map((f): { id: string; line: string } => ({ id: f.rule, line: `${f.rule}: ${f.detail}` }))
-  for (const sc of parse(text).scenarios) if (sc.status === 'pass' && sc.command && run(sc.command).exit !== 0) drift.push({ id: sc.id, line: `${sc.id}: \`${sc.command}\` now fails` })
-  if (!drift.length) return []
+  const map = parse(text)
+  // An empty ## Property command section was never runnable (ship refuses it now); an old map with one is not drift.
+  const drift = shipCheck({ text, results, adjudications: readAdjudications(slug), tests: [], run }).findings
+    .filter(f => DRIFT.has(f.rule) && !(f.rule === 'property-failed' && !map.propertyCommand))
+    .map((f): { id: string; line: string } => ({ id: f.rule, line: `${f.rule}: ${f.detail}` }))
+  for (const sc of map.scenarios) if (sc.status === 'pass' && sc.command && run(sc.command).exit !== 0) drift.push({ id: sc.id, line: `${sc.id}: \`${sc.command}\` now fails` })
   const file = `.rig/changes/${slug}/intent-map.md`
-  return [{ kind: 'recheck', key: sha(`recheck ${slug} ${drift.map(d => d.id).sort().join(',')}`), title: `Recheck ${slug}: its intent map no longer holds`, files: [file], evidence: `The frozen checks of the shipped change ${slug} fail on the trunk now:\n\n${drift.map(d => `- ${d.line}`).join('\n')}\n\nThe map is frozen and unchanged; the code, a dependency or the environment moved.` }]
+  return drift.map(d => ({ kind: 'recheck', key: sha(`recheck ${slug} ${d.id}`), title: `Recheck ${slug}: ${d.id} no longer holds`, files: [file], evidence: `A frozen check of the shipped change ${slug} fails on the trunk now:\n\n- ${d.line}\n\nThe map is frozen and unchanged; the code, a dependency or the environment moved.` }))
 }
 
 export function cmdIntentRecheck(args: Args): void {
   const slugs = (exists(CHANGES) ? fs.readdirSync(CHANGES) : []).filter(s => exists(path.join(CHANGES, s, 'intent-map.md')) && isShipped(s)).sort()
+  for (const s of slugs) if (!exists(path.join(CHANGES, s, 'intent-results.json')) && parse(fs.readFileSync(path.join(CHANGES, s, 'intent-map.md'), 'utf8')).scenarios.length) process.stderr.write(`intent-recheck: ${s} has scenarios but no intent-results.json, so they were not rechecked\n`)
   propose(slugs.flatMap(recheckFindings), args, 'intent-recheck')
 }

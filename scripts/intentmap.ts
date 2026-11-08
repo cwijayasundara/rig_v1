@@ -18,10 +18,11 @@ export type Results = Record<string, { status: string; command?: string; commit?
 export type LedgerRun = { id?: string; cmd: string; exit: number; commit?: string; scenario?: string }
 // A person's ruling on a surviving mutant (stored beside the map in adjudications.json, written by `intent-adjudicate`):
 // only a non-bug with an approver and a reason clears the vacuous finding; clause-vacuous keeps it.
-export type Adjudication = { verdict: 'non-bug' | 'clause-vacuous'; because: string; by: string }
+export type Adjudication = { verdict: 'non-bug' | 'clause-vacuous'; because: string; by: string; clause: string }
 export type Adjudications = Record<string, Adjudication>
 export type CheckOpts = { phase: 'plan' | 'ship'; freeze?: Record<string, string>; clauses?: Record<string, boolean>; mutants?: Mutant[]; tests?: string[]; formalError?: string; adjudications?: Adjudications }
-const clears = (a: Adjudication | undefined): a is Adjudication => a?.verdict === 'non-bug' && Boolean(a.by?.trim()) && Boolean(a.because?.trim())
+// Keyed by the mutant id AND its clause: the same id reused for another clause, or an old adjudication with no clause, clears nothing.
+const clears = (a: Adjudication | undefined, m: Mutant): a is Adjudication => a?.verdict === 'non-bug' && a.clause === m.clause && Boolean(a.by?.trim()) && Boolean(a.because?.trim())
 
 const rowHead = /^- ([RSTN]\d+): (.+)$/
 const saidHead = /^- (S\d+): (.+)$/
@@ -98,7 +99,7 @@ export function freezeFor(text: string): Record<string, string> {
   return Object.fromEntries(parse(text).scenarios.map(s => [s.id, scenarioHash(s)]))
 }
 
-// Every symbol a formal clause leans on (written in backticks) is a Trusted entry or the subject of an Empirical scenario, and every
+// Every symbol a formal clause leans on (a call written in backticks, `name()`; a backticked value like `admin` is not a dependency) is a Trusted entry or the subject of an Empirical scenario, and every
 // Trusted entry is pinned by a command. The pin is not run here; naming and pinning is the promise.
 function trustedFindings(map: IntentMap): IntentFinding[] {
   const out: IntentFinding[] = []
@@ -107,7 +108,7 @@ function trustedFindings(map: IntentMap): IntentFinding[] {
   const subjects = map.scenarios.map(s => [s.title, s.given, s.when, s.then].join(' ')).join(' ')
   const wanted = new Set(map.rows.filter(r => r.kind === 'formal').flatMap(r => r.clauses))
   for (const c of map.clauses.filter(c => wanted.has(c.id))) {
-    for (const sym of new Set([...c.text.matchAll(/`([A-Za-z_][\w.]*)`/g)].map(m => m[1]!))) {
+    for (const sym of new Set([...c.text.matchAll(/`([A-Za-z_][\w.]*)\(\)`/g)].map(m => m[1]!))) {
       if (!names.has(sym) && !new RegExp(`\\b${sym.replace(/\./g, '\\.')}\\b`).test(subjects)) out.push(finding('trusted-unpinned', `${c.id} leans on ${sym}, which is in no Trusted entry and no empirical scenario`))
     }
   }
@@ -168,7 +169,7 @@ function formalFindings(map: IntentMap, holds: Record<string, boolean> | undefin
   for (const id of wanted) {
     const planted = (mutants ?? []).filter(m => m.clause === id)
     if (!planted.length) out.push(finding('unmutated', `${id} has no planted bug`))
-    for (const m of planted) if (m.holds && !clears(adj[m.id])) out.push(finding('vacuous', `${id} still holds under ${m.id}, so the clause rules nothing out`))
+    for (const m of planted) if (m.holds && !clears(adj[m.id], m)) out.push(finding('vacuous', `${id} still holds under ${m.id}, so the clause rules nothing out`))
   }
   return out
 }
@@ -185,7 +186,7 @@ function pruneFindings(tests: string[], mapClauses: Set<string>): IntentFinding[
 export function receipt(map: IntentMap, holds: Record<string, boolean> = {}, mutants: Mutant[] = [], adj: Adjudications = {}): string {
   return map.rows.map(row => {
     if (row.kind === 'formal') {
-      const planted = mutants.filter(m => row.clauses.includes(m.clause)).map(m => `${m.id} ${!m.holds ? 'rejected' : clears(adj[m.id]) ? `adjudicated non-bug: ${adj[m.id]!.because}` : 'survives'}`)
+      const planted = mutants.filter(m => row.clauses.includes(m.clause)).map(m => `${m.id} ${!m.holds ? 'rejected' : clears(adj[m.id], m) ? `adjudicated non-bug: ${adj[m.id]!.because}` : 'survives'}`)
       return `- ${row.id} formal: ${row.clauses.map(id => `${id} ${holds[id] === false ? 'fails' : 'holds'}`).join(', ')}${planted.length ? ` (planted: ${planted.join(', ')})` : ''}`
     }
     if (row.kind === 'empirical') {

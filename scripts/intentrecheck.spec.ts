@@ -31,12 +31,12 @@ test('a shipped change whose world still holds proposes nothing', () => {
   assert.deepEqual(recheck().proposed, [])
 })
 
-test('a recorded scenario command that now fails proposes one intent, once, and the change record is untouched', () => {
+test('a recorded scenario command that now fails proposes an intent per scenario that runs it, once, and the change record is untouched', () => {
   write(repo, 'check.mjs', 'process.exit(1)\n')
   const before = snapshot()
   const first = recheck()
   assert.equal(first.code, 0)
-  assert.equal(first.proposed.length, 1)
+  assert.equal(first.proposed.length, 2)
   assert.match(first.proposed[0]!.slug, /^recheck-1-login/)
   const file = path.join(repo, '.rig/maintain/proposals', `${first.proposed[0]!.slug}.md`)
   assert.match(fs.readFileSync(file, 'utf8'), /E1.*node check\.mjs.*now fails/s)
@@ -73,4 +73,35 @@ test('the workflow step that runs recorded commands has no git credentials, its 
   assert.match(step, /timeout-minutes: 10/)
   assert.match(step, /continue-on-error: true/)
   assert.match(step, /trap/)
+})
+
+// Follow-ups (wave 3 minors): one proposal per drifting scenario, a notice for a missing results file, slugs keep dots, and an empty property section is not drift.
+test('each drifting scenario is its own proposal: E1 proposed earlier does not come back when E2 drifts too', () => {
+  write(repo, change('login') + '/intent-results.json', JSON.stringify({ E1: { status: 'pass', command: 'node check.mjs', commit: 'abc1234', run: 'r1' }, E2: { status: 'pass', command: 'node check2.mjs', commit: 'abc1234', run: 'r2' } }))
+  write(repo, 'check2.mjs', 'process.exit(0)\n')
+  write(repo, 'check.mjs', 'process.exit(1)\n')
+  assert.equal(recheck().proposed.length, 1)
+  write(repo, 'check2.mjs', 'process.exit(1)\n')
+  const next = recheck().proposed
+  assert.equal(next.length, 1)
+  const text = fs.readFileSync(path.join(repo, '.rig/maintain/proposals', `${next[0]!.slug}.md`), 'utf8')
+  assert.match(text, /E2:/)
+  assert.doesNotMatch(text, /E1:/)
+})
+
+test('a shipped map with scenarios but no results file says so on stderr, and the json on stdout stays clean', () => {
+  fs.rmSync(path.join(repo, change('login'), 'intent-results.json'))
+  gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'lose results')
+  const r = sdlc(repo, ['intent-recheck', '--json'])
+  assert.match(r.stderr, /login.*no intent-results\.json/)
+  assert.deepEqual(JSON.parse(r.stdout.trim()).proposed, [])
+})
+
+test('a change slug with a dot keeps it in the proposal name, and an empty ## Property command section is not drift', () => {
+  gitIn(repo, 'mv', change('login'), change('v2.1-api'))
+  write(repo, change('v2.1-api') + '/intent-map.md', MAP.replace('## Not promised', '## Property command\n\n## Not promised'))
+  gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'rename')
+  assert.deepEqual(recheck().proposed, [])
+  write(repo, 'check.mjs', 'process.exit(1)\n')
+  assert.match(recheck().proposed[0]!.slug, /^recheck-1-v2-1-api/)
 })

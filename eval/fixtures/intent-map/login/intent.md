@@ -19,9 +19,9 @@
 
 ## Formal
 ### C2 only-when
-A token only for the account the login names, with the right password as `check_password` judges it, carrying that account's id and its table's role, issued by `signer` at `clock` time.
+A token only for the account the login names, with the right password as `check_password()` judges it, carrying that account's id and its table's role, issued by `signer()` at `clock()` time.
 ### C3 always
-The right password for the named account gets a token, unless `lookup` or `signer` failed.
+The right password for the named account gets a token, unless `lookup()` or `signer()` failed.
 ### C7
 The admin role only for a username with no email sent.
 ### C8
