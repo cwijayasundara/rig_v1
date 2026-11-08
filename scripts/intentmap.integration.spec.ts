@@ -1,0 +1,81 @@
+// Integration journey for the intent map ship path (incorporations wave 1): the real sdlc CLI in a temp git repo, the real run ledger,
+// intent-record and intent-adjudicate. Only the formal checker is a stub (formal.mjs prints verdict.json), so no Python or CrossHair is needed.
+import { test, beforeEach } from 'node:test'
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import path from 'node:path'
+import { makeRepo, sdlc, write } from './testkit.ts'
+
+const FIX = path.resolve(import.meta.dirname, '../eval/fixtures/intent-map')
+const MAP = fs.readFileSync(path.join(FIX, 'login/intent-plan.md'), 'utf8').replace('## Not promised', '## Formal command\nnode formal.mjs\n\n## Not promised')
+const CLAUSES = ['C2', 'C3', 'C7', 'C8', 'C9']
+type M = { id: string; clause: string; holds: boolean }
+const killed = (clause: string, id = `m-${clause}`): M => ({ id, clause, holds: false })
+let repo: string
+
+const verdict = (mutants: M[]): void => write(repo, 'verdict.json', JSON.stringify({ clauses: Object.fromEntries(CLAUSES.map(c => [c, true])), mutants }))
+const verify = (): { code: number | null; text: string } => { const r = sdlc(repo, ['verify', 'demo']); return { code: r.code, text: r.stdout + r.stderr } }
+const record = (e: string): void => assert.equal(sdlc(repo, ['intent-record', 'demo', e, '--', 'node -e "process.exit(0)"']).code, 0)
+const resultsPath = (): string => path.join(repo, '.rig/changes/demo/intent-results.json')
+
+beforeEach(() => {
+  repo = makeRepo()
+  sdlc(repo, ['init'])
+  sdlc(repo, ['new', 'demo', '--type', 'feature', '--title', 'Demo'])
+  write(repo, '.rig/changes/demo/intent-map.md', MAP)
+  write(repo, 'formal.mjs', "import fs from 'node:fs'\nif (!fs.existsSync('verdict.json')) process.exit(2)\nconsole.log('checking')\nconsole.log(fs.readFileSync('verdict.json', 'utf8').trim())\n")
+})
+
+test('green path: recorded scenarios, a rejected mutant for every clause and a verdict ship clean', () => {
+  verdict(CLAUSES.map(c => killed(c)))
+  record('E1'); record('E2')
+  const v = verify()
+  assert.doesNotMatch(v.text, /vacuous|unmutated|formal-failed|result-unbacked|empirical-/)
+})
+
+test('an equivalent mutant blocks as vacuous until a person adjudicates it non-bug with a named approver', () => {
+  verdict([...CLAUSES.filter(c => c !== 'C2').map(c => killed(c)), { id: 'm1', clause: 'C2', holds: true }])
+  record('E1'); record('E2')
+  assert.match(verify().text, /vacuous/)
+  assert.equal(sdlc(repo, ['intent-adjudicate', 'demo', 'm1', 'clause-vacuous', '--by', 'Ana', '--', 'the clause is too loose']).code, 0)
+  assert.match(verify().text, /vacuous/)
+  assert.notEqual(sdlc(repo, ['intent-adjudicate', 'demo', 'm1', 'non-bug', '--', 'commutes']).code, 0)
+  assert.match(verify().text, /vacuous/)
+  assert.equal(sdlc(repo, ['intent-adjudicate', 'demo', 'm1', 'non-bug', '--by', 'Ana', '--', 'the reorder commutes']).code, 0)
+  assert.doesNotMatch(verify().text, /vacuous/)
+})
+
+test('a second planted bug of a clause that survives is vacuous even when the first was rejected', () => {
+  verdict([...CLAUSES.map(c => killed(c)), { id: 'm-C3-late', clause: 'C3', holds: true }])
+  record('E1'); record('E2')
+  const v = verify()
+  assert.match(v.text, /vacuous/)
+  assert.match(v.text, /m-C3-late/)
+})
+
+test('a hand-written pass is result-unbacked, and recording through intent-record clears it', () => {
+  verdict(CLAUSES.map(c => killed(c)))
+  const forged = Object.fromEntries(['E1', 'E2'].map(e => [e, { status: 'pass', command: 'node -e "process.exit(0)"', commit: 'abc1234' }]))
+  write(repo, '.rig/changes/demo/intent-results.json', JSON.stringify(forged))
+  const v = verify()
+  assert.match(v.text, /result-unbacked/)
+  assert.notEqual(v.code, 0)
+  record('E1'); record('E2')
+  assert.doesNotMatch(verify().text, /result-unbacked/)
+})
+
+test('editing a recorded result after the fact (another command) is result-unbacked', () => {
+  verdict(CLAUSES.map(c => killed(c)))
+  record('E1'); record('E2')
+  const res = JSON.parse(fs.readFileSync(resultsPath(), 'utf8'))
+  res.E1.command = 'node -e "console.log(1)"'
+  fs.writeFileSync(resultsPath(), JSON.stringify(res))
+  assert.match(verify().text, /result-unbacked/)
+})
+
+test('a formal command that does not run fails closed as formal-failed', () => {
+  record('E1'); record('E2')
+  const v = verify()
+  assert.match(v.text, /formal-failed/)
+  assert.notEqual(v.code, 0)
+})
