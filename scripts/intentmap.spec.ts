@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { check, applyResults, freezeFor, parse, scenarioHash, shipCheck, behavioursFrom, type Results } from './intentmap.ts'
+import { check, applyResults, freezeFor, parse, scenarioHash, shipCheck, behavioursFrom, type Results, type Adjudication } from './intentmap.ts'
 
 const FIX = path.resolve(import.meta.dirname, '../eval/fixtures/intent-map')
 const read = (...p: string[]): string => fs.readFileSync(path.join(FIX, ...p), 'utf8')
@@ -135,4 +135,27 @@ test('a duplicate mutant id is formal-failed, and only a clause with zero mutant
 test('the receipt lists each planted bug of a formal row', () => {
   const r = shipWith([...rejectedAll, killed('m-C2-b', 'C2')])
   assert.match(r.receipt, /R1 formal: C2 holds, C3 holds \(planted: m-C2 rejected, m-C3 rejected, m-C2-b rejected\)/)
+})
+
+// Wave 1, item 1: a surviving mutant can be adjudicated; only a non-bug with a named approver and a reason clears it.
+const survivor = [...rejectedAll.filter(m => m.clause !== 'C2'), { id: 'm1', clause: 'C2', holds: true }]
+const adjudicated = (a: Partial<Adjudication>): ReturnType<typeof check> => shipWith(survivor, { adjudications: { m1: { verdict: 'non-bug', because: 'commutes', by: 'Ana', ...a } } })
+
+test('a non-bug adjudication with a by and a reason clears the survivor and the receipt says so', () => {
+  const r = adjudicated({})
+  assert.deepEqual(r.findings, [])
+  assert.match(r.receipt, /m1 adjudicated non-bug: commutes/)
+})
+
+test('clause-vacuous, a missing by, a missing reason, or an unrelated id leave the survivor vacuous', () => {
+  assert.deepEqual(rules(adjudicated({ verdict: 'clause-vacuous' })), ['vacuous'])
+  assert.deepEqual(rules(adjudicated({ by: ' ' })), ['vacuous'])
+  assert.deepEqual(rules(adjudicated({ because: '' })), ['vacuous'])
+  assert.deepEqual(rules(shipWith(survivor, { adjudications: { other: { verdict: 'non-bug', because: 'x', by: 'Ana' } } })), ['vacuous'])
+})
+
+test('an adjudication does not suppress a different surviving mutant of the same clause', () => {
+  const r = shipWith([...survivor, { id: 'm2', clause: 'C2', holds: true }], { adjudications: { m1: { verdict: 'non-bug', because: 'commutes', by: 'Ana' } } })
+  assert.deepEqual(rules(r), ['vacuous'])
+  assert.match(r.findings[0]!.detail, /m2/)
 })

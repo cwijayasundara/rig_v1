@@ -59,3 +59,24 @@ test('intentReceipt prints the recorded evidence and the last formal verdict, an
   assert.match(text, /Commands: E1 `x`/)
   assert.match(text, /T1 empirical: E1 evidence @ abc1234, E2 evidence @ abc1234 \(evidence, not proof\)/)
 })
+
+const adjFile = (): string => path.join(repo, '.rig/changes/demo/adjudications.json')
+
+test('intent-adjudicate records the verdict, the reason and the approver; without --by or a reason it refuses and writes nothing', () => {
+  write(repo, '.rig/changes/demo/intent-map.md', plan)
+  const r = sdlc(repo, ['intent-adjudicate', 'demo', 'm1', 'non-bug', '--by', 'Ana', '--', 'the reorder commutes'])
+  assert.equal(r.code, 0, r.stderr)
+  assert.deepEqual(JSON.parse(fs.readFileSync(adjFile(), 'utf8')), { m1: { verdict: 'non-bug', because: 'the reorder commutes', by: 'Ana' } })
+  fs.rmSync(adjFile())
+  assert.notEqual(sdlc(repo, ['intent-adjudicate', 'demo', 'm1', 'non-bug', '--', 'why']).code, 0)
+  assert.notEqual(sdlc(repo, ['intent-adjudicate', 'demo', 'm1', 'non-bug', '--by', 'Ana']).code, 0)
+  assert.notEqual(sdlc(repo, ['intent-adjudicate', 'demo', 'm1', 'maybe', '--by', 'Ana', '--', 'why']).code, 0)
+  assert.equal(fs.existsSync(adjFile()), false)
+})
+
+test('a malformed adjudications.json reads as no adjudication, and the file is protected from hand edits', () => {
+  write(repo, '.rig/changes/demo/adjudications.json', '{not json')
+  const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', `import * as M from ${JSON.stringify(pathToFileURL(path.resolve(import.meta.dirname, 'intentmapio.ts')).href)}; import { isProtected } from ${JSON.stringify(pathToFileURL(path.resolve(import.meta.dirname, 'sensors.ts')).href)}; console.log(JSON.stringify([M.readAdjudications('demo'), isProtected('.rig/changes/demo/adjudications.json'), isProtected('.rig/changes/demo/plan.md')]))`], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo } })
+  assert.equal(r.status, 0, r.stderr)
+  assert.deepEqual(JSON.parse(r.stdout.trim()), [{}, true, false])
+})

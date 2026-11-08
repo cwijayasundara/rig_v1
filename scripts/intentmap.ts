@@ -12,7 +12,12 @@ export type Clause = { id: string; direction: string; text: string }
 export type IntentMap = { formalCommand: string; said: { id: string; text: string }[]; decisions: { id: string; text: string }[]; rows: Row[]; clauses: Clause[]; scenarios: Scenario[]; notPromised: { id: string; text: string }[] }
 export type Mutant = { id: string; clause: string; holds: boolean }
 export type Results = Record<string, { status: string; command?: string; commit?: string }>
-export type CheckOpts = { phase: 'plan' | 'ship'; freeze?: Record<string, string>; clauses?: Record<string, boolean>; mutants?: Mutant[]; tests?: string[]; formalError?: string }
+// A person's ruling on a surviving mutant (stored beside the map in adjudications.json, written by `intent-adjudicate`):
+// only a non-bug with an approver and a reason clears the vacuous finding; clause-vacuous keeps it.
+export type Adjudication = { verdict: 'non-bug' | 'clause-vacuous'; because: string; by: string }
+export type Adjudications = Record<string, Adjudication>
+export type CheckOpts = { phase: 'plan' | 'ship'; freeze?: Record<string, string>; clauses?: Record<string, boolean>; mutants?: Mutant[]; tests?: string[]; formalError?: string; adjudications?: Adjudications }
+const clears = (a: Adjudication | undefined): a is Adjudication => a?.verdict === 'non-bug' && Boolean(a.by?.trim()) && Boolean(a.because?.trim())
 
 const rowHead = /^- ([RSTN]\d+): (.+)$/
 const saidHead = /^- (S\d+): (.+)$/
@@ -121,7 +126,7 @@ function freezeFindings(map: IntentMap, freeze: Record<string, string> | undefin
 }
 
 // Fail closed: a formal row with no verdicts at all (the command did not run) is formal-failed, never a pass.
-function formalFindings(map: IntentMap, holds: Record<string, boolean> | undefined, mutants: Mutant[] | undefined, why: string): IntentFinding[] {
+function formalFindings(map: IntentMap, holds: Record<string, boolean> | undefined, mutants: Mutant[] | undefined, why: string, adj: Adjudications = {}): IntentFinding[] {
   const wanted = [...new Set(map.rows.filter(r => r.kind === 'formal').flatMap(r => r.clauses))]
   if (!wanted.length) return []
   if (!holds) return [finding('formal-failed', `no formal verdicts (${why}), so no formal clause is checked`)]
@@ -132,7 +137,7 @@ function formalFindings(map: IntentMap, holds: Record<string, boolean> | undefin
   for (const id of wanted) {
     const planted = (mutants ?? []).filter(m => m.clause === id)
     if (!planted.length) out.push(finding('unmutated', `${id} has no planted bug`))
-    for (const m of planted) if (m.holds) out.push(finding('vacuous', `${id} still holds under ${m.id}, so the clause rules nothing out`))
+    for (const m of planted) if (m.holds && !clears(adj[m.id])) out.push(finding('vacuous', `${id} still holds under ${m.id}, so the clause rules nothing out`))
   }
   return out
 }
@@ -146,10 +151,10 @@ function pruneFindings(tests: string[], mapClauses: Set<string>): IntentFinding[
   return out
 }
 
-export function receipt(map: IntentMap, holds: Record<string, boolean> = {}, mutants: Mutant[] = []): string {
+export function receipt(map: IntentMap, holds: Record<string, boolean> = {}, mutants: Mutant[] = [], adj: Adjudications = {}): string {
   return map.rows.map(row => {
     if (row.kind === 'formal') {
-      const planted = mutants.filter(m => row.clauses.includes(m.clause)).map(m => `${m.id} ${m.holds ? 'survives' : 'rejected'}`)
+      const planted = mutants.filter(m => row.clauses.includes(m.clause)).map(m => `${m.id} ${!m.holds ? 'rejected' : clears(adj[m.id]) ? `adjudicated non-bug: ${adj[m.id]!.because}` : 'survives'}`)
       return `- ${row.id} formal: ${row.clauses.map(id => `${id} ${holds[id] === false ? 'fails' : 'holds'}`).join(', ')}${planted.length ? ` (planted: ${planted.join(', ')})` : ''}`
     }
     if (row.kind === 'empirical') {
@@ -165,8 +170,8 @@ export function receipt(map: IntentMap, holds: Record<string, boolean> = {}, mut
 
 export function check(text: string, opts: CheckOpts): { map: IntentMap; findings: IntentFinding[]; pass: boolean; receipt: string } {
   const map = parse(text)
-  const findings = [...structure(map, opts.phase), ...freezeFindings(map, opts.freeze), ...(opts.phase === 'ship' ? formalFindings(map, opts.clauses, opts.mutants, opts.formalError ?? 'no formal command ran') : []), ...pruneFindings(opts.tests ?? [], new Set(map.clauses.map(c => c.id)))]
-  return { map, findings, pass: !findings.length, receipt: receipt(map, opts.clauses, opts.mutants) }
+  const findings = [...structure(map, opts.phase), ...freezeFindings(map, opts.freeze), ...(opts.phase === 'ship' ? formalFindings(map, opts.clauses, opts.mutants, opts.formalError ?? 'no formal command ran', opts.adjudications) : []), ...pruneFindings(opts.tests ?? [], new Set(map.clauses.map(c => c.id)))]
+  return { map, findings, pass: !findings.length, receipt: receipt(map, opts.clauses, opts.mutants, opts.adjudications) }
 }
 
 // Merge script-recorded results into the (frozen) map text. The agent never writes these lines; unknown ids are ignored.
@@ -194,12 +199,12 @@ export function applyResults(raw: string, results: Results): string {
 // Ship phase for a real change: merge the script-recorded results, run the map's own formal command once and judge.
 // The command (the line under `## Formal command`, frozen with the map) prints one last JSON line:
 // {"clauses": {"C2": true}, "mutants": [{"id": "...", "clause": "C2", "holds": false}]}. Any other outcome fails closed.
-export type ShipInput = { text: string; results: Results; freeze?: Record<string, string>; tests: string[]; run: (cmd: string) => { exit: number; tail: string } }
+export type ShipInput = { text: string; results: Results; adjudications?: Adjudications; freeze?: Record<string, string>; tests: string[]; run: (cmd: string) => { exit: number; tail: string } }
 export function shipCheck(i: ShipInput): ReturnType<typeof check> {
   const text = applyResults(i.text, i.results)
   const map = parse(text)
   const needsFormal = map.rows.some(r => r.kind === 'formal')
-  const base = { phase: 'ship' as const, freeze: i.freeze, tests: i.tests }
+  const base = { phase: 'ship' as const, freeze: i.freeze, tests: i.tests, adjudications: i.adjudications }
   if (!needsFormal) return check(text, base)
   if (!map.formalCommand) return check(text, { ...base, formalError: 'the map has no ## Formal command' })
   const r = i.run(map.formalCommand)

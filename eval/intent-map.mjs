@@ -126,7 +126,9 @@ export function freezeFindings(map, freeze) {
   return out
 }
 
-export function formalFindings(map, clauseHolds, mutants) {
+const clears = a => a?.verdict === 'non-bug' && Boolean(a.by?.trim()) && Boolean(a.because?.trim())
+
+export function formalFindings(map, clauseHolds, mutants, adjudications = {}) {
   const out = []
   const wanted = [...new Set(map.rows.filter(r => r.kind === 'formal').flatMap(r => r.clauses))]
   for (const id of wanted) if (clauseHolds && clauseHolds[id] === false) out.push(finding('formal-failed', `${id} has a counterexample on the implementation`))
@@ -136,7 +138,7 @@ export function formalFindings(map, clauseHolds, mutants) {
   for (const id of wanted) {
     const planted = mutants.filter(m => m.clause === id)
     if (!planted.length) out.push(finding('unmutated', `${id} has no planted bug`))
-    for (const m of planted) if (m.holds) out.push(finding('vacuous', `${id} still holds under ${m.id}, so the clause rules nothing out`))
+    for (const m of planted) if (m.holds && !clears(adjudications[m.id])) out.push(finding('vacuous', `${id} still holds under ${m.id}, so the clause rules nothing out`))
   }
   return out
 }
@@ -174,7 +176,7 @@ export function check(text, opts) {
   const all = [
     ...findings,
     ...freezeFindings(map, opts.freeze),
-    ...(opts.phase === 'ship' ? formalFindings(map, opts.clauses, opts.mutants) : []),
+    ...(opts.phase === 'ship' ? formalFindings(map, opts.clauses, opts.mutants, opts.adjudications) : []),
     ...pruneFindings(opts.tests ?? [], new Set(map.clauses.map(c => c.id))),
   ]
   return { map, findings: all, pass: all.length === 0, receipt: receipt(map, opts.clauses) }

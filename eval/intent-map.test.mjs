@@ -61,3 +61,13 @@ test('every mutant of a clause is read: a surviving second mutant is vacuous, a 
   assert.deepEqual(rules(run([...rejected, { id: 'm-C2', clause: 'C2', holds: false }])), ['formal-failed'])
   assert.deepEqual(rules(run(rejected.filter(m => m.clause !== 'C3'))), ['unmutated'])
 })
+
+test('an adjudicated non-bug with a by and a reason clears a surviving mutant; clause-vacuous or no by does not', () => {
+  const ship = read(path.join(LOGIN, 'intent.md'))
+  const all = { C2: true, C3: true, C7: true, C8: true, C9: true }
+  const mutants = [...Object.keys(all).filter(c => c !== 'C2').map(c => ({ id: `m-${c}`, clause: c, holds: false })), { id: 'm1', clause: 'C2', holds: true }]
+  const run = a => check(ship, { phase: 'ship', freeze: freezeFor(ship), clauses: all, mutants, adjudications: { m1: { verdict: 'non-bug', because: 'commutes', by: 'Ana', ...a } } })
+  assert.deepEqual(rules(run({})), [])
+  assert.deepEqual(rules(run({ verdict: 'clause-vacuous' })), ['vacuous'])
+  assert.deepEqual(rules(run({ by: '' })), ['vacuous'])
+})
