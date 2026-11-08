@@ -2,7 +2,7 @@
 // both must return the same rule ids. Pure functions: callers run the formal command and the tests, and pass the results in.
 import crypto from 'node:crypto'
 
-export const RULES = ['unmapped-said', 'unknown-kind', 'missing-clause', 'orphan-clause', 'both-ways', 'missing-scenario', 'empirical-early', 'empirical-open', 'empirical-unrecorded', 'stale-scenario', 'missing-not-promised', 'formal-failed', 'unmutated', 'vacuous', 'prune', 'behaviours-drift', 'result-unbacked'] as const
+export const RULES = ['unmapped-said', 'unknown-kind', 'missing-clause', 'orphan-clause', 'both-ways', 'missing-scenario', 'empirical-early', 'empirical-open', 'empirical-unrecorded', 'stale-scenario', 'missing-not-promised', 'formal-failed', 'unmutated', 'vacuous', 'prune', 'behaviours-drift', 'result-unbacked', 'formal-targets-diff'] as const
 // behaviours-drift is the wiring's own rule (spec.md ## Behaviours against the map); the oracle has no spec.md, so it has no such rule.
 export type RuleId = typeof RULES[number]
 export type IntentFinding = { rule: RuleId; detail: string }
@@ -201,7 +201,8 @@ export function applyResults(raw: string, results: Results): string {
 // Ship phase for a real change: merge the script-recorded results, run the map's own formal command once and judge.
 // The command (the line under `## Formal command`, frozen with the map) prints one last JSON line:
 // {"clauses": {"C2": true}, "mutants": [{"id": "...", "clause": "C2", "holds": false}]}. Any other outcome fails closed.
-export type ShipInput = { text: string; results: Results; runs?: LedgerRun[]; adjudications?: Adjudications; freeze?: Record<string, string>; tests: string[]; run: (cmd: string) => { exit: number; tail: string } }
+// targets: the files the formal command checks and the changed source files of the diff; absent in the pure paths, which skips the rule.
+export type ShipInput = { text: string; results: Results; runs?: LedgerRun[]; targets?: { files: string[]; diffSource: string[] }; adjudications?: Adjudications; freeze?: Record<string, string>; tests: string[]; run: (cmd: string) => { exit: number; tail: string } }
 // Every scenario that reads pass must be backed by a ledger line (same run id, command and commit, exit 0), so a hand-typed pass fails
 // closed. A caller that passes no ledger (the pure oracle path) is not checked; the real ship path always passes one, empty if nothing ran.
 function resultFindings(map: IntentMap, results: Results, runs: LedgerRun[] | undefined): IntentFinding[] {
@@ -215,9 +216,14 @@ function resultFindings(map: IntentMap, results: Results, runs: LedgerRun[] | un
   })
 }
 
+function targetFindings(map: IntentMap, targets: ShipInput['targets']): IntentFinding[] {
+  if (!targets || !map.formalCommand || !map.rows.some(r => r.kind === 'formal')) return []
+  return targets.files.some(f => targets.diffSource.includes(f)) ? [] : [finding('formal-targets-diff', `\`${map.formalCommand}\` checks no source file this change edits, so its verdicts are about something else`)]
+}
+
 export function shipCheck(i: ShipInput): ReturnType<typeof check> {
   const r = shipCore(i)
-  const extra = resultFindings(r.map, i.results, i.runs)
+  const extra = [...resultFindings(r.map, i.results, i.runs), ...targetFindings(r.map, i.targets)]
   return extra.length ? { ...r, findings: [...r.findings, ...extra], pass: false } : r
 }
 

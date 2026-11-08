@@ -4,7 +4,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { CHANGES, ROOT, exists, git, out, fail, checkSlug, sanctionWrites } from './core.ts'
 import { runCommand, recordRun } from './runs.ts'
-import { isTest, type Finding, type FileDiff } from './model.ts'
+import { isTest, isSource, type Finding, type FileDiff } from './model.ts'
+import { formalTargets } from './intenttargets.ts'
 import type { Registry } from './registry.ts'
 import { shipCheck, parse, receipt, applyResults, behavioursFrom, type Results, type Adjudications, type Mutant, type LedgerRun } from './intentmap.ts'
 
@@ -56,8 +57,11 @@ export function intentShipFindings(slug: string, config: Registry, diffs: FileDi
   if (!exists(mapPath)) return []
   const tests = diffs.filter(d => d.status !== 'D' && !d.binary && isTest(d.file, config.paths)).map(d => fs.readFileSync(path.join(ROOT, d.file), 'utf8'))
   const freeze = readJson<Record<string, string> | undefined>(path.join(dir(slug), 'freeze.json'), undefined)
+  const text = fs.readFileSync(mapPath, 'utf8')
+  const command = parse(text).formalCommand
+  const diffSource = diffs.filter(d => d.status !== 'D' && !d.binary && isSource(d.file, config.paths) && !isTest(d.file, config.paths)).map(d => d.file)
   const result = shipCheck({
-    text: fs.readFileSync(mapPath, 'utf8'), results: readResults(slug), freeze, tests,
+    text, targets: command ? { files: formalTargets(command, ROOT), diffSource } : undefined, results: readResults(slug), freeze, tests,
     adjudications: readAdjudications(slug), runs: readRuns(slug),
     run: cmd => { const row = runCommand(cmd, { timeoutMs: Math.max(budgetMs, 600_000) }); recordRun(slug, { ...row, source: 'ship' }); return { exit: row.exit, tail: row.tail } },
   })
@@ -67,6 +71,7 @@ export function intentShipFindings(slug: string, config: Registry, diffs: FileDi
 const FIX: Record<string, string> = {
   'formal-failed': 'make the implementation meet the clause, or fix the ## Formal command; a clause is never moved to not-promised without a person re-approving the map',
   'vacuous': 'tighten the clause so the planted bug is rejected (a map edit needs a re-approval); if the mutant is equivalent (not a bug), a person records it: `S intent-adjudicate <slug> <mutant-id> non-bug --by <name> -- "<reason>"`',
+  'formal-targets-diff': 'point the ## Formal command at a checker that imports the code this change edits (or name that file in the command); a checker that imports a copy of it proves the copy, and a map edit needs a re-approval',
   'unmutated': 'plant one bug for the clause in a scratch copy and add it to the formal command output',
   'empirical-open': 'run the scenario with `S intent-record <slug> <E-id> -- "<command>"`',
   'empirical-unrecorded': 'record the result with `S intent-record`, never by hand',

@@ -4,6 +4,7 @@ import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import { execFileSync } from 'node:child_process'
 import { makeRepo, sdlc, write } from './testkit.ts'
 
 const FIX = path.resolve(import.meta.dirname, '../eval/fixtures/intent-map')
@@ -23,7 +24,11 @@ beforeEach(() => {
   sdlc(repo, ['init'])
   sdlc(repo, ['new', 'demo', '--type', 'feature', '--title', 'Demo'])
   write(repo, '.rig/changes/demo/intent-map.md', MAP)
-  write(repo, 'formal.mjs', "import fs from 'node:fs'\nif (!fs.existsSync('verdict.json')) process.exit(2)\nconsole.log('checking')\nconsole.log(fs.readFileSync('verdict.json', 'utf8').trim())\n")
+  // The shipped code: committed on the base, then edited by this change, so it is in the verify diff; the checker imports it.
+  write(repo, 'src/login.js', 'export const login = () => 1\n')
+  execFileSync('git', ['add', '-A'], { cwd: repo }); execFileSync('git', ['commit', '-qm', 'base'], { cwd: repo })
+  write(repo, 'src/login.js', 'export const login = () => 2\n')
+  write(repo, 'formal.mjs', "import './src/login.js'\nimport fs from 'node:fs'\nif (!fs.existsSync('verdict.json')) process.exit(2)\nconsole.log('checking')\nconsole.log(fs.readFileSync('verdict.json', 'utf8').trim())\n")
 })
 
 test('green path: recorded scenarios, a rejected mutant for every clause and a verdict ship clean', () => {
@@ -89,5 +94,15 @@ test('a failing scenario cannot ship by copying another scenario\'s passing resu
   fs.writeFileSync(resultsPath(), JSON.stringify(res))
   const v = verify()
   assert.match(v.text, /result-unbacked/)
+  assert.notEqual(v.code, 0)
+})
+
+test('a checker that only imports a copy beside it is formal-targets-diff, even though the copy is new in the diff', () => {
+  verdict(CLAUSES.map(c => killed(c)))
+  record('E1'); record('E2')
+  write(repo, 'model.mjs', 'export const login = () => 2\n')
+  write(repo, 'formal.mjs', "import './model.mjs'\nimport fs from 'node:fs'\nconsole.log(fs.readFileSync('verdict.json', 'utf8').trim())\n")
+  const v = verify()
+  assert.match(v.text, /formal-targets-diff/)
   assert.notEqual(v.code, 0)
 })

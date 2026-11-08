@@ -198,3 +198,15 @@ test('result-unbacked is a reserved sensor id and a ledger that is not passed is
   assert.ok(RULES.includes('result-unbacked'))
   assert.deepEqual(ship().findings, [])
 })
+
+// Wave 2, item 3: the formal checker must reach source this change edited.
+test('formal-targets-diff: no changed source among the formal targets fails; one passes; no targets argument skips the rule', () => {
+  const t = (files: string[], diffSource: string[]) => ship({ targets: { files, diffSource } })
+  const hit = t(['lib/copy.py'], ['src/auth.py']).findings.filter(f => f.rule === 'formal-targets-diff')
+  assert.equal(hit.length, 1)
+  assert.match(hit[0]!.detail, /python3 formal\.py/)
+  assert.deepEqual(rules(t([], ['src/auth.py'])).filter(r => r === 'formal-targets-diff'), ['formal-targets-diff'])
+  assert.deepEqual(t(['src/auth.py'], ['src/auth.py', 'src/other.py']).findings, [])
+  assert.deepEqual(ship().findings, [])
+  assert.ok(RULES.includes('formal-targets-diff'))
+})
