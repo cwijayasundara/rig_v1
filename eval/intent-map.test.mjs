@@ -66,8 +66,27 @@ test('an adjudicated non-bug with a by and a reason clears a surviving mutant; c
   const ship = read(path.join(LOGIN, 'intent.md'))
   const all = { C2: true, C3: true, C7: true, C8: true, C9: true }
   const mutants = [...Object.keys(all).filter(c => c !== 'C2').map(c => ({ id: `m-${c}`, clause: c, holds: false })), { id: 'm1', clause: 'C2', holds: true }]
-  const run = a => check(ship, { phase: 'ship', freeze: freezeFor(ship), clauses: all, mutants, adjudications: { m1: { verdict: 'non-bug', because: 'commutes', by: 'Ana', ...a } } })
+  const run = a => check(ship, { phase: 'ship', freeze: freezeFor(ship), clauses: all, mutants, adjudications: { m1: { verdict: 'non-bug', because: 'commutes', by: 'Ana', clause: 'C2', ...a } } })
   assert.deepEqual(rules(run({})), [])
   assert.deepEqual(rules(run({ verdict: 'clause-vacuous' })), ['vacuous'])
   assert.deepEqual(rules(run({ by: '' })), ['vacuous'])
+  assert.deepEqual(rules(run({ clause: 'C3' })), ['vacuous'])
+})
+
+test('one-way-unjustified: a silent one-way formal row fails, a stated reason clears it, and the login map is clean', () => {
+  const silent = read(path.join(CASES, 'silent-one-way.md'))
+  assert.deepEqual(rules(check(silent, { phase: 'plan' })).filter(r => r === 'one-way-unjustified'), ['one-way-unjustified'])
+  const said = silent.replace('## Decisions\n', '## Decisions\n- D2: one-way-because: the words only say which role an admin gets\n').replace('said S1. kind', 'said S1. decision D2. kind')
+  assert.equal(rules(check(said, { phase: 'plan' })).includes('one-way-unjustified'), false)
+  assert.equal(rules(check(read(path.join(LOGIN, 'intent-plan.md')), { phase: 'plan' })).includes('one-way-unjustified'), false)
+})
+
+test('trusted-unpinned: an unnamed backticked symbol fails, a pinned Trusted entry clears it, and the login map is clean', () => {
+  const base = read(path.join(CASES, 'silent-one-way.md')).replace('## Decisions\n', '## Decisions\n- D2: one-way-because: only the admin role is promised\n').replace('said S1. kind', 'said S1. decision D2. kind').replace('The admin role only for a username with no email sent.', 'The admin role only when `lookup()` finds an admin row.')
+  const hits = text => rules(check(text, { phase: 'plan' })).filter(r => r === 'trusted-unpinned')
+  assert.deepEqual(hits(base), ['trusted-unpinned'])
+  assert.deepEqual(hits(base.replace('`lookup()`', '`admin`')), [])
+  assert.deepEqual(hits(base.replace('## Not promised', '## Trusted\n- lookup: returns the row. pin: pytest -q\n\n## Not promised')), [])
+  assert.deepEqual(hits(base.replace('## Not promised', '## Trusted\n- lookup: returns the row. pin: \n\n## Not promised')), ['trusted-unpinned'])
+  assert.deepEqual(hits(read(path.join(LOGIN, 'intent-plan.md'))), [])
 })

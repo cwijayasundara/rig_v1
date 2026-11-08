@@ -34,13 +34,14 @@ function list(value) {
 }
 
 export function parse(text) {
-  const lines = text.split('\n')
+  const lines = text.replace(/\r\n/g, '\n').split('\n')
   const said = []
   const decisions = []
   const rows = []
   const clauses = []
   const scenarios = []
   const notPromised = []
+  const trusted = []
   let section = ''
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
@@ -69,13 +70,31 @@ export function parse(text) {
       }
       scenarios.push(scenario)
     }
+    if (section === 'Trusted') {
+      const t = /^- ([\w.]+): (.*)\.?\s*pin:\s*(.*)$/.exec(line) ?? /^- ([\w.]+): (.*)$/.exec(line)
+      if (t) trusted.push({ name: t[1], contract: (t[2] ?? '').trim().replace(/\.$/, ''), pin: (t[3] ?? '').trim() })
+    }
     if (section === 'Not promised') { const m = promisedHead.exec(line); if (m) notPromised.push({ id: m[1], text: m[2] }) }
   }
-  return { said, decisions, rows, clauses, scenarios, notPromised }
+  return { said, decisions, rows, clauses, scenarios, notPromised, trusted }
 }
 
 function finding(rule, detail) {
   return { rule, detail }
+}
+
+function trustedFindings(map) {
+  const out = []
+  for (const t of map.trusted) if (!t.pin) out.push(finding('trusted-unpinned', `Trusted ${t.name} has no pin: <command>`))
+  const names = new Set(map.trusted.map(t => t.name))
+  const subjects = map.scenarios.map(s => [s.title, s.given, s.when, s.then].join(' ')).join(' ')
+  const wanted = new Set(map.rows.filter(r => r.kind === 'formal').flatMap(r => r.clauses))
+  for (const c of map.clauses.filter(c => wanted.has(c.id))) {
+    for (const sym of new Set([...c.text.matchAll(/`([A-Za-z_][\w.]*)\(\)`/g)].map(m => m[1]))) {
+      if (!names.has(sym) && !new RegExp(`\\b${sym.replace(/\./g, '\\.')}\\b`).test(subjects)) out.push(finding('trusted-unpinned', `${c.id} leans on ${sym}, which is in no Trusted entry and no empirical scenario`))
+    }
+  }
+  return out
 }
 
 export function structure(text, phase) {
@@ -85,6 +104,7 @@ export function structure(text, phase) {
   const scenarioById = new Map(map.scenarios.map(s => [s.id, s]))
   const promised = new Set(map.notPromised.map(n => n.id))
   const seenSaid = new Set(map.rows.map(r => r.said).filter(Boolean))
+  out.push(...trustedFindings(map))
   for (const s of map.said) if (!seenSaid.has(s.id)) out.push(finding('unmapped-said', `${s.id} is in Said and on no row`))
   for (const row of map.rows) {
     if (!['formal', 'empirical', 'not-promised'].includes(row.kind)) out.push(finding('unknown-kind', `${row.id} has kind ${row.kind || '(none)'}`))
@@ -92,6 +112,7 @@ export function structure(text, phase) {
       if (!row.clauses.length) out.push(finding('missing-clause', `${row.id} is formal and names no clause`))
       for (const id of row.clauses) if (!clauseById.has(id)) out.push(finding('missing-clause', `${row.id} names ${id}, which has no Formal section`))
       const decision = map.decisions.find(d => d.id === row.decision)
+      if (!decision || !(decision.text.startsWith('both-ways') || /one-way-because:\s*\S/.test(decision.text))) out.push(finding('one-way-unjustified', `${row.id} is formal and its decision ${row.decision || '(none)'} is neither both-ways nor says one-way-because: <why only one direction>`))
       if (decision?.text.startsWith('both-ways')) {
         const dirs = row.clauses.map(id => clauseById.get(id)?.direction)
         if (!dirs.includes('only-when') || !dirs.includes('always')) out.push(finding('both-ways', `${row.id} records ${row.decision} both-ways and needs an only-when clause and an always clause`))
@@ -126,7 +147,7 @@ export function freezeFindings(map, freeze) {
   return out
 }
 
-const clears = a => a?.verdict === 'non-bug' && Boolean(a.by?.trim()) && Boolean(a.because?.trim())
+const clears = (a, m) => a?.verdict === 'non-bug' && a.clause === m.clause && Boolean(a.by?.trim()) && Boolean(a.because?.trim())
 
 export function formalFindings(map, clauseHolds, mutants, adjudications = {}) {
   const out = []
@@ -138,7 +159,7 @@ export function formalFindings(map, clauseHolds, mutants, adjudications = {}) {
   for (const id of wanted) {
     const planted = mutants.filter(m => m.clause === id)
     if (!planted.length) out.push(finding('unmutated', `${id} has no planted bug`))
-    for (const m of planted) if (m.holds && !clears(adjudications[m.id])) out.push(finding('vacuous', `${id} still holds under ${m.id}, so the clause rules nothing out`))
+    for (const m of planted) if (m.holds && !clears(adjudications[m.id], m)) out.push(finding('vacuous', `${id} still holds under ${m.id}, so the clause rules nothing out`))
   }
   return out
 }

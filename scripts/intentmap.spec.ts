@@ -51,7 +51,7 @@ test('early result, stale scenario, vacuous clause, missing mutant and prune eac
 
 test('parity: the port returns the oracle rule list on the fixtures', async () => {
   const oracle = await import(path.join(FIX, '../../intent-map.mjs'))
-  for (const [file, phase] of [['login/intent-plan.md', 'plan'], ['cases/gap.md', 'plan'], ['cases/one-way.md', 'plan']] as const) {
+  for (const [file, phase] of [['login/intent-plan.md', 'plan'], ['cases/gap.md', 'plan'], ['cases/one-way.md', 'plan'], ['cases/silent-one-way.md', 'plan']] as const) {
     const text = read(file)
     assert.deepEqual(rules(check(text, { phase })), rules(oracle.check(text, { phase })), file)
   }
@@ -139,7 +139,7 @@ test('the receipt lists each planted bug of a formal row', () => {
 
 // Wave 1, item 1: a surviving mutant can be adjudicated; only a non-bug with a named approver and a reason clears it.
 const survivor = [...rejectedAll.filter(m => m.clause !== 'C2'), { id: 'm1', clause: 'C2', holds: true }]
-const adjudicated = (a: Partial<Adjudication>): ReturnType<typeof check> => shipWith(survivor, { adjudications: { m1: { verdict: 'non-bug', because: 'commutes', by: 'Ana', ...a } } })
+const adjudicated = (a: Partial<Adjudication>): ReturnType<typeof check> => shipWith(survivor, { adjudications: { m1: { verdict: 'non-bug', because: 'commutes', by: 'Ana', clause: 'C2', ...a } } })
 
 test('a non-bug adjudication with a by and a reason clears the survivor and the receipt says so', () => {
   const r = adjudicated({})
@@ -151,11 +151,14 @@ test('clause-vacuous, a missing by, a missing reason, or an unrelated id leave t
   assert.deepEqual(rules(adjudicated({ verdict: 'clause-vacuous' })), ['vacuous'])
   assert.deepEqual(rules(adjudicated({ by: ' ' })), ['vacuous'])
   assert.deepEqual(rules(adjudicated({ because: '' })), ['vacuous'])
-  assert.deepEqual(rules(shipWith(survivor, { adjudications: { other: { verdict: 'non-bug', because: 'x', by: 'Ana' } } })), ['vacuous'])
+  // keyed by clause too: an id reused for another clause, or an adjudication with no clause (an old file), clears nothing
+  assert.deepEqual(rules(adjudicated({ clause: 'C3' })), ['vacuous'])
+  assert.deepEqual(rules(adjudicated({ clause: undefined })), ['vacuous'])
+  assert.deepEqual(rules(shipWith(survivor, { adjudications: { other: { verdict: 'non-bug', because: 'x', by: 'Ana', clause: 'C2' } } })), ['vacuous'])
 })
 
 test('an adjudication does not suppress a different surviving mutant of the same clause', () => {
-  const r = shipWith([...survivor, { id: 'm2', clause: 'C2', holds: true }], { adjudications: { m1: { verdict: 'non-bug', because: 'commutes', by: 'Ana' } } })
+  const r = shipWith([...survivor, { id: 'm2', clause: 'C2', holds: true }], { adjudications: { m1: { verdict: 'non-bug', because: 'commutes', by: 'Ana', clause: 'C2' } } })
   assert.deepEqual(rules(r), ['vacuous'])
   assert.match(r.findings[0]!.detail, /m2/)
 })
@@ -197,4 +200,81 @@ test('result-unbacked: a pass cannot borrow another scenario\'s run, nor an olde
 test('result-unbacked is a reserved sensor id and a ledger that is not passed is not checked (the pure oracle path)', () => {
   assert.ok(RULES.includes('result-unbacked'))
   assert.deepEqual(ship().findings, [])
+})
+
+// Wave 2, item 3: the formal checker must reach source this change edited.
+test('formal-targets-diff: no changed source among the formal targets fails; one passes; no targets argument skips the rule', () => {
+  const t = (files: string[], diffSource: string[]) => ship({ targets: { files, diffSource } })
+  const hit = t(['lib/copy.py'], ['src/auth.py']).findings.filter(f => f.rule === 'formal-targets-diff')
+  assert.equal(hit.length, 1)
+  assert.match(hit[0]!.detail, /python3 formal\.py/)
+  assert.deepEqual(rules(t([], ['src/auth.py'])).filter(r => r === 'formal-targets-diff'), ['formal-targets-diff'])
+  assert.deepEqual(t(['src/auth.py'], ['src/auth.py', 'src/other.py']).findings, [])
+  assert.deepEqual(ship().findings, [])
+  assert.ok(RULES.includes('formal-targets-diff'))
+})
+
+// Wave 2, item 5: a one-way decision is said, not silent.
+test('one-way-unjustified: a formal row with no decision, an empty reason or an unknown decision fails; a stated reason and both-ways pass', () => {
+  const silent = read('cases/silent-one-way.md')
+  const one = (text: string): string[] => rules(check(text, { phase: 'plan' })).filter(r => r === 'one-way-unjustified')
+  assert.deepEqual(one(silent), ['one-way-unjustified'])
+  const withDecision = (d: string, text = silent): string => text.replace('## Decisions\n', `## Decisions\n${d}\n`).replace('said S1. kind', 'said S1. decision D2. kind')
+  assert.deepEqual(one(withDecision('- D2: one-way-because:')), ['one-way-unjustified'])
+  assert.deepEqual(one(silent.replace('said S1. kind', 'said S1. decision D9. kind')), ['one-way-unjustified'])
+  assert.deepEqual(one(withDecision('- D2: one-way-because: the words only say which role an admin gets')), [])
+  assert.deepEqual(one(read('login/intent-plan.md')), [])
+})
+
+// Wave 2, item 4: every symbol a formal clause leans on is named in ## Trusted with a pin, or is an empirical scenario's subject.
+const trusted = (clause: string, section = ''): string => read('cases/silent-one-way.md').replace('## Decisions\n', '## Decisions\n- D2: one-way-because: only the admin role is promised\n').replace('said S1. kind', 'said S1. decision D2. kind').replace('The admin role only for a username with no email sent.', clause).replace('## Not promised', `${section}## Not promised`)
+const unpinned = (text: string): string[] => check(text, { phase: 'plan' }).findings.filter(f => f.rule === 'trusted-unpinned').map(f => f.detail)
+
+test('trusted-unpinned: an unnamed backticked symbol, an entry with no pin, and a scenario-covered symbol', () => {
+  const clause = 'The admin role only when `lookup()` finds an admin row.'
+  const named = unpinned(trusted(clause))
+  assert.equal(named.length, 1)
+  assert.match(named[0]!, /lookup/)
+  assert.deepEqual(unpinned(trusted(clause, '## Trusted\n- lookup: returns the row for the named account. pin: pytest -q tests/test_lookup.py\n\n')), [])
+  assert.equal(unpinned(trusted(clause, '## Trusted\n- lookup: returns the row for the named account.\n\n')).length, 1)
+  assert.equal(unpinned(trusted(clause, '## Trusted\n- lookup: returns the row. pin: \n\n')).length, 1)
+  assert.deepEqual(unpinned(trusted('The admin role only for a username with no email sent.')), [])
+  // a backticked literal is a value, not a dependency: only `name()` is
+  assert.deepEqual(unpinned(trusted('The `admin` role only when the email is `None` and the flag is `true`.')), [])
+  const scenario = '## Empirical\n### E1\ntitle: lookup answers for the named account\ngiven: g\nwhen: w\nthen: t\nstatus: planned\n\n'
+  assert.deepEqual(unpinned(trusted(clause).replace('## Empirical\n', scenario)), [])
+  assert.ok(RULES.includes('trusted-unpinned'))
+  assert.deepEqual(parse(trusted(clause, '## Trusted\n- lookup: returns the row. pin: pytest -q\n\n')).trusted, [{ name: 'lookup', contract: 'returns the row', pin: 'pytest -q' }])
+})
+
+test('trusted-unpinned: the login map names lookup, signer, clock and check_password, each pinned', () => {
+  const login = parse(read('login/intent-plan.md'))
+  assert.deepEqual(login.trusted.map(t => t.name).sort(), ['check_password', 'clock', 'lookup', 'signer'])
+  assert.equal(login.trusted.every(t => t.pin), true)
+})
+
+test('review fixes: a Trusted name may be dotted, a contract may mention pin:, and the oracle reads CRLF', async () => {
+  const text = trusted('The admin role only when `jwt.sign()` accepts it.', '## Trusted\n- jwt.sign: maps. pin: x. pin: pytest -q\n\n')
+  assert.deepEqual(unpinned(text), [])
+  assert.deepEqual(parse(text).trusted, [{ name: 'jwt.sign', contract: 'maps. pin: x', pin: 'pytest -q' }])
+  const oracle = await import(path.join(FIX, '../../intent-map.mjs'))
+  assert.deepEqual(oracle.parse(text.replace(/\n/g, '\r\n')).trusted, oracle.parse(text).trusted)
+})
+
+// Wave 3, item 7: an optional sampled-evidence tier between scenarios and the formal command.
+const withProp = (line = 'node prop.mjs'): string => `${withCmd(read('login/intent-plan.md'))}\n## Property command\n${line}\n`
+const shipProp = (propExit: number, text = withProp()): ReturnType<typeof ship> => ship({ text, run: cmd => cmd === 'node prop.mjs' ? { exit: propExit, tail: 'properties checked' } : { exit: 0, tail: good() } })
+
+test('property command: exit 0 passes with the sampled label, non-zero is property-failed, an empty section is property-failed, no section is silent', () => {
+  const ok = shipProp(0)
+  assert.deepEqual(ok.findings, [])
+  assert.match(ok.receipt, /- property: pass \(evidence, sampled, not exhaustive\)/)
+  assert.doesNotMatch(ok.receipt.split('\n').find(l => l.includes('property'))!, /proof/)
+  const bad = shipProp(1)
+  assert.deepEqual(rules(bad), ['property-failed'])
+  assert.match(bad.receipt, /- property: fails/)
+  assert.deepEqual(rules(shipProp(0, withProp(''))), ['property-failed'])
+  assert.deepEqual(ship().findings, [])
+  assert.doesNotMatch(ship().receipt, /property/)
+  assert.ok(RULES.includes('property-failed'))
 })

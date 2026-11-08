@@ -64,13 +64,15 @@ const adjFile = (): string => path.join(repo, '.rig/changes/demo/adjudications.j
 
 test('intent-adjudicate records the verdict, the reason and the approver; without --by or a reason it refuses and writes nothing', () => {
   write(repo, '.rig/changes/demo/intent-map.md', plan)
-  const r = sdlc(repo, ['intent-adjudicate', 'demo', 'm1', 'non-bug', '--by', 'Ana', '--', 'the reorder commutes'])
+  const r = sdlc(repo, ['intent-adjudicate', 'demo', 'm1', 'non-bug', '--clause', 'C2', '--by', 'Ana', '--', 'the reorder commutes'])
   assert.equal(r.code, 0, r.stderr)
-  assert.deepEqual(JSON.parse(fs.readFileSync(adjFile(), 'utf8')), { m1: { verdict: 'non-bug', because: 'the reorder commutes', by: 'Ana' } })
+  assert.deepEqual(JSON.parse(fs.readFileSync(adjFile(), 'utf8')), { m1: { verdict: 'non-bug', because: 'the reorder commutes', by: 'Ana', clause: 'C2' } })
   fs.rmSync(adjFile())
   assert.notEqual(sdlc(repo, ['intent-adjudicate', 'demo', 'm1', 'non-bug', '--', 'why']).code, 0)
   assert.notEqual(sdlc(repo, ['intent-adjudicate', 'demo', 'm1', 'non-bug', '--by', 'Ana']).code, 0)
-  assert.notEqual(sdlc(repo, ['intent-adjudicate', 'demo', 'm1', 'maybe', '--by', 'Ana', '--', 'why']).code, 0)
+  assert.notEqual(sdlc(repo, ['intent-adjudicate', 'demo', 'm1', 'non-bug', '--by', 'Ana', '--', 'why']).code, 0) // no --clause
+  assert.notEqual(sdlc(repo, ['intent-adjudicate', 'demo', 'm1', 'non-bug', '--clause', 'X9', '--by', 'Ana', '--', 'why']).code, 0) // not a clause of the map
+  assert.notEqual(sdlc(repo, ['intent-adjudicate', 'demo', 'm1', 'maybe', '--clause', 'C2', '--by', 'Ana', '--', 'why']).code, 0)
   assert.equal(fs.existsSync(adjFile()), false)
 })
 
@@ -94,4 +96,30 @@ test('intent-record stores a run id that names its ledger line, and a result wit
   fs.writeFileSync(resFile, JSON.stringify(res))
   const v = sdlc(repo, ['verify', 'demo'])
   assert.match(v.stdout + v.stderr, /result-unbacked/)
+})
+
+test('intentReceipt reports the property command from its last ledger run, with the sampled label, and never from a new run', () => {
+  const run = (code: string): string => {
+    const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', `import * as M from ${JSON.stringify(pathToFileURL(path.resolve(import.meta.dirname, 'intentmapio.ts')).href)}; console.log(JSON.stringify(await (async () => { ${code} })()))`], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo } })
+    assert.equal(r.status, 0, r.stderr)
+    return JSON.parse(r.stdout.trim())
+  }
+  write(repo, '.rig/changes/demo/intent-map.md', plan.replace('## Not promised', '## Property command\nnode prop.mjs\n\n## Not promised'))
+  assert.match(run(`return M.intentReceipt('demo')`), /- property: not run/)
+  write(repo, '.rig/changes/demo/evidence/runs.jsonl', JSON.stringify({ at: 't', cmd: 'node prop.mjs', exit: 0, ms: 1, tail: '' }) + '\n')
+  assert.match(run(`return M.intentReceipt('demo')`), /- property: pass \(evidence, sampled, not exhaustive\)/)
+  write(repo, '.rig/changes/demo/evidence/runs.jsonl', JSON.stringify({ at: 't', cmd: 'node prop.mjs', exit: 1, ms: 1, tail: '' }) + '\n')
+  assert.match(run(`return M.intentReceipt('demo')`), /- property: fails/)
+})
+
+test('a ledger id is one past the highest id on the ledger, so removed lines never make an id repeat', () => {
+  write(repo, '.rig/changes/demo/intent-map.md', plan)
+  write(repo, '.rig/changes/demo/evidence/runs.jsonl', ['r1', 'r5'].map(id => JSON.stringify({ at: 't', cmd: 'x', exit: 0, ms: 1, tail: '', id })).join('\n') + '\n')
+  assert.equal(sdlc(repo, ['intent-record', 'demo', 'E1', '--', 'node -e "process.exit(0)"']).code, 0)
+  assert.equal(JSON.parse(fs.readFileSync(path.join(repo, '.rig/changes/demo/intent-results.json'), 'utf8')).E1.run, 'r6')
+})
+
+test('the build skill tells a person the whole intent-adjudicate command, --clause included', () => {
+  const text = fs.readFileSync(path.resolve(import.meta.dirname, '../skills/build/SKILL.md'), 'utf8')
+  assert.match(text, /intent-adjudicate <slug> <mutant-id> non-bug --clause <C-id> --by <name>/)
 })
