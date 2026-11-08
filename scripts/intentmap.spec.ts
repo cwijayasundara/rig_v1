@@ -162,7 +162,7 @@ test('an adjudication does not suppress a different surviving mutant of the same
 
 // Wave 1, item 6: a pass must be backed by a line of the run ledger.
 const backed = (): Results => Object.fromEntries(Object.entries(recorded()).map(([id, r], i) => [id, { ...r, run: `r${i + 1}` }]))
-const ledgerOf = (results: Results): { id?: string; cmd: string; exit: number; commit?: string }[] => Object.values(results).map(r => ({ id: r.run, cmd: r.command!, exit: 0, commit: r.commit }))
+const ledgerOf = (results: Results): { id?: string; cmd: string; exit: number; commit?: string; scenario?: string }[] => Object.entries(results).map(([id, r]) => ({ id: r.run, cmd: r.command!, exit: 0, commit: r.commit, scenario: id }))
 const shipBacked = (results: Results, runs: ReturnType<typeof ledgerOf>): ReturnType<typeof ship> => ship({ results, runs })
 
 test('result-unbacked: a pass with a matching ledger line is clean', () => {
@@ -183,6 +183,15 @@ test('result-unbacked: a missing run id, an unknown run id, another command, a f
   const empty = one(shipBacked(results, []))
   assert.equal(empty.length, 2)
   assert.match(empty[0]!, /E1/)
+})
+
+test('result-unbacked: a pass cannot borrow another scenario\'s run, nor an older run once a newer one exists for the scenario', () => {
+  const results = backed()
+  const ledger = ledgerOf(results)
+  const borrowed = { ...results, E2: { ...results.E1! } }
+  assert.deepEqual(rules(shipBacked(borrowed, ledger)), ['result-unbacked'])
+  const newer = [...ledger, { id: 'r9', cmd: results.E1!.command!, exit: 1, commit: results.E1!.commit, scenario: 'E1' }]
+  assert.deepEqual(rules(shipBacked(results, newer)), ['result-unbacked'])
 })
 
 test('result-unbacked is a reserved sensor id and a ledger that is not passed is not checked (the pure oracle path)', () => {

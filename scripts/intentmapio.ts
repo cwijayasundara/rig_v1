@@ -42,7 +42,7 @@ export function recordResult(slug: string, scenario: string, cmd: string): { sta
   if (!parse(fs.readFileSync(map, 'utf8')).scenarios.some(s => s.id === scenario)) throw new Error(`${scenario} is not an Empirical scenario of ${slug}`)
   const row = runCommand(cmd)
   const commit = git(['rev-parse', '--short', 'HEAD']) ?? ''
-  const run = recordRun(slug, { ...row, source: 'ship', commit })
+  const run = recordRun(slug, { ...row, source: 'ship', commit, scenario })
   const status = row.exit === 0 ? 'pass' : 'fail'
   const results = readResults(slug)
   results[scenario] = { status, command: row.cmd, commit, run }

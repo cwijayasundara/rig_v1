@@ -79,3 +79,15 @@ test('a formal command that does not run fails closed as formal-failed', () => {
   assert.match(v.text, /formal-failed/)
   assert.notEqual(v.code, 0)
 })
+
+test('a failing scenario cannot ship by copying another scenario\'s passing result', () => {
+  verdict(CLAUSES.map(c => killed(c)))
+  record('E1')
+  assert.equal(sdlc(repo, ['intent-record', 'demo', 'E2', '--', 'node -e "process.exit(1)"']).code, 1)
+  const res = JSON.parse(fs.readFileSync(resultsPath(), 'utf8'))
+  res.E2 = { ...res.E1 }
+  fs.writeFileSync(resultsPath(), JSON.stringify(res))
+  const v = verify()
+  assert.match(v.text, /result-unbacked/)
+  assert.notEqual(v.code, 0)
+})

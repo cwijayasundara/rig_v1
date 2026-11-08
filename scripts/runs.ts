@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process'
 import { maskSecrets } from './model.ts'
 import { ROOT, CHANGES, now } from './core.ts'
 
-export type RunRow = { at: string; cmd: string; sensor?: string; cwd?: string; exit: number; ms: number; tail: string; expectFail?: true; timedOut?: true; source?: 'gate' | 'ship'; tree?: string; id?: string; commit?: string }
+export type RunRow = { at: string; cmd: string; sensor?: string; cwd?: string; exit: number; ms: number; tail: string; expectFail?: true; timedOut?: true; source?: 'gate' | 'ship'; tree?: string; id?: string; commit?: string; scenario?: string }
 
 const TAIL_LINES = 30
 const TIMED_OUT = 124

@@ -13,7 +13,7 @@ export type IntentMap = { formalCommand: string; said: { id: string; text: strin
 export type Mutant = { id: string; clause: string; holds: boolean }
 export type Results = Record<string, { status: string; command?: string; commit?: string; run?: string }>
 // One line of evidence/runs.jsonl: the ledger a recorded pass must be found in.
-export type LedgerRun = { id?: string; cmd: string; exit: number; commit?: string }
+export type LedgerRun = { id?: string; cmd: string; exit: number; commit?: string; scenario?: string }
 // A person's ruling on a surviving mutant (stored beside the map in adjudications.json, written by `intent-adjudicate`):
 // only a non-bug with an approver and a reason clears the vacuous finding; clause-vacuous keeps it.
 export type Adjudication = { verdict: 'non-bug' | 'clause-vacuous'; because: string; by: string }
@@ -209,7 +209,9 @@ function resultFindings(map: IntentMap, results: Results, runs: LedgerRun[] | un
   return map.scenarios.filter(s => s.status === 'pass').flatMap(s => {
     const r = results[s.id]
     const line = r?.run ? runs.find(l => l.id === r.run) : undefined
-    return line && line.exit === 0 && line.cmd === r?.command && line.commit === r?.commit ? [] : [finding('result-unbacked', `${s.id} says pass with no matching run in the ledger (same run id, command and commit, exit 0)`)]
+    // The line must be this scenario's own newest run: another scenario's pass, or an older pass after a newer run, is not its evidence.
+    const newest = runs.filter(l => l.scenario === s.id).at(-1)
+    return line && line === newest && line.exit === 0 && line.cmd === r?.command && line.commit === r?.commit ? [] : [finding('result-unbacked', `${s.id} says pass with no matching run in the ledger (same run id, command and commit, exit 0)`)]
   })
 }
 
