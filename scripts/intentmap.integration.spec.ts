@@ -140,3 +140,18 @@ test('a property command that fails blocks verify as property-failed; one that p
   const ledger = fs.readFileSync(path.join(repo, '.rig/changes/demo/evidence/runs.jsonl'), 'utf8')
   assert.match(ledger, /node prop\.mjs/)
 })
+
+test('after a change ships, drift in the world is proposed once by intent-recheck and the record is untouched', () => {
+  verdict(CLAUSES.map(c => killed(c)))
+  record('E1'); record('E2')
+  assert.doesNotMatch(verify().text, /vacuous|unmutated|formal-failed|formal-targets-diff|result-unbacked|property-failed|empirical-/)
+  write(repo, '.rig/changes/demo/pr.md', '# PR\n')
+  execFileSync('git', ['add', '-A'], { cwd: repo }); execFileSync('git', ['commit', '-qm', 'ship demo'], { cwd: repo })
+  const recheck = (): { slug: string }[] => JSON.parse(sdlc(repo, ['intent-recheck', '--json']).stdout.trim()).proposed
+  assert.deepEqual(recheck(), [])
+  const before = fs.readFileSync(resultsPath(), 'utf8')
+  verdict([...CLAUSES.map(c => killed(c)), { id: 'm-new', clause: 'C2', holds: true }])
+  assert.equal(recheck().length, 1)
+  assert.deepEqual(recheck(), [])
+  assert.equal(fs.readFileSync(resultsPath(), 'utf8'), before)
+})

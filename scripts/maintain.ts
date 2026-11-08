@@ -22,7 +22,7 @@ const SKIP = /^(\.rig\/|dist\/|build\/|vendor\/|node_modules\/|docs\/(adr|decisi
 const BY_CONVENTION = /(^|\/)(migrations?|migrate|versions|alembic)\/|(^|\/)\d+[_-][^/]*$/
 const GENERATED_CITES = /^(dist|build|\.rig|node_modules|vendor)\//
 
-export type Finding = { kind: 'duplicate' | 'dead' | 'drift'; key: string; title: string; files: string[]; evidence: string }
+export type Finding = { kind: 'duplicate' | 'dead' | 'drift' | 'recheck'; key: string; title: string; files: string[]; evidence: string }
 
 const norm = (l: string): string => l.trim()
 const meaningful = (l: string): boolean => l.length > 3 && !/^(\/\/|#|\*|\/\*|\*\/|--)/.test(l)
@@ -68,10 +68,10 @@ export function scan(files: Record<string, string>, isTestFile: (f: string) => b
   return found
 }
 
-const slugOf = (f: Finding, n: number): string => `${f.kind}-${n}-${path.basename(f.files[0] ?? 'x').replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`
+const slugOf = (f: Finding, n: number): string => `${f.kind}-${n}-${path.basename(f.kind === 'recheck' ? path.dirname(f.files[0] ?? 'x') : f.files[0] ?? 'x').replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`
 
-function proposalText(f: Finding, slug: string): string {
-  return `---\nkind: maintain\ntype: chore\nstatus: proposed\nfound: ${new Date().toISOString().slice(0, 10)}\nscope: [${f.files.join(', ')}]\n---\n# ${f.title}\n\n## Intent\n\n${f.evidence}\n\nFound by \`sdlc.ts maintain\`, not by a person: confirm it is real before acting on it.\n\n## Non-goals\n\nDo not change behaviour. Do not touch files outside \`scope\`.\n\n## How to start\n\n\`${skillRef('start')} ${slug.replace(/^[a-z]+-\d+-/, `${f.kind}-`)}\` with this file as the intent, then plan, approve and build as for any chore.\n`
+function proposalText(f: Finding, slug: string, tool: string): string {
+  return `---\nkind: maintain\ntype: chore\nstatus: proposed\nfound: ${new Date().toISOString().slice(0, 10)}\nscope: [${f.files.join(', ')}]\n---\n# ${f.title}\n\n## Intent\n\n${f.evidence}\n\nFound by \`sdlc.ts ${tool}\`, not by a person: confirm it is real before acting on it.\n\n## Non-goals\n\nDo not change behaviour. Do not touch files outside \`scope\`.\n\n## How to start\n\n\`${skillRef('start')} ${slug.replace(/^[a-z]+-\d+-/, `${f.kind}-`)}\` with this file as the intent, then plan, approve and build as for any chore.\n`
 }
 
 export function cmdMaintain(args: Args): void {
@@ -85,11 +85,16 @@ export function cmdMaintain(args: Args): void {
     if (text.length && text.length < MAX_BYTES && !text.includes('\0')) { files[f] = text; bytes += text.length }
   }
   const paths = parseRegistry(read(SENSORS_PATH)).registry.paths
+  propose(scan(files, f => isTest(f, paths)), args, 'maintain', bytes)
+}
+
+// Each finding becomes a proposed intent under .rig/maintain/proposals/, once (seen.json), at most `cap` per run. Shared by maintain and intent-recheck.
+export function propose(found: Finding[], args: Args, tool: string, scannedBytes = 0): void {
   const cap = Number(typeof args.opt.cap === 'string' ? args.opt.cap : DEFAULT_CAP)
   const seenFile = path.join(SDLC, 'maintain', 'seen.json')
   let seen: Record<string, string> = {}
   if (fs.existsSync(seenFile)) { try { seen = JSON.parse(read(seenFile)) as Record<string, string> } catch { fail(`${path.relative(ROOT, seenFile)} is not valid JSON: delete it to start over (every finding is then proposed again), or fix it`) } }
-  const fresh = scan(files, f => isTest(f, paths)).filter(f => !seen[f.key])
+  const fresh = found.filter(f => !seen[f.key])
   const take = fresh.slice(0, Number.isInteger(cap) && cap > 0 ? cap : DEFAULT_CAP)
   const dir = path.join(SDLC, 'maintain', 'proposals')
   fs.mkdirSync(dir, { recursive: true })
@@ -97,13 +102,13 @@ export function cmdMaintain(args: Args): void {
   let n = Math.max(0, ...fs.readdirSync(dir).map(f => Number(/^[a-z]+-(\d+)-/.exec(f)?.[1] ?? 0)))
   const written = take.map(f => {
     const slug = slugOf(f, ++n)
-    writeAtomic(path.join(dir, `${slug}.md`), proposalText(f, slug))
+    writeAtomic(path.join(dir, `${slug}.md`), proposalText(f, slug, tool))
     seen[f.key] = new Date().toISOString().slice(0, 10)
     return { slug, ...f }
   })
   fs.mkdirSync(path.dirname(seenFile), { recursive: true })
   writeAtomic(seenFile, JSON.stringify(seen, null, 2) + '\n')
-  if (args.opt.json) return out(JSON.stringify({ proposed: written, heldBack: fresh.length - take.length, scannedBytes: bytes }))
-  out([written.length ? `maintain: proposed ${written.length} intent(s) under .rig/maintain/proposals/:` : 'maintain: nothing new to propose',
+  if (args.opt.json) return out(JSON.stringify({ proposed: written, heldBack: fresh.length - take.length, scannedBytes }))
+  out([written.length ? `${tool}: proposed ${written.length} intent(s) under .rig/maintain/proposals/:` : `${tool}: nothing new to propose`,
     ...written.map(w => `  ${w.slug}.md: ${w.title}`), ...(fresh.length > take.length ? [`${fresh.length - take.length} more held back by the cap of ${take.length}; run again later`] : [])].join('\n'))
 }

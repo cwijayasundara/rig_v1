@@ -2,7 +2,7 @@
 #   gh variable set RIG_MAINTAIN --body on        (turn it off again: gh variable delete RIG_MAINTAIN)
 # The five questions (docs/GOAL.md, "Rules for anything that runs unattended"):
 #   Triggers:    one scheduled run a day, or a person's workflow_dispatch.
-#   Reads/writes: reads the tracked files; writes only .rig/maintain/ (proposed intents and seen.json) on a branch rig/maintain-<date>.
+#   Reads/writes: reads the tracked files (and, with RIG_INTENT_RECHECK on, runs the commands recorded in shipped intent maps); writes only .rig/maintain/ (proposed intents and seen.json) on a branch rig/maintain-<date>.
 #   Triggers next: one pull request. Nothing else runs from it, and a person reviews it: merging it files the proposals, starting one is a later, human step.
 #   A person re-enters: at the pull request. The run never waits; the next day's run starts from the repo alone.
 #   Two runs: one open rig/maintain-* pull request at a time (a run that finds one stops), and `concurrency` below. A finding is proposed once:
@@ -46,6 +46,14 @@ jobs:
         if: steps.open.outputs.open == '0'
         shell: bash # -eo pipefail: a failed scan must not be hidden by tee
         run: node --disable-warning=ExperimentalWarning .rig/bin/sdlc.ts maintain --cap 5 | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Recheck shipped intent maps (Mondays or a manual run; off until RIG_INTENT_RECHECK is on)
+        if: steps.open.outputs.open == '0' && vars.RIG_INTENT_RECHECK == 'on'
+        shell: bash
+        # This step RUNS the commands recorded in shipped changes (formal checkers, scenario tests), so it is a separate opt-in:
+        #   gh variable set RIG_INTENT_RECHECK --body on
+        run: |
+          if [ "$(date -u +%u)" != "1" ] && [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]; then echo "::notice::the intent recheck runs on Mondays"; exit 0; fi
+          node --disable-warning=ExperimentalWarning .rig/bin/sdlc.ts intent-recheck --cap 5 | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Open one pull request for the new proposals
         if: steps.open.outputs.open == '0'
         run: |
