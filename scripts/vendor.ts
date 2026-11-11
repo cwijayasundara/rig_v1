@@ -243,8 +243,8 @@ function mergeMissing(into: Record<string, unknown>, from: Record<string, unknow
 // `init --full [--workflows]`: the deterministic half of onboarding, so the model need not hand-copy files. Vendors the
 // standalone harness, wires the git hooks and merges templates/settings.json. The CI workflows and REVIEW.md need a
 // remote, so they are written only with --workflows, and never over a file that is already there.
-export function installStandalone(workflows: boolean): string {
-  cmdVendor({ pos: [], opt: { standalone: true } })
+export function installStandalone(workflows: boolean, profile: Profile = 'full'): string {
+  cmdVendor({ pos: [], opt: { standalone: true, ...(profile === 'core' ? { profile } : {}) } })
   const hooks = installHooks()
   const lines = [hooks.ok ? hooks.message : `git hooks not installed: ${hooks.message}`]
   const file = path.join(ROOT, '.claude', 'settings.json')
@@ -258,6 +258,7 @@ export function installStandalone(workflows: boolean): string {
   lines.push('merged templates/settings.json into .claude/settings.json (existing values kept)')
   if (workflows) {
     for (const [from, to] of [['rig-check.yml', '.github/workflows/rig-check.yml'], ['rig-maintain.yml', '.github/workflows/rig-maintain.yml'], ['REVIEW.md', 'REVIEW.md']] as const) {
+      if (profile === 'core' && from === 'rig-maintain.yml') continue // Maintain is off in core
       if (fs.existsSync(path.join(ROOT, to))) lines.push(`${to} already exists; left as it is`)
       else { writeFile(to, read(path.join(PLUGIN_ROOT, 'templates', from)), written); lines.push(`wrote ${to}`) }
     }

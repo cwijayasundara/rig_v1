@@ -7,7 +7,7 @@ import { ROOT, SDLC, SENSORS_PATH, IS_VENDORED, PLUGIN_ROOT, skillRef, exists, r
 import { isObject } from './model.ts'
 import { isRegistryShape } from './registry.ts'
 import { loadPacks, PACKS_DIR } from './stackpacks.ts'
-import { harnessFiles, readManifest, isHarnessPath, mergeProjectFiles, MANIFEST, pluginVersion, versionGuards, type Manifest } from './vendor.ts'
+import { harnessFiles, readManifest, isHarnessPath, mergeProjectFiles, manifestProfile, MANIFEST, pluginVersion, versionGuards, type Manifest } from './vendor.ts'
 import { pendingMigrations, runMigrations, type Migration } from './migrations.ts'
 import { cmdSync } from './sync.ts'
 import { cmdBaseline } from './initbaseline.ts'
@@ -81,7 +81,7 @@ export function buildPlan(): Plan {
   const raw = readManifest()
   const ignoredManifestKeys = Object.keys(raw?.files ?? {}).filter(rel => !isHarnessPath(rel))
   const manifest = raw && { ...raw, files: Object.fromEntries(Object.entries(raw.files ?? {}).filter(([rel]) => isHarnessPath(rel))) }
-  const next = standalone ? harnessFiles(true) : new Map<string, string>()
+  const next = standalone ? harnessFiles(true, manifestProfile(raw)) : new Map<string, string>()
   const disk = new Map<string, string | null>()
   if (standalone) for (const rel of new Set([...Object.keys(manifest?.files ?? {}), ...next.keys()])) {
     if (rel.endsWith('.rig-new')) continue
@@ -175,7 +175,8 @@ function applyUpgrade(args: Args): void {
     else if (v === 'conflict' && d === 'new') text === undefined ? drop(rel) : put(rel, text)
     else if (v === 'conflict' && d === 'later' && text !== undefined) put(`${rel}.rig-new`, text)
   }
-  if (plan.standalone) mergeProjectFiles(written)
+  const profile = manifestProfile(plan.manifest)
+  if (plan.standalone) mergeProjectFiles(written, profile)
   if (plan.workflow === 'differs') { fs.writeFileSync(path.join(ROOT, `${WORKFLOW}.rig-new`), read(path.join(PLUGIN_ROOT, 'templates', 'rig-check.yml'))); written.push(`${WORKFLOW}.rig-new`) }
   const notes = runMigrations(plan.migrations, ROOT)
   for (const rel of plan.migrations.length ? ['.rig/sensors.json.rig-new'] : []) if (exists(path.join(ROOT, rel))) written.push(rel)
@@ -187,7 +188,7 @@ function applyUpgrade(args: Args): void {
   }
   if (plan.standalone) {
     const files = Object.fromEntries([...plan.next].map(([rel, text]) => [rel, sha(text)]).sort(([a], [b]) => (a as string).localeCompare(b as string, 'en')))
-    put(MANIFEST, JSON.stringify({ version: plan.to, files }, null, 2) + '\n')
+    put(MANIFEST, JSON.stringify({ version: plan.to, ...(profile === 'core' ? { profile } : {}), files }, null, 2) + '\n')
   }
   // An older .rig/.gitignore lacks the entries later versions added (changes/*/pr-outline.md stayed untracked in shop_app, 2026-10-28).
   const ignoreBefore = read(path.join(SDLC, '.gitignore'))

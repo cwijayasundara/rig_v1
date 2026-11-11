@@ -16,7 +16,7 @@ import { cmdHook } from './hooks.ts'
 import { cmdCheck, cmdCheckFile, loadConfig } from './check.ts'
 import { inertSensors, isRegistryShape, type Inert } from './registry.ts'
 import { runCommand, recordRun } from './runs.ts'
-import { cmdVendor, installStandalone, older, pluginVersion } from './vendor.ts'
+import { cmdVendor, installStandalone, older, pluginVersion } from './vendor.ts'; import { parseProfile } from './profile.ts'
 import { cmdUpgrade } from './upgrade.ts'
 import { cmdBaseline } from './initbaseline.ts'
 import { cmdVerify } from './verify.ts'
@@ -76,7 +76,7 @@ function cmdInit(args: Args): void {
   }
   out(`initialised ${toPosix(path.relative(ROOT, SDLC)) || SDLC}${newRepo ? ' (ran git init: no repository was here)' : ''}`)
   if (args.opt.stack) out(declareStack(args.opt.stack))
-  if (args.opt.full) out(installStandalone(Boolean(args.opt.workflows)))
+  if (args.opt.full) out(installStandalone(Boolean(args.opt.workflows), parseProfile(args.opt.profile)))
   if (args.opt.protect) out(protect(Boolean(args.opt.dry)).join('\n'))
   if (args.opt.enforce) {
     // risk.enforce on (never off): rig-check then wants an approval from someone other than the author on every PR. The rest of the file is kept.

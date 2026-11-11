@@ -3,9 +3,10 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { makeRepo, sdlc } from './testkit.ts'
+import { makeRepo, sdlc, gitIn, write, registry } from './testkit.ts'
 import { CORE_SKILLS, OFF_COMMANDS } from './profile.ts'
 import { harnessFiles } from './vendor.ts'
+import { sha } from './core.ts'
 
 const ROOT = path.resolve(import.meta.dirname, '..')
 const dirs = (repo: string, rel: string): string[] => fs.existsSync(path.join(repo, rel)) ? fs.readdirSync(path.join(repo, rel)).sort() : []
@@ -92,4 +93,46 @@ test('full vendors no core template', () => {
   sdlc(repo, ['init'])
   assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
   assert.equal(fs.existsSync(path.join(repo, '.rig/templates/readme-rig-core.md')), false)
+})
+
+const upgradePlan = (repo: string): Record<string, string> => {
+  const r = sdlc(repo, ['upgrade', '--json'])
+  assert.equal(r.code, 0, r.stderr)
+  return (JSON.parse(r.stdout) as { files: Record<string, string> }).files
+}
+
+test('upgrade on a core repo keeps it core', () => {
+  const repo = coreRepo()
+  write(repo, '.rig/sensors.json', registry({ turn: { x: 'true' }, extra: { stack: 'node' } }))
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', 'vendor core')
+  const off = Object.entries(upgradePlan(repo)).filter(([rel]) => /rig-(chart|wiki|testplan|arch|app|autonomy|init)\/|rig-architect|\.rig\/mod\//.test(rel))
+  assert.deepEqual(off, [])
+  write(repo, '.claude/skills/rig-start/SKILL.md', 'old\n')
+  const m = json(repo, '.rig/bin/MANIFEST.json')
+  m.files['.claude/skills/rig-start/SKILL.md'] = sha('old\n')
+  write(repo, '.rig/bin/MANIFEST.json', JSON.stringify(m, null, 2) + '\n')
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', 'lag')
+  const r = sdlc(repo, ['upgrade', '--apply'])
+  assert.equal(r.code, 0, r.stderr)
+  assert.equal(json(repo, '.rig/bin/MANIFEST.json').profile, 'core')
+  assert.deepEqual(dirs(repo, '.claude/skills'), CORE_SKILLS.map(s => `rig-${s}`).sort())
+})
+
+test('upgrade on a pre-profile manifest stays full', () => {
+  const repo = makeRepo()
+  sdlc(repo, ['init'])
+  assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
+  const deletes = Object.entries(upgradePlan(repo)).filter(([rel, v]) => v === 'delete' && rel.startsWith('.claude/skills/'))
+  assert.deepEqual(deletes, [])
+})
+
+test('init --full --profile core vendors core and skips the maintain workflow', () => {
+  const repo = makeRepo()
+  const r = sdlc(repo, ['init', '--full', '--workflows', '--profile', 'core'])
+  assert.equal(r.code, 0, r.stderr)
+  assert.deepEqual(dirs(repo, '.claude/skills').filter(d => d.startsWith('rig-')), CORE_SKILLS.map(s => `rig-${s}`).sort())
+  assert.equal(fs.existsSync(path.join(repo, '.github/workflows/rig-check.yml')), true)
+  assert.equal(fs.existsSync(path.join(repo, '.github/workflows/rig-maintain.yml')), false)
 })
