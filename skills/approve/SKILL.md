@@ -15,6 +15,6 @@ Then run `SDLC_HUMAN=1 node --disable-warning=ExperimentalWarning "${CLAUDE_PLUG
 
 A change with an `intent-map.md` approves it and its `freeze.json` (the scenario hashes) with spec.md and plan.md; a refusal names the rule id (`unmapped-said`, `both-ways`, `behaviours-drift`), and a later edit of either file makes the approval stale.
 
-`arch` approves the layers block that `/rig:arch` proposed, and `app <name>` approves that app's journeys after one more driver run: neither is asked about, the person typed the target. Run it as above, tell the person the result in one line and stop.
+`arch` approves the layers block proposed in `architecture.md`, and `app <name>` approves that app's journeys after one more driver run: neither is asked about, the person typed the target. Run it as above, tell the person the result in one line and stop.
 
 Otherwise tell the person the result above in one line. Do nothing else.

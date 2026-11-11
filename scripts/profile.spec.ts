@@ -4,7 +4,8 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { makeRepo, sdlc } from './testkit.ts'
-import { CORE_SKILLS } from './profile.ts'
+import { CORE_SKILLS, OFF_COMMANDS } from './profile.ts'
+import { harnessFiles } from './vendor.ts'
 
 const ROOT = path.resolve(import.meta.dirname, '..')
 const dirs = (repo: string, rel: string): string[] => fs.existsSync(path.join(repo, rel)) ? fs.readdirSync(path.join(repo, rel)).sort() : []
@@ -68,4 +69,27 @@ test('bad profile values fail', () => {
   const r = sdlc(repo, ['vendor', '--profile', 'core'])
   assert.equal(r.code, 1)
   assert.match(r.stderr, /--profile needs --standalone/)
+})
+
+test('no core skill or core README names an off command', () => {
+  const off = new RegExp(`/rig[:-](${OFF_COMMANDS.join('|')})\\b`)
+  assert.equal(off.test('/rig:approve'), false)
+  const named = [...harnessFiles(true, 'core')]
+    .filter(([rel]) => rel.endsWith('SKILL.md') || rel === '.rig/templates/readme-rig.md')
+    .filter(([, text]) => off.test(text)).map(([rel, text]) => `${rel}: ${text.match(off)?.[0]}`)
+  assert.deepEqual(named, [])
+})
+
+test('the core README block is the core template', () => {
+  const text = fs.readFileSync(path.join(coreRepo(), '.rig/templates/readme-rig.md'), 'utf8')
+  assert.match(text, /<!-- rig:begin/)
+  assert.match(text, /\/rig-start/)
+  assert.doesNotMatch(text, /\/rig-chart|\.rig\/product\//)
+})
+
+test('full vendors no core template', () => {
+  const repo = makeRepo()
+  sdlc(repo, ['init'])
+  assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
+  assert.equal(fs.existsSync(path.join(repo, '.rig/templates/readme-rig-core.md')), false)
 })

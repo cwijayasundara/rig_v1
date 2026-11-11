@@ -121,7 +121,8 @@ export function harnessFiles(standalone: boolean, profile: Profile = 'full'): Ma
   }
   const templates = path.join(PLUGIN_ROOT, 'templates')
   for (const file of (fs.readdirSync(templates, { recursive: true }) as string[]).filter(f => fs.statSync(path.join(templates, f)).isFile()).sort()) {
-    const text = read(path.join(templates, file))
+    if (file === README_CORE) continue // core's README block is written under the usual name below
+    const text = read(path.join(templates, file === README_TEMPLATE && profile === 'core' ? README_CORE : file))
     files.set(`.rig/templates/${file}`, file === README_TEMPLATE ? vendoredCommands(text) : text)
   }
   if (profile === 'full') dashboardFiles(files)
@@ -138,6 +139,7 @@ export function mergeProjectFiles(written: string[], profile: Profile = 'full'):
 }
 
 const README_TEMPLATE = 'readme-rig.md'
+const README_CORE = 'readme-rig-core.md'
 const README_BLOCK = /<!-- rig:begin[\s\S]*?<!-- rig:end -->/
 const vendoredCommands = (text: string): string => text.replace(/\/rig:([a-z]+)\b/g, '/rig-$1')
 
