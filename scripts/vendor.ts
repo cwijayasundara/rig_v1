@@ -5,9 +5,10 @@ import path from 'node:path'
 import { ROOT, SDLC, PLUGIN_ROOT, IS_VENDORED, read, out, fail, sanctionWrites, sha, type Args } from './core.ts'
 import { findBlock, withBlock } from './sync.ts'
 import { HOOK_SCRIPTS, installHooks } from './githooks.ts'
+import { parseProfile, skillIn, agentIn, type Profile } from './profile.ts'
 
 // Every script the checker imports; testkit and specs stay behind. CI runs this copy, so it never needs the plugin.
-export const VENDORED = ['core', 'model', 'sensors', 'diffs', 'runs', 'check', 'stamp', 'basetree', 'verify', 'hooks', 'pr', 'carry', 'prbody', 'sdlc', 'githooks', 'vendor', 'initbaseline', 'registry', 'stackpacks', 'modelstate', 'stackinit', 'contracts', 'sync', 'lifecycle', 'chart', 'superpowers', 'chartcheck', 'prdformat', 'prdcoverage', 'prdcmd', 'plan', 'product', 'journey', 'wiki', 'wikicite', 'wikigen', 'wikistate', 'wikivalidate', 'learn', 'learnfile', 'learnmine', 'learnreplay', 'learntranscripts', 'report', 'arch', 'counts', 'queue', 'app', 'scope', 'slice', 'maintain', 'readiness', 'autonomy', 'upgrade', 'migrations', 'risk', 'route', 'reverts', 'reviewcases', 'protect', 'actrace', 'claims', 'intentmap', 'intentmapio', 'intenttargets', 'intentrecheck']
+export const VENDORED = ['core', 'model', 'sensors', 'diffs', 'runs', 'check', 'stamp', 'basetree', 'verify', 'hooks', 'pr', 'carry', 'prbody', 'sdlc', 'githooks', 'vendor', 'initbaseline', 'registry', 'stackpacks', 'modelstate', 'stackinit', 'contracts', 'sync', 'lifecycle', 'chart', 'superpowers', 'chartcheck', 'prdformat', 'prdcoverage', 'prdcmd', 'plan', 'product', 'journey', 'wiki', 'wikicite', 'wikigen', 'wikistate', 'wikivalidate', 'learn', 'learnfile', 'learnmine', 'learnreplay', 'learntranscripts', 'report', 'arch', 'counts', 'queue', 'app', 'scope', 'slice', 'maintain', 'readiness', 'autonomy', 'upgrade', 'migrations', 'risk', 'route', 'reverts', 'reviewcases', 'protect', 'actrace', 'claims', 'intentmap', 'intentmapio', 'intenttargets', 'intentrecheck', 'profile']
 const SDLC_HOOK = '.rig/bin/sdlc.ts'
 type HookGroup = { matcher?: string; hooks: { type: string; command: string; timeout?: number; async?: boolean }[] }
 
@@ -35,7 +36,7 @@ function writeFile(rel: string, text: string, written: string[]): void {
 
 // The plugin's settings hooks, pointed at the project copy and merged into .claude/settings.json. A re-run removes
 // every previous sdlc entry, in any event (so hooks a newer version retired go too); the project's own hooks are kept.
-function mergeHooks(written: string[]): void {
+function mergeHooks(written: string[], profile: Profile): void {
   const plugin = JSON.parse(read(path.join(PLUGIN_ROOT, 'hooks', 'hooks.json'))) as { hooks: Record<string, HookGroup[]> }
   const file = path.join(ROOT, '.claude', 'settings.json')
   const settings = (read(file) ? JSON.parse(read(file)) : {}) as Record<string, unknown> & { hooks?: Record<string, HookGroup[]>; extraKnownMarketplaces?: object; enabledPlugins?: Record<string, boolean> }
@@ -56,12 +57,13 @@ function mergeHooks(written: string[]): void {
   // The template's permissions too (deny and ask rules guard the evidence), merged under the project's own.
   mergeMissing(settings, { permissions: (JSON.parse(read(path.join(PLUGIN_ROOT, 'templates', 'settings.json'))) as { permissions: object }).permissions })
   // The dashboard mod is a local plugin: register its marketplace and enable it (an older 'rig-mod' entry is dropped).
+  // Core ships no dashboard, so it drops both entries instead.
   const { 'rig-mod@rig-local': _oldMod, ...enabled } = settings.enabledPlugins ?? {}
-  const merged: Record<string, unknown> = {
-    ...settings, hooks,
-    extraKnownMarketplaces: { ...settings.extraKnownMarketplaces, 'rig-local': { source: { source: 'directory', path: '.' } } },
-    enabledPlugins: { ...enabled, 'rig@rig-local': true },
-  }
+  const { 'rig@rig-local': _mod, ...coreEnabled } = enabled
+  const { 'rig-local': _market, ...coreMarkets } = (settings.extraKnownMarketplaces ?? {}) as Record<string, unknown>
+  const merged: Record<string, unknown> = profile === 'core'
+    ? { ...settings, hooks, extraKnownMarketplaces: coreMarkets, enabledPlugins: coreEnabled }
+    : { ...settings, hooks, extraKnownMarketplaces: { ...settings.extraKnownMarketplaces, 'rig-local': { source: { source: 'directory', path: '.' } } }, enabledPlugins: { ...enabled, 'rig@rig-local': true } }
   writeFile('.claude/settings.json', JSON.stringify(merged, null, 2) + '\n', written)
 }
 
@@ -87,7 +89,8 @@ function writeMarketplace(written: string[]): void {
 
 // Every file the harness owns outright, as repo-relative posix path to final text. The manifest hashes exactly these.
 export const MANIFEST = '.rig/bin/MANIFEST.json'
-export type Manifest = { version: string; files: Record<string, string> }
+export type Manifest = { version: string; profile?: Profile; files: Record<string, string> }
+export const manifestProfile = (m: Manifest | null): Profile => m?.profile ?? 'full'
 export function readManifest(): Manifest | null {
   try { return JSON.parse(read(path.join(ROOT, MANIFEST))) as Manifest } catch { return null }
 }
@@ -100,7 +103,7 @@ export function isHarnessPath(rel: string): boolean {
   return abs.startsWith(ROOT + path.sep) && HARNESS_PREFIXES.some(p => rel.startsWith(p))
 }
 
-export function harnessFiles(standalone: boolean): Map<string, string> {
+export function harnessFiles(standalone: boolean, profile: Profile = 'full'): Map<string, string> {
   const files = new Map<string, string>()
   for (const name of VENDORED) files.set(`.rig/bin/${name}.ts`, read(path.join(PLUGIN_ROOT, 'scripts', `${name}.ts`)))
   for (const [rel, text] of HOOK_SCRIPTS()) files.set(rel, text)
@@ -109,11 +112,11 @@ export function harnessFiles(standalone: boolean): Map<string, string> {
   // The human-only skills (approve, waive, autonomy) come through here too: disable-model-invocation keeps them the person's, and
   // CI refuses approval rows a PR adds unless an independent reviewer approves.
   for (const name of fs.readdirSync(path.join(PLUGIN_ROOT, 'skills'))) {
-    if (name === 'upgrade') continue // upgrade runs only from the plugin (upgradeGates refuses a vendored copy)
+    if (name === 'upgrade' || !skillIn(profile, name)) continue // upgrade runs only from the plugin (upgradeGates refuses a vendored copy)
     const src = path.join(PLUGIN_ROOT, 'skills', name, 'SKILL.md')
     if (fs.existsSync(src)) files.set(`.claude/skills/rig-${name}/SKILL.md`, forProject(read(src)))
   }
-  for (const file of fs.readdirSync(path.join(PLUGIN_ROOT, 'agents')).filter(f => f.endsWith('.md'))) {
+  for (const file of fs.readdirSync(path.join(PLUGIN_ROOT, 'agents')).filter(f => f.endsWith('.md') && agentIn(profile, f))) {
     files.set(`.claude/agents/rig-${file}`, forProject(read(path.join(PLUGIN_ROOT, 'agents', file)), 'agent'))
   }
   const templates = path.join(PLUGIN_ROOT, 'templates')
@@ -121,17 +124,17 @@ export function harnessFiles(standalone: boolean): Map<string, string> {
     const text = read(path.join(templates, file))
     files.set(`.rig/templates/${file}`, file === README_TEMPLATE ? vendoredCommands(text) : text)
   }
-  dashboardFiles(files)
+  if (profile === 'full') dashboardFiles(files)
   return files
 }
 
 // The files a project owns a share of, merged in place and never hashed: settings, CLAUDE.md, the README, the PRD docs, the marketplace.
-export function mergeProjectFiles(written: string[]): void {
-  mergeHooks(written)
+export function mergeProjectFiles(written: string[], profile: Profile = 'full'): void {
+  mergeHooks(written, profile)
   routeClaudeMd(written)
   routeReadme(written)
   routePrdDocs(written)
-  writeMarketplace(written)
+  if (profile === 'full') writeMarketplace(written)
 }
 
 const README_TEMPLATE = 'readme-rig.md'
@@ -189,21 +192,38 @@ export function cmdVendor(args: Args): void {
   const next = pluginVersion()
   const written: string[] = []
   const standalone = Boolean(args.opt.standalone)
-  const files = harnessFiles(standalone)
+  const profile = parseProfile(args.opt.profile)
+  if (args.opt.profile !== undefined && !standalone) fail('--profile needs --standalone: a plain vendor copies no skills')
+  const files = harnessFiles(standalone, profile)
   if (standalone) fs.rmSync(path.join(ROOT, '.rig', 'mod'), { recursive: true, force: true })
+  const kept = standalone ? dropStale(files) : readManifest()?.files ?? {}
   for (const [rel, text] of files) {
     writeFile(rel, text, written)
     if (rel.startsWith('.rig/githooks/')) fs.chmodSync(path.join(ROOT, rel), 0o755)
   }
-  if (standalone) mergeProjectFiles(written)
+  if (standalone) mergeProjectFiles(written, profile)
   // A plain vendor owns only the .rig/bin files: it keeps the standalone entries an earlier `vendor --standalone` recorded.
-  const kept = standalone ? {} : readManifest()?.files ?? {}
   const hashes = Object.fromEntries([...Object.entries(kept), ...[...files].map(([rel, text]): [string, string] => [rel, sha(text)])].sort(([a], [b]) => a.localeCompare(b, 'en')))
-  writeFile(MANIFEST, JSON.stringify({ version: next, files: hashes }, null, 2) + '\n', written)
+  writeFile(MANIFEST, JSON.stringify({ version: next, ...(profile === 'core' ? { profile } : {}), files: hashes }, null, 2) + '\n', written)
   sanctionWrites(written)
   out(standalone
     ? `vendored sdlc ${next} standalone: .rig/bin, .claude/skills/rig-*, .claude/agents/rig-*, hooks in .claude/settings.json. Commit .rig/ and .claude/; re-run from the plugin to upgrade.`
     : `vendored sdlc ${next} into ${path.relative(ROOT, path.join(SDLC, 'bin'))} (${VENDORED.length} files). Commit it; CI runs the base branch's copy.`)
+}
+
+// Harness files an earlier vendor wrote that this one does not (full -> core): untouched ones go, edited ones stay and keep
+// their recorded hash, so upgrade still sees them as the person's.
+function dropStale(files: Map<string, string>): Record<string, string> {
+  const kept: Record<string, string> = {}
+  for (const [rel, hash] of Object.entries(readManifest()?.files ?? {})) {
+    const abs = path.join(ROOT, rel)
+    if (files.has(rel) || !isHarnessPath(rel) || !fs.existsSync(abs)) continue
+    if (sha(read(abs)) !== hash) { kept[rel] = hash; out(`kept ${rel} (edited)`); continue }
+    fs.rmSync(abs)
+    const dir = path.dirname(abs)
+    if (rel.startsWith('.claude/skills/rig-') && !fs.readdirSync(dir).length) fs.rmdirSync(dir)
+  }
+  return kept
 }
 
 // Settings the template wants, merged under what the project already has: arrays are unioned and a key the project
