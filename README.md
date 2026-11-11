@@ -158,7 +158,7 @@ All of it is committed: the repo is the record. CI (`rig-check`) re-judges it wi
 
 ## Status
 
-As of 2026-11-03. `.claude-plugin/plugin.json` says **0.7.0**; the last git tag is `v0.4.1`. Everything since is on `main` under *Unreleased* in [CHANGELOG.md](CHANGELOG.md). The measured progress against the goal is in [docs/GOAL.md](docs/GOAL.md).
+As of 2026-11-11. The current release is **v0.8.0** (tag `v0.8.0`, fixes on `release/0.8`); 0.7.0 was never tagged. Work after it is on `main` under *Unreleased* in [CHANGELOG.md](CHANGELOG.md). The measured progress against the goal is in [docs/GOAL.md](docs/GOAL.md).
 
 | Area | State | Evidence |
 |---|---|---|
