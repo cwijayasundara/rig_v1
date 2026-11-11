@@ -133,7 +133,7 @@ export function harnessFiles(standalone: boolean, profile: Profile = 'full'): Ma
 export function mergeProjectFiles(written: string[], profile: Profile = 'full'): void {
   mergeHooks(written, profile)
   routeClaudeMd(written)
-  routeReadme(written)
+  routeReadme(written, profile)
   routePrdDocs(written)
   if (profile === 'full') writeMarketplace(written)
 }
@@ -157,10 +157,12 @@ function routeClaudeMd(written: string[]): void {
 
 // The README's rig block (from templates/readme-rig.md) tells a person which commands to type; in a standalone copy those are /rig-x
 // (2026-10-25 shop_app run: the block said /rig:start, which does not exist there). Text outside the markers is never touched.
-function routeReadme(written: string[]): void {
+function routeReadme(written: string[], profile: Profile): void {
   const file = 'README.md'
   const text = read(path.join(ROOT, file))
-  const routed = text.replace(README_BLOCK, vendoredCommands)
+  // Core replaces the whole block (a full one names /rig-chart, /rig-wiki and the rest); the text outside it is kept.
+  const core = vendoredCommands(read(path.join(PLUGIN_ROOT, 'templates', README_CORE))).trimEnd()
+  const routed = text.replace(README_BLOCK, block => profile === 'core' ? core : vendoredCommands(block))
   if (routed !== text) writeFile(file, routed, written)
 }
 
@@ -194,7 +196,8 @@ export function cmdVendor(args: Args): void {
   const next = pluginVersion()
   const written: string[] = []
   const standalone = Boolean(args.opt.standalone)
-  const profile = parseProfile(args.opt.profile)
+  // No --profile keeps what is installed, so the documented upgrade (re-run vendor --standalone) never turns core into full.
+  const profile = args.opt.profile === undefined ? manifestProfile(readManifest()) : parseProfile(args.opt.profile)
   if (args.opt.profile !== undefined && !standalone) fail('--profile needs --standalone: a plain vendor copies no skills')
   const files = harnessFiles(standalone, profile)
   if (standalone) fs.rmSync(path.join(ROOT, '.rig', 'mod'), { recursive: true, force: true })

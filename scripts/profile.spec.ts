@@ -136,3 +136,34 @@ test('init --full --profile core vendors core and skips the maintain workflow', 
   assert.equal(fs.existsSync(path.join(repo, '.github/workflows/rig-check.yml')), true)
   assert.equal(fs.existsSync(path.join(repo, '.github/workflows/rig-maintain.yml')), false)
 })
+
+test('a re-vendor without --profile keeps a core repo core, and --profile full switches back', () => {
+  const repo = coreRepo()
+  assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
+  assert.deepEqual(dirs(repo, '.claude/skills'), CORE_SKILLS.map(s => `rig-${s}`).sort())
+  assert.equal(json(repo, '.rig/bin/MANIFEST.json').profile, 'core')
+  assert.equal(sdlc(repo, ['vendor']).code, 0)
+  assert.equal(json(repo, '.rig/bin/MANIFEST.json').profile, 'core', 'a plain vendor keeps the profile')
+  assert.equal(sdlc(repo, ['vendor', '--standalone', '--profile', 'full']).code, 0)
+  assert.equal(fs.existsSync(path.join(repo, '.claude/skills/rig-chart/SKILL.md')), true)
+  assert.equal(json(repo, '.rig/bin/MANIFEST.json').profile, undefined)
+})
+
+test('learn mine, which core /rig-learn runs, names no off command', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'scripts/learnmine.ts'), 'utf8')
+  assert.doesNotMatch(src, new RegExp(`skillRef\\('(${OFF_COMMANDS.join('|')})'\\)`))
+})
+
+test('switching to core replaces a full README block with the core one and keeps the rest', () => {
+  const repo = makeRepo()
+  sdlc(repo, ['init'])
+  assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
+  const full = fs.readFileSync(path.join(repo, '.rig/templates/readme-rig.md'), 'utf8')
+  write(repo, 'README.md', `# Shop\n\nmine\n\n${full}\nafter\n`)
+  assert.equal(sdlc(repo, ['vendor', '--standalone', '--profile', 'core']).code, 0)
+  const readme = fs.readFileSync(path.join(repo, 'README.md'), 'utf8')
+  assert.match(readme, /^# Shop\n\nmine\n\n<!-- rig:begin/)
+  assert.match(readme, /Development with rig \(core\)/)
+  assert.doesNotMatch(readme, /\/rig-chart/)
+  assert.match(readme, /<!-- rig:end -->\n\nafter\n$/)
+})
