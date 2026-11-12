@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.10.0
+
+The readiness work after 0.9.0: human-load instrumentation in `sdlc report` (§2 Step 2) and the weakening check reading aliased ledger rows. `release/0.9` keeps 0.9.x fixes.
+
 - **Weakening check reads aliased ledger rows** (2026-11-12). `approve --check` now checks a behaviour that cites a row of the form `- FR-4.2 (AC-4.1) [rule] …` by either name; before, those rows were skipped.
 - **Human load** (2026-11-12, from the readiness doc §2 Step 2). The prompt-submit and stop hooks, and a new `AskUserQuestion` hook, append counts-only rows (no text) to the active change's `evidence/human.jsonl`. `sdlc report` adds human load per shipped change: the person's turns, questions asked, approvals and waivers, and attention minutes (gaps between turns, each capped at 10 min), as median and p95. It also counts the changes over a question ceiling (`--max-questions`, default 3). Questions asked in plain text count as turns, not questions.
   - The time spent answering an `AskUserQuestion` batch counts as attention.

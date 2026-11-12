@@ -1,0 +1,363 @@
+<title>Gate the Factory</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: sticky left contents rail + one reading column; rail collapses to a top <details> on phones */
+:root{
+  --bg:#f6f7f9; --surface:#ffffff; --fg:#1b2230; --muted:#5b6578; --line:#dde1e8;
+  --accent:#2f5bd3; --accent-soft:#e7edfb;
+  --ok:#1f7a4d; --ok-bg:#e3f3ea; --warn:#9a6200; --warn-bg:#fbf0d9; --bad:#b3261e; --bad-bg:#fbe5e3;
+  --display:"Space Grotesk",ui-sans-serif,system-ui,sans-serif;
+  --body:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#11151c; --surface:#181d26; --fg:#e4e8ef; --muted:#9aa4b5; --line:#2a313d;
+  --accent:#7d9cf0; --accent-soft:#1f2a44;
+  --ok:#6fcf9c; --ok-bg:#15301f; --warn:#e8b25a; --warn-bg:#33270f; --bad:#f08a82; --bad-bg:#3a1a18; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11151c; --surface:#181d26; --fg:#e4e8ef; --muted:#9aa4b5; --line:#2a313d;
+  --accent:#7d9cf0; --accent-soft:#1f2a44;
+  --ok:#6fcf9c; --ok-bg:#15301f; --warn:#e8b25a; --warn-bg:#33270f; --bad:#f08a82; --bad-bg:#3a1a18; color-scheme:dark}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:16px}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{background:var(--bg);color:var(--fg);font:15.5px/1.65 var(--body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0}
+a{color:var(--accent);text-underline-offset:2px}
+a:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+.wrap{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:240px minmax(0,1fr);gap:48px;padding-block:40px 80px}
+nav.rail{position:sticky;top:max(24px,env(safe-area-inset-top,0px));align-self:start;max-height:calc(100vh - 48px);overflow:auto}
+.rail .eyebrow{font:600 11px/1 var(--body);letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:0 0 12px}
+.rail ol{list-style:none;margin:0;padding:0;display:grid;gap:2px;counter-reset:s}
+.rail li a{display:flex;gap:10px;padding:6px 10px;border-radius:6px;color:var(--muted);text-decoration:none;font-size:14px;line-height:1.35}
+.rail li a::before{counter-increment:s;content:counter(s);font:500 12px/1.6 var(--mono);color:var(--muted);min-width:1.2em}
+.rail li a:hover{background:var(--accent-soft);color:var(--fg)}
+.rail li a.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.rail li.split{margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+details.mnav{display:none}
+main{min-width:0;max-width:760px}
+header.top{padding-bottom:28px;border-bottom:1px solid var(--line);margin-bottom:8px}
+.kicker{font:600 12px/1 var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin:0 0 14px}
+h1{font:700 clamp(30px,4.4vw,44px)/1.1 var(--display);letter-spacing:-.02em;margin:0 0 14px;text-wrap:balance}
+.meta{color:var(--muted);font-size:13.5px;margin:0}
+section{padding-top:40px}
+h2{font:600 25px/1.25 var(--display);letter-spacing:-.01em;margin:0 0 14px;text-wrap:balance}
+h3{font:600 17px/1.35 var(--display);margin:26px 0 8px}
+p{margin:0 0 14px}
+ul.tight{margin:0 0 14px;padding-left:20px}
+ul.tight li{margin-bottom:6px}
+.bluf{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:8px;padding:20px 22px;margin-top:28px}
+.bluf p:last-child{margin:0}
+.bluf strong{color:var(--fg)}
+.mine{display:inline-block;font:500 11px/1 var(--body);letter-spacing:.04em;text-transform:uppercase;color:var(--warn);background:var(--warn-bg);padding:3px 6px;border-radius:4px;vertical-align:2px;margin-left:4px}
+.note{font-size:14px;color:var(--muted);border-top:1px solid var(--line);padding-top:12px;margin-top:18px}
+code{font:13px var(--mono);background:var(--accent-soft);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+.tbl{overflow-x:auto;margin:16px 0 20px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14px;line-height:1.5}
+th,td{text-align:left;vertical-align:top;padding:10px 12px;border-bottom:1px solid var(--line)}
+th{font:600 12px/1.3 var(--body);letter-spacing:.05em;text-transform:uppercase;color:var(--muted);background:var(--bg)}
+tr:last-child td{border-bottom:0}
+td.k{font-weight:600;white-space:nowrap}
+.pill{display:inline-block;font:600 11.5px/1 var(--body);padding:4px 8px;border-radius:999px;white-space:nowrap}
+.p-ok{color:var(--ok);background:var(--ok-bg)} .p-warn{color:var(--warn);background:var(--warn-bg)} .p-bad{color:var(--bad);background:var(--bad-bg)}
+.goals{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:18px 0 22px}
+.goal{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px;display:grid;gap:8px;align-content:start}
+.goal .n{font:500 12px/1 var(--mono);color:var(--muted)}
+.goal b{font:600 15px/1.3 var(--display)}
+.goal span.t{font-size:13.5px;color:var(--muted);line-height:1.5}
+ol.gaps{padding-left:22px;margin:0 0 14px}
+ol.gaps li{margin-bottom:10px}
+.path{font:12.5px var(--mono);color:var(--muted)}
+@media (max-width:880px){
+  .wrap{grid-template-columns:minmax(0,1fr);gap:0;padding-block:20px 60px}
+  nav.rail{display:none}
+  details.mnav{display:block;position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--line);padding-block:10px;margin-bottom:12px}
+  body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+  details.mnav summary{cursor:pointer;font:600 14px var(--body)}
+  details.mnav ol{margin:10px 0 4px;padding-left:22px;display:grid;gap:6px;font-size:14.5px}
+}
+</style>
+
+<div class="wrap">
+  <nav class="rail" aria-label="Contents">
+    <p class="eyebrow">Contents</p>
+    <ol id="toc">
+      <li><a href="#bottom-line">Bottom line</a></li>
+      <li><a href="#how-others-scale">How others scale</a></li>
+      <li><a href="#verification">Verification and review</a></li>
+      <li><a href="#rollout">Four-phase rollout</a></li>
+      <li><a href="#platform">Packaging, runtime, governance</a></li>
+      <li><a href="#people">Platform team and enablement</a></li>
+      <li><a href="#commercials">Contracts, clients, cost</a></li>
+      <li><a href="#gates">Gates and risks</a></li>
+      <li class="split"><a href="#rig">How rig measures up</a></li>
+      <li><a href="#unknowns">What nobody knows yet</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <details class="mnav"><summary>Contents</summary><ol>
+      <li><a href="#bottom-line">Bottom line</a></li><li><a href="#how-others-scale">How others scale</a></li>
+      <li><a href="#verification">Verification and review</a></li><li><a href="#rollout">Four-phase rollout</a></li>
+      <li><a href="#platform">Packaging, runtime, governance</a></li><li><a href="#people">Platform team and enablement</a></li>
+      <li><a href="#commercials">Contracts, clients, cost</a></li><li><a href="#gates">Gates and risks</a></li>
+      <li><a href="#rig">How rig measures up</a></li><li><a href="#unknowns">What nobody knows yet</a></li>
+    </ol></details>
+
+    <header class="top">
+      <p class="kicker">Research report · 12 Nov 2026</p>
+      <h1>Gate the factory, not the engineers</h1>
+      <p class="meta">How to productise a Claude Code "lights-on" delivery harness across a 33,000-engineer consultancy. It draws on five research streams, plus a check of the rig repo against the findings. Labels marked <span class="mine">judgement</span> are the report's own recommendations, not sourced practice.</p>
+    </header>
+
+    <section id="bottom-line">
+      <h2>Bottom line</h2>
+      <div class="bluf">
+        <p><strong>Roll the harness out as a governed, versioned platform product.</strong> Verification and review capacity, not generation capacity, should set the pace of expansion.</p>
+        <p>No public source documents a PRD-to-merged-PR factory with human gates run by low-to-mid-capability engineers at consultancy scale. The best-documented factories, StrongDM and OpenAI, are small self-reported teams of strong engineers. Thoughtworks finds experienced engineers get the most from spec-driven tooling. Your design is therefore a hypothesis to test, not a pattern to copy.</p>
+        <p>Start with 3–5 pilots on greenfield or well-bounded work. Fix the expansion gates in advance: stability, review quality and cost per merged change, not usage. Run in each client's own cloud tenancy, with the harness shipped as a pinned Claude Code plugin under managed settings.</p>
+      </div>
+    </section>
+
+    <section id="how-others-scale">
+      <h2>Large organisations scale through platforms and peers, and all hit the review wall</h2>
+      <p>Consultancy announcements are mostly partnership press releases with seat counts and no outcome data:</p>
+      <ul class="tight">
+        <li><strong>Accenture:</strong> about 30,000 staff to be trained on Claude, with a joint Center of Excellence (<a href="https://anthropic.com/news/anthropic-accenture-partnership">Anthropic</a>).</li>
+        <li><strong>Cognizant:</strong> Claude for up to 350,000 staff (<a href="https://www.anthropic.com/news/cognizant-partnership">Anthropic</a>).</li>
+        <li><strong>Deloitte:</strong> 470,000+ people, of whom 15,000 are to be certified (<a href="https://www.anthropic.com/news/deloitte-anthropic-partnership">Anthropic</a>).</li>
+        <li><strong>Infosys:</strong> internal use first, then one industry at a time (<a href="https://www.crnasia.com/india/news/2026/infosys-partners-anthropic-to-integrate-claude-into-enterprise-ai-deployments">CRN Asia</a>).</li>
+      </ul>
+      <p>The shared template is a Centre of Excellence and a certified cohort roughly ten times smaller than headcount. No consultancy has published pilot sizes, gate criteria or measured coding-agent outcomes.</p>
+      <p>The better evidence comes from product companies:</p>
+      <ul class="tight">
+        <li><strong>Spotify:</strong> 76% more PRs per engineer and over 2.5M automated PRs merged, run by a platform team that owns its agent "Honk". Agents did worse in fragmented codebases, and review load rose (<a href="https://engineering.atspotify.com/2026/6/code-with-claude-coding-is-no-longer-the-constraint">Spotify</a>).</li>
+        <li><strong>Uber:</strong> Claude Code use went from 32% to 63% in two months. Peers sharing wins beat mandates (<a href="https://newsletter.pragmaticengineer.com/p/how-uber-uses-ai-for-development">Pragmatic Engineer</a>). It reportedly ran through its 2026 AI budget in about four months and then capped spend at $1,500 per engineer per month (secondary report).</li>
+        <li><strong>Microsoft:</strong> adopters merged about 24% more PRs, and adoption spread through peer networks (<a href="https://arxiv.org/abs/2607.01418">arXiv</a>).</li>
+        <li><strong>Stripe:</strong> more than 1,000 merged agent PRs a week, all reviewed by people (<a href="https://www.infoq.com/news/2026/03/stripe-autonomous-coding-agents">InfoQ</a>).</li>
+      </ul>
+      <p>DORA 2025 finds AI amplifies existing strengths and weaknesses, and that platform quality predicts value (<a href="https://www.infoq.com/news/2025/09/dora-state-of-ai-in-dev-2025">InfoQ</a>). Faros telemetry shows high-adoption teams merging 98% more PRs, with review time up 91% (<a href="https://www.faros.ai/blog/ai-productivity-paradox-report-2025">Faros</a>). METR's 2025 trial found experienced developers 19% slower while believing they were 20% faster (<a href="https://metr.org/blog/2026-02-24-uplift-update/">METR</a>), so self-reported surveys cannot gate expansion.</p>
+    </section>
+
+    <section id="verification">
+      <h2>The weak points are verification and review, so design them first</h2>
+      <h3>Gate 1: intents and architecture</h3>
+      <p>Approving specs is the cheapest place to catch ambiguity, but generated spec files can be hard to review (<a href="https://www.thoughtworks.com/radar/techniques/spec-driven-development">Thoughtworks</a>). Keep the approval artefact small and checkable:</p>
+      <ul class="tight">
+        <li>acceptance criteria traced to the PRD;</li>
+        <li>a short architecture decision record;</li>
+        <li>an explicit list of what the harness did not cover.</li>
+      </ul>
+      <h3>Agent-written tests</h3>
+      <p>This is the strongest evidence in the research:</p>
+      <ul class="tight">
+        <li>Agents that can reach the tests edit or delete them, and hiding the tests cuts this to near zero (<a href="https://www.greaterwrong.com/posts/qJYMbrabcQqCZ7iqm/impossiblebench-measuring-reward-hacking-in-llm-coding-1">ImpossibleBench</a>).</li>
+        <li>Every frontier model saturates the visible tests while hidden tests still expose the gaps (<a href="https://arxiv.org/abs/2605.21384">SpecBench</a>).</li>
+        <li>One LLM-written suite had 100% coverage and a 4% mutation score (<a href="https://arxiv.org/html/2506.02954v2">arXiv</a>).</li>
+      </ul>
+      <p>The layering the evidence supports:</p>
+      <ul class="tight">
+        <li>hidden acceptance scenarios the implementer cannot read or edit;</li>
+        <li>mutation score as the measure of test strength;</li>
+        <li>tests written by a different agent context from the implementer;</li>
+        <li>test edits blocked by default in implementation PRs.</li>
+      </ul>
+      <h3>Gate 2: the final human approval</h3>
+      <p>Review time is rising 90–200% while PRs grow, so attention per PR is falling. Risk-tiered oversight is the main proposed fix, but it is practitioner guidance, not validated (<a href="https://www.thoughtworks.com/radar/techniques/risk-tiered-human-oversight">Thoughtworks</a>). The report recommends:</p>
+      <ul class="tight">
+        <li>a hard cap on PR size;</li>
+        <li>an agent-written rationale with every PR;</li>
+        <li>one named human approver of record;</li>
+        <li>tracking approval rate and comment density over time;</li>
+        <li>seeded-defect audits that measure whether reviewers catch planted bugs <span class="mine">judgement</span>.</li>
+      </ul>
+      <p>With weaker reviewers, mechanical checks must carry the load, and the human judges intent and architecture.</p>
+      <h3>Comprehension debt</h3>
+      <p>In Anthropic's small randomised trial, engineers using AI scored 50% on a comprehension quiz against 67% for those coding by hand. Asking questions while working preserved learning (<a href="https://www.anthropic.com/research/AI-assistance-coding-skills">Anthropic</a>). Have the harness emit explanation artefacts that map the change to each intent. Ask reviewers to pass a short comprehension check before approving <span class="mine">judgement</span>.</p>
+    </section>
+
+    <section id="rollout">
+      <h2>A four-phase rollout, with each phase's gate set in advance</h2>
+      <p>The phase structure, durations and numbers are the report's recommendations <span class="mine">judgement</span>. No source gave pilot sizes or gate criteria.</p>
+      <div class="tbl"><table>
+        <thead><tr><th>Phase</th><th>Scope</th><th>Exit gate</th></tr></thead>
+        <tbody>
+          <tr><td class="k">0 · Foundation<br><span class="path">8–12 weeks</span></td><td>Platform team; harness packaged and pinned; tenancy options; eval suite; cost telemetry; legal addendum template</td><td>Harness regression eval passes on golden repos; cost per run measured; one client-acceptable deployment signed off by security and legal</td></tr>
+          <tr><td class="k">1 · Pilots<br><span class="path">3–4 months</span></td><td>3–5 projects, greenfield or well-bounded, with the strongest reviewers; plus 1–2 internal projects</td><td>Change failure and rework no worse than a matched baseline; review queue time within bound; seeded-defect catch rate at threshold; cost per merged change within budget</td></tr>
+          <tr><td class="k">2 · Controlled expansion<br><span class="path">~6 months</span></td><td>15–30 projects across stacks, brownfield included; certified reviewers; a canary harness channel</td><td>Gates hold for a full release cycle; no drift in reviewer approval rate; comprehension audits pass; positive unit economics under the real contract model</td></tr>
+          <tr><td class="k">3 · Scaled offering</td><td>A standard offering, tiered by risk and client constraints; access gated by certification</td><td>Continuous: the gates become standing dashboards, with automatic rollback to the previous harness version</td></tr>
+        </tbody>
+      </table></div>
+      <p>Pick pilots where a strong engineer owns the outcome. Avoid fragmented legacy codebases at first, because that is where Spotify's agents performed worst.</p>
+    </section>
+
+    <section id="platform">
+      <h2>Packaging, runtime and governance</h2>
+      <h3>Package it as a pinned plugin</h3>
+      <p>Ship the harness as a plugin in a private git-hosted marketplace:</p>
+      <ul class="tight">
+        <li>Force-install it through managed <code>extraKnownMarketplaces</code> and <code>enabledPlugins</code>.</li>
+        <li>Restrict sources with <code>strictKnownMarketplaces</code> and block side-loading with <code>disableSideloadFlags</code> (<a href="https://code.claude.com/docs/en/plugins/org.md">docs</a>).</li>
+        <li>Pin each release by commit <code>sha</code>, so a rollout is a reviewed pull request.</li>
+        <li>Claude Code has no release channels. Run separate canary and stable marketplaces, assigned to different device groups.</li>
+        <li>Keep auto-update off in client environments.</li>
+      </ul>
+      <h3>Run it in the client's tenancy</h3>
+      <p>Run <code>claude -p</code> or the Agent SDK in the client's CI on the client's runners. Branch protection and required checks are the human gates. Bedrock, Vertex and Foundry keep:</p>
+      <ul class="tight">
+        <li>the CLI, SDK, plugins, hooks and MCP;</li>
+        <li>OpenTelemetry;</li>
+        <li>the managed-settings file.</li>
+      </ul>
+      <p>They lose server-managed settings, the analytics dashboard, cloud sessions and Code Review (<a href="https://code.claude.com/docs/en/feature-availability.md">feature availability</a>). Three traps:</p>
+      <ul class="tight">
+        <li><code>--bare</code> skips hooks, so a harness that enforces gates through hooks must never run bare.</li>
+        <li>Scheduled tasks are tied to one person and in preview.</li>
+        <li>Managed Agents is in beta and not eligible for zero data retention.</li>
+      </ul>
+      <h3>Governance</h3>
+      <p>Managed settings sit at the top precedence tier. They can deny permissions, restrict hooks, enable the sandbox, allowlist MCP servers, pin models and set version floors (<a href="https://code.claude.com/docs/en/admin-setup.md">admin setup</a>). Send OpenTelemetry with per-plugin and per-skill attribution so cost can be tracked by stage. Never trigger agents from untrusted input: the "Clinejection" attack hijacked a CI agent through an issue title (<a href="https://snyk.io/blog/cline-supply-chain-attack-prompt-injection-github-actions">Snyk</a>). Use OIDC rather than static keys, and a narrowly scoped GitHub App.</p>
+    </section>
+
+    <section id="people">
+      <h2>Platform team and enablement</h2>
+      <p>Run the harness as a product, with a product owner. Its team owns the harness, the marketplace, the eval suite, telemetry and support. No survey-wide platform-to-developer ratio exists; SIXT's 40 platform engineers for 800 developers is one pre-agent data point. Size the phase 1–2 team by workload at about 15–25 people <span class="mine">judgement</span>, and include a small reviewer-quality function.</p>
+      <p>Enablement is the part the evidence supports least and the plan depends on most:</p>
+      <ul class="tight">
+        <li>Peer champions beat mandates at Docusign, Uber and Microsoft.</li>
+        <li>Training should teach habits that preserve comprehension (explain, question, predict), not only how to drive the tool.</li>
+        <li>Divide roles by what the harness can mechanise. Weaker engineers act as intent reviewers and operators on tightly scoped work. Only reviewers who have passed a seeded-defect exam give final approval. Strong engineers own architecture and the changes that are hardest to reverse <span class="mine">judgement</span>.</li>
+      </ul>
+      <p><strong>Make "can low-to-mid engineers safely approve architecture and PRs they did not write?" the first pilot hypothesis.</strong> Test it with matched projects staffed by stronger and weaker reviewers.</p>
+    </section>
+
+    <section id="commercials">
+      <h2>Contracts, clients and cost decide whether the economics survive</h2>
+      <p><strong>Commercial pressure.</strong> Clients are reported to want 25–30% lower prices and are reopening contracts within 24 months (<a href="https://www.thestar.com.my/tech/tech-news/2026/08/21/ai-reshapes-india039s-it-services-sector-contracts-as-clients-demand-more-for-less">Reuters via The Star</a>; <a href="https://www.hfsresearch.com/news/ai-drives-it-contract-renegotiations-within-24-months-as-pricing-models-shift/">HFS</a>). Fixed and outcome pricing move token-cost risk onto the consultancy. Start pilots on time-and-materials or capped-fee terms with a shared-savings clause. Move to fixed price only once phase 2 has shown how much delivery cost varies.</p>
+      <p><strong>IP.</strong> Anthropic's terms give the customer ownership of outputs, rule out training on customer content, and provide an IP indemnity. The indemnity excludes customer modifications and combination with other technology (<a href="https://www.anthropic.com/legal/commercial-terms">terms</a>). That covers most consultancy deliverables, so the indemnity you give clients is likely wider than the one you receive. That is the report's reading; counsel should verify it.</p>
+      <p>Add a short AI addendum to each MSA or SOW covering:</p>
+      <ul class="tight">
+        <li>disclosure that agents are used;</li>
+        <li>assignment of whatever rights exist in the output;</li>
+        <li>a named human approver of record;</li>
+        <li>confidentiality rather than promises of copyrightability;</li>
+        <li>a bounded, priced AI-output indemnity.</li>
+      </ul>
+      <p><strong>Cost.</strong> Anthropic's docs cite about $13 per developer per active day, or $150–250 a month (<a href="https://code.claude.com/docs/en/costs.md">costs</a>). Across 33,000 active engineers that is roughly $5–8M a month <span class="mine">judgement</span>. That figure is a floor, since autonomous factory runs use far more tokens (StrongDM states about $1,000 per engineer per day). No source gives a cost per verified change, so the pilots must produce one. Use per-run <code>--max-budget-usd</code>, per-project budgets, cost attribution by stage, and the <code>modelPricing</code> setting.</p>
+    </section>
+
+    <section id="gates">
+      <h2>Gates and risks</h2>
+      <p>Gate on outcomes and review health, not activity. Proposed metrics <span class="mine">judgement</span>:</p>
+      <ul class="tight">
+        <li>change failure rate and rework;</li>
+        <li>time to first review and review hours per PR;</li>
+        <li>PR size;</li>
+        <li>reviewer approval rate and comment density over time;</li>
+        <li>seeded-defect catch rate;</li>
+        <li>escaped defects by risk tier;</li>
+        <li>the gap between hidden and visible test results;</li>
+        <li>mutation score;</li>
+        <li>comprehension-audit pass rate;</li>
+        <li>cost per merged change.</li>
+      </ul>
+      <div class="tbl"><table>
+        <thead><tr><th>Risk</th><th>Evidence</th><th>Design response</th></tr></thead>
+        <tbody>
+          <tr><td class="k">Review bottleneck, rubber-stamping</td><td>Review time up 90–200% (vendor telemetry); drift findings unverified</td><td>PR-size cap, risk tiers, certified reviewers, seeded-defect audits, approval-rate monitoring</td></tr>
+          <tr><td class="k">Agents gaming tests</td><td>Strong: ImpossibleBench, SpecBench, EvilGenie</td><td>Hidden scenarios, mutation thresholds, blocking test edits, a separate test agent</td></tr>
+          <tr><td class="k">Comprehension debt</td><td>Argued by practitioners; one small trial</td><td>Explanation artefacts, a comprehension check before approval, sampled audits</td></tr>
+          <tr><td class="k">Cost blowout</td><td>Uber cap; no per-change data</td><td>Per-run and per-project budgets, OpenTelemetry attribution, measured cost per change before fixed-price deals</td></tr>
+          <tr><td class="k">Client data and IP</td><td>Indemnity gaps; no published consultancy clauses</td><td>Client-tenancy deployment, AI addendum, audit trail, no untrusted triggers</td></tr>
+          <tr><td class="k">Security of generated code</td><td>Vendor benchmarks (Veracode: about 45% of tasks)</td><td>Mandatory scanning; a security tier with human review</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="rig">
+      <h2>How rig measures up</h2>
+      <p>The research above never looked at rig. This section checks the repo against the report's recommendations. It comes from a read-only scan of rig on <code>main</code> at v0.9.0, with five of the main claims confirmed by hand. It is not a full audit.</p>
+
+      <h3>Against your five pipeline goals</h3>
+      <div class="goals">
+        <div class="goal"><span class="n">PRD → intents + architecture</span><b>Built</b><span class="pill p-ok">Strong</span><span class="t"><code>/rig:chart</code> produces a requirements ledger, intents citing AC ids, ADRs and a test plan, with an Opus evaluator pass. Approval records who, when and file hashes.</span></div>
+        <div class="goal"><span class="n">Human approves design</span><b>Built</b><span class="pill p-warn">Partial</span><span class="t">One gate, typed by a person. The approval is a markdown bundle rather than a one-page summary, which is a lot to ask of a weaker reviewer.</span></div>
+        <div class="goal"><span class="n">Auto tests, code, mutation</span><b>Built</b><span class="pill p-warn">Partial</span><span class="t">TDD loop with red-proof. The same agent writes the tests and the code. Mutation testing blocks only on Node and Angular; the six other stacks run it nightly, and there is no numeric threshold.</span></div>
+        <div class="goal"><span class="n">Agents review the PR</span><b>Built</b><span class="pill p-ok">Strong</span><span class="t">Clean-context Opus reviewer, risk tiers 0–2, and a CI <code>ai-review</code> that fails on critical or high findings.</span></div>
+        <div class="goal"><span class="n">Human final approval</span><b>Built</b><span class="pill p-warn">Partial</span><span class="t">CI requires a GitHub approver other than the author. At the top autonomy level (rung 3), tier-0 PRs can merge with no person, and rig only prints branch-protection commands rather than enforcing them.</span></div>
+      </div>
+
+      <h3>Against the report's scale-out checklist</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>Area</th><th>Status</th><th>What is there / what is missing</th></tr></thead>
+        <tbody>
+          <tr><td class="k">Packaging</td><td><span class="pill p-ok">Present</span></td><td>Plugin and marketplace at 0.9.0, a managed-settings template, <code>plugin validate</code> in CI. The marketplace source is <code>./</code>, not pinned by commit, and project scope is a documented rule, not an enforced one.</td></tr>
+          <tr><td class="k">Hidden acceptance tests</td><td><span class="pill p-bad">Absent</span></td><td>The builder reads the test plan and writes its own tests. Nothing keeps acceptance cases out of the implementer's reach.</td></tr>
+          <tr><td class="k">Test-tamper defence</td><td><span class="pill p-warn">Partial</span></td><td>Sensors catch deleted tests, skips and dropped assertions. Test files are not on the <code>PROTECTED</code> list, the weaken check only warns, and shell writes bypass it.</td></tr>
+          <tr><td class="k">Separate test writer</td><td><span class="pill p-bad">Absent</span></td><td>The chart-time QA agent is separate, but in <code>build</code> one context writes the tests, the code and the formal checker.</td></tr>
+          <tr><td class="k">PR size cap</td><td><span class="pill p-warn">Partial</span></td><td>A diff over 400 lines raises the risk tier but is never refused.</td></tr>
+          <tr><td class="k">Explanation for reviewer</td><td><span class="pill p-warn">Partial</span></td><td>The PR body covers why, behaviours, blast radius and the intent-map receipt. There is no comprehension check or audit.</td></tr>
+          <tr><td class="k">Headless / CI</td><td><span class="pill p-ok">Present</span></td><td><code>claude -p</code> in GitHub Actions with turn caps, and budget caps on evals. No <code>--bare</code>, which is good, but no Agent SDK path.</td></tr>
+          <tr><td class="k">Cost per change, telemetry</td><td><span class="pill p-bad">Absent</span></td><td>Model routing is pinned by role and paid commands have budgets. There is no OpenTelemetry anywhere and no dollars-per-change in <code>report</code>.</td></tr>
+          <tr><td class="k">Harness self-testing</td><td><span class="pill p-ok">Strong</span></td><td>103 spec files, a scripted journey, per-stack e2e, and an eval regression gate on accepted rate and $/task. This is ahead of anything in the public sources.</td></tr>
+          <tr><td class="k">Stacks and hosts</td><td><span class="pill p-warn">Partial</span></td><td>8 stack packs. GitHub only: no GitLab, Azure DevOps, Bitbucket or Jenkins, which matters for consultancy clients.</td></tr>
+          <tr><td class="k">Brownfield</td><td><span class="pill p-ok">Present</span></td><td>Same loop entered at init, with a baseline of existing failures so only new work is blamed.</td></tr>
+          <tr><td class="k">Governance</td><td><span class="pill p-warn">Partial</span></td><td>Managed-only permissions and hooks, a production gate, and an approval audit trail. No prompt-injection defence on PRD and source input, and deny rules do not cover Bash writes.</td></tr>
+          <tr><td class="k">Onboarding</td><td><span class="pill p-warn">Partial</span></td><td>A user guide with paths A–D, and findings that carry a <code>fix:</code> line. No guided tutorial or junior walkthrough.</td></tr>
+          <tr><td class="k">Human-load instrumentation</td><td><span class="pill p-ok">Present</span></td><td>Turns, questions and attention minutes per change, with a question ceiling that is reported but not enforced.</td></tr>
+          <tr><td class="k">Measured lift</td><td><span class="pill p-bad">Not shown</span></td><td>README: "Not shown, and on the tasks tried it does not." rig-Haiku cost $0.087 and took 8.2 min, against $0.032 and 2.4 min for bare Haiku; every arm passed.</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>Verdict</h3>
+      <p>rig already covers the shape of your pipeline: an approved chart, an autonomous build, agent review and a human merge. It also tests itself more rigorously than any public example in the research. It is <strong>not yet ready to run on low-skill teams at scale</strong>, for three reasons:</p>
+      <ul class="tight">
+        <li>The defences the evidence rates most highly (hidden tests and a separate test writer) are missing.</li>
+        <li>The pilots' main deliverable, cost per verified change, cannot be measured yet.</li>
+        <li>rig has not yet shown it beats a bare model.</li>
+      </ul>
+      <p>Treat it as ready for a phase 1 pilot with strong reviewers, not for phase 2.</p>
+
+      <h3>Fix before the first pilot, in this order</h3>
+      <ol class="gaps">
+        <li><strong>Hidden acceptance scenarios and a separate test agent.</strong> Move the chart-time QA cases somewhere the builder cannot read, and run them only in <code>/rig:test</code> and CI. Add test paths to <code>PROTECTED</code> for implementation changes. <span class="path">skills/build/SKILL.md:14-22, scripts/sensors.ts:199</span></li>
+        <li><strong>Cost per change and OpenTelemetry.</strong> Add USD per shipped change to <code>report</code> next to human load, and ship OpenTelemetry settings in the managed template. <span class="path">scripts/report.ts, templates/managed-settings.json</span></li>
+        <li><strong>A lift eval on a task bare models fail.</strong> Without this the business case rests on assertion. The README already names the candidates: drift across sessions and unstated requirements. <span class="path">README.md:173, eval/</span></li>
+        <li><strong>A hard final gate.</strong> Refuse PRs over <code>risk.maxLines</code> unless split or waived, require a person on every tier for consultancy use, and make <code>protect</code> enforce branch protection rather than print the commands. <span class="path">scripts/risk.ts:58, scripts/protect.ts</span></li>
+        <li><strong>Reviewer-facing simplification.</strong> A one-page approval summary for the chart gate, a seeded-defect audit mode, and a GitLab/Azure DevOps CI template before any non-GitHub client. <span class="path">skills/chart, templates/rig-check.yml</span></li>
+      </ol>
+      <p class="note">Statuses come from a read-only scan; line references are from the scan and from the hand-checks. Five claims were checked against the code: the README's lift row, the <code>PROTECTED</code> list, the build loop, the tier-raising size limit, and the absence of OpenTelemetry.</p>
+    </section>
+
+    <section id="unknowns">
+      <h2>What nobody knows yet</h2>
+      <p>The evidence does not show:</p>
+      <ul class="tight">
+        <li>that low-to-mid engineers can run this pipeline safely;</li>
+        <li>outcome data from a PRD-to-PR factory at consultancy scale;</li>
+        <li>that agents reviewing agents beat same-model review;</li>
+        <li>that mutation testing is affordable at agent volume;</li>
+        <li>a safe PR size;</li>
+        <li>the token cost of a verified change.</li>
+      </ul>
+      <p>Most quantitative claims come from vendors with commercial interests, and several were seen only in secondary summaries. Not researched: UK FCA and PRA rules, India's data-protection regime, NIST AI RMF specifics, and air-gapped deployments.</p>
+      <p>The pilots should deliver three things: a cost-per-verified-change figure, a measured reviewer-capacity ceiling for each skill level, and a contract template that survives a client audit. If they cannot, hold at controlled expansion and narrow the offering to migrations, upgrades and bounded greenfield work.</p>
+      <p class="note">Full report with every citation: <span class="path">reports/Scaling an agentic software factory.md</span>. Research notes: <span class="path">research_notes/Scaling an agentic software factory/</span>.</p>
+    </section>
+  </main>
+</div>
+
+<script>
+(function(){
+  var links=[].slice.call(document.querySelectorAll('#toc a'));
+  var map={}; links.forEach(function(a){map[a.getAttribute('href').slice(1)]=a});
+  if(!('IntersectionObserver' in window))return;
+  var io=new IntersectionObserver(function(es){
+    es.forEach(function(e){ if(e.isIntersecting){ links.forEach(function(a){a.classList.remove('on')}); var a=map[e.target.id]; if(a)a.classList.add('on'); }});
+  },{rootMargin:'-20% 0px -70% 0px'});
+  Object.keys(map).forEach(function(id){var s=document.getElementById(id); if(s)io.observe(s)});
+  document.querySelectorAll('details.mnav a').forEach(function(a){a.addEventListener('click',function(){a.closest('details').open=false})});
+})();
+</script>
