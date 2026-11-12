@@ -23,6 +23,7 @@ import { riskOf, formatRisk, type Risk } from './risk.ts'
 import { changeHistory, breaker } from './reverts.ts'
 import { parseAccess } from './chartcheck.ts'
 import { ARCH_REL } from './product.ts'
+import { rigOff, trunkRef, offLine } from './off.ts'
 
 type Point = 'stop' | 'commit' | 'ship' | 'ci'
 type CheckInput = {
@@ -412,6 +413,9 @@ function report(point: string, result: CheckResult, count: number, json: boolean
 }
 
 export function cmdCheck(args: Args): void {
+  const offRef = optString(args, 'config-from') ?? trunkRef()
+  const off = rigOff(offRef)
+  if (off) return out(offLine(off, offRef))
   const at = optString(args, 'at')
   if (at !== 'stop' && at !== 'commit' && at !== 'ship' && at !== 'ci') fail('usage: check --at stop|commit|ship|ci [--base <ref>] [--config-from <ref>] [--slug <s>] [--budget-ms <n>] [--json]')
   const { registry: config, rules, errors } = loadConfig(optString(args, 'config-from') ?? null)

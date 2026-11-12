@@ -14,6 +14,7 @@
 /.rig/bin/                        @your-org/platform
 /.rig/mod/                        @your-org/platform
 /.rig/githooks/                   @your-org/platform
+/.rig/off.json                    @your-org/platform
 /.claude-plugin/                  @your-org/platform
 /.claude/                         @your-org/platform
 /CLAUDE.md                        @your-org/platform

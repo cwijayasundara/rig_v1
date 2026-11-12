@@ -15,6 +15,7 @@ import { loadConfig, runChecks, editFindings, declaresRegistry } from './check.t
 import { formatFindings, isSource, isTest, matchesAny, warnRow, type Finding } from './model.ts'
 import { sessionNote } from './githooks.ts'
 import { treeStamp } from './stamp.ts'
+import { rigOff, trunkRef, offLine } from './off.ts'
 import { runCommand } from './runs.ts'
 import { policyMode, modelFamily, activeSensors, commandFor, contractGlobs, ALWAYS_ON, type Registry, type Mode } from './registry.ts'
 import { contractsTouched } from './contracts.ts'
@@ -315,5 +316,7 @@ export function cmdHook(args: Args): void {
   const handler = HOOKS[args.pos[0] ?? '']
   if (!handler) fail(`unknown hook ${args.pos[0]}`)
   if (runsOwnHook(args.pos[0] ?? '')) return
+  const off = rigOff()
+  if (off) return void (args.pos[0] === 'session-start' && out(offLine(off, trunkRef())))
   handler(readStdin())
 }

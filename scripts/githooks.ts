@@ -7,6 +7,7 @@ import { rangeDiff, showAt } from './diffs.ts'
 import { activeSlug, verifyFresh } from './lifecycle.ts'
 import { treeStamp } from './stamp.ts'
 import { formatFindings, warnLines, type Finding } from './model.ts'
+import { rigOff } from './off.ts'
 
 const HOOKS_DIR = '.rig/githooks'
 const NAMES = ['pre-commit', 'pre-push'] as const
@@ -131,6 +132,7 @@ const readStdin = (): string => { try { return fs.readFileSync(0, 'utf8') } catc
 const soften = (f: Finding): Finding => (f.outOfTime ? { ...f, severity: 'warn' } : f)
 
 export function cmdCheckPush(_args: Args): void {
+  if (rigOff()) return
   const { registry: config, rules, errors } = loadConfig()
   const raw = readStdin()
   const judged = (r: PushRef): boolean => !ZERO.test(r.localSha) && r.remoteRef.startsWith('refs/heads/')

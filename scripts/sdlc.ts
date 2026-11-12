@@ -16,7 +16,7 @@ import { cmdHook } from './hooks.ts'
 import { cmdCheck, cmdCheckFile, loadConfig } from './check.ts'
 import { inertSensors, isRegistryShape, type Inert } from './registry.ts'
 import { runCommand, recordRun } from './runs.ts'
-import { cmdVendor, installStandalone, older, pluginVersion } from './vendor.ts'; import { parseProfile } from './profile.ts'
+import { cmdVendor, installStandalone, older, pluginVersion } from './vendor.ts'; import { parseProfile } from './profile.ts'; import { cmdOff, cmdOn } from './off.ts'
 import { cmdUpgrade } from './upgrade.ts'
 import { cmdBaseline } from './initbaseline.ts'
 import { cmdVerify } from './verify.ts'
@@ -478,7 +478,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   readiness: cmdReadiness, autonomy: cmdAutonomy,
   risk: cmdRisk,
   claims: cmdClaims,
-  weight: cmdWeight, 'route-check': cmdRouteCheck, 'intent-record': cmdIntentRecord, 'intent-adjudicate': cmdIntentAdjudicate,
+  weight: cmdWeight, 'route-check': cmdRouteCheck, 'intent-record': cmdIntentRecord, 'intent-adjudicate': cmdIntentAdjudicate, off: cmdOff, on: cmdOn,
   'intent-recheck': cmdIntentRecheck, 'intent-project': cmdIntentProject,
 }
 
