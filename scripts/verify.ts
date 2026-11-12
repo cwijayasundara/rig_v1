@@ -18,7 +18,7 @@ export function cmdVerify(args: Args): void {
   const base = defaultBase(), ref = base ?? 'HEAD', before = treeStamp(), from = now()
   const budgetMs = Number(optString(args, 'budget-ms') ?? BUDGET_MS.ship)
   const r = runChecks({ point: 'ship', diffs: branchDiff(ref), config, rules, slugs: [slug], commands: 'full', budgetMs, before: f => showAt(ref, f) ?? '', base, ratchet: false, gates: config.gates })
-  const sprint = sprintOf(slug), h = sprint === null ? null : runHoldout(sprint, config.holdout, null)
+  const sprint = sprintOf(slug), h = sprint === null ? null : runHoldout(sprint, config.holdout)
   const holdout = h && !h.none ? { passed: h.passed, total: h.total } : undefined
   const blocks = [...errors.map(e => `config: ${e}`), ...r.blocks.map(f => `${f.sensor}${f.file ? ` ${f.file}` : ''}: ${(f.message.split('\n')[0] ?? '').slice(0, 200)}`), ...(h?.failing.length ? [`holdout: ${h.passed}/${h.total} passed; failing ${h.failing.join(', ')}: ${holdoutFix()}`] : [])]
   writeVerify(slug, { at: now(), from, tree: treeStamp() === before ? before : null, base, pass: !blocks.length, blocks, ...(holdout ? { holdout } : {}) })

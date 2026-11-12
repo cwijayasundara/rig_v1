@@ -14,6 +14,7 @@ export type Args = { pos: string[]; opt: Record<string, string | true> }
 export type HookInput = {
   session_id?: string
   cwd?: string
+  tool_name?: string
   agent_id?: string
   agent_type?: string
   source?: string

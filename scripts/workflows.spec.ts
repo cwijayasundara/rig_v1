@@ -102,3 +102,9 @@ test('CI reviews the delta only, with a turn cap, no lockfiles or vendored harne
   assert.equal((t.match(/Review only what this diff adds or changes; read another file only to understand a changed line, and never review code the diff does not change\./g) ?? []).length, 2)
   assert.match(t, /git diff "origin\/\$BASE\.\.\.HEAD" -- \. ':\(exclude\)\*package-lock\.json'[^\n]*':\(exclude\)\.rig\/bin'/)
 })
+
+test('the holdout step runs every base case with --base and notes that project setup must precede it', () => {
+  const t = read('templates/rig-check.yml')
+  assert.match(t, /holdout --ci --base "origin\/\$\{BASE#refs\/heads\/\}"/)
+  assert.match(t, /project's setup steps must precede/)
+})

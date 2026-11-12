@@ -18,7 +18,9 @@ import { treeStamp } from './stamp.ts'
 import { rigOff, trunkRef, offLine } from './off.ts'
 import { recordHuman, questionsAsked } from './humanload.ts'
 import { runCommand } from './runs.ts'
-import { holdoutDenied } from './holdout.ts'
+import { holdoutDenied, hidden } from './holdout.ts'
+import { chartState } from './chart.ts'
+import { sprintsOnDisk, holdoutDir } from './product.ts'
 import { policyMode, modelFamily, activeSensors, commandFor, contractGlobs, ALWAYS_ON, type Registry, type Mode } from './registry.ts'
 import { contractsTouched } from './contracts.ts'
 import { syncFindings } from './sync.ts'
@@ -66,11 +68,16 @@ function hookAgentDone(input: HookInput): void {
   if (exists(SDLC) && input.tool_use_id && resolved) recordResolved(MODEL_STATE, input.tool_use_id, resolved)
 }
 
-// Holdout cases stay hidden while the active change builds or tests: it is at `build` until a verify passes on its tree.
+// Holdout cases stay hidden once their sprint's chart is approved (and not stale); it fails closed: a throw denies.
 function hookHoldoutGuard(input: HookInput): void {
   if (!exists(SDLC)) return
-  const reason = holdoutDenied(input, () => { const a = activeSlug(); return a !== null && status(a, loadConfig().registry.gates, treeStamp()) === 'build' })
-  if (reason) out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }))
+  const deny = (r: string): void => out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: r } }))
+  try {
+    const dirs = sprintsOnDisk().filter(n => exists(holdoutDir(n)))
+    const locked = (n: number | null): boolean => (n === null ? sprintsOnDisk() : [n]).some(m => chartState(m).state === 'approved')
+    const reason = holdoutDenied(input, locked, () => dirs.map(n => holdoutDir(n).replaceAll('\\', '/')))
+    if (reason) deny(reason)
+  } catch { deny(hidden()) }
 }
 
 function readStdin(): HookInput {

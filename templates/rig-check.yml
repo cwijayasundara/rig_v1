@@ -129,7 +129,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node --disable-warning=ExperimentalWarning "$RUNNER_TEMP/sdlc/sdlc.ts" check --at ci --base "origin/${BASE#refs/heads/}" --config-from "origin/${BASE#refs/heads/}"
       - name: Hidden acceptance cases (holdout)
-        # the cases come from the base branch and run against this PR's tree, so a PR cannot edit them; prints only counts and case ids
+        # runs EVERY case file in the base branch (the PR picks none and cannot edit them) against this PR's tree; prints only counts and case ids.
+        # This job has no project toolchain: the project's setup steps must precede this step (install its runtime, dependencies, build the binary the cases exercise).
         env:
           CLAUDE_PROJECT_DIR: ${{ github.workspace }}
           BASE: ${{ github.base_ref || github.event.merge_group.base_ref }}

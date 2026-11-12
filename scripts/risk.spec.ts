@@ -133,9 +133,12 @@ test('the freeze file is exempt from tier 2 only as one hand-off row on a new fi
   assert.equal(at(true, ['hand-off'], { risk: { enforce: false, alwaysHuman: ['.rig/changes/**'], maxLines: 400, hardCap: false, window: 20, maxRevertRate: 0.1 } }).tier, 2)
 })
 
-test('a PR touching a sprint holdout directory is tier 2 (holdout changed), unless it is the chart branch', () => {
+test('a PR touching a sprint holdout directory is tier 2 (holdout changed), on a chart branch too', () => {
   const f = '.rig/product/sprints/sprint-2/holdout/TC-1.holdout.test.js'
   assert.deepEqual(assessRisk(input({ files: [f] })), { tier: 2, reasons: ['holdout changed', TWO] })
-  assert.equal(assessRisk(input({ files: [f], holdoutOk: true })).tier, 0)
   assert.equal(assessRisk(input({ files: ['.rig/product/sprints/sprint-2/testplan/cases.md'] })).tier, 0)
+  const diff = [{ file: f, status: 'A', added: [], removed: [] }] as never
+  const was = process.env.GITHUB_HEAD_REF
+  process.env.GITHUB_HEAD_REF = 'rig/chart-1'
+  try { const r = riskOf(diff, [], defaultRegistry(), [], true); assert.equal(r.tier, 2); assert.ok(r.reasons.includes('holdout changed'), 'a branch name the author picks exempts nothing') } finally { if (was === undefined) delete process.env.GITHUB_HEAD_REF; else process.env.GITHUB_HEAD_REF = was }
 })

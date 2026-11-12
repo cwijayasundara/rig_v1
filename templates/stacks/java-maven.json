@@ -1,7 +1,7 @@
 {
   "stack": "java-maven",
   "markers": ["pom.xml"],
-  "holdout": "java {file}",
+  "holdout": "bash {file}",
   "paths": { "tests": ["**/src/test/**", "**/*Test.java", "**/*IT.java"], "testSupport": ["**/src/test/resources/**"] },
   "contracts": { "files": [], "validate": "", "run": "" },
   "sensors": [

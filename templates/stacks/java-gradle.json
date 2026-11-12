@@ -1,7 +1,7 @@
 {
   "stack": "java-gradle",
   "markers": ["build.gradle", "build.gradle.kts"],
-  "holdout": "java {file}",
+  "holdout": "bash {file}",
   "paths": { "tests": ["**/src/test/**", "**/*Test.java", "**/*Test.kt"], "testSupport": ["**/src/test/resources/**"] },
   "contracts": { "files": [], "validate": "", "run": "" },
   "sensors": [

@@ -62,43 +62,88 @@ test('--ci judges the base copy of each file against the PR tree, so a PR cannot
   write(repo, `${H}/TC-1.holdout.test.js`, PASS)
   gitIn(repo, 'commit', '-qam', 'edit the case')
   assert.equal(sdlc(repo, ['holdout', 'demo']).code, 0, 'locally the edited file passes')
-  const ci = sdlc(repo, ['holdout', 'demo', '--ci', '--base', 'main'])
+  const ci = sdlc(repo, ['holdout', '--ci', '--base', 'main'])
   assert.equal(ci.code, 1)
   assert.equal(ci.stdout.trim(), 'holdout: 0/1 passed\nfailing: TC-1')
   write(repo, 'feature.txt', 'x\n')
-  const ok = sdlc(repo, ['holdout', 'demo', '--ci', '--base', 'main'])
+  const ok = sdlc(repo, ['holdout', '--ci', '--base', 'main'])
   assert.equal(ok.stdout.trim(), 'holdout: 1/1 passed')
   assert.equal(ok.code, 0)
 })
 
-test('--ci with no slug runs the sprints of the changes the PR carries', () => {
-  write(repo, `${H}/TC-1.holdout.test.js`, FAIL)
-  gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'chart')
-  gitIn(repo, 'checkout', '-qb', 'pr')
-  assert.equal(sdlc(repo, ['holdout', '--ci', '--base', 'main']).stdout.trim(), 'holdout: none for the changes in this diff')
+function baseWith(files: Record<string, string>): void {
+  for (const [n, c] of Object.entries(files)) write(repo, `${H}/${n}`, c)
+  gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'chart'); gitIn(repo, 'checkout', '-qb', 'pr')
+}
+
+test('--ci ignores the PR: every base case runs, whatever slug or sprint the PR names', () => {
+  baseWith({ 'TC-1.holdout.test.js': FAIL })
+  write(repo, '.rig/changes/demo/intent.md', intent('demo').replace('sprint: 1', 'sprint: 9'))
   write(repo, '.rig/changes/demo/pr.md', 'x\n')
-  gitIn(repo, 'add', '-f', '.rig/changes/demo'); gitIn(repo, 'commit', '-qm', 'change')
+  gitIn(repo, 'add', '-f', '.rig/changes/demo'); gitIn(repo, 'commit', '-qm', 'point the PR at another sprint')
+  for (const extra of [[], ['demo']]) {
+    const r = sdlc(repo, ['holdout', ...extra, '--ci', '--base', 'main'])
+    assert.equal(r.code, 1, extra.join())
+    assert.equal(r.stdout.trim(), 'holdout: 0/1 passed\nfailing: TC-1')
+  }
+})
+
+test('--ci without --base fails; an empty case file in the base is a failure, not a pass', () => {
+  baseWith({ 'TC-1.holdout.test.js': '' })
+  const none = sdlc(repo, ['holdout', '--ci'])
+  assert.equal(none.code, 1)
+  assert.match(none.stderr, /--base/)
   const r = sdlc(repo, ['holdout', '--ci', '--base', 'main'])
   assert.equal(r.code, 1)
   assert.equal(r.stdout.trim(), 'holdout: 0/1 passed\nfailing: TC-1')
+  assert.equal(sdlc(repo, ['holdout', '--ci', '--base', 'nope']).code, 1, 'a base git cannot read fails, never passes')
 })
 
-test('hook: build and test deny Read, Grep, Glob, Write and Bash on holdout paths with the fixed message; chart allows', () => {
-  approvedChange(repo, 'demo2')
-  write(repo, '.rig/changes/demo2/intent.md', intent('demo2'))
+test('--ci: a case that blanks the other base copies cannot change their verdict (fresh dir per file)', () => {
+  const blank = "const fs = require('fs'), os = require('os'), path = require('path')\nconst walk = d => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const f = path.join(d, e.name); if (e.isDirectory()) walk(f); else fs.writeFileSync(f, '') } }\nfor (const d of fs.readdirSync(os.tmpdir())) if (d.startsWith('rig-holdout-')) try { walk(path.join(os.tmpdir(), d)) } catch {}\n"
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], holdout: 'node {file}' }))
+  baseWith({ 'TC-1.holdout.test.js': blank, 'TC-2.holdout.test.js': 'process.exit(3)\n' })
+  const r = sdlc(repo, ['holdout', '--ci', '--base', 'main'])
+  assert.equal(r.stdout.trim(), 'holdout: 1/2 passed\nfailing: TC-2')
+})
+
+test('a file changed between the write and the run fails its sha256 check', () => {
+  const out = holdoutJs(`const r = H.runCases([{ rel: 'a/TC-1.holdout.js', data: Buffer.from('process.exit(0)\\n') }, { rel: 'a/TC-2.holdout.js', data: Buffer.from('process.exit(0)\\n') }], 'node {file}', f => { if (f.includes('TC-2')) fs.writeFileSync(f, '') }); return r`)
+  assert.deepEqual(JSON.parse(out), { passed: 1, failing: ['TC-2'] })
+})
+
+test('cases run from a temp copy with the CI output variables stripped, in --ci and locally', () => {
+  const spy = "const path = require('path')\nconst out = path.relative(process.cwd(), process.argv[1])\nif (!out.startsWith('..') || !path.basename(path.dirname(process.argv[1])).length || ['GITHUB_STEP_SUMMARY', 'GITHUB_OUTPUT', 'GITHUB_ENV', 'GITHUB_PATH'].some(k => process.env[k])) process.exit(1)\n"
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], holdout: 'node {file}' }))
+  baseWith({ 'TC-1.holdout.test.js': spy })
+  const env = { GITHUB_STEP_SUMMARY: '/x', GITHUB_OUTPUT: '/x', GITHUB_ENV: '/x', GITHUB_PATH: '/x' }
+  assert.equal(sdlc(repo, ['holdout', '--ci', '--base', 'main'], { env }).code, 0)
+  assert.equal(sdlc(repo, ['holdout', 'demo'], { env }).code, 0)
+})
+
+test('case ids: .sh names parse like the others', () => {
+  assert.equal(holdoutJs(`return [H.caseId('TC-12.holdout.sh'), H.caseId('test_tc_3_holdout.py')]`), '["TC-12","TC-3"]')
+})
+
+test('hook: once the sprint chart is approved, read tools and Bash on holdout paths are denied; Write and the unapproved chart are allowed', () => {
   const denied = (tool: string, input: object) => { const o = hook(repo, 'holdout-guard', { tool_name: tool, tool_input: input }).stdout; return o ? JSON.parse(o).hookSpecificOutput : null }
   const abs = path.join(repo, `${H}/TC-1.holdout.test.js`)
-  for (const [tool, input] of [['Read', { file_path: abs }], ['Write', { file_path: abs, content: 'x' }], ['Edit', { file_path: `${H}/TC-1.holdout.test.js` }], ['Grep', { pattern: 'x', path: path.join(repo, H) }], ['Glob', { pattern: `${H}/*.js` }], ['Bash', { command: `cat ${H}/TC-1.holdout.test.js` }]] as const) {
+  write(repo, '.rig/product/sprints/sprint-1/prd.md', `---\nsprint: 1\nengineers: 1\n---\n# Sprint 1\n\n### FR-1: thing\n\n## Open questions\nnone\n`)
+  write(repo, '.rig/product/architecture.md', '# Arch\n')
+  write(repo, `${H}/TC-1.holdout.test.js`, PASS)
+  assert.equal(denied('Read', { file_path: abs }), null, 'charting: the chart is not approved')
+  assert.equal(denied('Bash', { command: `cat ${H}/x` }), null)
+  chartJs(`C.writeChartApproval(1, 'Pat')`)
+  for (const [tool, input] of [['Read', { file_path: abs }], ['Read', { file_path: `${H}/../holdout/./TC-1.holdout.test.js` }], ['Edit', { file_path: `${H}/TC-1.holdout.test.js` }], ['Grep', { pattern: 'x', path: path.join(repo, H) }], ['Grep', { pattern: 'x' }], ['Grep', { pattern: 'x', path: repo }], ['Glob', { pattern: `${H}/*.js` }], ['Glob', { pattern: '**/*.js', path: path.join(repo, '.rig') }], ['Bash', { command: `cat ${H}/TC-1.holdout.test.js` }], ['Bash', { command: 'cat .rig/product/sprints/sprint-1/holdout' }], ['Bash', { command: `node .rig/bin/sdlc.ts holdout x $(cat ${H}/TC-1.holdout.test.js)` }], ['Bash', { command: 'node .rig/bin/sdlc.ts holdout demo | cat' }], ['Bash', { command: 'node .rig/bin/sdlc.ts holdout demo > /tmp/x' }]] as const) {
     const d = denied(tool, input)
-    assert.equal(d?.permissionDecision, 'deny', tool)
+    assert.equal(d?.permissionDecision, 'deny', `${tool} ${JSON.stringify(input)}`)
     assert.equal(d?.permissionDecisionReason, 'holdout cases are hidden from the builder; run /rig:test', tool)
   }
+  assert.equal(denied('Write', { file_path: abs, content: 'x' }), null, 'a whole-file write leaks nothing')
   assert.equal(denied('Read', { file_path: path.join(repo, 'src/a.ts') }), null)
-  assert.equal(denied('Bash', { command: 'node .rig/bin/sdlc.ts holdout demo2' }), null)
-  assert.equal(denied('Bash', { command: `node .rig/bin/sdlc.ts holdout demo2; cat ${H}/x` })?.permissionDecision, 'deny')
-  fs.rmSync(path.join(repo, '.rig/state/active'))
-  assert.equal(denied('Read', { file_path: abs }), null, 'no change in build: chart, testplan and review may read them')
-  assert.equal(denied('Bash', { command: `cat ${H}/x` }), null)
+  assert.equal(denied('Bash', { command: 'node .rig/bin/sdlc.ts holdout demo' }), null)
+  write(repo, `${H}/TC-1.holdout.test.js`, FAIL)
+  assert.equal(denied('Read', { file_path: abs }), null, 'the edit made the chart stale: charting again')
 })
 
 test('verify runs the holdout after the checks: a failing case blocks, names the case and records counts', () => {
@@ -135,6 +180,14 @@ test('the chart approval covers the holdout files: editing one after approval ma
 function chartJs(code: string): string {
   const lib = path.resolve(import.meta.dirname, 'chart.ts')
   const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', `import * as C from ${JSON.stringify(pathToFileURL(lib).href)}; const v = await (async () => { ${code} })(); console.log(JSON.stringify(v ?? null))`],
+    { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo, NODE_TEST_CONTEXT: '' } })
+  assert.equal(r.status, 0, r.stderr)
+  return r.stdout.trim()
+}
+
+function holdoutJs(code: string): string {
+  const lib = path.resolve(import.meta.dirname, 'holdout.ts')
+  const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', `import fs from 'node:fs'; import * as H from ${JSON.stringify(pathToFileURL(lib).href)}; const v = await (async () => { ${code} })(); console.log(JSON.stringify(v ?? null))`],
     { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo, NODE_TEST_CONTEXT: '' } })
   assert.equal(r.status, 0, r.stderr)
   return r.stdout.trim()

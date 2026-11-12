@@ -126,3 +126,9 @@ test('a holdout command without {file}, or not a string, is a registry error', (
   assert.match(parsePack(pack(7), 'x.json').errors.join(), /holdout/)
   assert.deepEqual(parsePack(pack('node --test {file}'), 'x.json').errors, [])
 })
+
+test('compiled stacks run a holdout shell script with bash; node and angular run node --test', () => {
+  const h = (n: string): string => JSON.parse(fs.readFileSync(path.join(PACKS_DIR, `${n}.json`), 'utf8')).holdout
+  for (const n of ['go', 'rust', 'dotnet', 'java-maven', 'java-gradle']) assert.equal(h(n), 'bash {file}', n)
+  assert.equal(h('angular'), 'node --test {file}')
+})
