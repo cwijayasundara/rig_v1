@@ -10,7 +10,7 @@
       "name": "rig",
       "source": "./",
       "description": "Thin AI-native SDLC harness for Claude Code",
-      "version": "0.8.0"
+      "version": "0.9.0"
     }
   ]
 }

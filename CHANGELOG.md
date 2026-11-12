@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.9.0
+
+The readiness work after 0.8.0: the client readiness check (R4), the off switch and runbook (R5), and the known failure classes in the core flow (R6). `release/0.8` keeps 0.8.x fixes.
+
 - **Known failure classes in the core flow (R6)** (2026-11-12, from the readiness doc §2 R6). Three defect classes from the tester runs now reach the core flow: lost updates under concurrent commands, an option that takes the next flag as its value, and a rule weakened on the way to the spec.
   - `/rig:start`'s spec step walks `templates/edge-cases.md` (before, only `/rig:chart` did) and keeps a cited rule's words.
   - `guides/engineering.md` gains the concurrent-writer and option rules, and `guides/testing.md` a test for each surface.
