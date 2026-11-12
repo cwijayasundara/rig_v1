@@ -1,7 +1,8 @@
 # Edge-case checklist
 
 The architect walks every intent through these four items at chart time, so the person who owns the PRD settles them once,
-in the chart's one question batch, and `/rig:start` finds them in the intent. The three bugs of the shop cart report
+in the chart's one question batch, and `/rig:start` finds them in the intent. For a change that was never charted (the core
+profile has no chart), /rig:start walks the list itself in the spec step and writes the defaults as behaviours. The three bugs of the shop cart report
 (lost updates under concurrent commands, a symlinked data file replaced, `--name --json` taking `--json` as the name) were
 all items below that nobody asked at chart.
 

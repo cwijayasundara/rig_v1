@@ -18,6 +18,8 @@ These are rules, not suggestions. The sensors and the reviewer check them.
 8. **Errors are handled or surfaced.** No empty catch and no silent fallback that hides a failure; fail loudly with context.
 9. **No hidden state.** No module-level mutable singletons; state lives in an owner you can pass and test.
 10. **Match the codebase.** Follow the existing structure, naming and style before your own preferences.
+11. **Concurrent writers.** A read-modify-write of shared state (a file, a row, a counter) holds a lock or uses an atomic compare-and-swap; two commands at once lose no write and never hand out the same id.
+12. **Options.** Parse options with the stack's parser; an option that takes a value never takes the next flag as that value, and an unknown flag fails with a message naming it.
 
 ## Rationalizations
 | Thought | Reality |

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Known failure classes in the core flow (R6)** (2026-11-12, from the readiness doc §2 R6). Three defect classes from the tester runs now reach the core flow: lost updates under concurrent commands, an option that takes the next flag as its value, and a rule weakened on the way to the spec.
+  - `/rig:start`'s spec step walks `templates/edge-cases.md` (before, only `/rig:chart` did) and keeps a cited rule's words.
+  - `guides/engineering.md` gains the concurrent-writer and option rules, and `guides/testing.md` a test for each surface.
+  - `templates/REVIEW.md` gains a robustness pass. Existing repos merge it into their own `REVIEW.md` by hand.
+  - `approve <slug> --check` warns when a behaviour drops a never, a limit or a number from the `requirements.md` row it cites.
+  - The journey's J3 gains concurrent-borrow and weakened-rule items, with a bad snapshot each.
+
 - **Off switch and runbook (R5)** (2026-11-12, from the readiness doc §2 R5). `sdlc.ts off --why "<reason>"` writes `.rig/off.json`, and `sdlc.ts on` removes it. The marker counts only once it is on the trunk, and it is protected, so a code owner approves it. While it is there, `check`, pre-push and every Claude hook return at once. The `ai-review` steps pass at once when the marker is on the base, or when the PR adds only the marker, so the off PR merges during a model-provider outage. While rig is off, CI blocks PRs that change rig's own files, and the local switch needs the marker in `HEAD` as well as on the trunk. `docs/runbook.md` covers switching rig off, CI and provider outages, a broken rig, rehearsed upgrades and support.
 - **Client readiness (R4)** (2026-11-12, from the readiness doc §2 R4). `readiness --client [--managed <file>] [--json]` checks 10 platform controls and exits 1 until every one passes:
   - the trunk requires `rig-check` and `ai-review` and code-owner review (classic branch protection or rulesets, read through `gh`);

@@ -16,6 +16,7 @@ why: agent-written tests often pass without proving anything, and tests are the 
 8. **Readable as a spec.** Arrange, act, assert; literal inputs and expected values; no logic in tests.
 9. **API tests use the real surface.** Call the handler or HTTP endpoint and assert on status and body, including the error statuses the spec names.
 10. **Smoke and performance are declared commands.** `smoke` and `bench` in `.rig/sensors.json` `full`: smoke starts the app, hits a health check and stops under a timeout; bench exits non-zero when it misses the spec's `## Non-functional` number.
+11. **Hostile surfaces get a test.** A change that writes shared state has a test that runs two writers at once and counts what survived; one that parses options has a test passing `--opt --other`, and one passing nothing after `--opt`.
 
 ## Rationalizations
 | Thought | Reality |
