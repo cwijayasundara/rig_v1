@@ -262,7 +262,7 @@ const approvalRel = (n: number): string => `${sprintRel(n)}/approval.json`
 // true: committed; false: nothing to commit (not a git repo / nothing dirty); null: git refused.
 function commitApproval(n: number, sensors = false): boolean | null {
   if (git(['rev-parse', '--is-inside-work-tree']) !== 'true') return false
-  const want = [approvalRel(n), `${sprintRel(n)}/plan.md`, ARCH_REL, ...(sensors ? ['.rig/sensors.json'] : []), ...chartFiles(n)].filter((f, i, a) => a.indexOf(f) === i && exists(path.join(ROOT, f)))
+  const want = [approvalRel(n), `${sprintRel(n)}/plan.md`, ARCH_REL, '.rig/product/.ignore', ...(sensors ? ['.rig/sensors.json'] : []), ...chartFiles(n)].filter((f, i, a) => a.indexOf(f) === i && exists(path.join(ROOT, f)))
   const dirty = dirtyFiles(want)
   if (!dirty.length) return false
   if (git(['add', '--', ...dirty]) === null) return null

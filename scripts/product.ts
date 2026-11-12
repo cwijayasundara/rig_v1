@@ -57,3 +57,10 @@ export function sprintsOnDisk(): number[] {
 export function intentRelOf(slug: string, files: string[] = sprintsOnDisk().flatMap(n => (exists(intentsDir(n)) ? fs.readdirSync(intentsDir(n)).map(f => `${sprintRel(n)}/intents/${f}`) : []))): string | null {
   return files.find(f => new RegExp(`^\\.rig/product/sprints/sprint-\\d{1,4}/intents/${slug.replace(/[^\w-]/g, '')}\\.md$`).test(f)) ?? null
 }
+
+// ripgrep reads `.ignore` (gitignore syntax, relative to its folder) in any folder, so repo-wide Grep never returns holdout cases; not .gitignore: they stay committed.
+export function writeProductIgnore(): void {
+  const f = path.join(PRODUCT, '.ignore'), line = 'sprints/*/holdout/\n'
+  if (exists(f) && fs.readFileSync(f, 'utf8') === line) return
+  fs.mkdirSync(PRODUCT, { recursive: true }); fs.writeFileSync(f, line)
+}

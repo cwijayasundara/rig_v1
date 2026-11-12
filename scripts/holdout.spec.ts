@@ -134,13 +134,16 @@ test('hook: once the sprint chart is approved, read tools and Bash on holdout pa
   assert.equal(denied('Read', { file_path: abs }), null, 'charting: the chart is not approved')
   assert.equal(denied('Bash', { command: `cat ${H}/x` }), null)
   chartJs(`C.writeChartApproval(1, 'Pat')`)
-  for (const [tool, input] of [['Read', { file_path: abs }], ['Read', { file_path: `${H}/../holdout/./TC-1.holdout.test.js` }], ['Edit', { file_path: `${H}/TC-1.holdout.test.js` }], ['Grep', { pattern: 'x', path: path.join(repo, H) }], ['Grep', { pattern: 'x' }], ['Grep', { pattern: 'x', path: repo }], ['Glob', { pattern: `${H}/*.js` }], ['Glob', { pattern: '**/*.js', path: path.join(repo, '.rig') }], ['Bash', { command: `cat ${H}/TC-1.holdout.test.js` }], ['Bash', { command: 'cat .rig/product/sprints/sprint-1/holdout' }], ['Bash', { command: `node .rig/bin/sdlc.ts holdout x $(cat ${H}/TC-1.holdout.test.js)` }], ['Bash', { command: 'node .rig/bin/sdlc.ts holdout demo | cat' }], ['Bash', { command: 'node .rig/bin/sdlc.ts holdout demo > /tmp/x' }]] as const) {
+  for (const [tool, input] of [['Read', { file_path: abs }], ['Read', { file_path: `${H}/../holdout/./TC-1.holdout.test.js` }], ['Edit', { file_path: `${H}/TC-1.holdout.test.js` }], ['Grep', { pattern: 'x', path: path.join(repo, H) }], ['Grep', { pattern: 'x', path: '.rig' }], ['Grep', { pattern: 'holdout' }], ['Glob', { pattern: '**/holdout/**' }], ['Glob', { pattern: `${H}/*.js` }], ['Glob', { pattern: '**/*.js', path: path.join(repo, '.rig') }], ['Bash', { command: `cat ${H}/TC-1.holdout.test.js` }], ['Bash', { command: 'cat .rig/product/sprints/sprint-1/holdout' }], ['Bash', { command: `node .rig/bin/sdlc.ts holdout x $(cat ${H}/TC-1.holdout.test.js)` }], ['Bash', { command: 'node .rig/bin/sdlc.ts holdout demo | cat' }], ['Bash', { command: 'node .rig/bin/sdlc.ts holdout demo > /tmp/x' }]] as const) {
     const d = denied(tool, input)
     assert.equal(d?.permissionDecision, 'deny', `${tool} ${JSON.stringify(input)}`)
     assert.equal(d?.permissionDecisionReason, 'holdout cases are hidden from the builder; run /rig:test', tool)
   }
   assert.equal(denied('Write', { file_path: abs, content: 'x' }), null, 'a whole-file write leaks nothing')
   assert.equal(denied('Read', { file_path: path.join(repo, 'src/a.ts') }), null)
+  assert.equal(denied('Grep', { pattern: 'x' }), null, 'a repo-root Grep is allowed')
+  assert.equal(denied('Grep', { pattern: 'x', path: repo }), null)
+  assert.equal(denied('Glob', { pattern: '**/*.ts' }), null, 'a repo-root Glob is allowed')
   assert.equal(denied('Bash', { command: 'node .rig/bin/sdlc.ts holdout demo' }), null)
   write(repo, `${H}/TC-1.holdout.test.js`, FAIL)
   assert.equal(denied('Read', { file_path: abs }), null, 'the edit made the chart stale: charting again')
@@ -192,3 +195,19 @@ function holdoutJs(code: string): string {
   assert.equal(r.status, 0, r.stderr)
   return r.stdout.trim()
 }
+
+test('hook: a guard that throws denies (fails closed)', () => {
+  fs.rmSync(path.join(repo, '.rig/product/sprints'), { recursive: true, force: true })
+  write(repo, '.rig/product/sprints', 'a file where the sprints folder should be: listing it throws')
+  const o = hook(repo, 'holdout-guard', { tool_name: 'Bash', tool_input: { command: 'cat x/holdout/y' } }).stdout
+  assert.equal(JSON.parse(o).hookSpecificOutput.permissionDecision, 'deny')
+})
+
+test('approving a chart writes .rig/product/.ignore with the holdout line, and .gitignore is untouched', () => {
+  write(repo, '.rig/product/sprints/sprint-1/prd.md', `---\nsprint: 1\nengineers: 1\n---\n# Sprint 1\n\n### FR-1: thing\n\n## Open questions\nnone\n`)
+  write(repo, '.rig/product/architecture.md', '# Arch\n')
+  const gi = fs.existsSync(path.join(repo, '.gitignore')) ? fs.readFileSync(path.join(repo, '.gitignore'), 'utf8') : null
+  chartJs(`C.writeChartApproval(1, 'Pat')`)
+  assert.equal(fs.readFileSync(path.join(repo, '.rig/product/.ignore'), 'utf8'), 'sprints/*/holdout/\n')
+  assert.equal(fs.existsSync(path.join(repo, '.gitignore')) ? fs.readFileSync(path.join(repo, '.gitignore'), 'utf8') : null, gi)
+})

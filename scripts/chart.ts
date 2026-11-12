@@ -10,7 +10,7 @@ import { stripGenerated, carriedIds } from './carry.ts'
 import { planText, type PlanRow } from './plan.ts'
 import { prdFormatProblems, prdLedger, conversionProblems } from './prdformat.ts'
 import { coverageProblems } from './prdcoverage.ts'
-import { PRODUCT, ARCH_REL, archPath, prdPath, intentsDir, testplanDir, holdoutDir, approvalPath, sprintDir, sprintsOnDisk, intentRel, planPath, implPlanPath, sprintRel, ledgerPath, coveragePath, waiversPath, reviewPath, sourcePath, conversionPath, conversionReviewPath } from './product.ts'
+import { PRODUCT, ARCH_REL, archPath, prdPath, intentsDir, testplanDir, holdoutDir, approvalPath, sprintDir, sprintsOnDisk, intentRel, planPath, implPlanPath, sprintRel, ledgerPath, coveragePath, waiversPath, reviewPath, sourcePath, conversionPath, conversionReviewPath, writeProductIgnore } from './product.ts'
 import { designIntents, sharedScopeProblems, architectureProblems, implementationPlanProblems, accessProblems, parseAccess, parseIntent, parseCases, parkedDecisions, prdIds, traceReport, ledgerProblems, parseLedger, parentOf, parseReview, openFindings, type ReviewFinding, type ChartWaiver, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
 
 const SHARED_DIRS = ['adr'].map(d => `${toPosix(path.relative(ROOT, path.join(PRODUCT, d)))}/`)
@@ -105,7 +105,7 @@ function acceptAdrs(n: number): void {
 export function writeChartApproval(n: number, by: string): void {
   acceptAdrs(n)
   const row: Row = { by, at: now(), digest: chartDigest(n), files: manifest(chartFiles(n)) }
-  fs.mkdirSync(sprintDir(n), { recursive: true })
+  fs.mkdirSync(sprintDir(n), { recursive: true }); writeProductIgnore()
   fs.writeFileSync(approvalPath(n), JSON.stringify(row, null, 2) + '\n')
 }
 const approvedSprints = (): number[] => sprintsOnDisk().filter(n => exists(approvalPath(n)))
@@ -303,7 +303,7 @@ export function sprintPlan(n: number, assumeShipped?: string | string[]): string
   return planText(n, planRows(n, assumeShipped), { chart: chartState(n).state, startCmd: slug => `${skillRef('start')} ${slug}` })
 }
 export function writePlan(n: number, assumeShipped?: string | string[]): string {
-  fs.mkdirSync(sprintDir(n), { recursive: true })
+  fs.mkdirSync(sprintDir(n), { recursive: true }); writeProductIgnore()
   fs.writeFileSync(planPath(n), sprintPlan(n, assumeShipped))
   return `${sprintRel(n)}/plan.md`
 }

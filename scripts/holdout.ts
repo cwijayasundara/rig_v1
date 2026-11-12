@@ -94,7 +94,7 @@ export function cmdHoldout(args: Args): void {
 // searches or edits its holdout cases; a whole-file Write leaks nothing, and it makes the approval stale. `locked(n)` is that
 // sprint's approved state; null means any sprint.
 const META = /[`<>|;&\n]|\$\(/
-export function holdoutDenied(input: HookInput, locked: (sprint: number | null) => boolean, holdoutDirs: () => string[] = () => []): string | null {
+export function holdoutDenied(input: HookInput, locked: (sprint: number | null) => boolean): string | null {
   const t = input.tool_input ?? {}
   if (input.tool_name === 'Write') return null
   const cwd = input.cwd ?? ROOT
@@ -108,10 +108,10 @@ export function holdoutDenied(input: HookInput, locked: (sprint: number | null) 
       const p = posix(v)
       if (HOLDOUT_PATH.test(p) || /(^|\/)\*+\/holdout(\/|$)/.test(p)) hit = sprintIn(p)
     }
+    // A repo-root search is allowed (the harness's .rig/product/.ignore keeps holdouts out of rg); a root inside .rig, or text naming holdout, is not.
     if (hit === false && (input.tool_name === 'Grep' || input.tool_name === 'Glob')) {
-      const root = posix(t.path ?? cwd)
-      const inside = holdoutDirs().find(d => d === root || d.startsWith(`${root.replace(/\/$/, '')}/`))
-      if (inside) hit = sprintIn(inside)
+      const root = posix(t.path ?? cwd), rig = `${ROOT.replaceAll('\\', '/')}/.rig`
+      if (root === rig || root.startsWith(`${rig}/`) || [t.pattern, t.glob].some(v => typeof v === 'string' && /holdout/i.test(v))) hit = null
     }
   }
   return hit !== false && locked(hit) ? hidden() : null
