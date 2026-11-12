@@ -16,7 +16,7 @@ import { cmdHook } from './hooks.ts'
 import { cmdCheck, cmdCheckFile, loadConfig } from './check.ts'
 import { inertSensors, isRegistryShape, type Inert } from './registry.ts'
 import { runCommand, recordRun } from './runs.ts'
-import { cmdVendor, installStandalone, older, pluginVersion } from './vendor.ts'; import { parseProfile } from './profile.ts'; import { cmdOff, cmdOn } from './off.ts'
+import { cmdVendor, installStandalone, older, pluginVersion } from './vendor.ts'; import { parseProfile } from './profile.ts'; import { cmdOff, cmdOn } from './off.ts'; import { weakeningLines } from './weaken.ts'
 import { cmdUpgrade } from './upgrade.ts'
 import { cmdBaseline } from './initbaseline.ts'
 import { cmdVerify } from './verify.ts'
@@ -192,7 +192,7 @@ function approveCheck(args: Args): void {
   if (!slug || !exists(changeDir(slug))) fail('usage: approve <slug> --check')
   const refusal = approvalRefusal(slug)
   if (refusal) fail(refusal)
-  out(`ok: ${slug} can be approved`)
+  out([...weakeningLines(slug), `ok: ${slug} can be approved`].join('\n'))
 }
 
 function cmdApprove(args: Args): void {
