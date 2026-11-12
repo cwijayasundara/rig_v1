@@ -778,3 +778,39 @@ test('the merge queue re-checks the unattended path against the live base: lower
   assert.match(lowered.stdout, /\[human-approval\]\n\s*✗ merge queue: this PR needs a person: rung 0, not 3/)
   assert.doesNotMatch(queued({ queue: { baseFiles: rung(0) }, reviews: [{ user: { login: 'lead' }, state: 'APPROVED', author_association: 'MEMBER' }] }).stdout, /human-approval/, 'a person approved it on the PR')
 })
+
+test('humanApproval.everyTier makes even a tier-0 PR at rung 3 by a trusted author need a person', { skip: !posix }, () => {
+  const sensors = { ...trusted, humanApproval: { trusted: ['dev'], everyTier: true } }
+  const r = riskRun({ sensors, baseFiles: rung(3), files: tier0 })
+  assert.match(r.stdout, /\[human-approval\]\n\s*✗ risk\.enforce: this PR is tier 0 and needs a person: humanApproval\.everyTier: every tier needs a person/)
+  assert.doesNotMatch(r.stdout, /merges without a person/)
+  assert.doesNotMatch(riskRun({ sensors, baseFiles: rung(3), files: tier0, reviews: [{ user: { login: 'lead' }, state: 'APPROVED', author_association: 'MEMBER' }] }).stdout, /human-approval/)
+})
+
+test('risk.hardCap blocks a diff over risk.maxLines at ci even with an approved plan; a size waiver lifts it at ship; off keeps the warning', () => {
+  const setup = (hardCap: boolean) => {
+    const r = makeRepo()
+    sdlc(r, ['init'])
+    write(r, '.rig/sensors.json', JSON.stringify({ ...JSON.parse(fromOld({ limits: { diffLines: 50 } })), risk: { hardCap, maxLines: 50 } }))
+    gitIn(r, 'add', '.'); gitIn(r, 'commit', '-qm', 'base')
+    gitIn(r, 'checkout', '-qb', 'big')
+    sdlc(r, ['new', 'big-change', '--type', 'refactor'])
+    write(r, '.rig/changes/big-change/spec.md', '# Spec\n\n## Behaviours\n- none\n')
+    write(r, '.rig/changes/big-change/plan.md', '# Plan\n\n## Files\n- src/**\n\n## Verification\n- `node -e 0`\n')
+    write(r, 'src/a.js', Array.from({ length: 80 }, (_, i) => `export const v${i} = ${i}`).join('\n') + '\n')
+    gitIn(r, 'add', '.'); gitIn(r, 'commit', '-qm', 'work')
+    sdlc(r, ['approve', 'big-change'], { env: { SDLC_HUMAN: '1' } })
+    gitIn(r, 'add', '.'); gitIn(r, 'commit', '-qm', 'approved')
+    return r
+  }
+  const sizes = (r: string, at: string) => (JSON.parse(sdlc(r, ['check', '--at', at, '--base', 'main', '--json']).stdout) as { findings: { sensor: string; severity: string; file?: string; message: string }[] })
+    .findings.filter(f => f.sensor === 'size' && !f.file)
+  const on = setup(true)
+  const ci = sizes(on, 'ci').filter(f => f.severity === 'block')
+  assert.equal(ci.length, 1)
+  assert.match(ci[0]?.message ?? '', /diff of \d+ lines is over risk\.maxLines \(50\): risk\.hardCap refuses it/)
+  assert.equal(sizes(on, 'ship').filter(f => f.severity === 'block').length, 1)
+  sdlc(on, ['waive', 'size', '*', 'one big move'], { env: { SDLC_HUMAN: '1' } })
+  assert.deepEqual(sizes(on, 'ship').filter(f => f.severity === 'block'), [])
+  assert.deepEqual(sizes(setup(false), 'ci').map(f => f.severity), ['warn'])
+})

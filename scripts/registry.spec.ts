@@ -215,8 +215,8 @@ test('humanApproval.selfApprovers parses, rejects other shapes, and adding a log
 
 test('risk parses, rejects other shapes, and loosening it is a weakening', () => {
   const reg = (r: unknown) => JSON.stringify({ sensors: [], risk: r })
-  assert.deepEqual(parseRegistry(reg({ enforce: true, alwaysHuman: ['src/billing/**'], maxLines: 200 })).registry.risk, { enforce: true, alwaysHuman: ['src/billing/**'], maxLines: 200, window: 20, maxRevertRate: 0.1 })
-  assert.deepEqual(parseRegistry('{}').registry.risk, { enforce: false, alwaysHuman: [], maxLines: 400, window: 20, maxRevertRate: 0.1 })
+  assert.deepEqual(parseRegistry(reg({ enforce: true, alwaysHuman: ['src/billing/**'], maxLines: 200 })).registry.risk, { enforce: true, alwaysHuman: ['src/billing/**'], maxLines: 200, hardCap: false, window: 20, maxRevertRate: 0.1 })
+  assert.deepEqual(parseRegistry('{}').registry.risk, { enforce: false, alwaysHuman: [], maxLines: 400, hardCap: false, window: 20, maxRevertRate: 0.1 })
   assert.match(parseRegistry(reg(5)).errors.join(), /risk must be/)
   assert.match(parseRegistry(reg({ maxLines: -1 })).errors.join(), /risk.maxLines must be/)
   assert.match(parseRegistry(reg({ alwaysHuman: 'x' })).errors.join(), /risk.alwaysHuman must be/)
@@ -228,6 +228,18 @@ test('risk parses, rejects other shapes, and loosening it is a weakening', () =>
   assert.match(loose, /risk.alwaysHuman lost src\/billing\/\*\*/)
   assert.match(loose, /risk.maxLines raised/)
   assert.deepEqual(weakensRegistry(reg({}), tight), [])
+})
+
+test('risk.hardCap and humanApproval.everyTier parse as booleans and turning either off is a weakening', () => {
+  const reg = (r: unknown, h: unknown = {}) => JSON.stringify({ sensors: [], risk: r, humanApproval: h })
+  assert.equal(parseRegistry(reg({ hardCap: true })).registry.risk.hardCap, true)
+  assert.equal(parseRegistry(reg({}, { everyTier: true })).registry.humanApproval.everyTier, true)
+  assert.equal(parseRegistry('{}').registry.humanApproval.everyTier, false)
+  assert.match(parseRegistry(reg({ hardCap: 'yes' })).errors.join(), /risk.hardCap must be/)
+  assert.match(parseRegistry(reg({}, { everyTier: 1 })).errors.join(), /humanApproval.everyTier must be/)
+  assert.match(weakensRegistry(reg({ hardCap: true }), reg({})).join(), /risk.hardCap turned off/)
+  assert.match(weakensRegistry(reg({}, { everyTier: true }), reg({})).join(), /humanApproval.everyTier turned off/)
+  assert.deepEqual(weakensRegistry(reg({}), reg({ hardCap: true }, { everyTier: true })), [])
 })
 
 test('the breaker knobs and trusted authors parse, and loosening them is a weakening', () => {

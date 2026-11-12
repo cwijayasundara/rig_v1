@@ -9,7 +9,7 @@ import { makeRepo, sdlc, write } from './testkit.ts'
 
 const ROOT = path.resolve(import.meta.dirname, '..')
 const tpl = (f: string): string => fs.readFileSync(path.join(ROOT, 'templates', f), 'utf8')
-const IDS = ['protection', 'codeowner-review', 'ci-secret', 'codeowners-rig', 'codeowners-claude', 'codeowners-workflows', 'codeowners-owner', 'managed', 'sandbox', 'managed-rules']
+const IDS = ['protection', 'codeowner-review', 'ci-secret', 'codeowners-rig', 'codeowners-claude', 'codeowners-workflows', 'codeowners-owner', 'managed', 'sandbox', 'managed-rules', 'every-tier', 'size-cap']
 const input = (over: Partial<ClientInput> = {}): ClientInput => ({
   owners: tpl('CODEOWNERS').replaceAll('@your-org/platform', '@acme/platform'),
   ownersPath: 'CODEOWNERS',
@@ -17,6 +17,8 @@ const input = (over: Partial<ClientInput> = {}): ClientInput => ({
   managed: tpl('managed-settings.json'),
   protection: { branch: 'main', read: true, error: '', contexts: ['rig-check', 'ai-review'], codeOwners: true },
   secret: true,
+  everyTier: true,
+  hardCap: true,
   ...over,
 })
 const failing = (i: ClientInput): string[] => clientCriteria(i).filter(c => !c.ok).map(c => c.id)
@@ -124,6 +126,7 @@ const clientRepo = (): string => {
   sdlc(repo, ['init'])
   write(repo, 'CODEOWNERS', tpl('CODEOWNERS').replaceAll('@your-org/platform', '@acme/platform'))
   write(repo, 'managed-settings.json', tpl('managed-settings.json'))
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], risk: { enforce: true, hardCap: true }, humanApproval: { everyTier: true } }))
   return repo
 }
 const client = (repo: string, gh: string, ...extra: string[]) => sdlc(repo, ['readiness', '--client', '--managed', path.join(repo, 'managed-settings.json'), ...extra], { env: { RIG_GH: gh } })
@@ -132,7 +135,7 @@ const posix = process.platform !== 'win32'
 test('readiness --client passes with classic protection, owners, managed settings and the secret', { skip: !posix }, () => {
   const r = client(clientRepo(), fakeGh({ classic: CLASSIC }).bin)
   assert.equal(r.code, 0, r.stdout + r.stderr)
-  assert.match(r.stdout, /client readiness: 10\/10/)
+  assert.match(r.stdout, /client readiness: 12\/12/)
 })
 
 test('rulesets alone count', { skip: !posix }, () => {
@@ -210,4 +213,19 @@ test('GitHub reads the first CODEOWNERS: .github/ before the root, docs/ last', 
   fs.renameSync(path.join(docs, 'CODEOWNERS'), path.join(docs, 'docs/CODEOWNERS'))
   const d = client(docs, fakeGh({ classic: CLASSIC }).bin, '--json')
   assert.equal(crit(d, 'codeowners-claude')?.ok, true)
+})
+
+test('every-tier and size-cap read the base registry and name the exact keys to set', () => {
+  assert.deepEqual(failing(input({ everyTier: false })), ['every-tier'])
+  assert.deepEqual(failing(input({ hardCap: false })), ['size-cap'])
+  assert.match(fixOf(input({ everyTier: false }), 'every-tier'), /risk\.enforce[\s\S]*humanApproval\.everyTier/)
+  assert.match(fixOf(input({ hardCap: false }), 'size-cap'), /risk\.hardCap/)
+})
+
+test('readiness --client reads every-tier and size-cap from the repo registry', { skip: !posix }, () => {
+  const repo = clientRepo()
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], risk: { enforce: true }, humanApproval: { everyTier: true } }))
+  const r = client(repo, fakeGh({ classic: CLASSIC }).bin, '--json')
+  assert.equal(crit(r, 'every-tier')?.ok, true)
+  assert.equal(crit(r, 'size-cap')?.ok, false)
 })

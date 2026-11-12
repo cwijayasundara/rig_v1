@@ -5,10 +5,11 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { ROOT, out, read, type Args } from './core.ts'
 import { gh } from './model.ts'
+import { parseRegistry } from './registry.ts'
 import { CHECKS, SECRETS, trunk } from './protect.ts'
 
 export type Protection = { branch: string; read: boolean; error: string; contexts: string[]; codeOwners: boolean }
-export type ClientInput = { owners: string; ownersPath: string; managedPath: string; managed: string | null; protection: Protection; secret: boolean; secretError?: string }
+export type ClientInput = { owners: string; ownersPath: string; managedPath: string; managed: string | null; protection: Protection; secret: boolean; secretError?: string; everyTier: boolean; hardCap: boolean }
 export type ClientCriterion = { id: string; what: string; fix: string; ok: boolean }
 
 const rules = (owners: string): string[][] => owners.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#')).map(l => l.split(/\s+/))
@@ -56,6 +57,8 @@ export function clientCriteria(input: ClientInput): ClientCriterion[] {
       sb.enabled === true && sb.failIfUnavailable === true && sb.allowUnsandboxedCommands === false),
     // Whether rig's sdlc.ts allow rule stays is the platform's call (SECURITY.md lists it as a trade-off); managed-only rules make it theirs.
     c('managed-rules', 'permission rules are managed-only', `set allowManagedPermissionRulesOnly true, then keep or drop rig's sdlc.ts allow rule (SECURITY.md) ${why}`, m?.allowManagedPermissionRulesOnly === true),
+    c('every-tier', 'the base .rig/sensors.json makes every PR need a person', 'in .rig/sensors.json set risk.enforce true and humanApproval.everyTier true (then rung 3 is inert)', input.everyTier),
+    c('size-cap', 'the base .rig/sensors.json refuses oversize PRs', 'in .rig/sensors.json set risk.hardCap true (the limit is risk.maxLines)', input.hardCap),
   ]
 }
 
@@ -115,6 +118,7 @@ const OWNERS = ['.github/CODEOWNERS', 'CODEOWNERS', 'docs/CODEOWNERS']
 
 export function gatherClient(opts: { managed?: string }): ClientInput {
   const managedPath = opts.managed ?? MANAGED[process.platform] ?? MANAGED.linux as string
+  const reg = parseRegistry(read(path.join(ROOT, '.rig', 'sensors.json'))).registry
   const ownersPath = OWNERS.find(f => fs.existsSync(path.join(ROOT, f))) ?? ''
   return {
     owners: ownersPath ? read(path.join(ROOT, ownersPath)) : '',
@@ -123,6 +127,8 @@ export function gatherClient(opts: { managed?: string }): ClientInput {
     managed: fs.existsSync(managedPath) ? fs.readFileSync(managedPath, 'utf8') : null,
     protection: protection(),
     ...secret(),
+    everyTier: reg.risk.enforce && reg.humanApproval.everyTier,
+    hardCap: reg.risk.hardCap,
   }
 }
 

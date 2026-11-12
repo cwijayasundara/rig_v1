@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Hard final gate.** `humanApproval.everyTier` (every PR needs a person; rung 3 is inert and `autonomy set 3` refuses), `risk.hardCap` (a diff over `risk.maxLines` blocks at ship and CI; a `size` waiver lifts it), `init --protect --create` (creates branch protection with required review), and `readiness --client` criteria `every-tier` and `size-cap`. Turning either setting off is a weakening.
+
 ## 0.10.0
 
 The readiness work after 0.9.0: human-load instrumentation in `sdlc report` (§2 Step 2) and the weakening check reading aliased ledger rows. `release/0.9` keeps 0.9.x fixes.

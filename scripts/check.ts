@@ -19,7 +19,7 @@ import { isRegistryShape, parseRegistry, defaultRegistry, updateKnownRed, active
 import { frozenFindings, runContracts } from './contracts.ts'
 import { intentShipFindings } from './intentmapio.ts'
 import { syncFindings } from './sync.ts'
-import { riskOf, formatRisk, type Risk } from './risk.ts'
+import { riskOf, formatRisk, hardCapFindings, type Risk } from './risk.ts'
 import { changeHistory, breaker } from './reverts.ts'
 import { parseAccess } from './chartcheck.ts'
 import { ARCH_REL } from './product.ts'
@@ -260,7 +260,7 @@ export function runChecks(i: CheckInput): CheckResult {
   if (i.commands !== 'none') findings.push(...runSensors(config, at, i.point === 'ci' ? null : i.slugs[0] ?? null, i.budgetMs, Boolean(i.ratchet) && i.point !== 'ci', new Set([c.validate, c.run].filter(Boolean).map(normCmd)), i.point === 'ci' ? null : i.ratchetWrite ?? null, changed))
   // Journeys run where the heavier sensors do (verify, ship, CI), never at a commit or a turn.
   if (at === 'ci' && i.commands === 'full') findings.push(...journeyFindings(i.budgetMs, undefined, i.point === 'ci'))
-  const result = applyWaivers(builtinsApplied(findings, config), i.slugs, i.point === 'ci' ? { base: i.base } : undefined)
+  const result = applyWaivers([...builtinsApplied(findings, config), ...hardCapFindings(diffs, config.risk, point)], i.slugs, i.point === 'ci' ? { base: i.base } : undefined)
   return result
 }
 
@@ -348,6 +348,7 @@ function approvedBySomeoneElse(reviews: { user?: { login?: string }; state?: str
 
 // Why a tier-0 PR still needs a person ('' when it does not). `ref` is the live base tip, so lowering the rung or a new revert counts at once.
 function tierZeroRefusal(ref: string, config: Registry, who: Who | null): string {
+  if (config.humanApproval.everyTier) return 'humanApproval.everyTier: every tier needs a person'
   let rung: unknown = 0
   try { rung = (JSON.parse(showAt(ref, '.rig/autonomy.json') ?? '{}') as { rung?: unknown }).rung ?? 0 } catch { /* unreadable: rung 0 */ }
   if (rung !== 3) return `rung ${String(rung)}, not 3`

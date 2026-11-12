@@ -77,7 +77,7 @@ function cmdInit(args: Args): void {
   out(`initialised ${toPosix(path.relative(ROOT, SDLC)) || SDLC}${newRepo ? ' (ran git init: no repository was here)' : ''}`)
   if (args.opt.stack) out(declareStack(args.opt.stack))
   if (args.opt.full) out(installStandalone(Boolean(args.opt.workflows), parseProfile(args.opt.profile)))
-  if (args.opt.protect) out(protect(Boolean(args.opt.dry)).join('\n'))
+  if (args.opt.protect) out(protect(Boolean(args.opt.dry), undefined, Boolean(args.opt.create)).join('\n'))
   if (args.opt.enforce) {
     // risk.enforce on (never off): rig-check then wants an approval from someone other than the author on every PR. The rest of the file is kept.
     const file = path.join(SDLC, 'sensors.json')
