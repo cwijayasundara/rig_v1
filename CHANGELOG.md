@@ -3,6 +3,12 @@
 ## Unreleased
 
 - **Human load** (2026-11-12, from the readiness doc §2 Step 2). The prompt-submit and stop hooks, and a new `AskUserQuestion` hook, append counts-only rows (no text) to the active change's `evidence/human.jsonl`. `sdlc report` adds human load per shipped change: the person's turns, questions asked, approvals and waivers, and attention minutes (gaps between turns, each capped at 10 min), as median and p95. It also counts the changes over a question ceiling (`--max-questions`, default 3). Questions asked in plain text count as turns, not questions.
+  - The time spent answering an `AskUserQuestion` batch counts as attention.
+  - Recording is best effort and never skips the Stop gate.
+  - `.rig/.gitattributes` merges the file by union.
+  - The pre-push drift check ignores it.
+  - A repo vendored before this needs `vendor --standalone` (or `/rig:upgrade`) to record turns; until then its question-only files count as unmeasured.
+  - The committed per-turn timestamps, together with git authorship, give each engineer an activity timeline. Tell a pilot team before you turn this on.
 
 ## 0.9.0
 

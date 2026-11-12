@@ -122,9 +122,10 @@ function humanLoadOf(root: string, slugs: string[], waivers: { slug: string }[],
   const loads = slugs.flatMap(slug => {
     const dir = path.join(root, '.rig', 'changes', slug)
     const file = path.join(dir, 'evidence', 'human.jsonl')
-    if (!fs.existsSync(file)) return []
+    const rows = fs.existsSync(file) ? readJsonl<HumanRow>(file) : []
+    if (!rows.some(r => r.kind === 'prompt' || r.kind === 'stop')) return [] // absent, or written by an older copy that records only questions
     const approvals = (fs.existsSync(path.join(dir, 'approval.json')) ? 1 : 0) + waivers.filter(w => w.slug === slug).length
-    return [{ ...summarise(readJsonl<HumanRow>(file)), approvals }]
+    return [{ ...summarise(rows), approvals }]
   })
   if (!loads.length) return null
   const of = (k: 'prompts' | 'questions' | 'approvals' | 'attentionMin'): Stat => stat(loads.map(l => l[k]))

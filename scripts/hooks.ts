@@ -287,6 +287,7 @@ const HOOKS: Record<string, (input: HookInput) => void> = {
   'agent-launch': hookAgentLaunch,
   'agent-done': hookAgentDone,
   'prompt-submit': i => hookPromptSubmit(i),
+  asking: i => recordHuman('asking', i),
   asked: i => recordHuman('question', i, questionsAsked(i)),
   stop: i => {
     recordHuman('stop', i)

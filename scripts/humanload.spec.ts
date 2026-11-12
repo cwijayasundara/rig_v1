@@ -118,3 +118,42 @@ test('report without any human.jsonl lists it as unavailable', () => {
   assert.equal(r.humanLoad, null)
   assert.ok(r.unavailable.some(u => u.startsWith('human load')))
 })
+
+test('a recording failure never skips the Stop gate or the prompt-submit reset', () => {
+  const repo = makeRepo()
+  sdlc(repo, ['init'])
+  approvedChange(repo, 'loans')
+  fs.mkdirSync(path.join(repo, '.rig/changes/loans/evidence/human.jsonl'), { recursive: true }) // an agent's rm + mkdir from Bash
+  const p = hook(repo, 'prompt-submit', { session_id: 's1', prompt: 'go' })
+  assert.equal(p.code, 0)
+  write(repo, 'src/leak.js', 'export const key = "AKIAABCDEFGHIJKLMNOP"\n')
+  const stop = hook(repo, 'stop', { session_id: 's1' })
+  assert.match(stop.stdout + stop.stderr, /secret/i, 'the gate still ran and saw the secret')
+  assert.doesNotMatch(stop.stderr, /\n\s+at /)
+})
+
+test('the time spent answering a question batch counts as attention', () => {
+  const rows = [row('stop', '10:00', 's'), row('prompt', '10:01', 's'), row('asking', '10:02', 's'), row('question', '10:06', 's', 2)]
+  assert.deepEqual(summarise(rows), { prompts: 1, questions: 2, attentionMin: 5 })
+  const repo = withChange()
+  hook(repo, 'asking', { session_id: 's1', tool_input: { questions: [{}] } })
+  assert.deepEqual(rowsOf(repo).map(r => r.kind), ['asking'])
+  const hooks = (JSON.parse(fs.readFileSync(path.join(ROOT, 'hooks/hooks.json'), 'utf8')) as { hooks: Record<string, { matcher?: string; hooks: { command: string }[] }[]> }).hooks
+  assert.ok(hooks.PreToolUse?.find(g => g.matcher === 'AskUserQuestion')?.hooks[0]?.command.endsWith('hook asking'))
+})
+
+test('the rows merge by union, and a tracked human.jsonl does not make pre-push drift', () => {
+  const repo = withChange()
+  hook(repo, 'prompt-submit', { session_id: 's1', prompt: 'go' })
+  assert.match(fs.readFileSync(path.join(repo, '.rig/.gitattributes'), 'utf8'), /^changes\/\*\/evidence\/human\.jsonl merge=union$/m)
+  gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'wip')
+  hook(repo, 'stop', { session_id: 's1' })
+  const push = sdlc(repo, ['check', '--at', 'push'])
+  assert.doesNotMatch(push.stdout, /run against your working tree/)
+})
+
+test('a file with only question rows (an older vendored copy records no turns) is not measured', () => {
+  const repo = makeRepo()
+  ship(repo, 'alpha', '2026-10-01', [row('question', '10:01', 's', 2)])
+  assert.equal(buildReport(repo).humanLoad, null)
+})
