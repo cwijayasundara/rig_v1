@@ -127,7 +127,7 @@ export function gatherClient(opts: { managed?: string }): ClientInput {
     managed: fs.existsSync(managedPath) ? fs.readFileSync(managedPath, 'utf8') : null,
     protection: protection(),
     ...secret(),
-    everyTier: reg.risk.enforce && reg.humanApproval.everyTier,
+    everyTier: reg.humanApproval.everyTier, // implies enforcement
     hardCap: reg.risk.hardCap,
   }
 }

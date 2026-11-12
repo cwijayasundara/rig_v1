@@ -94,7 +94,7 @@ export function cmdAutonomy(args: Args): void {
     if (to === 3) {
       // Rung 3 lets a tier-0 PR merge with no person; it means nothing until rig-check enforces approvals and someone is trusted to author such PRs.
       const reg = parseRegistry(read(path.join(SDLC, 'sensors.json'))).registry
-      if (reg.humanApproval.everyTier) fail('rung 3 is refused while humanApproval.everyTier is on: every PR needs a person, so rung 3 would mean nothing (turn it off in .rig/sensors.json first)')
+      if (reg.humanApproval.everyTier) fail('rung 3 is refused while humanApproval.everyTier is on (it also turns enforcement on): every PR needs a person, so rung 3 would mean nothing (turn it off in .rig/sensors.json first)')
       const missing = [reg.risk.enforce ? '' : 'risk.enforce is off (run: sdlc.ts init --enforce)', reg.humanApproval.trusted.length ? '' : 'humanApproval.trusted is empty (list the GitHub logins whose tier-0 PRs may merge unattended in .rig/sensors.json)'].filter(Boolean)
       if (missing.length) fail(`rung 3 needs both first: ${missing.join('; ')}`)
     }

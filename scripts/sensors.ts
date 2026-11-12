@@ -1,5 +1,6 @@
 // Language-agnostic sensors: pure functions from a parsed diff and config to findings.
 // Language knowledge lives in the pattern tables below, never in code paths per language.
+import type { Paths } from './registry.ts'
 import { parseRules, section, type FileDiff, type Finding, type Layer, isTest, isSource, matchesAny, escapeRe, globToRegex, SECRET_PATTERNS } from './model.ts'
 import { weakensRegistry, parseRegistry, builtinOptions, type Registry } from './registry.ts'
 import { RATCHET_FILE, weakensRatchets } from './counts.ts'
@@ -136,12 +137,15 @@ export function layering(diffs: FileDiff[], r: Registry): Finding[] {
   return findings
 }
 
+// The diffs the size sensor and risk.hardCap count: source text only (no docs, lockfiles, binaries or the vendored harness).
+export const sizeCounted = (diffs: FileDiff[], paths: Paths): FileDiff[] => diffs.filter(d => isSource(d.file, paths) && !d.binary && !isProtected(d.file))
+
 export function size(diffs: FileDiff[], r: Registry, fileLines: Record<string, number>, point: 'edit' | 'stop' | 'ship' | 'ci'): Finding[] {
   const o = builtinOptions(r, 'size')
   const limits = { fileLines: Number(o.fileLines ?? 400), diffLines: Number(o.diffLines ?? 500), lineChars: Number(o.lineChars ?? 160) }
   const findings: Finding[] = diffs.filter(d => d.oversize).map(d => ({ sensor: 'unscanned', severity: 'block', file: d.file, message: 'file is over 20 MB and was not scanned', fix: 'keep it out of the repo (gitignore it, or use LFS); a person can waive `unscanned` for it (a `size` waiver does not cover it)' }))
   // The vendored harness is rig's code, not the project's (harness-tamper watches it), so installing or upgrading it is never a size finding.
-  const counted = diffs.filter(d => isSource(d.file, r.paths) && !d.binary && !isProtected(d.file))
+  const counted = sizeCounted(diffs, r.paths)
   for (const d of counted.filter(f => f.status !== 'D')) {
     const now = fileLines[d.file]
     if (now === undefined) continue

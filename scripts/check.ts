@@ -159,9 +159,10 @@ function applyWaivers(findings: Finding[], slugs: string[], ci?: { base: string 
   const scopes = new Map(slugs.map(s => [s, ci ? ciScope(s, ci.base) : () => true] as const))
   // An exception ends: past its expiry a waiver no longer covers anything, so the finding it hid comes back.
   const waivers = readJsonl<Waiver>(WAIVERS).filter(w => slugs.includes(w.slug) && scopes.get(w.slug) !== null && waiverLive(w))
+  // A file-less size finding (the diff total, the hard cap) has no file for the CI scope to test, so a `size *` waiver of a change this PR adds covers it (its row still needs an independent approval).
   // Never waivable: plan-gate (only a person's approval clears it); at CI also contracts and harness-tamper on harness files.
   const never = (f: Finding): boolean => f.sensor === 'plan-gate' || (Boolean(ci) && ((f.sensor === 'harness-tamper' && (!f.file || isProtected(f.file))) || f.sensor === 'contracts'))
-  const waived = (f: Finding): boolean => waivers.some(w => w.sensor === f.sensor && (w.file === '*' || w.file === f.file) && !never(f) && (scopes.get(w.slug) as (file: string | undefined) => boolean)(f.file))
+  const waived = (f: Finding): boolean => waivers.some(w => w.sensor === f.sensor && (w.file === '*' || w.file === f.file) && !never(f) && ((f.sensor === 'size' && !f.file) || (scopes.get(w.slug) as (file: string | undefined) => boolean)(f.file)))
   const kept = findings.filter(f => !waived(f))
   return { findings: kept, blocks: kept.filter(f => f.severity === 'block'), warns: kept.filter(f => f.severity === 'warn'), waived: findings.length - kept.length }
 }
@@ -260,7 +261,7 @@ export function runChecks(i: CheckInput): CheckResult {
   if (i.commands !== 'none') findings.push(...runSensors(config, at, i.point === 'ci' ? null : i.slugs[0] ?? null, i.budgetMs, Boolean(i.ratchet) && i.point !== 'ci', new Set([c.validate, c.run].filter(Boolean).map(normCmd)), i.point === 'ci' ? null : i.ratchetWrite ?? null, changed))
   // Journeys run where the heavier sensors do (verify, ship, CI), never at a commit or a turn.
   if (at === 'ci' && i.commands === 'full') findings.push(...journeyFindings(i.budgetMs, undefined, i.point === 'ci'))
-  const result = applyWaivers([...builtinsApplied(findings, config), ...hardCapFindings(diffs, config.risk, point)], i.slugs, i.point === 'ci' ? { base: i.base } : undefined)
+  const result = applyWaivers([...builtinsApplied(findings, config), ...hardCapFindings(diffs, config, point)], i.slugs, i.point === 'ci' ? { base: i.base } : undefined)
   return result
 }
 
@@ -458,13 +459,14 @@ export function cmdCheck(args: Args): void {
   const humanRows = at === 'ci' && base && !queued ? humanRowsAdded(base) : []
   // The tier comes from the base config; the Access rows are the base's and the head's together, so a PR cannot drop a row to lower it.
   const risk = at === 'ci' && base ? riskOf(diffs, slugs, config, [...parseAccess(showAt(base, ARCH_REL) ?? ''), ...parseAccess(read(path.join(ROOT, ARCH_REL)))], true) : null
-  const enforced = Boolean(risk && config.risk.enforce && !queued)
+  const enforce = config.risk.enforce || config.humanApproval.everyTier // everyTier is never inert: it implies enforcement
+  const enforced = Boolean(risk && enforce && !queued)
   const live = baseRef ?? base ?? 'HEAD' // the base tip, not the merge base: a rung lowered or a revert made since the PR branched counts
   const refusal = enforced && !humanRows.length && risk?.tier === 0 ? tierZeroRefusal(live, config, whoIs()) : null // '': tier 0 merges without a person
   // The merge queue: approvals were judged on the PR, but the unattended path depends on the rung and the breaker, which move. Re-check it here.
-  const queueWho = queued && risk && config.risk.enforce ? whoIs() : null
+  const queueWho = queued && risk && enforce ? whoIs() : null
   let queueRefusal = ''
-  if (queued && risk && config.risk.enforce) {
+  if (queued && risk && enforce) {
     let reviews: Parameters<typeof approvedBySomeoneElse>[0] = []
     try { if (queueWho) reviews = ghPages(`repos/${queueWho.repo}/pulls/${queueWho.number}/reviews?per_page=100`) as typeof reviews } catch { /* none read: the tier-0 path decides */ }
     const person = queueWho && (approvedBySomeoneElse(reviews, queueWho.author, queueWho.headSha) || config.humanApproval.selfApprovers.includes(queueWho.author))

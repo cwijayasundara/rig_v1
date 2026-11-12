@@ -100,6 +100,7 @@ test('--create writes the protection itself, with reviews and code owners requir
   const repo = makeRepo(), gh = fakeGh(null)
   const r = run(repo, gh.bin, '--create')
   assert.match(r.stdout, /main protection created/)
+  assert.match(r.stdout, /a solo maintainer can merge nothing[\s\S]*second collaborator[\s\S]*enforce_admins/)
   const put = gh.calls().filter(c => c.includes('-X PUT'))
   assert.equal(put.length, 1)
   assert.match(put[0] ?? '', /branches\/main\/protection/)

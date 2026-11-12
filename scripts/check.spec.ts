@@ -787,30 +787,71 @@ test('humanApproval.everyTier makes even a tier-0 PR at rung 3 by a trusted auth
   assert.doesNotMatch(riskRun({ sensors, baseFiles: rung(3), files: tier0, reviews: [{ user: { login: 'lead' }, state: 'APPROVED', author_association: 'MEMBER' }] }).stdout, /human-approval/)
 })
 
+test('humanApproval.everyTier implies enforcement: with risk.enforce off a tier-0 PR with no approver is still blocked', { skip: !posix }, () => {
+  const sensors = { humanApproval: { everyTier: true } }
+  const r = riskRun({ sensors, files: tier0 })
+  assert.match(r.stdout, /\[human-approval\]\n\s*✗ risk\.enforce: this PR is tier 0 and needs a person: humanApproval\.everyTier/)
+  assert.notEqual(r.code, 0)
+  assert.doesNotMatch(riskRun({ sensors, files: tier0, reviews: [{ user: { login: 'lead' }, state: 'APPROVED', author_association: 'MEMBER' }] }).stdout, /human-approval/)
+})
+
+test('the merge queue with humanApproval.everyTier on blocks a tier-0 PR nobody approved', { skip: !posix }, () => {
+  const sensors = { humanApproval: { everyTier: true } }
+  const r = riskRun({ sensors, files: tier0, queue: {} })
+  assert.match(r.stdout, /\[human-approval\]\n\s*✗ merge queue: this PR needs a person: humanApproval\.everyTier: every tier needs a person/)
+  assert.doesNotMatch(riskRun({ sensors, files: tier0, queue: {}, reviews: [{ user: { login: 'lead' }, state: 'APPROVED', author_association: 'MEMBER' }] }).stdout, /human-approval/)
+})
+
+const hardCapRepo = (o: { hardCap?: boolean; file?: string; size?: 'blocks-false' | 'disabled' } = {}) => {
+  const r = makeRepo()
+  sdlc(r, ['init'])
+  const reg = JSON.parse(fromOld({ limits: { diffLines: 50 } })) as { sensors: { id: string; blocks?: boolean; enabled?: boolean }[] }
+  const sz = reg.sensors.find(x => x.id === 'size')
+  if (sz && o.size === 'blocks-false') sz.blocks = false
+  if (sz && o.size === 'disabled') sz.enabled = false
+  write(r, '.rig/sensors.json', JSON.stringify({ ...reg, risk: { hardCap: o.hardCap ?? true, maxLines: 50 } }))
+  gitIn(r, 'add', '.'); gitIn(r, 'commit', '-qm', 'base')
+  gitIn(r, 'checkout', '-qb', 'big')
+  sdlc(r, ['new', 'big-change', '--type', 'refactor'])
+  write(r, '.rig/changes/big-change/spec.md', '# Spec\n\n## Behaviours\n- none\n')
+  write(r, '.rig/changes/big-change/plan.md', '# Plan\n\n## Files\n- src/**\n\n## Verification\n- `node -e 0`\n')
+  write(r, o.file ?? 'src/a.js', Array.from({ length: 80 }, (_, i) => `export const v${i} = ${i}`).join('\n') + '\n')
+  gitIn(r, 'add', '.'); gitIn(r, 'commit', '-qm', 'work')
+  sdlc(r, ['approve', 'big-change'], { env: { SDLC_HUMAN: '1' } })
+  gitIn(r, 'add', '.'); gitIn(r, 'commit', '-qm', 'approved')
+  return r
+}
+const capFindings = (r: string, at: string) => (JSON.parse(sdlc(r, ['check', '--at', at, '--base', 'main', '--json']).stdout) as { findings: { sensor: string; severity: string; file?: string; message: string }[] })
+  .findings.filter(f => f.sensor === 'size' && !f.file)
+
 test('risk.hardCap blocks a diff over risk.maxLines at ci even with an approved plan; a size waiver lifts it at ship; off keeps the warning', () => {
-  const setup = (hardCap: boolean) => {
-    const r = makeRepo()
-    sdlc(r, ['init'])
-    write(r, '.rig/sensors.json', JSON.stringify({ ...JSON.parse(fromOld({ limits: { diffLines: 50 } })), risk: { hardCap, maxLines: 50 } }))
-    gitIn(r, 'add', '.'); gitIn(r, 'commit', '-qm', 'base')
-    gitIn(r, 'checkout', '-qb', 'big')
-    sdlc(r, ['new', 'big-change', '--type', 'refactor'])
-    write(r, '.rig/changes/big-change/spec.md', '# Spec\n\n## Behaviours\n- none\n')
-    write(r, '.rig/changes/big-change/plan.md', '# Plan\n\n## Files\n- src/**\n\n## Verification\n- `node -e 0`\n')
-    write(r, 'src/a.js', Array.from({ length: 80 }, (_, i) => `export const v${i} = ${i}`).join('\n') + '\n')
-    gitIn(r, 'add', '.'); gitIn(r, 'commit', '-qm', 'work')
-    sdlc(r, ['approve', 'big-change'], { env: { SDLC_HUMAN: '1' } })
-    gitIn(r, 'add', '.'); gitIn(r, 'commit', '-qm', 'approved')
-    return r
-  }
-  const sizes = (r: string, at: string) => (JSON.parse(sdlc(r, ['check', '--at', at, '--base', 'main', '--json']).stdout) as { findings: { sensor: string; severity: string; file?: string; message: string }[] })
-    .findings.filter(f => f.sensor === 'size' && !f.file)
-  const on = setup(true)
-  const ci = sizes(on, 'ci').filter(f => f.severity === 'block')
+  const on = hardCapRepo()
+  const ci = capFindings(on, 'ci').filter(f => f.severity === 'block')
   assert.equal(ci.length, 1)
-  assert.match(ci[0]?.message ?? '', /diff of \d+ lines is over risk\.maxLines \(50\): risk\.hardCap refuses it/)
-  assert.equal(sizes(on, 'ship').filter(f => f.severity === 'block').length, 1)
+  assert.match(ci[0]?.message ?? '', /diff of \d+ source lines is over risk\.maxLines \(50\): risk\.hardCap refuses it/)
+  assert.equal(capFindings(on, 'ship').filter(f => f.severity === 'block').length, 1)
   sdlc(on, ['waive', 'size', '*', 'one big move'], { env: { SDLC_HUMAN: '1' } })
-  assert.deepEqual(sizes(on, 'ship').filter(f => f.severity === 'block'), [])
-  assert.deepEqual(sizes(setup(false), 'ci').map(f => f.severity), ['warn'])
+  assert.deepEqual(capFindings(on, 'ship').filter(f => f.severity === 'block'), [])
+  assert.deepEqual(capFindings(hardCapRepo({ hardCap: false }), 'ci').map(f => f.severity), ['warn'])
+})
+
+test('risk.hardCap still blocks when the size builtin is advisory or disabled', () => {
+  for (const size of ['blocks-false', 'disabled'] as const) {
+    const blocks = capFindings(hardCapRepo({ size }), 'ci').filter(f => f.severity === 'block')
+    assert.equal(blocks.length, 1, size)
+  }
+})
+
+test('risk.hardCap counts source lines only: a large doc or harness change does not block, a large source change does', () => {
+  for (const file of ['docs/big.md', '.rig/bin/vendored.js']) assert.deepEqual(capFindings(hardCapRepo({ file }), 'ci').filter(f => f.severity === 'block'), [], file)
+  assert.equal(capFindings(hardCapRepo({ file: 'src/b.js' }), 'ci').filter(f => f.severity === 'block').length, 1)
+})
+
+test('a size waiver for * lifts the hard cap at CI when the PR adds the change, and its row still needs an independent approval', () => {
+  const r = hardCapRepo()
+  sdlc(r, ['waive', 'size', '*', 'one big move'], { env: { SDLC_HUMAN: '1' } })
+  gitIn(r, 'add', '.'); gitIn(r, 'commit', '-qm', 'waive')
+  const j = JSON.parse(sdlc(r, ['check', '--at', 'ci', '--base', 'main', '--json']).stdout) as { findings: { sensor: string; severity: string; file?: string }[] }
+  assert.deepEqual(j.findings.filter(f => f.sensor === 'size' && !f.file && f.severity === 'block'), [])
+  assert.ok(j.findings.some(f => f.sensor === 'human-approval' && f.severity === 'block'), 'the waiver row needs a person other than the author')
 })

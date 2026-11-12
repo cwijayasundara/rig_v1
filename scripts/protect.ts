@@ -33,7 +33,7 @@ export function protect(dry: boolean, branch = trunk(), create = false): string[
   if (!now.ok && /Branch not protected/i.test(now.out) && create && !dry) {
     try {
       execFileSync(ghBin(), ['api', '-X', 'PUT', route, '--input', '-'], { input: PROTECTION_BODY, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 60_000 })
-      lines.push(`${branch} protection created: ${CHECKS.join(' and ')} required, 1 approving review, code owner review, admins included`)
+      lines.push(`${branch} protection created: ${CHECKS.join(' and ')} required, 1 approving review, code owner review, admins included`, `warning: enforce_admins is on and 1 approval is required, so a solo maintainer can merge nothing (admins no longer bypass); add a second collaborator, or relax enforce_admins in Settings > Branches`)
     } catch (e) { lines.push(`could not create ${branch}'s protection (gh: ${String((e as { stderr?: string }).stderr ?? (e as Error).message).trim().split('\n')[0] ?? ''}); run:`, create_) }
   } else if (!now.ok && /Branch not protected/i.test(now.out)) lines.push(`${branch} has no branch protection; nothing changed. Create it with the checks required (or in Settings > Branches):`, create_)
   else if (!now.ok && /Required status checks not enabled/i.test(now.out)) lines.push(`${branch} is protected but requires no status checks; nothing changed. In Settings > Branches, edit ${branch}'s rule: turn on "Require status checks to pass" and add ${CHECKS.join(' and ')}`)

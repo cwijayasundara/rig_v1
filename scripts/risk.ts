@@ -4,7 +4,7 @@ import path from 'node:path'
 import { CHANGES, ROOT, SENSORS_JSON, read, readJson, out, fail, optString, checkSlug, defaultBase, frontmatter, type Args } from './core.ts'
 import { section, bullets, matchesAny, blastRadius, type FileDiff } from './model.ts'
 import { parseRegistry, type Registry } from './registry.ts'
-import { isProtected, PROTECTED } from './sensors.ts'
+import { isProtected, PROTECTED, sizeCounted } from './sensors.ts'
 import { parseAccess, type AccessRule } from './chartcheck.ts'
 import { branchDiff } from './diffs.ts'
 import { activeSlug } from './lifecycle.ts'
@@ -66,10 +66,12 @@ const GENERATED = /^\.rig\/(changes\/[^/]+\/evidence\/|wiki\/)/
 // The inputs every caller shares: the diff's files and size, and the change records read from the working tree.
 export const diffLines = (diffs: FileDiff[]): number => diffs.filter(d => !GENERATED.test(d.file)).reduce((n, d) => n + d.added.length + d.removed.length, 0)
 // risk.hardCap: the size limit is a block at ship and CI, not a warning an approved plan can soften; only a live size waiver lifts it.
-export function hardCapFindings(diffs: FileDiff[], risk: Registry['risk'], point: string): { sensor: 'size'; severity: 'block'; message: string; fix: string }[] {
-  const n = diffLines(diffs)
+export function hardCapFindings(diffs: FileDiff[], config: Registry, point: string): { sensor: 'size'; severity: 'block'; message: string; fix: string }[] {
+  const { risk } = config
+  // The size sensor's own filter: docs, lockfiles, binaries and the vendored harness are not source lines.
+  const n = sizeCounted(diffs, config.paths).reduce((t, d) => t + d.added.length + d.removed.length, 0)
   if (!risk.hardCap || (point !== 'ship' && point !== 'ci') || n <= risk.maxLines) return []
-  return [{ sensor: 'size', severity: 'block', message: `diff of ${n} lines is over risk.maxLines (${risk.maxLines}): risk.hardCap refuses it`, fix: 'split the change into smaller PRs, or have a person waive it with the waive skill: size * <reason>' }]
+  return [{ sensor: 'size', severity: 'block', message: `diff of ${n} source lines is over risk.maxLines (${risk.maxLines}): risk.hardCap refuses it`, fix: 'split the change into smaller PRs, or have a person waive it with the waive skill: size * <reason> (at CI the waiver counts only when this PR adds the change, and its row needs an independent approval)' }]
 }
 export function riskOf(diffs: FileDiff[], slugs: string[], registry: Registry, access: AccessRule[], ci: boolean, preReview = false): Risk {
   return assessRisk({
