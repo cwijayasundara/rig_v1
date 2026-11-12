@@ -8,6 +8,7 @@ import { layerState } from './arch.ts'
 import { appStates } from './app.ts'
 import { loadRatchets } from './counts.ts'
 import { hooksState } from './githooks.ts'
+import { cmdReadinessClient } from './readyclient.ts'
 
 export type Criterion = { id: string; level: 1 | 2 | 3 | 4; what: string; fix: string; ok: boolean }
 export const GATE = 0.8
@@ -55,6 +56,7 @@ export function score(list: Criterion[]): { level: number; levels: { level: numb
 }
 
 export function cmdReadiness(args: Args): void {
+  if (args.opt.client) return cmdReadinessClient(args)
   const list = criteria(), s = score(list)
   const min = typeof args.opt['min-level'] === 'string' ? Number(args.opt['min-level']) : null
   if (args.opt.json) out(JSON.stringify({ level: s.level, levels: s.levels, criteria: list }))

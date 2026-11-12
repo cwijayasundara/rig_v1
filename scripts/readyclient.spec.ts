@@ -2,8 +2,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { clientCriteria, covers, type ClientInput } from './readyclient.ts'
+import { makeRepo, sdlc, write } from './testkit.ts'
 
 const ROOT = path.resolve(import.meta.dirname, '..')
 const tpl = (f: string): string => fs.readFileSync(path.join(ROOT, 'templates', f), 'utf8')
@@ -73,4 +75,66 @@ test('a managed file without allowManagedPermissionRulesOnly fails managed-rules
 
 test('no secret fails ci-secret', () => {
   assert.deepEqual(failing(input({ secret: false })), ['ci-secret'])
+})
+
+// A fake gh answering from files (no shell quoting of JSON): classic protection (null: 404), rulesets, the secret list. Calls are logged.
+function fakeGh(classic: object | null, rulesets: object[] = []): { bin: string; calls: () => string } {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-gh-'))
+  const log = path.join(dir, 'calls')
+  if (classic) fs.writeFileSync(path.join(dir, 'classic.json'), JSON.stringify(classic))
+  fs.writeFileSync(path.join(dir, 'rules.json'), JSON.stringify(rulesets))
+  const classicAnswer = classic ? `cat '${dir}/classic.json'` : `echo 'gh: Branch not protected (HTTP 404)' >&2; exit 1`
+  fs.writeFileSync(path.join(dir, 'gh'), `#!/bin/sh\necho "$*" >> '${log}'\ncase "$*" in\n  "secret list"*) printf 'CLAUDE_CODE_OAUTH_TOKEN\\tUpdated 2026-11-12\\n' ;;\n  *rules/branches/*) cat '${dir}/rules.json' ;;\n  */protection) ${classicAnswer} ;;\nesac\n`, { mode: 0o755 })
+  return { bin: path.join(dir, 'gh'), calls: () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '') }
+}
+const CLASSIC = { required_status_checks: { contexts: ['rig-check', 'ai-review'] }, required_pull_request_reviews: { require_code_owner_reviews: true } }
+const clientRepo = (): string => {
+  const repo = makeRepo()
+  sdlc(repo, ['init'])
+  write(repo, 'CODEOWNERS', tpl('CODEOWNERS').replaceAll('@your-org/platform', '@acme/platform'))
+  write(repo, 'managed-settings.json', tpl('managed-settings.json'))
+  return repo
+}
+const client = (repo: string, gh: string, ...extra: string[]) => sdlc(repo, ['readiness', '--client', '--managed', path.join(repo, 'managed-settings.json'), ...extra], { env: { RIG_GH: gh } })
+const posix = process.platform !== 'win32'
+
+test('readiness --client passes with classic protection, owners, managed settings and the secret', { skip: !posix }, () => {
+  const r = client(clientRepo(), fakeGh(CLASSIC).bin)
+  assert.equal(r.code, 0, r.stdout + r.stderr)
+  assert.match(r.stdout, /client readiness: 10\/10/)
+})
+
+test('rulesets alone count', { skip: !posix }, () => {
+  const rules = [{ type: 'required_status_checks', parameters: { required_status_checks: [{ context: 'rig-check' }, { context: 'ai-review' }] } }, { type: 'pull_request', parameters: { require_code_owner_review: true } }]
+  const r = client(clientRepo(), fakeGh(null, rules).bin)
+  assert.equal(r.code, 0, r.stdout + r.stderr)
+})
+
+test('a failing control exits 1 and lists the fix', { skip: !posix }, () => {
+  const repo = clientRepo()
+  const gh = fakeGh(CLASSIC).bin
+  const missing = path.join(repo, 'missing-file')
+  const r = sdlc(repo, ['readiness', '--client', '--managed', missing], { env: { RIG_GH: gh } })
+  assert.equal(r.code, 1)
+  assert.match(r.stdout, /managed: .*missing-file/)
+  const j = sdlc(repo, ['readiness', '--client', '--managed', missing, '--json'], { env: { RIG_GH: gh } })
+  const parsed = JSON.parse(j.stdout) as { ok: boolean; criteria: { id: string; ok: boolean }[] }
+  assert.equal(parsed.ok, false)
+  assert.deepEqual(parsed.criteria.filter(c => !c.ok).map(c => c.id), ['managed', 'sandbox', 'managed-rules'])
+})
+
+test('gh missing fails the protection criteria without throwing', () => {
+  const r = client(clientRepo(), '/nonexistent/gh', '--json')
+  assert.equal(r.code, 1)
+  assert.doesNotMatch(r.stderr, /\n\s+at /)
+  const row = (JSON.parse(r.stdout) as { criteria: { id: string; ok: boolean; fix: string }[] }).criteria.find(c => c.id === 'protection')
+  assert.equal(row?.ok, false)
+  assert.match(row?.fix ?? '', /gh/)
+})
+
+test('plain readiness makes no gh call', { skip: !posix }, () => {
+  const gh = fakeGh(CLASSIC)
+  const r = sdlc(clientRepo(), ['readiness', '--json'], { env: { RIG_GH: gh.bin } })
+  assert.equal(r.code, 0)
+  assert.equal(gh.calls(), '')
 })

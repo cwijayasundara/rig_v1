@@ -1,7 +1,11 @@
 // `readiness --client` (readiness doc R4): the platform controls that turn rig's gates from advisory into binding. All must pass:
 // a security control at 80% is not a control. A separate checklist, not a fifth level: level 4 wants the wiki and Maintain, which the
 // core profile turns off. Plain `readiness` stays offline; this one reads the trunk's protection through gh.
-import { CHECKS } from './protect.ts'
+import fs from 'node:fs'
+import path from 'node:path'
+import { ROOT, out, read, type Args } from './core.ts'
+import { gh } from './model.ts'
+import { CHECKS, SECRETS, trunk } from './protect.ts'
 
 export type Protection = { read: boolean; error: string; contexts: string[]; codeOwners: boolean }
 export type ClientInput = { owners: string; managedPath: string; managed: string | null; protection: Protection; secret: boolean }
@@ -45,4 +49,55 @@ export function clientCriteria(input: ClientInput): ClientCriterion[] {
     c('managed-rules', 'permission rules are managed-only and the platform list carries rig\'s sdlc.ts rule', `set allowManagedPermissionRulesOnly true and decide on the sdlc.ts allow rule (SECURITY.md) ${why}`,
       m?.allowManagedPermissionRulesOnly === true && allow.some(r => typeof r === 'string' && r.includes('.rig/bin/sdlc.ts'))),
   ]
+}
+
+const MANAGED: Record<string, string> = {
+  darwin: '/Library/Application Support/ClaudeCode/managed-settings.json',
+  linux: '/etc/claude-code/managed-settings.json',
+  win32: 'C:\\Program Files\\ClaudeCode\\managed-settings.json',
+}
+
+// One gh call: its JSON, or the first line of what went wrong (gh missing, logged out, offline, 404).
+function ghJson(route: string): { ok: true; v: any } | { ok: false; error: string } {
+  try { return { ok: true, v: JSON.parse(gh(['api', route])) } } catch (e) {
+    const err = e as { stderr?: string; message?: string }
+    return { ok: false, error: `gh: ${(err.stderr || err.message || 'failed').trim().split('\n')[0]?.replace(/^gh: /, '')}` }
+  }
+}
+
+// The trunk's protection from both sources GitHub has: classic branch protection and repository rulesets (a branch protected only
+// by rulesets answers 404 on the classic route). Read when either answered.
+function protection(): Protection {
+  const branch = trunk()
+  const classic = ghJson(`repos/{owner}/{repo}/branches/${branch}/protection`)
+  const rulesets = ghJson(`repos/{owner}/{repo}/rules/branches/${branch}`)
+  const c = classic.ok ? classic.v : {}
+  const r: any[] = rulesets.ok && Array.isArray(rulesets.v) ? rulesets.v : []
+  const contexts = [
+    ...(c.required_status_checks?.contexts ?? []), ...(c.required_status_checks?.checks ?? []).map((x: { context?: string }) => x.context),
+    ...r.filter(x => x?.type === 'required_status_checks').flatMap(x => (x.parameters?.required_status_checks ?? []).map((y: { context?: string }) => y.context)),
+  ].filter((x): x is string => typeof x === 'string')
+  const codeOwners = c.required_pull_request_reviews?.require_code_owner_reviews === true || r.some(x => x?.type === 'pull_request' && x.parameters?.require_code_owner_review === true)
+  const read = classic.ok || (rulesets.ok && Array.isArray(rulesets.v))
+  return { read, error: read ? '' : (rulesets.ok ? '' : rulesets.error) || (classic.ok ? '' : classic.error), contexts, codeOwners }
+}
+
+export function gatherClient(opts: { managed?: string }): ClientInput {
+  const managedPath = opts.managed ?? MANAGED[process.platform] ?? MANAGED.linux as string
+  const secrets = ((): string => { try { return gh(['secret', 'list']) } catch { return '' } })()
+  return {
+    owners: read(path.join(ROOT, 'CODEOWNERS')) + '\n' + read(path.join(ROOT, '.github/CODEOWNERS')),
+    managedPath,
+    managed: fs.existsSync(managedPath) ? fs.readFileSync(managedPath, 'utf8') : null,
+    protection: protection(),
+    secret: SECRETS.some(s => new RegExp(`^${s}\\b`, 'm').test(secrets)),
+  }
+}
+
+export function cmdReadinessClient(args: Args): void {
+  const list = clientCriteria(gatherClient({ managed: typeof args.opt.managed === 'string' ? args.opt.managed : undefined }))
+  const bad = list.filter(c => !c.ok)
+  if (args.opt.json) out(JSON.stringify({ ok: !bad.length, criteria: list }))
+  else out([`client readiness: ${list.length - bad.length}/${list.length} (every control must pass)`, ...(bad.length ? ['to fix:', ...bad.map(c => `  ${c.id}: ${c.what}: ${c.fix}`)] : [])].join('\n'))
+  if (bad.length) process.exitCode = 1
 }

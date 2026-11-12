@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Client readiness (R4)** (2026-11-12, from the readiness doc §2 R4). `readiness --client [--managed <file>] [--json]` checks 10 platform controls and exits 1 until every one passes:
+  - the trunk requires `rig-check` and `ai-review` and code-owner review (classic branch protection or rulesets, read through `gh`);
+  - a Claude secret is set for `ai-review`;
+  - CODEOWNERS covers `.rig/`, `.claude/` and the rig workflows and names real owners;
+  - managed settings are deployed, with the sandbox on and required, and permission rules managed-only, including rig's `sdlc.ts` rule.
+
+  Plain `readiness` is unchanged and makes no network call.
+
 ## 0.8.0
 
 The first tag since v0.4.1, and the release a client pins (`release/0.8` takes fixes only). It holds everything since 0.6.0, including the work done while `plugin.json` said 0.7.0: 0.7.0 was never tagged. New here: the rig-core vendor profile.
