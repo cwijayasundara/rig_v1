@@ -6,8 +6,9 @@ import type { RunRow } from './runs.ts'
 import { behaviourIds, missingBehaviours } from './sensors.ts'
 import { parseFindings, type ClaimRow } from './claims.ts'
 import { parseLedger } from './chartcheck.ts'
+import type { FreezeRow } from './testfreeze.ts'
 
-type PrBodyInput = { requirements?: string; claims?: ClaimRow[]; intent: string; spec: string; plan: string; verify: { pass: boolean; tree: string | null; blocks: string[]; from?: string } | null; outline: string; review: string; risk: Risk; amendments?: string; runs?: RunRow[]; tests?: string; intentMap?: string }
+type PrBodyInput = { requirements?: string; claims?: ClaimRow[]; intent: string; spec: string; plan: string; verify: { pass: boolean; tree: string | null; blocks: string[]; from?: string } | null; outline: string; review: string; risk: Risk; amendments?: string; runs?: RunRow[]; tests?: string; intentMap?: string; freeze?: FreezeRow[] }
 
 const firstSentence = (text: string): string => /^[\s\S]*?[.!?](?=\s|$)/.exec(text.trim())?.[0].replace(/\s+/g, ' ') ?? text.trim().replace(/\s+/g, ' ')
 
@@ -86,6 +87,9 @@ function proposedNote(spec: string, requirements: string | undefined): string {
   return rows.length ? `Rests on values nobody at the client said: ${rows.join(', ')}. Ask the owner to confirm them before merging.` : ''
 }
 
+// The test writer's hand-off: when the tests were frozen and why each later freeze changed a frozen test.
+const frozenNote = (rows: FreezeRow[] = []): string => rows.length ? [`Tests frozen at ${rows[0]?.commit.slice(0, 7)} by the test writer`, ...rows.slice(1).map(r => `re-frozen: ${r.why}`)].join('\n') : 'Tests not frozen (no test-writer hand-off)'
+
 export function prBody(i: PrBodyInput): string {
   const why = firstSentence(section(i.intent, 'Intent')) || 'none recorded'
   const behaviours = bullets(section(i.spec, 'Behaviours'))
@@ -103,7 +107,7 @@ export function prBody(i: PrBodyInput): string {
     `## Risk\n\n${i.risk.reasons.length ? `Tier ${i.risk.tier}\n\n${i.risk.reasons.map(r => `- ${r}`).join('\n')}` : 'Tier 0: none of the signals'}`,
     `## How to revert\n\n${revert(i.plan)}`,
     `## What the checks would miss\n\n${!i.review.trim() ? 'no review.md' : /^reviewer:\s*none\b/.test(i.review) ? `No agent reviewed this change (tier ${i.risk.tier}): the sensors and the tests are the evidence.` : missed.length ? missed.join('\n') : 'nothing the reviewer named'}`,
-    `## Evidence\n\n${[evidence, baseProof(runs), headChecks(runs), behaviourTests(i.spec, i.tests), claimsNote(i.review, i.claims), proposedNote(i.spec, i.requirements)].filter(Boolean).join('\n\n')}`,
+    `## Evidence\n\n${[evidence, baseProof(runs), headChecks(runs), behaviourTests(i.spec, i.tests), frozenNote(i.freeze), claimsNote(i.review, i.claims), proposedNote(i.spec, i.requirements)].filter(Boolean).join('\n\n')}`,
     i.intentMap?.trim() ? `## Intent map\n\n${i.intentMap.trim()}` : '',
     i.outline.trim(),
   ]

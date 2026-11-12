@@ -113,3 +113,9 @@ test('S risk: another change\'s folder and local harness files do not count towa
   write(repo, 'src/cart.ts', 'export const a = 1\n')
   assert.match(sdlc(repo, ['risk', 'cart-add', '--pre-review', '--base', 'HEAD']).stdout, /^tier: 0/)
 })
+
+test('a change\'s tests.freeze.jsonl does not raise the tier, though it is a protected path; adjudications.json still does', () => {
+  assert.equal(assessRisk(input({ files: ['.rig/changes/cart-add/tests.freeze.jsonl'] })).tier, 0)
+  assert.equal(assessRisk(input({ files: ['.rig/changes/cart-add/tests.freeze.jsonl'], ci: true })).tier, 0)
+  assert.equal(assessRisk(input({ files: ['.rig/changes/cart-add/adjudications.json'] })).tier, 2)
+})

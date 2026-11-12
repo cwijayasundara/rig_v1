@@ -39,8 +39,10 @@ export function reviewSignals(review: string): { open: number; dismissed: number
 export function assessRisk(i: RiskInput): Risk {
   const fold = (s: string): string => (i.ci ? s.toLowerCase() : s)
   const human = [...i.risk.alwaysHuman, '.github/workflows/**'].map(fold)
+  // The freeze file is protected from tool edits but is the change's own evidence, like its tests: it never makes a PR tier 2.
+  const FREEZE = /^\.rig\/changes\/[^/]+\/tests\.freeze\.jsonl$/i
   const two = [
-    ...i.files.filter(f => isProtected(f, i.ci) || matchesAny(fold(f), human)).map(f => `always-human path: ${f}`),
+    ...i.files.filter(f => !FREEZE.test(f) && (isProtected(f, i.ci) || matchesAny(fold(f), human))).map(f => `always-human path: ${f}`),
     ...i.access.filter(a => i.slugs.includes(a.intent)).map(a => `access: ${a.intent} builds "${a.action}"`),
   ]
   const reviews = i.slugs.map(s => i.read(s, 'review.md'))

@@ -260,3 +260,12 @@ test('a command sensor cannot take an intent-map rule id', () => {
   const { errors } = parseRegistry(JSON.stringify({ sensors: [{ id: 'vacuous', cmd: 'true', cadence: 'ci', blocks: true, guide: 'g' }] }))
   assert.ok(errors.some(e => /vacuous/.test(e)), errors.join('\n'))
 })
+
+test('gates.testWriter parses as a boolean (default false) and turning it off is a weakening', () => {
+  const g = (v: unknown) => JSON.stringify({ sensors: [], gates: v })
+  assert.equal(parseRegistry('{}').registry.gates.testWriter, false)
+  assert.equal(parseRegistry(g({ testWriter: true })).registry.gates.testWriter, true)
+  assert.match(parseRegistry(g({ testWriter: 'yes' })).errors.join(), /gates.testWriter must be/)
+  assert.match(weakensRegistry(g({ testWriter: true }), g({})).join(), /gates.testWriter turned off/)
+  assert.deepEqual(weakensRegistry(g({}), g({ testWriter: true })), [])
+})

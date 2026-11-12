@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Separate test writer, frozen tests.** `/rig:build` step 3 has a Sonnet agent write the tests (reading interfaces, never the source bodies), then `sdlc tests-freeze <slug> [--why]` hashes them into the append-only `.rig/changes/<slug>/tests.freeze.jsonl`; the implementer writes the code. A frozen test that differs or is missing is a `test-tamper` block at every point, locally and in CI, however it was written (it checks hashes, not hooks), and a rewritten freeze file blocks at ship and CI. The freeze file is protected like `adjudications.json` but does not raise the risk tier. `gates.testWriter` (default false; turning it off is a weakening) makes `verify` fail a change with behaviours and no freeze row. The PR body says when the tests were frozen and each re-freeze's reason.
 - **Hard final gate.** `humanApproval.everyTier` (every PR needs a person; rung 3 is inert and `autonomy set 3` refuses), `risk.hardCap` (a diff over `risk.maxLines` blocks at ship and CI; a `size` waiver lifts it), `init --protect --create` (creates branch protection with required review), and `readiness --client` criteria `every-tier` and `size-cap`. Turning either setting off is a weakening.
 
 ## 0.10.0

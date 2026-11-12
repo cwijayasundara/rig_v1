@@ -26,3 +26,5 @@
 /.rig/waivers.jsonl               @your-org/platform
 # An intent-map adjudication (a mutant ruled not a bug) is a person's ruling, so it gets the same reviewer as a waiver.
 /.rig/changes/*/adjudications.json @your-org/platform
+# The test writer's frozen-test hashes are append-only evidence; a reviewer reads each row a PR adds.
+/.rig/changes/*/tests.freeze.jsonl @your-org/platform

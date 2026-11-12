@@ -19,6 +19,7 @@ import { isRegistryShape, parseRegistry, defaultRegistry, updateKnownRed, active
 import { frozenFindings, runContracts } from './contracts.ts'
 import { intentShipFindings } from './intentmapio.ts'
 import { syncFindings } from './sync.ts'
+import { freezeFindings } from './testfreeze.ts'
 import { riskOf, formatRisk, hardCapFindings, type Risk } from './risk.ts'
 import { changeHistory, breaker } from './reverts.ts'
 import { parseAccess } from './chartcheck.ts'
@@ -252,6 +253,7 @@ export function runChecks(i: CheckInput): CheckResult {
   if (i.slugs.length && i.slugs.every(s => approvalState(s) === 'approved')) {
     for (const f of findings) if (f.sensor === 'size' && !f.file) f.severity = 'warn'
   }
+  for (const slug of i.slugs) findings.push(...freezeFindings(slug, point, i.base, config))
   if (point !== 'stop') for (const slug of i.slugs) findings.push(...shipVerdicts(slug, config, diffs, i.base, i.budgetMs, i.gates?.plan ?? true))
   // Contracts (spec §6): ship and CI always, commit always, a turn only when it reaches a contract. Validate gates run.
   const c = config.contracts

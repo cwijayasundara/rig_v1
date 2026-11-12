@@ -182,3 +182,11 @@ test('an intent-map receipt becomes its own section, and no receipt leaves the b
   assert.equal(prBody({ intent, spec, plan, verify, outline: '', review: '', risk, intentMap: '' }), prBody({ intent, spec, plan, verify, outline: '', review: '', risk }))
   assert.doesNotMatch(prBody({ intent, spec, plan, verify, outline: '', review: '', risk }), /Intent map/)
 })
+
+test('the PR body says when the tests were frozen and each re-freeze\'s why, or that they were not frozen', () => {
+  const row = (commit: string, why: string) => ({ at: '2026-11-12T10:00:00Z', commit, files: [], why })
+  const b = prBody({ intent, spec, plan, verify, outline: '', review: '', risk, freeze: [row('abcdef1234567', 'hand-off'), row('1234567abcdef', 'B2 asserted the wrong value')] })
+  assert.match(b, /Tests frozen at abcdef1 by the test writer\nre-frozen: B2 asserted the wrong value/)
+  assert.match(prBody({ intent, spec, plan, verify, outline: '', review: '', risk, freeze: [] }), /Tests not frozen \(no test-writer hand-off\)/)
+  assert.match(prBody({ intent, spec, plan, verify, outline: '', review: '', risk }), /Tests not frozen \(no test-writer hand-off\)/)
+})

@@ -20,7 +20,7 @@ export type Paths = { tests: string[]; testSupport: string[]; fixtures: string[]
 export type Risk = { enforce: boolean; alwaysHuman: string[]; maxLines: number; hardCap: boolean; window: number; maxRevertRate: number }
 export type Contracts = { files: string[]; covers: string[]; validate: string; run: string }
 type Policy = Record<string, Mode> & { default: Mode }
-export type Registry = { ratchets?: Record<string, number>; stack: string | null; gates: { plan: boolean }; humanApproval: { selfApprovers: string[]; trusted: string[]; everyTier: boolean }; risk: Risk; contracts: Contracts; models: { build: string; evaluate: string; design: string }; paths: Paths; sensors: RegistrySensor[]; knownRed: string[]; policy: Policy }
+export type Registry = { ratchets?: Record<string, number>; stack: string | null; gates: { plan: boolean; testWriter: boolean }; humanApproval: { selfApprovers: string[]; trusted: string[]; everyTier: boolean }; risk: Risk; contracts: Contracts; models: { build: string; evaluate: string; design: string }; paths: Paths; sensors: RegistrySensor[]; knownRed: string[]; policy: Policy }
 
 type Base = { cadence: Cadence; blocks: boolean; guide: string }
 const BUILTIN_DEFAULTS: Record<BuiltinId, Base> = {
@@ -52,7 +52,7 @@ function builtinSensor(id: BuiltinId): RegistrySensor {
 export function defaultRegistry(): Registry {
   return {
     stack: null,
-    gates: { plan: true },
+    gates: { plan: true, testWriter: false },
     humanApproval: { selfApprovers: [], trusted: [], everyTier: false },
     risk: { enforce: false, alwaysHuman: [], maxLines: 400, hardCap: false, window: 20, maxRevertRate: 0.1 },
     contracts: { files: [], covers: [], validate: '', run: '' },
@@ -129,11 +129,12 @@ function parseSections(value: Record<string, unknown>, r: Registry, errors: stri
   }
   if ('gates' in value) {
     const g = value.gates
-    if (!isObject(g)) errors.push('gates must be { plan?: boolean }')
+    if (!isObject(g)) errors.push('gates must be { plan?: boolean, testWriter?: boolean }')
     else for (const [k, v] of Object.entries(g)) {
       if (k === 'plan' && typeof v === 'boolean') r.gates.plan = v
+      else if (k === 'testWriter') { if (typeof v === 'boolean') r.gates.testWriter = v; else errors.push('gates.testWriter must be true or false') }
       else if (k === 'merge') continue // retired, accepted and ignored
-      else errors.push(`gates.${k} must be plan, true or false`)
+      else errors.push(`gates.${k} must be plan, testWriter, true or false`)
     }
   }
   if ('humanApproval' in value) {
@@ -327,6 +328,7 @@ export function weakensRegistry(beforeText: string, afterText: string): string[]
   for (const g of b.contracts.covers) if (!a.contracts.covers.includes(g)) out.push(`contracts.covers lost ${g}`)
   for (const k of ['validate', 'run'] as const) if (b.contracts[k] && a.contracts[k] !== b.contracts[k]) out.push(`contracts.${k} changed`)
   if (b.gates.plan && !a.gates.plan) out.push('gates.plan turned off')
+  if (b.gates.testWriter && !a.gates.testWriter) out.push('gates.testWriter turned off')
   for (const u of a.humanApproval.selfApprovers) if (!b.humanApproval.selfApprovers.includes(u)) out.push(`humanApproval.selfApprovers added ${u}`)
   if (b.risk.enforce && !a.risk.enforce) out.push('risk.enforce turned off')
   for (const g of b.risk.alwaysHuman) if (!a.risk.alwaysHuman.includes(g)) out.push(`risk.alwaysHuman lost ${g}`)
