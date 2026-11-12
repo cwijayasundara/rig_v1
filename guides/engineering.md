@@ -18,8 +18,8 @@ These are rules, not suggestions. The sensors and the reviewer check them.
 8. **Errors are handled or surfaced.** No empty catch and no silent fallback that hides a failure; fail loudly with context.
 9. **No hidden state.** No module-level mutable singletons; state lives in an owner you can pass and test.
 10. **Match the codebase.** Follow the existing structure, naming and style before your own preferences.
-11. **Concurrent writers.** A read-modify-write of shared state (a file, a row, a counter) holds a lock or uses an atomic compare-and-swap; two commands at once lose no write and never hand out the same id.
-12. **Options.** Parse options with the stack's parser; an option that takes a value never takes the next flag as that value, and an unknown flag fails with a message naming it.
+11. **Concurrent writers.** Unless the PRD or an ADR declares a single writer, a read-modify-write of state that outlives the process (a file, a row, a remote counter) holds a lock (flock or an O_EXCL lock file, a row lock) or checks a version; an atomic rename alone does not stop lost updates. Two commands at once lose no write and never hand out the same id.
+12. **Options.** An option that takes a value never takes the next flag as that value, and an unknown flag fails with a message naming it. argparse and Node's parseArgs (strict) refuse `--name --json`; click and commander accept it, so check it there yourself, and test it either way.
 
 ## Rationalizations
 | Thought | Reality |

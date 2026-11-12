@@ -36,3 +36,28 @@ test('REVIEW.md has the robustness pass and grades its findings Important', () =
 test('edge-cases.md says /rig:start walks it too', () => {
   assert.match(read('templates/edge-cases.md').split('\n| Item')[0] ?? '', /\/rig:start walks/)
 })
+
+test('the start walk is for uncharted changes and asks before inventing a mechanism', () => {
+  const line = read('skills/start/SKILL.md').split('\n').find(l => l.includes('edge-cases.md')) ?? ''
+  assert.match(line, /no charted intent/)
+  assert.match(line, /ADR/)
+  assert.match(line, /## Open questions/)
+})
+
+test('concurrency rules defer to a declared single writer and do not trust a rename', () => {
+  assert.match(read('guides/engineering.md'), /single writer/)
+  assert.match(read('guides/engineering.md'), /atomic rename alone does not stop lost updates/)
+  assert.match(read('guides/engineering.md'), /click|commander/)
+  assert.match(read('templates/REVIEW.md'), /single writer/)
+})
+
+test('the plan step shows the weakening warnings to the person before approval', () => {
+  assert.match(read('skills/plan/SKILL.md'), /WARNING weakened/)
+})
+
+test('J3 concurrency follows the journey PRD\'s single-process decision, and J3.11 lets equivalent wording pass', () => {
+  const j3 = read('tests/e2e/journey/rubrics/J3.md')
+  assert.match(read('tests/e2e/journey/prd/sprint-1-library-desk.md'), /single user, one process at a time: no locking/)
+  assert.match(j3.split('\n').find(l => l.startsWith('- J3.10')) ?? '', /no locking|adds no lock/)
+  assert.match(j3.split('\n').find(l => l.startsWith('- J3.11')) ?? '', /other words/)
+})

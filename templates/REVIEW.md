@@ -11,11 +11,11 @@ Read by the managed GitHub Code Review service, by the clean-context reviewer in
 3. **Contracts:** every API, schema or event change is listed in plan.md `## Contracts` and is additive or follows expand–migrate–contract.
 4. **Design:** one responsibility per unit; dependencies point inward; no abstraction with a single implementation.
 5. **Tests:** every new behaviour is pinned by a test that would fail without the change.
-6. **Robustness:** shared state written by two callers at once (lost updates, a reused id), an option that takes the next flag as its value or accepts an unknown flag, and a spec behaviour weaker than the requirement it cites (a dropped never, limit or number; `sdlc.ts approve <slug> --check` warns).
+6. **Robustness:** state that outlives the process written by two callers at once (lost updates, a reused id), unless the PRD or an ADR declares a single writer; an option that takes the next flag as its value or accepts an unknown flag, and a spec behaviour weaker than the requirement it cites (a dropped never, limit or number; `sdlc.ts approve <slug> --check` warns).
 
 ## What counts as Important (critical or high)
 - Wrong behaviour, data loss, a security hole, a contract change the plan did not announce, or a missing test for a B-number.
-- A lost update under concurrent calls, an option that takes the next flag as its value, or a spec behaviour weaker than the requirement it cites.
+- A lost update under concurrent calls (where no single writer is declared), an option that takes the next flag as its value, or a spec behaviour weaker than the requirement it cites.
 
 ## Nits (medium or lower; never block)
 - Naming, comments, small duplication, style a linter does not catch.

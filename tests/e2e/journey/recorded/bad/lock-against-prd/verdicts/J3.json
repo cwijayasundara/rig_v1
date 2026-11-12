@@ -22,7 +22,7 @@
   {
    "id": "J3.4",
    "verdict": "pass",
-   "evidence": "synthetic: seeded violation",
+   "evidence": "synthetic: replayed",
    "note": "replayed"
   },
   {
@@ -58,7 +58,7 @@
   {
    "id": "J3.10",
    "verdict": "fail",
-   "evidence": "synthetic: replayed",
+   "evidence": "synthetic: seeded violation",
    "note": "seeded"
   },
   {

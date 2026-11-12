@@ -6,8 +6,10 @@
   - `/rig:start`'s spec step walks `templates/edge-cases.md` (before, only `/rig:chart` did) and keeps a cited rule's words.
   - `guides/engineering.md` gains the concurrent-writer and option rules, and `guides/testing.md` a test for each surface.
   - `templates/REVIEW.md` gains a robustness pass. Existing repos merge it into their own `REVIEW.md` by hand.
-  - `approve <slug> --check` warns when a behaviour drops a never, a limit or a number from the `requirements.md` row it cites.
-  - The journey's J3 gains concurrent-borrow and weakened-rule items, with a bad snapshot each.
+  - `approve <slug> --check` warns when a behaviour drops a never, a limit or a number from the `requirements.md` row it cites. Equivalent wordings count as kept, and the numbers inside example literals, ids and table cells are ignored.
+  - `/rig:plan` shows each `WARNING weakened` line before the hand-over.
+  - The journey's J3 gains two items, with a bad snapshot each. One checks that concurrency follows the PRD's single-process decision. The other checks for weakened rules.
+  - Option parsing and lost updates have no journey item, because the journey PRD has no command line and rules out concurrency.
 
 - **Off switch and runbook (R5)** (2026-11-12, from the readiness doc §2 R5). `sdlc.ts off --why "<reason>"` writes `.rig/off.json`, and `sdlc.ts on` removes it. The marker counts only once it is on the trunk, and it is protected, so a code owner approves it. While it is there, `check`, pre-push and every Claude hook return at once. The `ai-review` steps pass at once when the marker is on the base, or when the PR adds only the marker, so the off PR merges during a model-provider outage. While rig is off, CI blocks PRs that change rig's own files, and the local switch needs the marker in `HEAD` as well as on the trunk. `docs/runbook.md` covers switching rig off, CI and provider outages, a broken rig, rehearsed upgrades and support.
 - **Client readiness (R4)** (2026-11-12, from the readiness doc §2 R4). `readiness --client [--managed <file>] [--json]` checks 10 platform controls and exits 1 until every one passes:
