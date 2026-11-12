@@ -27,10 +27,10 @@ function limits(quote: string): string[] {
 }
 const keepsNumber = (text: string, n: string): boolean => re(n).test(text) || (n === '0' && kept(text, ['no', 'none', 'zero', 'never']))
 
-// requirements.md rows: `- <id> [<kind>] prd.md:<line> "<quote>"`; spec behaviours: `- B<n> (<id>, …): <text>`.
+// requirements.md rows: `- <id>[ (<alias>)] [<kind>] prd.md:<line> "<quote>"`; spec behaviours: `- B<n> (<id>, …): <text>`.
 export function weakenings(spec: string, requirements: string): string[] {
   const rows = new Map<string, string>()
-  for (const m of requirements.matchAll(/^- (\S+) \[[^\]]*\] \S+ "(.*)"\s*$/gm)) rows.set(m[1] as string, m[2] as string)
+  for (const m of requirements.matchAll(/^- (\S+)(?: \(([^)]+)\))? \[[^\]]*\] \S+ "(.*)"\s*$/gm)) for (const id of [m[1], m[2]]) if (id) rows.set(id, m[3] as string)
   const found: string[] = []
   for (const m of spec.matchAll(/^- (B\d+) \(([^)]*)\):\s*(.*)$/gm)) {
     const [, b, ids = '', text = ''] = m
