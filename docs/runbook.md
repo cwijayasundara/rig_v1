@@ -7,15 +7,20 @@ For the platform team and the support owner of a repo that runs rig (readiness d
 1. On a branch, run `node .rig/bin/sdlc.ts off --why "<reason>"`. It writes `.rig/off.json` (who, why, date) and nothing else.
 2. Commit it, open a PR, and have a code owner approve it. `.rig/off.json` is protected (CODEOWNERS, harness-tamper, settings deny rules), so it cannot merge without a code owner.
 3. Merge. From then on, while the trunk carries the file:
-   - `rig-check` passes at once;
-   - `ai-review` passes at once (it also passes on the off PR itself, see below);
-   - the git hooks and the Claude Code hooks do nothing;
-   - the session-start hook prints one line saying rig is off and why.
-4. Engineers run `git fetch`. The local checks read the trunk's copy (`origin/<trunk>`), so an unfetched clone stays on until it fetches.
+   - `ai-review` passes at once. The off PR passes too, but only when it changes nothing but `.rig/off.json`.
+   - `rig-check` skips the sensors, with two exceptions. It blocks any PR that changes rig's own files (`.rig/`, `.claude/`, `CLAUDE.md`, CODEOWNERS, the rig workflows, approvals, waivers, the autonomy rung): those wait until rig is on. Its setup steps still run (consumer checkouts, the Semgrep install); the lessons check is skipped.
+   - Locally, the git hooks and the Claude Code hooks do nothing, and the session-start hook prints one line saying rig is off and why.
+4. Engineers run `git fetch` and rebase. Locally the marker must be on the trunk (`origin/<trunk>`, or the local trunk branch without one) and in the checked-out commit. So an unfetched clone, or a branch cut before the off merge, stays on. With `origin/HEAD` unset and a trunk that is neither `main` nor `master`, rig cannot find the trunk and stays on (fail safe).
 
-The marker counts only on the trunk. Writing it on a feature branch switches nothing off, so an agent cannot use it to get past its own gates.
+**While rig is off, nothing scans for secrets.** Keep the off window short, and lean on GitHub secret scanning meanwhile.
 
-**Switch it back on:** on a branch, run `node .rig/bin/sdlc.ts on` (it deletes the file), then open a PR, get a code owner's approval and merge.
+Writing the marker on a feature branch switches nothing off. Locally, a model can still forge it by moving a ref (SECURITY.md, Known limits). CI cannot be forged that way.
+
+**Switch it back on:**
+1. Audit what merged while rig was off: `git log <off merge>..origin/<trunk> --stat`.
+2. On a branch, run `node .rig/bin/sdlc.ts on`. It deletes the file.
+3. Open a PR, get a code owner's approval and merge. The on PR may change nothing else.
+4. PRs that went green while rig was off need a re-run before they merge.
 
 ## CI is down
 
@@ -29,13 +34,13 @@ Record the PR, the reason and the admin in the support log. Local git hooks keep
 
 `ai-review` fails with "gave no verdict line". Local Claude Code sessions cannot run either, though deterministic checks and git hooks do.
 - **Short outage:** wait. PRs queue behind the required check.
-- **Long outage:** run `sdlc.ts off --why "<provider> outage"` and merge that PR. Its `ai-review` passes because the PR adds `.rig/off.json`, and the code-owner review is the gate. Switch rig back on when the provider recovers.
+- **Long outage:** run `sdlc.ts off --why "<provider> outage"` and merge that PR. Its `ai-review` passes because the PR adds only `.rig/off.json`, and the code-owner review is the gate. Switch rig back on when the provider recovers. The `ai-review` job still installs Claude Code from npm before the guard, so an npm outage still fails it.
 
 `rig-check` needs no model, so it keeps judging while rig is on.
 
 ## rig itself is broken
 
-A sensor or the checker blocks every PR, the off PR included, because `rig-check` judges it with the broken checker from the base. Last resort: a repository admin merges past the checks for the off PR only. Log it. Then fix the cause on `release/<x.y>`, tag a patch, upgrade the repo and switch rig back on.
+A sensor or the checker blocks every PR, the off PR included, because `rig-check` judges it with the broken checker from the base. Last resort: a repository admin merges past the checks for the off PR only. That works only when branch protection leaves `enforce_admins` off (as `init --protect` does) or a ruleset names a bypass actor; `readiness --client` checks neither. Log it. Then fix the cause on `release/<x.y>`, tag a patch, upgrade the repo and switch rig back on.
 
 ## Upgrading
 

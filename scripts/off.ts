@@ -5,16 +5,22 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { SDLC, git, out, fail, optString, sanctionWrites, type Args } from './core.ts'
 import { trunk } from './protect.ts'
+import { isProtected } from './sensors.ts'
 
 export type Off = { by: string; why: string; at: string; parsed: boolean }
 const MARKER = '.rig/off.json'
 
 export const trunkRef = (): string => (git(['rev-parse', '--verify', '--quiet', `origin/${trunk()}`]) ? `origin/${trunk()}` : trunk())
 
+const blob = (ref: string): boolean => git(['cat-file', '-t', `${ref}:${MARKER}`])?.trim() === 'blob' // a directory there is not the marker
+
 // The marker as the ref has it; null when the ref or the file is missing. A marker that does not parse still means off, so a broken
-// file never blocks the repo that is trying to switch rig off.
-export function rigOff(ref: string = trunkRef()): Off | null {
-  const text = git(['show', `${ref}:${MARKER}`])
+// file never blocks the repo that is trying to switch rig off. With no ref (the local checks) it must also be in HEAD, so moving the
+// trunk ref onto a commit with the marker switches nothing off; CI passes the base as the ref and is the boundary (SECURITY.md).
+export function rigOff(ref?: string): Off | null {
+  const at = ref ?? trunkRef()
+  if (!blob(at) || (ref === undefined && !blob('HEAD'))) return null
+  const text = git(['show', `${at}:${MARKER}`])
   if (text === null) return null
   try {
     const v = JSON.parse(text) as Partial<Off>
@@ -24,6 +30,10 @@ export function rigOff(ref: string = trunkRef()): Off | null {
 
 export const offLine = (off: Off, ref: string): string =>
   `rig is off on ${ref} ${off.parsed ? `since ${off.at} (by ${off.by}: ${off.why})` : `(${MARKER} could not be parsed)`}; checks skipped. Switch it on with: node .rig/bin/sdlc.ts on`
+
+// While off, rig's own files and evidence wait: a change to them made then would outlast the off period unjudged.
+export const frozenWhileOff = (files: string[]): string[] =>
+  files.filter(f => f && f !== MARKER && (isProtected(f, true) || /^\.rig\/(autonomy\.json|waivers\.jsonl|gates\.jsonl)$|\/approval\.json$|\/waivers\.json$/.test(f)))
 
 const viaPr = (state: string): string => `commit it on a branch, open a PR and have a code owner approve; rig is ${state} once it is on ${trunkRef()}`
 

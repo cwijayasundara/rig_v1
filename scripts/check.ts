@@ -23,7 +23,7 @@ import { riskOf, formatRisk, type Risk } from './risk.ts'
 import { changeHistory, breaker } from './reverts.ts'
 import { parseAccess } from './chartcheck.ts'
 import { ARCH_REL } from './product.ts'
-import { rigOff, trunkRef, offLine } from './off.ts'
+import { rigOff, trunkRef, offLine, frozenWhileOff } from './off.ts'
 
 type Point = 'stop' | 'commit' | 'ship' | 'ci'
 type CheckInput = {
@@ -413,15 +413,16 @@ function report(point: string, result: CheckResult, count: number, json: boolean
 }
 
 export function cmdCheck(args: Args): void {
-  const offRef = optString(args, 'config-from') ?? trunkRef()
-  const off = rigOff(offRef)
-  if (off) return out(offLine(off, offRef))
+  const off = rigOff(optString(args, 'config-from'))
   const at = optString(args, 'at')
   if (at !== 'stop' && at !== 'commit' && at !== 'ship' && at !== 'ci') fail('usage: check --at stop|commit|ship|ci [--base <ref>] [--config-from <ref>] [--slug <s>] [--budget-ms <n>] [--json]')
   const { registry: config, rules, errors } = loadConfig(optString(args, 'config-from') ?? null)
   const baseRef = optString(args, 'base')
   const base = baseRef ? git(['merge-base', 'HEAD', baseRef]) : defaultBase()
   if (at === 'ci' && !base) fail('check --at ci needs --base <ref> with a merge-base (fetch with fetch-depth: 0)')
+  const frozen = off && at === 'ci' && base ? frozenWhileOff((git(['diff', '--name-only', base, 'HEAD']) ?? '').split('\n')) : []
+  if (frozen.length) fail(`rig is off: this PR changes rig's own files (${frozen.join(', ')}); they wait until rig is on`)
+  if (off) return out(offLine(off, optString(args, 'config-from') ?? trunkRef()))
   let diffs: FileDiff[]
   let before: (f: string) => string
   let after: ((f: string) => string) | undefined

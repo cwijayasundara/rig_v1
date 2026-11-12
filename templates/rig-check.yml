@@ -44,8 +44,8 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           set -o pipefail
-          # rig is off (sdlc.ts off): pass at once, so the off PR itself merges during a model-provider outage
-          if git cat-file -e "origin/$BASE:.rig/off.json" 2>/dev/null || git cat-file -e "HEAD:.rig/off.json" 2>/dev/null; then echo "verdict: pass (rig is off: .rig/off.json is on $BASE or in this PR, which a code owner approves)" | tee "$RUNNER_TEMP/review.md"; exit 0; fi
+          # rig is off (sdlc.ts off): pass at once; a PR that adds only the marker passes too, so it merges during a model-provider outage
+          if [ "$(git cat-file -t "origin/$BASE:.rig/off.json" 2>/dev/null)" = blob ] || { [ "$(git cat-file -t HEAD:.rig/off.json 2>/dev/null)" = blob ] && [ "$(git diff --name-only "origin/$BASE...HEAD")" = ".rig/off.json" ]; }; then echo "verdict: pass (rig is off: .rig/off.json is on $BASE, or this PR adds only it and a code owner approves)" | tee "$RUNNER_TEMP/review.md"; exit 0; fi
           # the team's rules come from the base branch, so the PR cannot soften what it is reviewed against
           git show "origin/$BASE:REVIEW.md" > "$RUNNER_TEMP/brief.md" 2>/dev/null || echo "Review this diff for correctness bugs, broken contracts, data loss and missing tests." > "$RUNNER_TEMP/brief.md"
           # the delta only, without lockfiles and the vendored harness: they cost tokens and a reviewer cannot judge them line by line
@@ -60,7 +60,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           set -o pipefail
-          if git cat-file -e "origin/$BASE:.rig/off.json" 2>/dev/null || git cat-file -e "HEAD:.rig/off.json" 2>/dev/null; then echo "verdict: pass (rig is off: .rig/off.json is on $BASE or in this PR, which a code owner approves)" | tee "$RUNNER_TEMP/security.md"; exit 0; fi
+          if [ "$(git cat-file -t "origin/$BASE:.rig/off.json" 2>/dev/null)" = blob ] || { [ "$(git cat-file -t HEAD:.rig/off.json 2>/dev/null)" = blob ] && [ "$(git diff --name-only "origin/$BASE...HEAD")" = ".rig/off.json" ]; }; then echo "verdict: pass (rig is off: .rig/off.json is on $BASE, or this PR adds only it and a code owner approves)" | tee "$RUNNER_TEMP/security.md"; exit 0; fi
           git show "origin/$BASE:.rig/security-brief.md" > "$RUNNER_TEMP/security-brief.md" 2>/dev/null || echo "Review this diff for security only: injection, authn/authz, secrets, unsafe input, crypto, path traversal, and every action in .rig/product/architecture.md ## Access the change touches against its row: each allowed role enforced, every other role refused, on each interface. Edit nothing." > "$RUNNER_TEMP/security-brief.md"
           claude -p --model opus --max-turns 25 --allowedTools "Read,Grep,Glob" "$(cat "$RUNNER_TEMP/security-brief.md")
 
@@ -136,5 +136,7 @@ jobs:
       - name: Lessons check
         env:
           CLAUDE_PROJECT_DIR: ${{ github.workspace }}
+          BASE: ${{ github.base_ref || github.event.merge_group.base_ref }}
         run: |
+          if [ "$(git cat-file -t "origin/${BASE#refs/heads/}:.rig/off.json" 2>/dev/null)" = blob ]; then echo "::notice::rig is off on the base; lessons check skipped"; exit 0; fi
           if grep -q "learn: args" "$RUNNER_TEMP/sdlc/sdlc.ts"; then node --disable-warning=ExperimentalWarning "$RUNNER_TEMP/sdlc/sdlc.ts" learn check; else echo "::notice::the base checker predates the learn command; skipping the lessons check"; fi

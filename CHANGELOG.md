@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **Off switch and runbook (R5)** (2026-11-12, from the readiness doc §2 R5). `sdlc.ts off --why "<reason>"` writes `.rig/off.json`, and `sdlc.ts on` removes it. The marker counts only once it is on the trunk, and it is protected, so a code owner approves it. While it is there, `check`, pre-push and every Claude hook return at once. The `ai-review` steps pass at once when the marker is on the base or in the PR, so the off PR merges during a model-provider outage. `docs/runbook.md` covers switching rig off, CI and provider outages, a broken rig, rehearsed upgrades and support.
+- **Off switch and runbook (R5)** (2026-11-12, from the readiness doc §2 R5). `sdlc.ts off --why "<reason>"` writes `.rig/off.json`, and `sdlc.ts on` removes it. The marker counts only once it is on the trunk, and it is protected, so a code owner approves it. While it is there, `check`, pre-push and every Claude hook return at once. The `ai-review` steps pass at once when the marker is on the base, or when the PR adds only the marker, so the off PR merges during a model-provider outage. While rig is off, CI blocks PRs that change rig's own files, and the local switch needs the marker in `HEAD` as well as on the trunk. `docs/runbook.md` covers switching rig off, CI and provider outages, a broken rig, rehearsed upgrades and support.
 - **Client readiness (R4)** (2026-11-12, from the readiness doc §2 R4). `readiness --client [--managed <file>] [--json]` checks 10 platform controls and exits 1 until every one passes:
   - the trunk requires `rig-check` and `ai-review` and code-owner review (classic branch protection or rulesets, read through `gh`);
   - a Claude secret is set for `ai-review`;
