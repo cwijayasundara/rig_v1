@@ -1,12 +1,14 @@
 // `sdlc report`: how the harness is doing, from git and the change records alone (harness readiness 0.3). Deterministic and free:
 // no network, no model, no money. It never reports a PR count as a result, only as the denominator. What git cannot tell it
 // (CI outcomes, review time, findings fixed without a person) is listed as unavailable instead of being guessed.
+import fs from 'node:fs'
 import path from 'node:path'
 import { ROOT, ageDays, out, readJson, readJsonl, gitIn, type Args } from './core.ts'
 import { mineCandidates, shippedChanges } from './learnmine.ts'
 import type { RunRow } from './runs.ts'
 import { changeHistory } from './reverts.ts'
 import { gh } from './model.ts'
+import { summarise, type HumanRow } from './humanload.ts'
 
 export type Report = {
   merged: number; shipped: number; since: string | null // merged: every change whose pr.md a merge added; shipped: those whose records are still in the tree (a revert removes them)
@@ -20,7 +22,10 @@ export type Report = {
   repeat: { classes: number; changes: number } // finding and waiver classes seen in 2+ changes, and the changes carrying one
   unavailable: string[]
   humanTime?: HumanTime | { unavailable: string } // only with --github: GitHub holds it, git does not
+  humanLoad: HumanLoad | null // from each shipped change's evidence/human.jsonl (the hooks write counts only); null: none has one
 }
+type Stat = { median: number; p95: number }
+export type HumanLoad = { measured: number; of: number; prompts: Stat; questions: Stat; approvals: Stat; attentionMin: Stat; overCeiling: number; maxQuestions: number }
 
 // Human time per merged PR (the Claude Code code-review article's measures), from GitHub. Bots and the PR's author never count: an agent's
 // approval is not a human's, and an author commenting on their own PR is not review.
@@ -75,7 +80,7 @@ const lines = (root: string, sha: string): number | null => {
   return stat === null ? null : stat.split('\n').filter(Boolean).reduce((n, l) => n + l.split('\t').slice(0, 2).reduce((a, b) => a + (Number(b) || 0), 0), 0)
 }
 
-export function buildReport(root: string, since: string | null = null): Report {
+export function buildReport(root: string, since: string | null = null, maxQuestions = 3): Report {
   const merges = changeHistory(root).filter(m => !since || m.date >= since)
   const seen = new Set(merges.map(m => m.slug))
   const size = merges.map(m => lines(root, m.sha)).filter((n): n is number => n !== null)
@@ -97,6 +102,7 @@ export function buildReport(root: string, since: string | null = null): Report {
   const all = readJsonl<{ slug: string; by?: string; at?: string }>(path.join(root, '.rig', 'waivers.jsonl'))
   const waivers = all.filter(w => slugs.has(w.slug)).length
   const ages = all.map(w => ageDays(w.at ?? ''))
+  const humanLoad = humanLoadOf(root, shipped.map(c => c.slug), all, maxQuestions)
   const classes = mineCandidates(root).map(c => ({ ...c, changes: c.changes.filter(s => slugs.has(s)) })).filter(c => c.changes.length >= 2)
   return {
     merged: merges.length, shipped: shipped.length, since,
@@ -106,8 +112,29 @@ export function buildReport(root: string, since: string | null = null): Report {
     waiversPerChange: shipped.length ? Math.round((waivers / shipped.length) * 100) / 100 : 0,
     waiverRows: { unowned: all.filter(w => !w.by || w.by === 'unknown').length, oldestDays: ages.length ? Math.max(...ages) : null },
     repeat: { classes: classes.length, changes: new Set(classes.flatMap(c => c.changes)).size },
-    unavailable: ['CI first-pass rate (the CI provider holds it)', 'review time and findings fixed without a person (not recorded anywhere in the repo)'],
+    unavailable: ['CI first-pass rate (the CI provider holds it)', 'review time and findings fixed without a person (not recorded anywhere in the repo)', ...(humanLoad ? [] : ['human load (no shipped change has evidence/human.jsonl yet)'])],
+    humanLoad,
   }
+}
+
+// Per shipped change: the person's turns, the questions asked, approvals (approval.json) plus waiver rows, and attention minutes.
+function humanLoadOf(root: string, slugs: string[], waivers: { slug: string }[], maxQuestions: number): HumanLoad | null {
+  const loads = slugs.flatMap(slug => {
+    const dir = path.join(root, '.rig', 'changes', slug)
+    const file = path.join(dir, 'evidence', 'human.jsonl')
+    if (!fs.existsSync(file)) return []
+    const approvals = (fs.existsSync(path.join(dir, 'approval.json')) ? 1 : 0) + waivers.filter(w => w.slug === slug).length
+    return [{ ...summarise(readJsonl<HumanRow>(file)), approvals }]
+  })
+  if (!loads.length) return null
+  const of = (k: 'prompts' | 'questions' | 'approvals' | 'attentionMin'): Stat => stat(loads.map(l => l[k]))
+  return { measured: loads.length, of: slugs.length, prompts: of('prompts'), questions: of('questions'), approvals: of('approvals'), attentionMin: of('attentionMin'), overCeiling: loads.filter(l => l.questions > maxQuestions).length, maxQuestions }
+}
+
+function humanLoadText(h: HumanLoad): string[] {
+  const two = (o: Stat): string => `median ${o.median}, p95 ${o.p95}`
+  return [`  human load (${h.measured} of ${h.of} shipped changes measured; attention = gaps between turns, each capped at 10 min):`, `    person turns             ${two(h.prompts)}`,
+    `    questions asked          ${two(h.questions)}; over the ${h.maxQuestions}-question ceiling: ${h.overCeiling}`, `    approvals and waivers    ${two(h.approvals)}`, `    attention minutes        ${two(h.attentionMin)}`]
 }
 
 function humanTimeText(h: NonNullable<Report['humanTime']>): string[] {
@@ -128,6 +155,7 @@ export function reportText(r: Report): string {
     `  hours, first commit to approval  ${r.hoursToApproval ? `median ${r.hoursToApproval.median} (${r.hoursToApproval.of} change(s))` : 'n/a'}`,
     `  waivers per change         ${r.waiversPerChange} (${r.waiverRows.unowned} with no owner; oldest ${r.waiverRows.oldestDays === null ? 'n/a' : (Number.isFinite(r.waiverRows.oldestDays) ? `${r.waiverRows.oldestDays} day(s)` : 'age unknown')})`,
     `  repeat mistakes            ${r.repeat.classes} class(es) across ${r.repeat.changes} of ${r.shipped} change(s)`,
+    ...(r.humanLoad ? humanLoadText(r.humanLoad) : []),
     ...(r.humanTime ? humanTimeText(r.humanTime) : []),
     `not available here: ${r.unavailable.join('; ')}`,
   ].join('\n')
@@ -135,7 +163,8 @@ export function reportText(r: Report): string {
 
 export function cmdReport(args: Args): void {
   const since = typeof args.opt.since === 'string' ? args.opt.since : null
-  const r = buildReport(ROOT, since)
+  const maxQ = Number(typeof args.opt['max-questions'] === 'string' ? args.opt['max-questions'] : 3)
+  const r = buildReport(ROOT, since, Number.isFinite(maxQ) && maxQ >= 0 ? maxQ : 3)
   if (args.opt.github) {
     r.humanTime = humanTime(ghFetch(ROOT), since, Math.max(1, Math.floor(Number(typeof args.opt.limit === 'string' ? args.opt.limit : 50)) || 50))
     if (!('unavailable' in r.humanTime)) r.unavailable = r.unavailable.map(u => u.startsWith('review time') ? 'findings fixed without a person (not recorded anywhere in the repo)' : u)

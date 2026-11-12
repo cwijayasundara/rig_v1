@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Human load** (2026-11-12, from the readiness doc §2 Step 2). The prompt-submit and stop hooks, and a new `AskUserQuestion` hook, append counts-only rows (no text) to the active change's `evidence/human.jsonl`. `sdlc report` adds human load per shipped change: the person's turns, questions asked, approvals and waivers, and attention minutes (gaps between turns, each capped at 10 min), as median and p95. It also counts the changes over a question ceiling (`--max-questions`, default 3). Questions asked in plain text count as turns, not questions.
+
 ## 0.9.0
 
 The readiness work after 0.8.0: the client readiness check (R4), the off switch and runbook (R5), and the known failure classes in the core flow (R6). `release/0.8` keeps 0.8.x fixes.

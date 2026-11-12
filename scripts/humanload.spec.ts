@@ -3,7 +3,9 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { makeRepo, sdlc, hook, approvedChange } from './testkit.ts'
+import { makeRepo, sdlc, hook, approvedChange, write, gitIn } from './testkit.ts'
+import { summarise, type HumanRow } from './humanload.ts'
+import { buildReport, reportText } from './report.ts'
 
 const ROOT = path.resolve(import.meta.dirname, '..')
 const rowsOf = (repo: string, slug = 'loans'): Record<string, unknown>[] => {
@@ -58,4 +60,61 @@ test('the hook is registered', () => {
   const hooks = (JSON.parse(fs.readFileSync(path.join(ROOT, 'hooks/hooks.json'), 'utf8')) as { hooks: Record<string, { matcher?: string; hooks: { command: string }[] }[]> }).hooks
   const asked = hooks.PostToolUse?.find(g => g.matcher === 'AskUserQuestion')
   assert.ok(asked?.hooks[0]?.command.endsWith('hook asked'))
+})
+
+const row = (kind: HumanRow['kind'], hhmm: string, session: string, n?: number): HumanRow => ({ at: `2026-11-12T${hhmm}:00Z`, session, kind, ...(n ? { n } : {}) })
+
+test('summarise: gaps pair within a session, are capped, and ignore an unpaired prompt or stop', () => {
+  const rows = [
+    row('stop', '10:00', 's1'), row('prompt', '10:01', 's2'), row('stop', '10:02', 's2'), row('prompt', '10:03', 's1'),
+    row('prompt', '10:04', 's2'), row('stop', '10:05', 's1'), row('question', '10:06', 's1', 2), row('prompt', '10:45', 's1'),
+  ]
+  assert.deepEqual(summarise(rows), { prompts: 4, questions: 2, attentionMin: 15 })
+})
+
+test('summarise skips malformed rows', () => {
+  const bad = [{ kind: 'prompt' }, { at: '2026-11-12T10:00:00Z', session: 's', kind: 'nap' }] as unknown as HumanRow[]
+  assert.deepEqual(summarise([...bad, row('stop', '10:00', 's'), row('prompt', '10:02', 's')]), { prompts: 1, questions: 0, attentionMin: 2 })
+})
+
+// A shipped change the way report.spec.ts builds one: spec, approval, pr.md on a branch, merged with a merge commit.
+function ship(repo: string, slug: string, day: string, human: HumanRow[] | null): void {
+  const stamp = (iso: string): void => { process.env.GIT_AUTHOR_DATE = iso; process.env.GIT_COMMITTER_DATE = iso }
+  const commit = (msg: string): void => { gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', msg) }
+  gitIn(repo, 'checkout', '-qb', slug)
+  stamp(`${day}T08:00:00Z`)
+  write(repo, `.rig/changes/${slug}/spec.md`, '# Spec\n')
+  write(repo, `.rig/changes/${slug}/approval.json`, JSON.stringify({ by: 'p', at: `${day}T09:00:00Z` }))
+  write(repo, `.rig/changes/${slug}/pr.md`, '# PR\n')
+  write(repo, `src/${slug}.js`, 'export const x = 1\n')
+  if (human) write(repo, `.rig/changes/${slug}/evidence/human.jsonl`, human.map(r => JSON.stringify(r)).join('\n') + '\n')
+  commit(`ship ${slug}`)
+  gitIn(repo, 'checkout', '-q', 'main')
+  stamp(`${day}T18:00:00Z`)
+  gitIn(repo, 'merge', '--no-ff', '-qm', `merge ${slug}`, slug)
+}
+
+test('report: human load over shipped changes, with the ceiling', () => {
+  const repo = makeRepo()
+  ship(repo, 'alpha', '2026-10-01', [row('prompt', '10:00', 's'), ...Array.from({ length: 5 }, () => row('question', '10:01', 's', 1)), row('stop', '10:02', 's'), row('prompt', '10:05', 's')])
+  ship(repo, 'beta', '2026-10-02', null)
+  write(repo, '.rig/waivers.jsonl', JSON.stringify({ slug: 'alpha', sensor: 'size', file: 'src/alpha.js', reason: 'r', by: 'p', at: '2026-10-02T00:00:00Z' }) + '\n')
+  gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'waive')
+  const r = buildReport(repo)
+  assert.equal(r.humanLoad?.measured, 1)
+  assert.equal(r.humanLoad?.of, 2)
+  assert.equal(r.humanLoad?.overCeiling, 1)
+  assert.equal(r.humanLoad?.approvals.median, 2)
+  assert.equal(r.humanLoad?.attentionMin.median, 3)
+  assert.match(reportText(r), /over the 3-question ceiling: 1/)
+  const loose = JSON.parse(sdlc(repo, ['report', '--max-questions', '5', '--json']).stdout) as { humanLoad: { overCeiling: number } }
+  assert.equal(loose.humanLoad.overCeiling, 0)
+})
+
+test('report without any human.jsonl lists it as unavailable', () => {
+  const repo = makeRepo()
+  ship(repo, 'beta', '2026-10-02', null)
+  const r = buildReport(repo)
+  assert.equal(r.humanLoad, null)
+  assert.ok(r.unavailable.some(u => u.startsWith('human load')))
 })
