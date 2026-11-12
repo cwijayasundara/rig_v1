@@ -207,6 +207,6 @@ test('the evidence says the mutation score on changed lines when the mutation-di
   const tail = 'src/a.ts:4 EqualityOperator\nmutation: 7/8 killed on changed lines (score 0.88, min 0.8)'
   assert.match(evidence([run({ sensor: 'mutation-diff', cmd: 'x', tail })]), /^Mutation: 7\/8 on changed lines \(score 0\.88\)$/m)
   assert.doesNotMatch(evidence([run({ sensor: 'unit', tail: '12 passed' })]), /Mutation:/)
-  assert.doesNotMatch(evidence([run({ sensor: 'mutation-diff', tail: 'mutation: no mutants on changed lines' })]), /Mutation:/)
+  assert.match(evidence([run({ sensor: 'mutation-diff', tail: 'mutation: no mutants on changed lines' })]), /^Mutation: no mutants on changed lines$/m)
   assert.doesNotMatch(evidence([]), /Mutation:/)
 })

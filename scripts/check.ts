@@ -419,6 +419,7 @@ export function cmdCheck(args: Args): void {
   const at = optString(args, 'at')
   if (at !== 'stop' && at !== 'commit' && at !== 'ship' && at !== 'ci') fail('usage: check --at stop|commit|ship|ci [--base <ref>] [--config-from <ref>] [--slug <s>] [--budget-ms <n>] [--json]')
   const { registry: config, rules, errors } = loadConfig(optString(args, 'config-from') ?? null)
+  if (optString(args, 'config-from')) process.env.RIG_BASE = optString(args, 'config-from') // the sensors' commands read base-branch settings there (mutscore: mutation.minScore)
   const baseRef = optString(args, 'base')
   const base = baseRef ? git(['merge-base', 'HEAD', baseRef]) : defaultBase()
   if (at === 'ci' && !base) fail('check --at ci needs --base <ref> with a merge-base (fetch with fetch-depth: 0)')

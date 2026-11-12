@@ -73,6 +73,14 @@ function loweredThresholds(diffs: FileDiff[]): Finding[] {
   return findings
 }
 
+// The mutation tool's own config: what it mutates and ignores. A PR that edits it can mutate less of itself (an added file is the setup, not a loosening).
+const MUTATION_CONFIG = /(?:^|\/)(?:\.?stryker[.-]conf(?:ig)?\.[cm]?[jt]?s?(?:on)?|mutants\.toml)$/
+const MUTMUT_SECTION = /^\s*\[(?:tool\.)?mutmut\]|^\s*(?:paths_to_mutate|do_not_mutate|pre_mutation|post_mutation|dict_synonyms|tests_dir)\s*[=:]/
+function mutationConfig(diffs: FileDiff[]): Finding[] {
+  return diffs.filter(d => !d.binary && d.status !== 'A' && (MUTATION_CONFIG.test(d.file) || (/(?:^|\/)(?:setup\.cfg|pyproject\.toml)$/.test(d.file) && [...d.added, ...d.removed].some(l => MUTMUT_SECTION.test(l.text)))))
+    .map(d => ({ sensor: 'test-tamper', severity: 'block', file: d.file, message: 'mutation tool config changed: it decides what mutation-diff mutates and ignores', fix: 'revert it; changing what is mutated is a reviewed harness change, or the person waives mutation-diff' }))
+}
+
 // Files that intentionally contain detector patterns (a human-approved list) are invisible to the pattern sensors only.
 // Deletions stay visible, so removing a fixture or test file is still reported.
 export const withoutFixtures = (diffs: FileDiff[], r: Registry): FileDiff[] => (r.paths.fixtures.length ? diffs.filter(d => d.status === 'D' || !matchesAny(d.file, r.paths.fixtures)) : diffs)
@@ -100,7 +108,7 @@ export function testTamper(diffs: FileDiff[], r: Registry): Finding[] {
   if (removed > added) {
     findings.push({ sensor: 'test-tamper', severity: 'block', message: `assertions dropped across the test diff: ${removed} removed, ${added} added`, fix: 'keep every assertion that still applies; a weaker test hides bugs' })
   }
-  findings.push(...loweredThresholds(diffs))
+  findings.push(...loweredThresholds(diffs), ...mutationConfig(diffs))
   for (const d of diffs) {
     if (SNAPSHOT.test(d.file) && d.status === 'M') findings.push({ sensor: 'test-tamper', severity: 'warn', file: d.file, message: 'snapshot rewritten', fix: 'check the snapshot change is intended' })
   }

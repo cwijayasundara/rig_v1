@@ -60,8 +60,8 @@ function headChecks(runs: RunRow[]): string {
   return `Checks on the head tree (the latest verify's run of each):\n\n${[...last].map(([n, r]) => line(n, r)).join('\n')}`
 }
 
-// The score the latest mutation-diff run printed (mutscore's summary line); nothing when it did not run or found no mutants.
-const mutationNote = (runs: RunRow[]): string => { const m = /mutation: (\d+)\/(\d+) killed on changed lines \(score ([\d.]+)/.exec(runs.findLast(x => x.sensor === 'mutation-diff' && x.source === 'ship' && !x.cwd)?.tail ?? ''); return m ? `Mutation: ${m[1]}/${m[2]} on changed lines (score ${m[3]})` : '' }
+// The score the latest mutation-diff run printed (mutscore's summary line), or that it found no mutants; nothing when it did not run.
+const mutationNote = (runs: RunRow[]): string => { const t = runs.findLast(x => x.sensor === 'mutation-diff' && x.source === 'ship' && !x.cwd)?.tail ?? '', m = /mutation: (\d+)\/(\d+) killed on changed lines \(score ([\d.]+)/.exec(t); return m ? `Mutation: ${m[1]}/${m[2]} on changed lines (score ${m[3]})` : /mutation: no mutants on changed lines/.test(t) ? 'Mutation: no mutants on changed lines' : '' }
 
 // The behaviours no test the change adds or edits names, by the traceability sensor's own rule.
 function behaviourTests(spec: string, tests: string | undefined): string {

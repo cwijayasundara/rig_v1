@@ -855,3 +855,12 @@ test('a size waiver for * lifts the hard cap at CI when the PR adds the change, 
   assert.deepEqual(j.findings.filter(f => f.sensor === 'size' && !f.file && f.severity === 'block'), [])
   assert.ok(j.findings.some(f => f.sensor === 'human-approval' && f.severity === 'block'), 'the waiver row needs a person other than the author')
 })
+
+test('ci with --config-from hands its sensors the ref as RIG_BASE (mutscore reads the minimum there); without it they get none', () => {
+  const probe = `node -e "require('fs').writeFileSync('base.txt', process.env.RIG_BASE ?? 'unset')"`
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [{ id: 'probe', cmd: probe, cadence: 'ci', blocks: true, guide: 'x' }] }) + '\n')
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', 'cfg')
+  check('--at', 'ci', '--base', 'main', '--config-from', 'main')
+  assert.equal(fs.readFileSync(path.join(repo, 'base.txt'), 'utf8'), 'main')
+})

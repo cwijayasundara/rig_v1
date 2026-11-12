@@ -31,11 +31,24 @@ test('every pack has a blocking ci mutation-diff sensor that scopes to the chang
     assert.equal(s?.blocks, true, p.stack)
     assert.equal(s?.timeoutMs, 600000, p.stack)
     assert.match(s?.cmd ?? '', /\{changed(-lines)?:[a-z,]+\}|--in-diff|--since|scmMutationCoverage/, `${p.stack} mutates only the change`)
-    assert.match(s?.cmd ?? '', /"\$RIG_SDLC" mutscore --tool \S+ --report \S+/, `${p.stack} scores with sdlc mutscore`)
+    assert.match(s?.cmd ?? '', /"\$S" mutscore --tool \S+ --report /, `${p.stack} scores with sdlc mutscore`)
+    assert.ok((s?.cmd ?? '').startsWith('S="${RIG_SDLC:-.rig/bin/sdlc.ts}"; [ -f "$S" ] || { echo \'mutation-diff: sdlc not found; re-run sdlc.ts vendor\'; exit 1; }; '), `${p.stack} finds sdlc first, or says to vendor`)
     assert.ok((s?.cmd ?? '').includes(`--tool ${TOOL[p.stack]} `), `${p.stack} reads the ${TOOL[p.stack]} report`)
     assert.match(s?.cmd ?? '', /not installed[\s\S]*or the person waives mutation-diff[\s\S]*exit 1/, `${p.stack} fails loudly without the tool`)
     assert.ok(packRegistry(p).sensors.some(x => x.id === 'mutation' && x.cadence === 'nightly'), `${p.stack} keeps the nightly whole-repo run`)
   }
+  const cmd = (stack: string): string => packRegistry(loadPacks(PACKS_DIR).packs.find(p => p.stack === stack)!).sensors.find(x => x.id === 'mutation-diff')?.cmd ?? ''
+  const guide = (stack: string): string => packRegistry(loadPacks(PACKS_DIR).packs.find(p => p.stack === stack)!).sensors.find(x => x.id === 'mutation-diff')?.guide ?? ''
+  assert.match(cmd('go'), /go-mutesting --debug /)
+  assert.match(cmd('python'), /mutmut<3/)
+  assert.match(cmd('python'), /mutmut junitxml --untested-policy=failure --suspicious-policy=failure/)
+  assert.match(cmd('java-maven'), /mvn -q test-compile org\.pitest:pitest-maven:mutationCoverage /)
+  assert.match(cmd('java-maven'), /mutations\.xml/)
+  assert.match(guide('java-maven'), /pitest-junit5-plugin/)
+  assert.match(cmd('java-gradle'), /targetClasses/)
+  assert.match(cmd('java-gradle'), /\{changed:java\}|\$\(echo [^)]*java/)
+  assert.match(guide('java-gradle'), /outputFormats=\['XML'\]/)
+  assert.match(guide('java-gradle'), /timestampedReports=false/)
   for (const stack of ['node', 'angular']) assert.match(packRegistry(loadPacks(PACKS_DIR).packs.find(p => p.stack === stack)!).sensors.find(x => x.id === 'mutation-diff')?.cmd ?? '', /\{changed-lines:[a-z,]+\}/, stack)
 })
 
