@@ -91,3 +91,30 @@ test('on and off are idempotent', () => {
 test('the marker is protected', () => {
   assert.equal(isProtected('.rig/off.json'), true)
 })
+
+const ROOT = path.resolve(import.meta.dirname, '..')
+const workflow = (): string => fs.readFileSync(path.join(ROOT, 'templates/rig-check.yml'), 'utf8')
+const GUARD = 'git cat-file -e "origin/$BASE:.rig/off.json"'
+
+test('both ai-review steps pass at once when the marker is on the base or in the PR', () => {
+  const yml = workflow()
+  const steps = yml.split('      - name: ').filter(s => s.startsWith('Review the diff'))
+  assert.equal(steps.length, 2)
+  for (const [step, out] of steps.map((s, i) => [s, i === 0 ? 'review.md' : 'security.md'] as const)) {
+    const guard = step.indexOf(GUARD)
+    assert.ok(guard > 0 && guard < step.indexOf('claude -p'), 'the guard runs before claude')
+    assert.match(step.slice(guard, step.indexOf('\n', guard)), new RegExp(`git cat-file -e "HEAD:\\.rig/off\\.json".*tee "\\$RUNNER_TEMP/${out.replace('.', '\\.')}"; exit 0; fi`))
+  }
+})
+
+test('the guard satisfies the gate', () => {
+  const line = workflow().split('\n').find(l => l.includes(GUARD)) ?? ''
+  const echoed = /echo "([^"]*)"/.exec(line)?.[1] ?? ''
+  assert.match(echoed, /^verdict: /)
+  assert.doesNotMatch(echoed, /\[severity: (critical|high)\]/)
+})
+
+test('the runbook covers the four R5 items', () => {
+  const book = fs.readFileSync(path.join(ROOT, 'docs/runbook.md'), 'utf8')
+  for (const s of ['sdlc.ts off --why', 'sdlc.ts on', '## CI is down', '## The model provider is down', '## Upgrading', '<support owner>', '<response time>']) assert.ok(book.includes(s), s)
+})
