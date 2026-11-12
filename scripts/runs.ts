@@ -40,7 +40,7 @@ export function runCommand(cmd: string, opts: { cwd?: string; timeoutMs?: number
   const started = Date.now()
   const timeoutMs = opts.timeoutMs ?? 600_000
   // A declared `node --test` must really run even when sdlc itself runs inside a node test process.
-  const env = { ...process.env, ...(opts.env ?? {}) }
+  const env: Record<string, string | undefined> = { ...process.env, RIG_SDLC: path.join(import.meta.dirname, 'sdlc.ts'), ...(opts.env ?? {}) }
   if (opts.unsetEnv) for (const k of Object.keys(env)) if (opts.unsetEnv.test(k)) delete env[k]
   delete env.NODE_TEST_CONTEXT
   // The PR's own test commands run here at CI; the review-lookup token is for sdlc itself, not for them.

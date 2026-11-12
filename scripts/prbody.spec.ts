@@ -202,3 +202,11 @@ test('the Evidence section reports the hidden acceptance cases from verify.json'
   assert.match(prBody({ intent, spec, plan, verify: { ...verify, holdout: { passed: 3, total: 4 } }, outline: '', review: '', risk }), /Holdout: 3\/4 hidden acceptance cases pass/)
   assert.doesNotMatch(prBody({ intent, spec, plan, verify, outline: '', review: '', risk }), /Holdout:/)
 })
+
+test('the evidence says the mutation score on changed lines when the mutation-diff sensor ran, and says nothing otherwise', () => {
+  const tail = 'src/a.ts:4 EqualityOperator\nmutation: 7/8 killed on changed lines (score 0.88, min 0.8)'
+  assert.match(evidence([run({ sensor: 'mutation-diff', cmd: 'x', tail })]), /^Mutation: 7\/8 on changed lines \(score 0\.88\)$/m)
+  assert.doesNotMatch(evidence([run({ sensor: 'unit', tail: '12 passed' })]), /Mutation:/)
+  assert.doesNotMatch(evidence([run({ sensor: 'mutation-diff', tail: 'mutation: no mutants on changed lines' })]), /Mutation:/)
+  assert.doesNotMatch(evidence([]), /Mutation:/)
+})

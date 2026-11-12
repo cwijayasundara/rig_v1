@@ -20,7 +20,7 @@ export type Paths = { tests: string[]; testSupport: string[]; fixtures: string[]
 export type Risk = { enforce: boolean; alwaysHuman: string[]; maxLines: number; hardCap: boolean; window: number; maxRevertRate: number }
 export type Contracts = { files: string[]; covers: string[]; validate: string; run: string }
 type Policy = Record<string, Mode> & { default: Mode }
-export type Registry = { ratchets?: Record<string, number>; stack: string | null; gates: { plan: boolean; testWriter: boolean }; humanApproval: { selfApprovers: string[]; trusted: string[]; everyTier: boolean }; risk: Risk; contracts: Contracts; holdout: string; models: { build: string; evaluate: string; design: string }; paths: Paths; sensors: RegistrySensor[]; knownRed: string[]; policy: Policy }
+export type Registry = { ratchets?: Record<string, number>; stack: string | null; gates: { plan: boolean; testWriter: boolean }; humanApproval: { selfApprovers: string[]; trusted: string[]; everyTier: boolean }; risk: Risk; contracts: Contracts; holdout: string; mutation: { minScore: number }; models: { build: string; evaluate: string; design: string }; paths: Paths; sensors: RegistrySensor[]; knownRed: string[]; policy: Policy }
 
 type Base = { cadence: Cadence; blocks: boolean; guide: string }
 const BUILTIN_DEFAULTS: Record<BuiltinId, Base> = {
@@ -38,7 +38,7 @@ const BUILTIN_DEFAULTS: Record<BuiltinId, Base> = {
 const GENERIC_TESTS = ['**/test/**', '**/tests/**', '**/__tests__/**']
 const DEFAULT_POLICY: Policy = { haiku: 'continuous', sonnet: 'continuous', opus: 'final', default: 'continuous' }
 const SENSOR_KEYS = ['id', 'cmd', 'builtin', 'cadence', 'blocks', 'count', 'guide', 'timeoutMs', 'enabled', 'options', 'ratchet']
-const TOP_KEYS = ['stack', 'gates', 'humanApproval', 'risk', 'contracts', 'holdout', 'models', 'paths', 'sensors', 'policy', 'knownRed']
+const TOP_KEYS = ['stack', 'gates', 'humanApproval', 'risk', 'contracts', 'holdout', 'mutation', 'models', 'paths', 'sensors', 'policy', 'knownRed']
 const KEBAB = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
 const isBuiltinId = (v: string): v is BuiltinId => (BUILTIN_IDS as readonly string[]).includes(v)
@@ -57,6 +57,7 @@ export function defaultRegistry(): Registry {
     risk: { enforce: false, alwaysHuman: [], maxLines: 400, hardCap: false, window: 20, maxRevertRate: 0.1 },
     contracts: { files: [], covers: [], validate: '', run: '' },
     holdout: '',
+    mutation: { minScore: 0.8 },
     models: { build: 'sonnet', evaluate: 'opus', design: 'sonnet' },
     paths: { tests: [...GENERIC_TESTS], testSupport: [], fixtures: [], ignore: ['**/*.md', '**/*.lock'] },
     sensors: BUILTIN_IDS.map(builtinSensor),
@@ -168,6 +169,14 @@ function parseSections(value: Record<string, unknown>, r: Registry, errors: stri
       else if (k === 'covers') { if (isStringList(v)) r.contracts.covers = v; else errors.push('contracts.covers must be a list of globs') }
       else if (k === 'validate' || k === 'run') { const s = strings(v, `contracts.${k}`, errors); if (s !== null) r.contracts[k] = s.trim() }
       else errors.push(`contracts: unknown key "${k}"`)
+    }
+  }
+  if ('mutation' in value) {
+    if (!isObject(value.mutation)) errors.push('mutation must be { minScore?: number }')
+    else for (const [k, v] of Object.entries(value.mutation)) {
+      if (k !== 'minScore') errors.push(`mutation: unknown key "${k}"`)
+      else if (typeof v === 'number' && v > 0 && v <= 1) r.mutation.minScore = v
+      else errors.push('mutation.minScore must be a number above 0 and at most 1')
     }
   }
   if ('holdout' in value) {
@@ -333,6 +342,7 @@ export function weakensRegistry(beforeText: string, afterText: string): string[]
   for (const g of b.contracts.files) if (!a.contracts.files.includes(g)) out.push(`contracts.files lost ${g}`)
   for (const g of b.contracts.covers) if (!a.contracts.covers.includes(g)) out.push(`contracts.covers lost ${g}`)
   for (const k of ['validate', 'run'] as const) if (b.contracts[k] && a.contracts[k] !== b.contracts[k]) out.push(`contracts.${k} changed`)
+  if (a.mutation.minScore < b.mutation.minScore) out.push(`mutation.minScore lowered ${b.mutation.minScore} → ${a.mutation.minScore}`)
   if (b.holdout && a.holdout !== b.holdout) out.push('holdout command changed')
   if (b.gates.plan && !a.gates.plan) out.push('gates.plan turned off')
   if (b.gates.testWriter && !a.gates.testWriter) out.push('gates.testWriter turned off')

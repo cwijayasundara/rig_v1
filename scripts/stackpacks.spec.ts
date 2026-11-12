@@ -23,17 +23,20 @@ test('every pack covers types, lint and unit, has a nightly mutation sensor, and
   }
 })
 
-test('a mutation-diff sensor runs before every PR on the change\'s own lines and blocks', () => {
-  const packs = loadPacks(PACKS_DIR).packs.filter(p => packRegistry(p).sensors.some(s => s.id === 'mutation-diff'))
-  assert.deepEqual(packs.map(p => p.stack).sort(), ['angular', 'node'])
-  for (const p of packs) {
+test('every pack has a blocking ci mutation-diff sensor that scopes to the change and scores it with sdlc mutscore', () => {
+  const TOOL: Record<string, string> = { node: 'stryker', angular: 'stryker', python: 'mutmut', go: 'go-mutesting', rust: 'cargo-mutants', dotnet: 'stryker-net', 'java-maven': 'pitest', 'java-gradle': 'pitest' }
+  for (const p of loadPacks(PACKS_DIR).packs) {
     const s = packRegistry(p).sensors.find(x => x.id === 'mutation-diff')
     assert.equal(s?.cadence, 'ci', p.stack)
     assert.equal(s?.blocks, true, p.stack)
-    assert.match(s?.cmd ?? '', /\{changed-lines:[a-z,]+\}/, `${p.stack} mutates only the changed lines of source it can parse`)
-    assert.match(s?.cmd ?? '', /is not installed[\s\S]*exit 1/, `${p.stack} fails loudly without the tool`)
-    assert.match(s?.cmd ?? '', /rm -rf reports\/mutation; npx/, `${p.stack} never reads a report an earlier run left`)
+    assert.equal(s?.timeoutMs, 600000, p.stack)
+    assert.match(s?.cmd ?? '', /\{changed(-lines)?:[a-z,]+\}|--in-diff|--since|scmMutationCoverage/, `${p.stack} mutates only the change`)
+    assert.match(s?.cmd ?? '', /"\$RIG_SDLC" mutscore --tool \S+ --report \S+/, `${p.stack} scores with sdlc mutscore`)
+    assert.ok((s?.cmd ?? '').includes(`--tool ${TOOL[p.stack]} `), `${p.stack} reads the ${TOOL[p.stack]} report`)
+    assert.match(s?.cmd ?? '', /not installed[\s\S]*or the person waives mutation-diff[\s\S]*exit 1/, `${p.stack} fails loudly without the tool`)
+    assert.ok(packRegistry(p).sensors.some(x => x.id === 'mutation' && x.cadence === 'nightly'), `${p.stack} keeps the nightly whole-repo run`)
   }
+  for (const stack of ['node', 'angular']) assert.match(packRegistry(loadPacks(PACKS_DIR).packs.find(p => p.stack === stack)!).sensors.find(x => x.id === 'mutation-diff')?.cmd ?? '', /\{changed-lines:[a-z,]+\}/, stack)
 })
 
 test('every pack has a blocking sast sensor: Semgrep on the change\'s own source, no metrics, failing in CI when Semgrep does not run', () => {

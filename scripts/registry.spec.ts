@@ -269,3 +269,17 @@ test('gates.testWriter parses as a boolean (default false) and turning it off is
   assert.match(weakensRegistry(g({ testWriter: true }), g({})).join(), /gates.testWriter turned off/)
   assert.deepEqual(weakensRegistry(g({}), g({ testWriter: true })), [])
 })
+
+test('mutation.minScore defaults to 0.8, accepts a number in (0,1], and lowering it is a weakening', () => {
+  assert.equal(parseRegistry('').registry.mutation.minScore, 0.8)
+  const mk = (v: unknown) => JSON.stringify({ sensors: [], mutation: { minScore: v } })
+  assert.equal(parseRegistry(mk(0.9)).registry.mutation.minScore, 0.9)
+  assert.equal(parseRegistry(mk(1)).registry.mutation.minScore, 1)
+  for (const bad of [0, -0.1, 1.5, '0.9', null]) assert.match(parseRegistry(mk(bad)).errors.join(), /mutation\.minScore must be a number above 0 and at most 1/, String(bad))
+  assert.match(parseRegistry(JSON.stringify({ sensors: [], mutation: { x: 1 } })).errors.join(), /mutation: unknown key "x"/)
+  assert.match(parseRegistry(JSON.stringify({ sensors: [], mutation: 5 })).errors.join(), /mutation must be/)
+  assert.deepEqual(weakensRegistry(mk(0.8), mk(0.9)), [])
+  assert.deepEqual(weakensRegistry(mk(0.8), mk(0.8)), [])
+  assert.deepEqual(weakensRegistry(mk(0.9), mk(0.7)), ['mutation.minScore lowered 0.9 → 0.7'])
+  assert.deepEqual(weakensRegistry(mk(0.9), JSON.stringify({ sensors: [] })), ['mutation.minScore lowered 0.9 → 0.8'])
+})

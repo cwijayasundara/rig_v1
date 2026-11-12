@@ -19,7 +19,7 @@ import { runCommand, recordRun } from './runs.ts'
 import { cmdVendor, installStandalone, older, pluginVersion } from './vendor.ts'; import { parseProfile } from './profile.ts'; import { cmdOff, cmdOn } from './off.ts'; import { weakeningLines } from './weaken.ts'
 import { cmdUpgrade } from './upgrade.ts'
 import { cmdBaseline } from './initbaseline.ts'
-import { cmdVerify, cmdHoldout } from './verify.ts'
+import { cmdVerify, cmdHoldout } from './verify.ts'; import { cmdMutscore } from './mutscore.ts'
 import { cmdHooks, cmdCheckPush } from './githooks.ts'
 import { cmdPr } from './pr.ts'
 import { cmdCarry } from './carry.ts'
@@ -455,7 +455,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   superpowers: () => out(superpowersWarning() || 'superpowers: ok'),
   pr: cmdPr, carry: cmdCarry,
   run: () => cmdRun(),
-  verify: cmdVerify, holdout: cmdHoldout,
+  verify: cmdVerify, holdout: cmdHoldout, mutscore: cmdMutscore,
   hook: cmdHook,
   diff: cmdDiff,
   baseline: () => cmdBaseline(),

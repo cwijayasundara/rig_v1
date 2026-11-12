@@ -60,6 +60,9 @@ function headChecks(runs: RunRow[]): string {
   return `Checks on the head tree (the latest verify's run of each):\n\n${[...last].map(([n, r]) => line(n, r)).join('\n')}`
 }
 
+// The score the latest mutation-diff run printed (mutscore's summary line); nothing when it did not run or found no mutants.
+const mutationNote = (runs: RunRow[]): string => { const m = /mutation: (\d+)\/(\d+) killed on changed lines \(score ([\d.]+)/.exec(runs.findLast(x => x.sensor === 'mutation-diff' && x.source === 'ship' && !x.cwd)?.tail ?? ''); return m ? `Mutation: ${m[1]}/${m[2]} on changed lines (score ${m[3]})` : '' }
+
 // The behaviours no test the change adds or edits names, by the traceability sensor's own rule.
 function behaviourTests(spec: string, tests: string | undefined): string {
   const ids = behaviourIds(spec, 'Behaviours')
@@ -108,7 +111,7 @@ export function prBody(i: PrBodyInput): string {
     `## Risk\n\n${i.risk.reasons.length ? `Tier ${i.risk.tier}\n\n${i.risk.reasons.map(r => `- ${r}`).join('\n')}` : 'Tier 0: none of the signals'}`,
     `## How to revert\n\n${revert(i.plan)}`,
     `## What the checks would miss\n\n${!i.review.trim() ? 'no review.md' : /^reviewer:\s*none\b/.test(i.review) ? `No agent reviewed this change (tier ${i.risk.tier}): the sensors and the tests are the evidence.` : missed.length ? missed.join('\n') : 'nothing the reviewer named'}`,
-    `## Evidence\n\n${[evidence, baseProof(runs), headChecks(runs), behaviourTests(i.spec, i.tests), frozenNote(i.freeze), claimsNote(i.review, i.claims), proposedNote(i.spec, i.requirements)].filter(Boolean).join('\n\n')}`,
+    `## Evidence\n\n${[evidence, baseProof(runs), headChecks(runs), mutationNote(runs), behaviourTests(i.spec, i.tests), frozenNote(i.freeze), claimsNote(i.review, i.claims), proposedNote(i.spec, i.requirements)].filter(Boolean).join('\n\n')}`,
     i.intentMap?.trim() ? `## Intent map\n\n${i.intentMap.trim()}` : '',
     i.outline.trim(),
   ]
