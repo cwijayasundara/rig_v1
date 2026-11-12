@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { ARCH_OK, IMPL_OK, SCRIPT, sdlc, hook as hookIn, write as writeIn, gitIn, makeRepo } from './testkit.ts'
+import { ARCH_OK, IMPL_OK, SCRIPT, sdlc, hook as hookIn, write as writeIn, gitIn, makeRepo, approveChart } from './testkit.ts'
 let repo: string
 
 const run = (args: string[], o: { input?: string; env?: Record<string, string> } = {}) => sdlc(repo, args, o)
@@ -232,7 +232,7 @@ test('SessionStart names the queue pick at rung 1 with no active change, and say
   write('.rig/product/architecture.md', ARCH_OK())
   write('.rig/product/sprints/sprint-0/implementation-plan.md', IMPL_OK(['add-item']))
   write('.rig/product/sprints/sprint-0/chart-review.md', 'verdict: pass\n## Findings\n')
-  assert.equal(run(['approve', 'chart-0'], { env: { SDLC_HUMAN: '1' } }).code, 0)
+  assert.equal(approveChart(repo, ['approve', 'chart-0'], { env: { SDLC_HUMAN: '1' } }).code, 0)
   const ctx = (): string => JSON.parse(hook('session-start', { session_id: 's1', source: 'startup' }).stdout).hookSpecificOutput.additionalContext
   assert.match(ctx(), /No active change/)
   write('.rig/autonomy.json', JSON.stringify({ rung: 1, since: '', deferred: [], history: [] }))

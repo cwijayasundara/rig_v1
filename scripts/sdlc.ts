@@ -33,7 +33,7 @@ import { cmdArch, layerState, layerStateText } from './arch.ts'
 import { cmdQueue, conflictsFor } from './queue.ts'
 import { intentScope } from './scope.ts'
 import { prdFormatProblems, prdLedger, conversionProblems } from './prdformat.ts'
-import { cmdPrdMore } from './prdcmd.ts'; import { writeApprovalPage, approvalGate } from './approvalsummary.ts'
+import { cmdPrdMore } from './prdcmd.ts'; import { writeApprovalPage, approvalPage, approvalGate, echoAnswers } from './approvalsummary.ts'
 import { parseLedger, parseIntent } from './chartcheck.ts'; import { superpowersWarning } from './superpowers.ts'
 import { ARCH_REL, intentsDir, intentRelOf, prdRel, sprintRel, prdPath, reviewPath, ledgerPath, sourcePath } from './product.ts'
 import { cmdSlice } from './slice.ts'
@@ -242,7 +242,7 @@ function approveChart(n: number, args: Args): void {
   // The reviewer's Deferred list is for the person to decide; approval is where it is seen (shop_app 2026-10-27: a whitespace-sku question sat there undecided).
   const deferred = (/^#{2,3}[ \t]+Deferred\b[^\n]*\n([\s\S]*?)(?=^#{2,3}[ \t]|(?![\s\S]))/m.exec(read(reviewPath(n)))?.[1] ?? '').replace(/^\s*\n/, '').split(/\n(?=[-*]\s)/).filter(c => /^[-*]\s/.test(c)).filter(c => !/→\s*(?:fixed|waived|dropped|carried|taken)\b/i.test(c)).map(c => c.replace(/^[-*]\s+/, '').replace(/\s*\n\s*/g, ' ').trim()).filter(c => c && !/^(none|nothing|no (items?|deferred|findings?)|no .*\b(found|noted|recorded)\b)\.?$/i.test(c))
   const by = ownerOrFail(args, 'approvals')
-  writeChartApproval(n, by, approvalGate(n, optString(args, 'answers')))
+  const answers = approvalGate(n, Boolean(args.opt.ask)); writeChartApproval(n, by, answers)
   // A sensors.json with edits of its own is not swept into the approval commit: the person commits it.
   const sensorsDirty = (git(['status', '--porcelain', '--', '.rig/sensors.json']) ?? '') !== ''
   const reg = registerContracts((exists(intentsDir(n)) ? fs.readdirSync(intentsDir(n)) : []).flatMap(f => { const i = parseIntent(f, read(path.join(intentsDir(n), f))); return [...i.contractFiles, ...i.exampleFiles] }))
@@ -252,7 +252,7 @@ function approveChart(n: number, args: Args): void {
   const branch = git(['branch', '--show-current']) ?? ''
   const trunk = trunkName()
   const first = branch && !isTrunk(branch) ? `merge ${branch} into ${trunk} first, then start from ${trunk} with ` : 'engineers run `ready` to see which intents can start, then '
-  out(`${registered.length ? `registered ${registered.length} contract file(s) in .rig/sensors.json: ${registered.join(', ')}${sensorsDirty ? ' (sensors.json had uncommitted edits: commit it yourself)' : ''}\n` : ''}${deferred.length ? `${deferred.length} deferred review item(s) nobody has decided (chart-review.md ## Deferred); decide each before or during the build:\n${deferred.map(d => `  - ${d}`).join('\n')}\n` : ''}${reg.warning ? `warning: declared contract files were not registered (${reg.warning}); add them to contracts.files\n` : ''}${committed === null ? `warning: the approval is kept but git refused to commit it: commit it before building, with git add ${approvalRel(n)} ${sprintRel(n)}/plan.md ${ARCH_REL} .rig/product/adr && git commit -m "chore: approve chart-${n}"\n` : ''}approved chart-${n} by ${by}: ${chartFiles(n).length} file(s). Next: ${first}${skillRef('start')} ${sprintRel(n)}/intents/<slug>.md`)
+  out(`${echoAnswers(answers)}${registered.length ? `registered ${registered.length} contract file(s) in .rig/sensors.json: ${registered.join(', ')}${sensorsDirty ? ' (sensors.json had uncommitted edits: commit it yourself)' : ''}\n` : ''}${deferred.length ? `${deferred.length} deferred review item(s) nobody has decided (chart-review.md ## Deferred); decide each before or during the build:\n${deferred.map(d => `  - ${d}`).join('\n')}\n` : ''}${reg.warning ? `warning: declared contract files were not registered (${reg.warning}); add them to contracts.files\n` : ''}${committed === null ? `warning: the approval is kept but git refused to commit it: commit it before building, with git add ${approvalRel(n)} ${sprintRel(n)}/plan.md ${ARCH_REL} .rig/product/adr && git commit -m "chore: approve chart-${n}"\n` : ''}approved chart-${n} by ${by}: ${chartFiles(n).length} file(s). Next: ${first}${skillRef('start')} ${sprintRel(n)}/intents/<slug>.md`)
 }
 
 const approvalRel = (n: number): string => `${sprintRel(n)}/approval.json`
@@ -279,7 +279,7 @@ function cmdChart(args: Args): void {
   needPrd(n)
   if (sub === 'plan') return out(args.opt.print ? sprintPlan(n) : `wrote ${writePlan(n)}`)
   if (sub === 'report') return out(chartReport(n))
-  if (sub === 'summary') return out(`wrote ${writeApprovalPage(n)}`)
+  if (sub === 'summary') return out(chartState(n).state === 'approved' ? approvalPage(n) : `wrote ${writeApprovalPage(n)}`) // an approved chart's page is hashed: print it, never rewrite it
   const found = chartFindings(n, Boolean(args.opt.cases))
   if (args.opt.json) return out(JSON.stringify(found))
   const block = found.filter(f => f.severity === 'block')

@@ -2,10 +2,9 @@
 import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { makeRepo, sdlc, write, gitIn, IMPL_OK } from './testkit.ts'
+import { makeRepo, sdlc, write, gitIn, IMPL_OK, approveChart } from './testkit.ts'
 import { pathToFileURL } from 'node:url'
 
 let repo: string
@@ -76,11 +75,11 @@ test('an approval is missing, then approved, then stale after an edit that names
 test('approve chart-N refuses with no review, and with a finding not confirmed fixed, naming each and the waive command', () => {
   cleanChart()
   fs.rmSync(path.join(repo, `${P}/sprints/sprint-1/chart-review.md`))
-  const none = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  const none = approveChart(repo, ['approve', 'chart-1'], HUMAN)
   assert.equal(none.code, 1)
   assert.match(none.stderr, /no chart-review\.md/)
   write(repo, `${P}/sprints/sprint-1/chart-review.md`, 'verdict: pass\n## Findings\n- [severity: high] [category: coverage] a.md:1: nextId can repeat → fix (confidence 90) → fixed\n')
-  const open = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  const open = approveChart(repo, ['approve', 'chart-1'], HUMAN)
   assert.equal(open.code, 1)
   assert.match(open.stderr, /1\. .*nextId can repeat/)
   assert.match(open.stderr, /waive chart-1 <finding number> <reason>/)
@@ -96,7 +95,7 @@ test('a person waives a chart finding, approval then succeeds; the model cannot 
   assert.equal(w.code, 0, w.stderr)
   const saved = JSON.parse(fs.readFileSync(path.join(repo, `${P}/sprints/sprint-1/waivers.json`), 'utf8')) as { finding: number; by: string; reason: string }[]
   assert.deepEqual(saved.map(x => [x.finding, x.by, x.reason]), [[1, 'Pat', 'accepted risk']])
-  const ok = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
+  const ok = approveChart(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
   assert.equal(ok.code, 0, ok.stderr)
 })
 
@@ -229,18 +228,18 @@ test('chart check prints findings, as JSON on request, and fails only when the P
 
 test('approve chart-N is human-only, refuses while a block finding stands, and is idempotent', () => {
   cleanChart()
-  assert.equal(sdlc(repo, ['approve', 'chart-1']).code, 3)
+  assert.equal(approveChart(repo, ['approve', 'chart-1']).code, 3)
   write(repo, `${P}/sprints/sprint-1/intents/alpha.md`, intent(1, { req: 'FR-1' }).replace('estimate_days: 1', 'estimate_days: 5'))
-  const refused = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  const refused = approveChart(repo, ['approve', 'chart-1'], HUMAN)
   assert.equal(refused.code, 1)
   assert.match(refused.stderr, /estimate/)
   assert.ok(!fs.existsSync(path.join(repo, `${P}/sprints/sprint-1/approval.json`)))
   write(repo, `${P}/sprints/sprint-1/intents/alpha.md`, intent(1))
-  const ok = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
+  const ok = approveChart(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
   assert.equal(ok.code, 0, ok.stderr)
   assert.match(ok.stdout, /approved chart-1 by Pat/)
   assert.equal(state(1).state, 'approved')
-  assert.match(sdlc(repo, ['approve', 'chart-1'], HUMAN).stdout, /already approved/)
+  assert.match(approveChart(repo, ['approve', 'chart-1'], HUMAN).stdout, /already approved/)
 })
 
 // shop_app 2026-10-27: approval.json rode into a feature commit without the ADR edits, so CI saw the chart as stale.
@@ -250,7 +249,7 @@ const proposedAdr = (): void => {
 }
 test('approve chart-N commits approval.json, the accepted ADRs, architecture.md and plan.md in one commit', () => {
   cleanChart(); proposedAdr()
-  const r = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  const r = approveChart(repo, ['approve', 'chart-1'], HUMAN)
   assert.equal(r.code, 0, r.stderr)
   assert.equal(gitIn(repo, 'status', '--porcelain', '--', '.rig/product'), '')
   assert.equal(gitIn(repo, 'log', '-1', '--format=%s'), 'chore: approve chart-1')
@@ -263,7 +262,7 @@ test('approve chart-N commits when several chart files are already tracked and m
   gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'chart', '--allow-empty')
   write(repo, `${P}/architecture.md`, ARCH_DOC() + '\n')
   write(repo, `${P}/sprints/sprint-1/implementation-plan.md`, IMPL_OK(['alpha']) + '\n')
-  const r = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  const r = approveChart(repo, ['approve', 'chart-1'], HUMAN)
   assert.equal(r.code, 0, r.stderr)
   assert.doesNotMatch(r.stdout + r.stderr, /refused/)
   assert.equal(gitIn(repo, 'status', '--porcelain', '--', '.rig/product'), '')
@@ -271,7 +270,7 @@ test('approve chart-N commits when several chart files are already tracked and m
 })
 test('approve chart-N on a rig/chart-N branch says to merge it into the trunk first', () => {
   cleanChart(); gitIn(repo, 'checkout', '-qb', 'rig/chart-1')
-  const r = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  const r = approveChart(repo, ['approve', 'chart-1'], HUMAN)
   assert.equal(r.code, 0, r.stderr)
   assert.match(r.stdout, /Next: merge rig\/chart-1 into main first, then start from main with \/rig:start/)
 })
@@ -285,7 +284,7 @@ test('ready lists the intents that can start and leaves out the blocked ones', (
   write(repo, `${P}/sprints/sprint-1/intents/beta.md`, intent(1, { depends: '[alpha]' }))
   write(repo, `${P}/sprints/sprint-1/testplan/cases.md`, '| ID | Req | Intent | B | Level | Data | Expected |\n| TC-1 | FR-1 | alpha | B1 | unit | - | ok |\n| TC-2 | FR-1 | beta | B1 | unit | - | ok |\n')
   write(repo, `${P}/sprints/sprint-1/implementation-plan.md`, IMPL_OK(['alpha', 'beta']))
-  assert.equal(sdlc(repo, ['approve', 'chart-1'], HUMAN).code, 0)
+  assert.equal(approveChart(repo, ['approve', 'chart-1'], HUMAN).code, 0)
   const r = sdlc(repo, ['ready', '--json'])
   assert.deepEqual((JSON.parse(r.stdout) as { slug: string }[]).map(i => i.slug), ['alpha'])
   assert.match(sdlc(repo, ['ready']).stdout, /alpha\s+sprint 1\s+1 day/)
@@ -294,7 +293,7 @@ test('ready lists the intents that can start and leaves out the blocked ones', (
 // new --source links a change to its intent; sync keeps the change's spec.md faithful to it.
 const startable = (): void => {
   cleanChart()
-  assert.equal(sdlc(repo, ['approve', 'chart-1'], HUMAN).code, 0)
+  assert.equal(approveChart(repo, ['approve', 'chart-1'], HUMAN).code, 0)
 }
 const SRC = `${P}/sprints/sprint-1/intents/alpha.md`
 
@@ -338,11 +337,11 @@ test('new --source: non-goals, cited behaviours and nothing open or carried is s
   cleanChart()
   write(repo, SRC, intent(1).replace('## Interfaces', '## Non-goals\nDo not add locking.\n\n## Interfaces'))
   write(repo, `${P}/sprints/sprint-1/carried/alpha.md`, '- C1: a leftover\n')
-  assert.equal(sdlc(repo, ['approve', 'chart-1'], HUMAN).code, 0)
+  assert.equal(approveChart(repo, ['approve', 'chart-1'], HUMAN).code, 0)
   assert.match(sdlc(repo, ['new', 'alpha', '--source', SRC]).stdout, /settled: no \(carried C1\)/)
   fs.rmSync(path.join(repo, '.rig/changes/alpha'), { recursive: true })
   fs.rmSync(path.join(repo, `${P}/sprints/sprint-1/carried`), { recursive: true })
-  assert.equal(sdlc(repo, ['approve', 'chart-1'], HUMAN).code, 0)
+  assert.equal(approveChart(repo, ['approve', 'chart-1'], HUMAN).code, 0)
   assert.match(sdlc(repo, ['new', 'alpha', '--source', SRC]).stdout, /settled: yes/)
 })
 
@@ -350,7 +349,7 @@ test('a started change keeps going after its chart goes stale; a new start is re
   cleanChart()
   write(repo, `${P}/sprints/sprint-1/intents/beta.md`, intent(1, { req: 'FR-1' }))
   write(repo, `${P}/sprints/sprint-1/implementation-plan.md`, IMPL_OK(['alpha', 'beta']))
-  assert.equal(sdlc(repo, ['approve', 'chart-1'], HUMAN).code, 0)
+  assert.equal(approveChart(repo, ['approve', 'chart-1'], HUMAN).code, 0)
   assert.equal(sdlc(repo, ['new', 'alpha', '--source', SRC]).code, 0)
   write(repo, `${P}/sprints/sprint-1/intents/beta.md`, intent(1, { req: 'FR-1' }) + '\nedit\n')
   assert.match(sdlc(repo, ['status']).stdout, /alpha\s+feature\s+plan/)
@@ -732,7 +731,7 @@ test('new --source writes the ledger rows its intent cites into the change, word
   write(repo, `${P}/sprints/sprint-1/intents/beta.md`, intent(1, { req: 'FR-2' }).replace('- B1 (FR-2): works', '- B1 (FR-2, FR-2.1): exports'))
   write(repo, `${P}/sprints/sprint-1/implementation-plan.md`, IMPL_OK(['alpha', 'beta']))
   write(repo, `${P}/sprints/sprint-1/testplan/cases.md`, '| ID | Req | Intent | B | Level | Data | Expected |\n| TC-1 | FR-1, FR-1.1 | alpha | B1 | unit | - | ok |\n| TC-2 | FR-2, FR-2.1 | beta | B1 | unit | - | ok |\n')
-  const approved = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  const approved = approveChart(repo, ['approve', 'chart-1'], HUMAN)
   assert.equal(approved.code, 0, approved.stderr)
   const r = sdlc(repo, ['new', 'alpha', '--source', SRC])
   assert.equal(r.code, 0, r.stderr)
@@ -752,7 +751,7 @@ test('new --source with no sprint ledger writes no requirements.md', () => {
 test('a changes-needed review with no finding rig can read refuses approval', () => {
   cleanChart()
   write(repo, `${P}/sprints/sprint-1/chart-review.md`, 'verdict: changes-needed\n## Findings (2)\n- nextId can repeat\n')
-  const r = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  const r = approveChart(repo, ['approve', 'chart-1'], HUMAN)
   assert.equal(r.code, 1)
   assert.match(r.stderr, /changes-needed/)
 })
@@ -763,7 +762,7 @@ test('a ledger approved once and then deleted blocks again', () => {
   write(repo, `${P}/sprints/sprint-1/requirements.md`, '- G-1 [rule] prd.md:9 "Ids are never reused."\n')
   write(repo, `${P}/sprints/sprint-1/intents/alpha.md`, intent(1).replace('- B1 (FR-1): works', '- B1 (FR-1, G-1): never reused'))
   write(repo, `${P}/sprints/sprint-1/testplan/cases.md`, '| ID | Req | Intent | B | Level | Data | Expected |\n| TC-1 | FR-1, G-1 | alpha | B1 | unit | - | ok |\n')
-  const ok = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  const ok = approveChart(repo, ['approve', 'chart-1'], HUMAN)
   assert.equal(ok.code, 0, ok.stderr)
   fs.rmSync(path.join(repo, `${P}/sprints/sprint-1/requirements.md`))
   const missing = (call('return C.chartFindings(1, false)') as { rule: string; severity: string }[]).filter(f => f.rule === 'ledger-missing')
@@ -774,7 +773,7 @@ test('approve on a chart already approved before reviews were read still says al
   cleanChart()
   call(`C.writeChartApproval(1, 'Pat')`)
   fs.rmSync(path.join(repo, `${P}/sprints/sprint-1/chart-review.md`))
-  const r = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  const r = approveChart(repo, ['approve', 'chart-1'], HUMAN)
   assert.equal(r.code, 0, r.stderr)
   assert.match(r.stdout, /already approved/)
 })
@@ -865,15 +864,15 @@ test('approve prd-N is gone: it names approve chart-N, which covers the conversi
 test('approve chart-N refuses a converted sprint whose conversion has a finding, an open question or an unfixed review finding', () => {
   converted()
   write(repo, `${P}/sprints/sprint-1/prd.md`, FORMAT_PRD.replace('- DR-1: Ids start at 1.\n', '- DR-1: Ids start at 1.\nIds are never reused.\n'))
-  assert.match(sdlc(repo, ['approve', 'chart-1'], HUMAN).stderr, /prd-prose/)
+  assert.match(approveChart(repo, ['approve', 'chart-1'], HUMAN).stderr, /prd-prose/)
   write(repo, `${P}/sprints/sprint-1/prd.md`, FORMAT_PRD)
   fs.rmSync(path.join(repo, `${P}/sprints/sprint-1/conversion.md`))
-  assert.match(sdlc(repo, ['approve', 'chart-1'], HUMAN).stderr, /map-missing/)
+  assert.match(approveChart(repo, ['approve', 'chart-1'], HUMAN).stderr, /map-missing/)
   write(repo, `${P}/sprints/sprint-1/conversion.md`, CONV_1)
   write(repo, `${P}/sprints/sprint-1/conversion-review.md`, 'verdict: changes-needed\n## Findings\n- [category: weakened] DR-1 lost "never" → fix (confidence 90)\n')
-  assert.match(sdlc(repo, ['approve', 'chart-1'], HUMAN).stderr, /DR-1 lost "never"/)
+  assert.match(approveChart(repo, ['approve', 'chart-1'], HUMAN).stderr, /DR-1 lost "never"/)
   write(repo, `${P}/sprints/sprint-1/conversion-review.md`, 'verdict: pass\n## Findings\n- [category: weakened] DR-1 lost "never" → fix (confidence 90) → fixed\n')
-  const ok = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
+  const ok = approveChart(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
   assert.equal(ok.code, 0, ok.stderr)
   assert.ok((files(1) as string[]).includes(`${P}/sprints/sprint-1/conversion.md`))
 })
@@ -882,7 +881,7 @@ test('a prd.md the chart edits after the conversion (answers added) is approved 
   converted()
   write(repo, `${P}/sprints/sprint-1/prd.md`, FORMAT_PRD + '\n')
   sdlc(repo, ['prd', 'ledger', '1'])
-  const ok = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  const ok = approveChart(repo, ['approve', 'chart-1'], HUMAN)
   assert.equal(ok.code, 0, ok.stderr)
   write(repo, `${P}/sprints/sprint-1/prd.md`, FORMAT_PRD)
   assert.ok(state(1).changed.includes(`${P}/sprints/sprint-1/prd.md`), 'editing prd.md after approval makes the chart stale')
@@ -893,7 +892,7 @@ test('a sprint whose source.md is its prd.md is not converted; source.md and con
   write(repo, `${P}/sprints/sprint-1/source.md`, FORMAT_PRD)
   fs.rmSync(path.join(repo, `${P}/sprints/sprint-1/conversion.md`))
   assert.equal(call('return C.isConverted(1)'), false)
-  const ok = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  const ok = approveChart(repo, ['approve', 'chart-1'], HUMAN)
   assert.equal(ok.code, 0, ok.stderr)
   write(repo, `${P}/sprints/sprint-1/source.md`, FORMAT_PRD + 'x\n')
   assert.deepEqual(state(1).changed, [`${P}/sprints/sprint-1/source.md`])
@@ -928,10 +927,10 @@ test('a sprint that was converted stays converted when source.md is deleted or o
   converted()
   fs.rmSync(path.join(repo, `${P}/sprints/sprint-1/source.md`))
   assert.equal(call('return C.isConverted(1)'), true)
-  assert.equal(sdlc(repo, ['approve', 'chart-1'], HUMAN).code, 1)
+  assert.equal(approveChart(repo, ['approve', 'chart-1'], HUMAN).code, 1)
   write(repo, `${P}/sprints/sprint-1/source.md`, FORMAT_PRD)
   assert.equal(call('return C.isConverted(1)'), true)
-  assert.equal(sdlc(repo, ['approve', 'chart-1'], HUMAN).code, 1)
+  assert.equal(approveChart(repo, ['approve', 'chart-1'], HUMAN).code, 1)
 })
 
 test('a generated ledger checked out with CRLF line endings is not stale', () => {
@@ -945,15 +944,13 @@ test('a generated ledger checked out with CRLF line endings is not stale', () =>
 
 // shop_app 2026-10-27: the cart-storage intent named docs/contracts/cart-file.schema.json under ## Interfaces, yet sensors.json
 // kept contracts.files empty, so no change approval froze it.
-// A named contract is a check question: the approver answers it in their own words (three-gates C5).
-const ANSWERS = ['--answers', (() => { const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rig-answers-')), 'a.json'); fs.writeFileSync(f, '["The client needs this interface, as written."]'); return f })()]
 test('approve chart-N registers the contract and example files the intents declare, once, keeping what is already registered', () => {
   cleanChart()
   write(repo, `${P}/sprints/sprint-1/intents/alpha.md`, intent(1, { iface: '- Contract: docs/contracts/cart.schema.json\n- Example: docs/contracts/examples/cart.json' }))
   write(repo, 'docs/contracts/cart.schema.json', '{}\n')
   write(repo, 'docs/contracts/examples/cart.json', '{}\n')
   write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], contracts: { files: ['api/**'], covers: [], validate: '', run: '' } }))
-  const ok = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat', ...ANSWERS], HUMAN)
+  const ok = approveChart(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
   assert.equal(ok.code, 0, ok.stderr)
   const files = () => (JSON.parse(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8')) as { contracts: { files: string[] } }).contracts.files
   assert.deepEqual(files(), ['api/**', 'docs/contracts/cart.schema.json', 'docs/contracts/examples/cart.json'])
@@ -964,7 +961,7 @@ test('approve chart-N leaves sensors.json alone when no intent declares a contra
   cleanChart()
   write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [] }))
   const before = fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8')
-  assert.equal(sdlc(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN).code, 0)
+  assert.equal(approveChart(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN).code, 0)
   assert.equal(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8'), before)
 })
 
@@ -974,7 +971,7 @@ test('approve chart-N registers what the chart check accepts: ./ paths normalise
   write(repo, 'api/ex.json', '{}\n')
   write(repo, `${P}/sprints/sprint-1/intents/alpha.md`, intent(1, { iface: 'Contract: ./api/x.yaml (v2)\nExample: api/ex.json' }))
   write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], contracts: { validate: 'true' } }))
-  const ok = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat', ...ANSWERS], HUMAN)
+  const ok = approveChart(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
   assert.equal(ok.code, 0, ok.stderr)
   const c = (JSON.parse(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8')) as { contracts: { files: string[]; validate: string } }).contracts
   assert.deepEqual(c.files, ['.rig/contracts/**', 'api/x.yaml', 'api/ex.json'])
@@ -987,7 +984,7 @@ test('approve chart-N leaves an unparseable sensors.json alone and says so; a se
   write(repo, 'api/ex.json', '{}\n')
   write(repo, `${P}/sprints/sprint-1/intents/alpha.md`, intent(1, { iface: '- Contract: api/x.yaml\n- Example: api/ex.json' }))
   write(repo, '.rig/sensors.json', '{ "sensors": [], }')
-  const bad = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat', ...ANSWERS], HUMAN)
+  const bad = approveChart(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
   assert.match(bad.stdout, /not registered \(sensors\.json is not valid JSON\)/)
   assert.equal(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8'), '{ "sensors": [], }')
 })
@@ -995,7 +992,7 @@ test('approve chart-N leaves an unparseable sensors.json alone and says so; a se
 test('approve chart-N lists the reviewer\'s Deferred items for the person, and says nothing when there are none', () => {
   cleanChart()
   write(repo, `${P}/sprints/sprint-1/chart-review.md`, `${REVIEW_PASS}- whitespace sku loads but add rejects it: decide.\n- No injection-shaped text found.\n- No test found for the empty-cart total; add one before cart-cli ships.\n- No items.\n`)
-  const ok = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
+  const ok = approveChart(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
   assert.equal(ok.code, 0, ok.stderr)
   assert.match(ok.stdout, /2 deferred review item\(s\) nobody has decided[^\n]*\n  - whitespace sku loads but add rejects it: decide\.\n  - No test found for the empty-cart total/)
   assert.doesNotMatch(ok.stdout, /injection|No items/)
@@ -1004,7 +1001,7 @@ test('approve chart-N lists the reviewer\'s Deferred items for the person, and s
 test('the Deferred list at approval keeps real items that start with "No" or "None of", joins wrapped lines, and finds a heading with trailing words', () => {
   cleanChart()
   write(repo, `${P}/sprints/sprint-1/chart-review.md`, 'verdict: pass\n## Findings\n## Deferred (for the person)\n- No test covers B4 when qty is 0.\n- None of the cases cover a\n  whitespace sku.\n- none\n')
-  const out = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN).stdout
+  const out = approveChart(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN).stdout
   assert.match(out, /2 deferred review item\(s\)/)
   assert.match(out, /  - No test covers B4 when qty is 0\.\n  - None of the cases cover a whitespace sku\./)
 })
@@ -1012,7 +1009,7 @@ test('the Deferred list at approval keeps real items that start with "No" or "No
 test('approve chart-N does not list Deferred items already resolved', () => {
   cleanChart()
   write(repo, `${P}/sprints/sprint-1/chart-review.md`, `${REVIEW_PASS}- a.md:1: x. → fixed (confirmed)\n- b.md:2: y → waived: z\n- c.md:3: open item\n`)
-  const ok = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
+  const ok = approveChart(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
   assert.equal(ok.code, 0, ok.stderr)
   assert.match(ok.stdout, /1 deferred review item\(s\)/)
   assert.match(ok.stdout, /c\.md:3/)
@@ -1025,7 +1022,7 @@ test('approve chart-N flips a linked ADR row in architecture.md', () => {
   write(repo, `${P}/adr/0001-x.md`, adr)
   write(repo, `${P}/adr/0002-y.md`, adr)
   write(repo, `${P}/architecture.md`, `${ARCH_DOC()}\n## Decisions\n\n| ADR | Title | Status | Sprint |\n|---|---|---|---|\n| [0001](adr/0001-x.md) | decision | proposed | 1 |\n| 0002 | other | proposed | 1 |\n`)
-  const r = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
+  const r = approveChart(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
   assert.equal(r.code, 0, r.stderr)
   const arch = fs.readFileSync(path.join(repo, P, 'architecture.md'), 'utf8')
   assert.match(arch, /\| \[0001\]\(adr\/0001-x\.md\) \| decision \| accepted \| 1 \|/)
@@ -1040,10 +1037,10 @@ test('coverage: a source with no coverage.md or an open topic cannot be approved
   assert.deepEqual(rulesNow(), [])
   fs.rmSync(path.join(repo, cov))
   assert.deepEqual(rulesNow(), ['coverage-missing'])
-  assert.notEqual(sdlc(repo, ['approve', 'chart-1'], HUMAN).code, 0)
+  assert.notEqual(approveChart(repo, ['approve', 'chart-1'], HUMAN).code, 0)
   write(repo, cov, ALL_NA.replace('- failure n/a — a fixture with no such need', '- failure open'))
   assert.deepEqual(rulesNow(), ['coverage-open'])
-  const refused = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  const refused = approveChart(repo, ['approve', 'chart-1'], HUMAN)
   assert.notEqual(refused.code, 0)
   assert.match(refused.stderr + refused.stdout, /coverage-open|Failure handling/)
   assert.match(sdlc(repo, ['prd', 'coverage', '1']).stdout, /\[coverage-open\] failure: Failure handling[^\n]*\nprd-1: 1 coverage finding\(s\)/)
@@ -1054,7 +1051,7 @@ test('coverage: a source with no coverage.md or an open topic cannot be approved
   write(repo, `${P}/sprints/sprint-1/conversion.md`, CONV_1)
   sdlc(repo, ['prd', 'ledger', '1'])
   assert.deepEqual(rulesNow(), [])
-  const ok = sdlc(repo, ['approve', 'chart-1'], HUMAN)
+  const ok = approveChart(repo, ['approve', 'chart-1'], HUMAN)
   assert.equal(ok.code, 0, ok.stderr)
   assert.ok((call('return C.chartFiles(1)') as string[]).some(f => f.endsWith('/coverage.md')))
   // Deleting it after approval makes the chart stale, so it is asked for again; a sprint approved before the probe existed has no such row.

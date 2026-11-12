@@ -40,6 +40,16 @@ export function sdlc(repo: string, args: string[], { input, env = {} }: { input?
 
 export const hook = (repo: string, name: string, payload: unknown) => sdlc(repo, ['hook', name], { input: JSON.stringify(payload) })
 
+// Every chart is asked at least one check question: answer them as the AskUserQuestion hook records them, then approve.
+export function approveChart(repo: string, args: string[], opts: { input?: string; env?: Record<string, string> } = {}) {
+  const asked = sdlc(repo, [...args, '--ask'], opts), sha = /page sha ([0-9a-f]{64})/.exec(asked.stderr)?.[1]
+  if (sha) {
+    const qs = [...asked.stderr.matchAll(/^  \d+\. (.*)$/gm)].map(m => `[page sha ${sha.slice(0, 12)}] ${m[1]}`)
+    hook(repo, 'asked', { tool_name: 'AskUserQuestion', tool_input: { questions: qs.map(question => ({ question })) }, tool_response: { answers: Object.fromEntries(qs.map(q => [q, 'The person confirmed this in their own words.'])) } })
+  }
+  return sdlc(repo, args, opts)
+}
+
 // A change with intent, a spec (B1), a plan and a person's approval: the state /rig:build starts from.
 export function approvedChange(repo: string, slug: string, type = 'feature'): void {
   sdlc(repo, ['new', slug, '--type', type])

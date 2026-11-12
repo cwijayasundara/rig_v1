@@ -73,9 +73,11 @@ export function designDocOf(n: number): string | null {
 export const adrFilesOf = (n: number): string[] => walk(path.join(PRODUCT, 'adr')).filter(f => f.endsWith('.md') && String(frontmatter(read(f)).data.sprint ?? '').replace(/[\s\[\]"']/g, '') === String(n))
 export const designFile = (n: number): string[] => { const d = designDocOf(n); return d && !escapes(d) ? [path.join(ROOT, d)] : [] }
 
+// The generated page is hashed only for an approval that lists it (older approvals did not) or one being written.
+const pageOwned = (n: number): boolean => { const row = readRow(n); return !row || row.files.some(f => f.path === toPosix(path.relative(ROOT, approvalMdPath(n)))) }
 function ownFiles(n: number): string[] {
   const own = intentsOf(n)
-  return rel([prdPath(n), approvalMdPath(n), sourcePath(n), conversionPath(n), coveragePath(n), ledgerPath(n), waiversPath(n), ...designFile(n), implPlanPath(n), ...walk(testplanDir(n)), ...walk(holdoutDir(n)), ...own.map(i => i.file), ...own.flatMap(i => [...i.contractFiles, ...i.exampleFiles]).filter(f => !escapes(f)).map(f => path.join(ROOT, f))])
+  return rel([prdPath(n), ...(pageOwned(n) ? [approvalMdPath(n)] : []), sourcePath(n), conversionPath(n), coveragePath(n), ledgerPath(n), waiversPath(n), ...designFile(n), implPlanPath(n), ...walk(testplanDir(n)), ...walk(holdoutDir(n)), ...own.map(i => i.file), ...own.flatMap(i => [...i.contractFiles, ...i.exampleFiles]).filter(f => !escapes(f)).map(f => path.join(ROOT, f))])
 }
 const sharedFiles = (): string[] => rel([archPath, ...walk(path.join(PRODUCT, 'adr')).filter(f => f.endsWith('.md'))])
 export const chartFiles = (n: number): string[] => [...new Set([...ownFiles(n), ...sharedFiles()])].sort()
@@ -105,6 +107,7 @@ function acceptAdrs(n: number): void {
 }
 export function writeChartApproval(n: number, by: string, answers: ApprovalAnswer[] = []): void {
   acceptAdrs(n)
+  fs.rmSync(approvalPath(n), { force: true }); fs.rmSync(path.join(sprintDir(n), 'answers.pending.json'), { force: true }) // the page is hashed in every new row; the answers are spent
   const row: Row = { by, at: now(), digest: chartDigest(n), files: manifest(chartFiles(n)), answers }
   fs.mkdirSync(sprintDir(n), { recursive: true }); writeProductIgnore()
   fs.writeFileSync(approvalPath(n), JSON.stringify(row, null, 2) + '\n')

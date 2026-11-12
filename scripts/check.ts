@@ -24,6 +24,7 @@ import { riskOf, formatRisk, hardCapFindings, type Risk } from './risk.ts'
 import { changeHistory, breaker } from './reverts.ts'
 import { parseAccess } from './chartcheck.ts'
 import { ARCH_REL } from './product.ts'
+import { approvalRow, INCOMPLETE } from './approvalsummary.ts'
 import { rigOff, trunkRef, offLine, frozenWhileOff } from './off.ts'
 
 type Point = 'stop' | 'commit' | 'ship' | 'ci'
@@ -299,7 +300,7 @@ function humanRowsAdded(base: string): string[] {
     const name = /^\.rig\/changes\/([^/]+)\/approval\.json$/.exec(f)?.[1] ?? (/^\.rig\/product\/sprints\/sprint-(\d+)\/approval\.json$/.exec(f)?.[1] ? `chart-${/^\.rig\/product\/sprints\/sprint-(\d+)\//.exec(f)?.[1]}` : undefined)
     if (!name) continue
     const by = String(readJson<{ by?: unknown } | null>(path.join(ROOT, f), null)?.by ?? '?') // deleted or unreadable: still a row
-    rows.push(`approval ${name} by ${clean(by)}`)
+    rows.push(name.startsWith('chart-') ? approvalRow(f, name, by, clean) : `approval ${name} by ${clean(by)}`)
   }
   // sprint-N/waivers.json: each chart waiver row the PR adds is a person accepting a review finding as it stands.
   for (const f of (git(['diff', '--name-only', base, 'HEAD', '--', '.rig/product/sprints']) ?? '').split('\n')) {
@@ -481,8 +482,9 @@ export function cmdCheck(args: Args): void {
   const configFindings: Finding[] = errors.map(e => ({ sensor: 'config', severity: 'block', file: SENSORS_JSON, message: e, fix: 'fix the file; see the sdlc README for its format' }))
   const queueFindings: Finding[] = queueRefusal ? [{ sensor: 'human-approval', severity: 'block', message: `merge queue: this PR needs a person: ${queueRefusal}`, fix: 'someone other than the author approves the PR\'s head commit, then queue it again' }] : []
   const humanFindings: Finding[] = why ? [{ sensor: 'human-approval', severity: 'block', message: humanRows.length ? `this PR adds ${humanRows.length} approval/waiver row(s): ${why}` : `risk.enforce: this PR is tier ${risk?.tier} and needs a person: ${refusal ? `${refusal}; ` : ''}${why}`, fix: humanRows.length ? 'a code owner other than the PR author reviews the rows below and approves the current head commit; pushing again needs a fresh approval' : 'someone other than the PR author approves the current head commit; pushing again needs a fresh approval' }] : []
+  const answerFindings: Finding[] = humanRows.filter(r => r.includes(INCOMPLETE)).map(r => ({ sensor: 'human-approval', severity: 'block', message: r, fix: `approve the chart again through ${skillRef('approve')} and answer every check question` }))
   const syncBlocks = (at === 'commit' || at === 'ci') && declaresRegistry() ? syncFindings(config, [], 'block') : [] // config errors already block above
-  const all = { ...result, findings: [...queueFindings, ...humanFindings, ...configFindings, ...syncBlocks, ...result.findings], blocks: [...queueFindings, ...humanFindings, ...configFindings, ...syncBlocks.filter(f => f.severity === 'block'), ...result.blocks] }
+  const all = { ...result, findings: [...queueFindings, ...humanFindings, ...answerFindings, ...configFindings, ...syncBlocks, ...result.findings], blocks: [...queueFindings, ...humanFindings, ...answerFindings, ...configFindings, ...syncBlocks.filter(f => f.severity === 'block'), ...result.blocks] }
   report(at, all, diffs.length, Boolean(args.opt.json), humanRows, inertSensors(config, rules.length, draftApps()), risk && refusal === '' ? { ...risk, reasons: ['tier 0: merges without a person (rung 3, trusted author)'] } : risk)
   process.exitCode = all.blocks.length ? 1 : 0
 }

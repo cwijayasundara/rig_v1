@@ -2,7 +2,7 @@
 import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
-import { makeRepo, write, sdlc, ARCH_OK, IMPL_OK } from './testkit.ts'
+import { makeRepo, write, sdlc, ARCH_OK, IMPL_OK, approveChart } from './testkit.ts'
 
 type J = { agents: { agent: string; model: string; at: string }[]; initialised: boolean; kind: string; show: string[]; sprint: number | null; outer: { id: string; state: string; command: string; by: string; detail?: string }[]; inner: { slug: string; steps: { id: string; state: string; command: string; by: string; auto?: true }[] } | null; next: { command: string; by: string; why: string }; ready: string[]; rung: number; queue: string | null; sensors?: unknown }
 let repo: string
@@ -106,7 +106,7 @@ test('journey: approved chart → the first ready intent, and brownfield shows t
   write(repo, '.rig/product/architecture.md', ARCH)
   write(repo, '.rig/product/sprints/sprint-0/implementation-plan.md', IMPL_OK(['walking-skeleton']))
   write(repo, '.rig/product/sprints/sprint-0/chart-review.md', 'verdict: pass\n## Findings\n')
-  assert.equal(sdlc(repo, ['approve', 'chart-0'], { env: { SDLC_HUMAN: '1' } }).code, 0)
+  assert.equal(approveChart(repo, ['approve', 'chart-0'], { env: { SDLC_HUMAN: '1' } }).code, 0)
   let j = view()
   assert.match(states(j), /approve:done build:current/)
   assert.equal(j.outer.find(s => s.id === 'build')?.detail, '0/1 shipped')
@@ -163,7 +163,7 @@ test('journey carries the rung and the queue pick', () => {
   write(repo, '.rig/product/architecture.md', ARCH)
   write(repo, '.rig/product/sprints/sprint-0/implementation-plan.md', IMPL_OK(['walking-skeleton']))
   write(repo, '.rig/product/sprints/sprint-0/chart-review.md', 'verdict: pass\n## Findings\n')
-  assert.equal(sdlc(repo, ['approve', 'chart-0'], { env: { SDLC_HUMAN: '1' } }).code, 0)
+  assert.equal(approveChart(repo, ['approve', 'chart-0'], { env: { SDLC_HUMAN: '1' } }).code, 0)
   let j = view()
   assert.deepEqual([j.rung, j.queue], [0, null])
   assert.match(sdlc(repo, ['status', '--journey']).stdout, /rung 0 · queue: none/)
