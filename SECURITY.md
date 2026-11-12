@@ -25,7 +25,7 @@ rig makes a coding agent follow a process. It is not a sandbox. Read this before
 2. Run agents in Claude Code's sandbox and deploy managed settings so engineers cannot widen them: start from `templates/managed-settings.json` and tailor it (its `$comment` lists what to change). Three things in it are easy to get wrong. A rule there must use `./path`: a `/path` rule anchors at the settings file's own folder, not the repo. Force-enable rig by its full `rig@<marketplace>` ID, or `allowManagedHooksOnly` switches rig's hooks off. `allowManagedPermissionRulesOnly` drops the project's rules, so the managed file carries rig's. Install `templates/production-gate.sh` root-owned at the path the template names (outside every repo, never `.claude/hooks/`, which the model can edit).
 3. Keep Bash on a prompted permission mode for unattended fan-out steps.
 4. Install from your own fork pinned to a release tag, not from a moving branch.
-5. Check 1 and 2: run `node .rig/bin/sdlc.ts readiness --client --managed <your managed-settings.json>` until it exits 0. It reads the trunk's protection or rulesets through `gh`, CODEOWNERS and the managed file. It does not yet check dismiss-stale-approvals or the direct-push block.
+5. Check 1 and 2: run `node .rig/bin/sdlc.ts readiness --client --managed <your managed-settings.json>` until it exits 0. It reads the trunk's protection or rulesets through `gh`, CODEOWNERS and the managed file. It does not yet check dismiss-stale-approvals, the direct-push block, ruleset bypass actors, `enforce_admins`, that `allowManagedHooksOnly` comes with rig force-enabled, or `/path` rules in the managed file. `--managed` checks the file you name, not what each machine runs.
 
 ## Known limits
 

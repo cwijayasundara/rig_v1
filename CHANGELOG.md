@@ -5,8 +5,8 @@
 - **Client readiness (R4)** (2026-11-12, from the readiness doc §2 R4). `readiness --client [--managed <file>] [--json]` checks 10 platform controls and exits 1 until every one passes:
   - the trunk requires `rig-check` and `ai-review` and code-owner review (classic branch protection or rulesets, read through `gh`);
   - a Claude secret is set for `ai-review`;
-  - CODEOWNERS covers `.rig/`, `.claude/` and the rig workflows and names real owners;
-  - managed settings are deployed, with the sandbox on and required, and permission rules managed-only, including rig's `sdlc.ts` rule.
+  - the CODEOWNERS file GitHub actually reads owns `.rig/`, `.claude/`, `CLAUDE.md`, the rig workflows and itself, with real owners (last match wins);
+  - managed settings are deployed, with the sandbox on and required, and permission rules managed-only.
 
   Plain `readiness` is unchanged and makes no network call.
 
