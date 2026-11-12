@@ -42,8 +42,8 @@ const REASONED = /(?:\s--\s*|\bbecause\b\s*)\S/i
 const COMMENT_LINE = /^\s*(?:\/\/|#|\*|\/\*|--|;)/
 const ASSERTION = /\bassert(?:\.\w+\s*\(|\w*\s*[!(])|^\s*assert\s|\bexpect\s*[({]|\.should\b|\bAssert\.\w+\s*\(|\bt\.(?:Error|Fatal)f?\s*\(|\brequire\.\w+\s*\(/g
 const THRESHOLD_KEY = /coverage|threshold|fail[_-]under|minimum|\b(?:lines|branches|functions|statements)\b/i
-const CONFIG_FILE = /(?:^|\/)(?:[^/]*\.(?:json|ya?ml|toml|cfg|ini|xml|gradle|kts|properties)|\.[\w-]*rc(?:\.\w+)?|[^/]*\.config\.[cm]?[jt]s)$/
-const SNAPSHOT = /(?:^|\/)__snapshots__\/|\.snap$/
+export const CONFIG_FILE = /(?:^|\/)(?:[^/]*\.(?:json|ya?ml|toml|cfg|ini|xml|gradle|kts|properties)|\.[\w-]*rc(?:\.\w+)?|[^/]*\.config\.[cm]?[jt]s)$/
+export const SNAPSHOT = /(?:^|\/)__snapshots__\/|\.snap$/
 const KEEP_TESTS = `keep the test and make the code pass it; removing a test needs the person's ${skillRef('waive')}`
 
 const countAssertions = (texts: string[]): number =>

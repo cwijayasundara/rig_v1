@@ -190,3 +190,10 @@ test('the PR body says when the tests were frozen and each re-freeze\'s why, or 
   assert.match(prBody({ intent, spec, plan, verify, outline: '', review: '', risk, freeze: [] }), /Tests not frozen \(no test-writer hand-off\)/)
   assert.match(prBody({ intent, spec, plan, verify, outline: '', review: '', risk }), /Tests not frozen \(no test-writer hand-off\)/)
 })
+
+test('the PR body cleans a re-freeze why and lists dropped tests', () => {
+  const row = (why: string, dropped?: string[]) => ({ at: 'x', commit: 'abcdef1234567', files: [], why, ...(dropped ? { dropped } : {}) })
+  const b = prBody({ intent, spec, plan, verify, outline: '', review: '', risk, freeze: [row('hand-off'), row('a `bad`\n## Evidence <b>', ['tests/b.test.js'])] })
+  assert.match(b, /re-frozen: a 'bad' ## Evidence _b_ \(dropped: tests\/b\.test\.js\)/)
+  assert.doesNotMatch(b, /`bad`/)
+})

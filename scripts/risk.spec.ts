@@ -114,8 +114,21 @@ test('S risk: another change\'s folder and local harness files do not count towa
   assert.match(sdlc(repo, ['risk', 'cart-add', '--pre-review', '--base', 'HEAD']).stdout, /^tier: 0/)
 })
 
-test('a change\'s tests.freeze.jsonl does not raise the tier, though it is a protected path; adjudications.json still does', () => {
-  assert.equal(assessRisk(input({ files: ['.rig/changes/cart-add/tests.freeze.jsonl'] })).tier, 0)
-  assert.equal(assessRisk(input({ files: ['.rig/changes/cart-add/tests.freeze.jsonl'], ci: true })).tier, 0)
+test('a change\'s hand-off tests.freeze.jsonl does not raise the tier, though it is a protected path; adjudications.json still does', () => {
+  const f = '.rig/changes/cart-add/tests.freeze.jsonl'
+  assert.equal(assessRisk(input({ files: [f], freeze: { [f]: { fresh: true, whys: ['hand-off'] } } })).tier, 0)
+  assert.equal(assessRisk(input({ files: [f], ci: true, freeze: { [f]: { fresh: true, whys: ['hand-off'] } } })).tier, 0)
   assert.equal(assessRisk(input({ files: ['.rig/changes/cart-add/adjudications.json'] })).tier, 2)
+})
+
+test('the freeze file is exempt from tier 2 only as one hand-off row on a new file; a re-freeze row or a base that had rows is always-human', () => {
+  const f = '.rig/changes/cart-add/tests.freeze.jsonl'
+  const at = (fresh: boolean, whys: string[], o: Partial<Parameters<typeof assessRisk>[0]> = {}) => assessRisk(input({ files: [f], freeze: { [f]: { fresh, whys } }, ...o }))
+  assert.equal(at(true, ['hand-off']).tier, 0)
+  const re = at(true, ['hand-off', 'loosen B2'])
+  assert.deepEqual([re.tier, re.reasons.includes('test re-frozen: loosen B2')], [2, true])
+  assert.deepEqual([at(false, ['hand-off']).tier, at(false, ['hand-off']).reasons.includes('test re-frozen: hand-off')], [2, true])
+  assert.equal(assessRisk(input({ files: [f] })).tier, 2)
+  // the exemption is for the protected list only: the person's own globs still apply
+  assert.equal(at(true, ['hand-off'], { risk: { enforce: false, alwaysHuman: ['.rig/changes/**'], maxLines: 400, hardCap: false, window: 20, maxRevertRate: 0.1 } }).tier, 2)
 })

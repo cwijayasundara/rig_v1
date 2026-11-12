@@ -1,6 +1,7 @@
 // The PR body (proposal 2026-10-25 A1): what a reviewer needs before reading the diff. Built from the change's own files, no model
 // call; the pr skill adds the part that takes judgement (special things to note, the change outline) as pr-outline.md.
 import { section, blastRadius, bullets } from './model.ts'
+import { clean } from './core.ts'
 import type { Risk } from './risk.ts'
 import type { RunRow } from './runs.ts'
 import { behaviourIds, missingBehaviours } from './sensors.ts'
@@ -88,7 +89,7 @@ function proposedNote(spec: string, requirements: string | undefined): string {
 }
 
 // The test writer's hand-off: when the tests were frozen and why each later freeze changed a frozen test.
-const frozenNote = (rows: FreezeRow[] = []): string => rows.length ? [`Tests frozen at ${rows[0]?.commit.slice(0, 7)} by the test writer`, ...rows.slice(1).map(r => `re-frozen: ${r.why}`)].join('\n') : 'Tests not frozen (no test-writer hand-off)'
+const frozenNote = (rows: FreezeRow[] = []): string => rows.length ? [`Tests frozen at ${rows[0]?.commit.slice(0, 7)} by the test writer`, ...rows.slice(1).map(r => `re-frozen: ${clean(r.why)}${r.dropped?.length ? ` (dropped: ${r.dropped.map(clean).join(', ')})` : ''}`)].join('\n') : 'Tests not frozen (no test-writer hand-off)'
 
 export function prBody(i: PrBodyInput): string {
   const why = firstSentence(section(i.intent, 'Intent')) || 'none recorded'

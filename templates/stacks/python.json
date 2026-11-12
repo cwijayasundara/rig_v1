@@ -1,7 +1,7 @@
 {
   "stack": "python",
   "markers": ["pyproject.toml", "requirements.txt", "setup.py"],
-  "paths": { "tests": ["**/test_*.py", "**/*_test.py", "**/tests/**"], "testSupport": ["**/conftest.py", "**/fixtures/**"] },
+  "paths": { "tests": ["**/test_*.py", "**/*_test.py", "**/tests/**"], "testSupport": ["**/conftest.py", "**/fixtures/**", "**/pytest.ini", "**/tox.ini"] },
   "contracts": { "files": [], "validate": "", "run": "" },
   "sensors": [
     { "id": "lint", "cmd": "ruff check --force-exclude --extend-exclude .rig,.claude {files}", "cadence": "edit", "blocks": true, "guide": "Ruff must pass on every file you touch; fix the code rather than the rule." },

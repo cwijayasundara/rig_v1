@@ -22,7 +22,7 @@ const SHARED_RE = /^\.rig\/product\/sprints\/sprint-\d+\/approval\.json$/
 export const ships = (slug: string) => (f: string): boolean => !isHarnessPath(f) && !f.endsWith(`/${slug}/pr-outline.md`) && (!f.startsWith('.rig/') || f.startsWith(`.rig/changes/${slug}/`) || SHARED_DIRS.some(d => f.startsWith(d)) || SHARED_RE.test(f) || SHARED.includes(f))
 
 export type Risk = { tier: 0 | 1 | 2; reasons: string[] }
-type RiskInput = { files: string[]; lines: number; slugs: string[]; read: (slug: string, name: string) => string; access: AccessRule[]; risk: Registry['risk']; contractGlobs: string[]; ci: boolean; preReview?: boolean }
+type RiskInput = { files: string[]; lines: number; slugs: string[]; read: (slug: string, name: string) => string; access: AccessRule[]; risk: Registry['risk']; contractGlobs: string[]; ci: boolean; preReview?: boolean; freeze?: Record<string, { fresh: boolean; whys: string[] }> }
 
 const TWO = 'two reviewers, one a code owner, recommended; enforce it in branch protection'
 const count = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`
@@ -39,10 +39,12 @@ export function reviewSignals(review: string): { open: number; dismissed: number
 export function assessRisk(i: RiskInput): Risk {
   const fold = (s: string): string => (i.ci ? s.toLowerCase() : s)
   const human = [...i.risk.alwaysHuman, '.github/workflows/**'].map(fold)
-  // The freeze file is protected from tool edits but is the change's own evidence, like its tests: it never makes a PR tier 2.
-  const FREEZE = /^\.rig\/changes\/[^/]+\/tests\.freeze\.jsonl$/i
+  // The freeze file is protected from tool edits but the one hand-off row on a new file is the change's own evidence, like its tests.
+  // Any re-freeze row, or rows on a base that already had them, is the implementer changing its own tests: always a person. The exemption never covers the person's own globs.
+  const frozen = (f: string) => i.freeze?.[f]
+  const exempt = (f: string): boolean => { const z = frozen(f); return Boolean(z?.fresh && z.whys.length === 1 && z.whys[0] === 'hand-off') }
   const two = [
-    ...i.files.filter(f => !FREEZE.test(f) && (isProtected(f, i.ci) || matchesAny(fold(f), human))).map(f => `always-human path: ${f}`),
+    ...i.files.filter(f => (!exempt(f) && isProtected(f, i.ci)) || matchesAny(fold(f), human)).flatMap(f => !exempt(f) && frozen(f)?.whys.length ? (frozen(f)?.whys ?? []).map(w => `test re-frozen: ${w.replace(/\s+/g, ' ').slice(0, 200)}`) : [`always-human path: ${f}`]),
     ...i.access.filter(a => i.slugs.includes(a.intent)).map(a => `access: ${a.intent} builds "${a.action}"`),
   ]
   const reviews = i.slugs.map(s => i.read(s, 'review.md'))
@@ -75,8 +77,11 @@ export function hardCapFindings(diffs: FileDiff[], config: Registry, point: stri
   if (!risk.hardCap || (point !== 'ship' && point !== 'ci') || n <= risk.maxLines) return []
   return [{ sensor: 'size', severity: 'block', message: `diff of ${n} source lines is over risk.maxLines (${risk.maxLines}): risk.hardCap refuses it`, fix: 'split the change into smaller PRs, or have a person waive it with the waive skill: size * <reason> (at CI the waiver counts only when this PR adds the change, and its row needs an independent approval)' }]
 }
+const FREEZE_FILE = /^\.rig\/changes\/[^/]+\/tests\.freeze\.jsonl$/i
+const whyOf = (l: string): string => { try { return String((JSON.parse(l) as { why?: unknown }).why ?? '?') } catch { return '?' } }
 export function riskOf(diffs: FileDiff[], slugs: string[], registry: Registry, access: AccessRule[], ci: boolean, preReview = false): Risk {
-  return assessRisk({
+  const freeze = Object.fromEntries(diffs.filter(d => FREEZE_FILE.test(d.file)).map(d => [d.file, { fresh: d.status === 'A', whys: d.added.map(l => whyOf(l.text)) }]))
+  return assessRisk({ freeze,
     // a rename is judged by both paths, so moving a workflow or contract out of its glob still counts
     files: diffs.flatMap(d => (d.from ? [d.file, d.from] : [d.file])), lines: diffLines(diffs), slugs,
     read: (slug, name) => read(path.join(CHANGES, slug, name)), access, risk: registry.risk, contractGlobs: registry.contracts.files, ci, preReview,

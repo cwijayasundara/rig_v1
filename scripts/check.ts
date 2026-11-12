@@ -2,7 +2,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { waiverLive,
-  ROOT, SDLC, CHANGES, WAIVERS, SENSORS_JSON, BUDGET_MS, readJson, exists, read, out, fail, git, toPosix, optString, readJsonl, defaultBase, checkSlug, skillRef,
+  ROOT, SDLC, CHANGES, WAIVERS, SENSORS_JSON, BUDGET_MS, readJson, exists, read, out, fail, git, toPosix, optString, readJsonl, defaultBase, checkSlug, skillRef, clean,
   type Args, type Waiver,
 } from './core.ts'
 import { parseRules, formatFindings, warnLines, matchesAny, isTest, isSource, ghPages, planFiles, type FileDiff, type Finding, type Rule } from './model.ts'
@@ -19,7 +19,7 @@ import { isRegistryShape, parseRegistry, defaultRegistry, updateKnownRed, active
 import { frozenFindings, runContracts } from './contracts.ts'
 import { intentShipFindings } from './intentmapio.ts'
 import { syncFindings } from './sync.ts'
-import { freezeFindings } from './testfreeze.ts'
+import { freezeFindings, freezeRowsAdded } from './testfreeze.ts'
 import { riskOf, formatRisk, hardCapFindings, type Risk } from './risk.ts'
 import { changeHistory, breaker } from './reverts.ts'
 import { parseAccess } from './chartcheck.ts'
@@ -281,9 +281,6 @@ export const slugsIn = (diffs: FileDiff[]): string[] => [...new Set(diffs.map(d 
 
 // Waivers and approvals are trusted, not recomputed, so CI shows each row a PR adds for a person to review.
 const HUMAN_FILES = [['.rig/waivers.jsonl', 'waiver']] as const
-// PR-controlled text: one line, no backticks or angle brackets (it cannot close the summary fence or start a
-// `::` workflow command, since every row is printed after "  - "), and capped.
-const clean = (v: unknown): string => String(v).replace(/[\u0000-\u001f\u007f\u2028\u2029]/g, ' ').replace(/`/g, "'").replace(/[<>]/g, '_').replace(/"/g, "'").slice(0, 200)
 function humanRowsAdded(base: string): string[] {
   const rows: string[] = []
   for (const [rel, kind] of HUMAN_FILES) {
@@ -295,6 +292,7 @@ function humanRowsAdded(base: string): string[] {
       rows.push(!Object.keys(r).length ? `${kind} (unparseable): ${clean(line)}` : `waiver ${s('slug')}: ${s('sensor')} ${s('file')} "${s('reason')}" by ${s('by')}`)
     }
   }
+  rows.push(...freezeRowsAdded(base, clean))
   // approval.json: every one the PR adds or edits is a person's decision CI cannot verify from the file alone.
   // A sprint chart approval (.rig/product/sprints/sprint-N/approval.json) is the same kind of row.
   for (const f of (git(['diff', '--name-only', base, 'HEAD', '--', '.rig/changes', '.rig/product/sprints']) ?? '').split('\n')) {
