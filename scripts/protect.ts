@@ -6,15 +6,15 @@ import path from 'node:path'
 import { git, ROOT } from './core.ts'
 import { gh as ghRun } from './model.ts'
 
-const CHECKS = ['rig-check', 'ai-review']
-const SECRETS = ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY']
+export const CHECKS = ['rig-check', 'ai-review']
+export const SECRETS = ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY']
 
 const gh = (args: string[]): { ok: boolean; out: string } => {
   try { return { ok: true, out: ghRun(args) } } catch (e) { return { ok: false, out: String((e as { stderr?: string }).stderr ?? (e as Error).message) } }
 }
 
 // The remote's default branch when git knows it (origin/HEAD), else main or master, else main.
-const trunk = (): string => git(['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'])?.trim().replace(/^origin\//, '') || (['main', 'master'].find(b => git(['rev-parse', '--verify', '--quiet', b]) || git(['rev-parse', '--verify', '--quiet', `origin/${b}`])) ?? 'main')
+export const trunk = (): string => git(['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'])?.trim().replace(/^origin\//, '') || (['main', 'master'].find(b => git(['rev-parse', '--verify', '--quiet', b]) || git(['rev-parse', '--verify', '--quiet', `origin/${b}`])) ?? 'main')
 
 export function protect(dry: boolean, branch = trunk()): string[] {
   const route = `repos/{owner}/{repo}/branches/${branch}/protection`
