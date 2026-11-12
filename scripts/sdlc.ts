@@ -33,9 +33,8 @@ import { cmdArch, layerState, layerStateText } from './arch.ts'
 import { cmdQueue, conflictsFor } from './queue.ts'
 import { intentScope } from './scope.ts'
 import { prdFormatProblems, prdLedger, conversionProblems } from './prdformat.ts'
-import { cmdPrdMore } from './prdcmd.ts'
-import { parseLedger, parseIntent } from './chartcheck.ts'
-import { superpowersWarning } from './superpowers.ts'
+import { cmdPrdMore } from './prdcmd.ts'; import { writeApprovalPage, approvalGate } from './approvalsummary.ts'
+import { parseLedger, parseIntent } from './chartcheck.ts'; import { superpowersWarning } from './superpowers.ts'
 import { ARCH_REL, intentsDir, intentRelOf, prdRel, sprintRel, prdPath, reviewPath, ledgerPath, sourcePath } from './product.ts'
 import { cmdSlice } from './slice.ts'
 import { registerContracts } from './contracts.ts'
@@ -243,7 +242,7 @@ function approveChart(n: number, args: Args): void {
   // The reviewer's Deferred list is for the person to decide; approval is where it is seen (shop_app 2026-10-27: a whitespace-sku question sat there undecided).
   const deferred = (/^#{2,3}[ \t]+Deferred\b[^\n]*\n([\s\S]*?)(?=^#{2,3}[ \t]|(?![\s\S]))/m.exec(read(reviewPath(n)))?.[1] ?? '').replace(/^\s*\n/, '').split(/\n(?=[-*]\s)/).filter(c => /^[-*]\s/.test(c)).filter(c => !/→\s*(?:fixed|waived|dropped|carried|taken)\b/i.test(c)).map(c => c.replace(/^[-*]\s+/, '').replace(/\s*\n\s*/g, ' ').trim()).filter(c => c && !/^(none|nothing|no (items?|deferred|findings?)|no .*\b(found|noted|recorded)\b)\.?$/i.test(c))
   const by = ownerOrFail(args, 'approvals')
-  writeChartApproval(n, by)
+  writeChartApproval(n, by, approvalGate(n, optString(args, 'answers')))
   // A sensors.json with edits of its own is not swept into the approval commit: the person commits it.
   const sensorsDirty = (git(['status', '--porcelain', '--', '.rig/sensors.json']) ?? '') !== ''
   const reg = registerContracts((exists(intentsDir(n)) ? fs.readdirSync(intentsDir(n)) : []).flatMap(f => { const i = parseIntent(f, read(path.join(intentsDir(n), f))); return [...i.contractFiles, ...i.exampleFiles] }))
@@ -275,11 +274,12 @@ function cmdChart(args: Args): void {
     const next = nextChart()
     return out(args.opt.json ? JSON.stringify(next) : `${next.sprint === null ? 'sprint: ask' : `sprint ${next.sprint}`}${next.prd ? ` ${next.prd}` : ''} (${next.why})${next.candidates.length > 1 ? `\n${next.candidates.map(c => `  sprint ${c.sprint}: ${c.prd}`).join('\n')}` : ''}`)
   }
-  if ((sub !== 'check' && sub !== 'report' && sub !== 'plan') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: chart next [--json] | chart (check [--cases] [--json] | report | plan [--print]) <sprint number>')
+  if ((sub !== 'check' && sub !== 'report' && sub !== 'plan' && sub !== 'summary') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: chart next [--json] | chart (check [--cases] [--json] | report | plan [--print] | summary) <sprint number>')
   const n = Number(num)
   needPrd(n)
   if (sub === 'plan') return out(args.opt.print ? sprintPlan(n) : `wrote ${writePlan(n)}`)
   if (sub === 'report') return out(chartReport(n))
+  if (sub === 'summary') return out(`wrote ${writeApprovalPage(n)}`)
   const found = chartFindings(n, Boolean(args.opt.cases))
   if (args.opt.json) return out(JSON.stringify(found))
   const block = found.filter(f => f.severity === 'block')

@@ -10,14 +10,15 @@ import { stripGenerated, carriedIds } from './carry.ts'
 import { planText, type PlanRow } from './plan.ts'
 import { prdFormatProblems, prdLedger, conversionProblems } from './prdformat.ts'
 import { coverageProblems } from './prdcoverage.ts'
-import { PRODUCT, ARCH_REL, archPath, prdPath, intentsDir, testplanDir, holdoutDir, approvalPath, sprintDir, sprintsOnDisk, intentRel, planPath, implPlanPath, sprintRel, ledgerPath, coveragePath, waiversPath, reviewPath, sourcePath, conversionPath, conversionReviewPath, writeProductIgnore } from './product.ts'
+import { PRODUCT, ARCH_REL, archPath, prdPath, intentsDir, testplanDir, holdoutDir, approvalPath, approvalMdPath, sprintDir, sprintsOnDisk, intentRel, planPath, implPlanPath, sprintRel, ledgerPath, coveragePath, waiversPath, reviewPath, sourcePath, conversionPath, conversionReviewPath, writeProductIgnore } from './product.ts'
 import { designIntents, sharedScopeProblems, architectureProblems, implementationPlanProblems, accessProblems, parseAccess, parseIntent, parseCases, parkedDecisions, prdIds, traceReport, ledgerProblems, parseLedger, parentOf, parseReview, openFindings, type ReviewFinding, type ChartWaiver, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
 
 const SHARED_DIRS = ['adr'].map(d => `${toPosix(path.relative(ROOT, path.join(PRODUCT, d)))}/`)
 export const CHART_RE = /^chart-(\d{1,4})$/
 type ChartFile = { path: string; sha: string }
 type ChartState = 'approved' | 'stale' | 'missing'
-type Row = { by: string; at: string; digest: string; files: ChartFile[] }
+export type ApprovalAnswer = { question: string; answer: string }
+type Row = { by: string; at: string; digest: string; files: ChartFile[]; answers?: ApprovalAnswer[] }
 
 const isShared = (p: string): boolean => p === ARCH_REL || SHARED_DIRS.some(d => p.startsWith(d))
 
@@ -74,7 +75,7 @@ export const designFile = (n: number): string[] => { const d = designDocOf(n); r
 
 function ownFiles(n: number): string[] {
   const own = intentsOf(n)
-  return rel([prdPath(n), sourcePath(n), conversionPath(n), coveragePath(n), ledgerPath(n), waiversPath(n), ...designFile(n), implPlanPath(n), ...walk(testplanDir(n)), ...walk(holdoutDir(n)), ...own.map(i => i.file), ...own.flatMap(i => [...i.contractFiles, ...i.exampleFiles]).filter(f => !escapes(f)).map(f => path.join(ROOT, f))])
+  return rel([prdPath(n), approvalMdPath(n), sourcePath(n), conversionPath(n), coveragePath(n), ledgerPath(n), waiversPath(n), ...designFile(n), implPlanPath(n), ...walk(testplanDir(n)), ...walk(holdoutDir(n)), ...own.map(i => i.file), ...own.flatMap(i => [...i.contractFiles, ...i.exampleFiles]).filter(f => !escapes(f)).map(f => path.join(ROOT, f))])
 }
 const sharedFiles = (): string[] => rel([archPath, ...walk(path.join(PRODUCT, 'adr')).filter(f => f.endsWith('.md'))])
 export const chartFiles = (n: number): string[] => [...new Set([...ownFiles(n), ...sharedFiles()])].sort()
@@ -102,9 +103,9 @@ function acceptAdrs(n: number): void {
   })
   if (ids.length && exists(archPath)) fs.writeFileSync(archPath, read(archPath).replace(new RegExp(`^(\\|\\s*(?:\\[(?:${ids.join('|')})\\]\\([^)]*\\)|(?:${ids.join('|')}))\\s*\\|.*\\|\\s*)proposed(\\s*\\|\\s*${n}\\s*\\|\\s*)$`, 'gm'), '$1accepted$2'))
 }
-export function writeChartApproval(n: number, by: string): void {
+export function writeChartApproval(n: number, by: string, answers: ApprovalAnswer[] = []): void {
   acceptAdrs(n)
-  const row: Row = { by, at: now(), digest: chartDigest(n), files: manifest(chartFiles(n)) }
+  const row: Row = { by, at: now(), digest: chartDigest(n), files: manifest(chartFiles(n)), answers }
   fs.mkdirSync(sprintDir(n), { recursive: true }); writeProductIgnore()
   fs.writeFileSync(approvalPath(n), JSON.stringify(row, null, 2) + '\n')
 }
@@ -179,7 +180,7 @@ export function chartFindings(n: number, withCases: boolean): ChartFinding[] {
 }
 
 // The review findings that still stop approval, or null when the sprint has no chart-review.md.
-const chartWaivers = (n: number): ChartWaiver[] => { try { const v = JSON.parse(read(waiversPath(n))) as unknown; return Array.isArray(v) ? (v as ChartWaiver[]) : [] } catch { return [] } }
+export const chartWaivers = (n: number): ChartWaiver[] => { try { const v = JSON.parse(read(waiversPath(n))) as unknown; return Array.isArray(v) ? (v as ChartWaiver[]) : [] } catch { return [] } }
 export const chartReview = (n: number): ReviewFinding[] | null => (exists(reviewPath(n)) ? parseReview(read(reviewPath(n))) : null)
 export function chartOpenFindings(n: number): ReviewFinding[] | null {
   const review = chartReview(n)

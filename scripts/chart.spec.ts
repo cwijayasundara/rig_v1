@@ -2,6 +2,7 @@
 import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { makeRepo, sdlc, write, gitIn, IMPL_OK } from './testkit.ts'
@@ -944,13 +945,15 @@ test('a generated ledger checked out with CRLF line endings is not stale', () =>
 
 // shop_app 2026-10-27: the cart-storage intent named docs/contracts/cart-file.schema.json under ## Interfaces, yet sensors.json
 // kept contracts.files empty, so no change approval froze it.
+// A named contract is a check question: the approver answers it in their own words (three-gates C5).
+const ANSWERS = ['--answers', (() => { const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rig-answers-')), 'a.json'); fs.writeFileSync(f, '["The client needs this interface, as written."]'); return f })()]
 test('approve chart-N registers the contract and example files the intents declare, once, keeping what is already registered', () => {
   cleanChart()
   write(repo, `${P}/sprints/sprint-1/intents/alpha.md`, intent(1, { iface: '- Contract: docs/contracts/cart.schema.json\n- Example: docs/contracts/examples/cart.json' }))
   write(repo, 'docs/contracts/cart.schema.json', '{}\n')
   write(repo, 'docs/contracts/examples/cart.json', '{}\n')
   write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], contracts: { files: ['api/**'], covers: [], validate: '', run: '' } }))
-  const ok = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
+  const ok = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat', ...ANSWERS], HUMAN)
   assert.equal(ok.code, 0, ok.stderr)
   const files = () => (JSON.parse(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8')) as { contracts: { files: string[] } }).contracts.files
   assert.deepEqual(files(), ['api/**', 'docs/contracts/cart.schema.json', 'docs/contracts/examples/cart.json'])
@@ -971,7 +974,7 @@ test('approve chart-N registers what the chart check accepts: ./ paths normalise
   write(repo, 'api/ex.json', '{}\n')
   write(repo, `${P}/sprints/sprint-1/intents/alpha.md`, intent(1, { iface: 'Contract: ./api/x.yaml (v2)\nExample: api/ex.json' }))
   write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], contracts: { validate: 'true' } }))
-  const ok = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
+  const ok = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat', ...ANSWERS], HUMAN)
   assert.equal(ok.code, 0, ok.stderr)
   const c = (JSON.parse(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8')) as { contracts: { files: string[]; validate: string } }).contracts
   assert.deepEqual(c.files, ['.rig/contracts/**', 'api/x.yaml', 'api/ex.json'])
@@ -984,7 +987,7 @@ test('approve chart-N leaves an unparseable sensors.json alone and says so; a se
   write(repo, 'api/ex.json', '{}\n')
   write(repo, `${P}/sprints/sprint-1/intents/alpha.md`, intent(1, { iface: '- Contract: api/x.yaml\n- Example: api/ex.json' }))
   write(repo, '.rig/sensors.json', '{ "sensors": [], }')
-  const bad = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
+  const bad = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat', ...ANSWERS], HUMAN)
   assert.match(bad.stdout, /not registered \(sensors\.json is not valid JSON\)/)
   assert.equal(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8'), '{ "sensors": [], }')
 })

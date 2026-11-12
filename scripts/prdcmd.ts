@@ -10,7 +10,7 @@ import { conversionMapOf, intentsOf, designFile, adrFilesOf } from './chart.ts'
 const MARK = /\((?:proposed|default|decided) at chart\)/i
 // What rests on a value nobody at the client said: behaviours with the marker or citing a proposed line, and the design doc's and this sprint's
 // ADRs' marked decisions.
-function proposedMore(n: number, prd: string, map: string | null): ProposedMore {
+export function proposedMore(n: number, prd: string, map: string | null): ProposedMore {
   const origins = prdOrigins(prd, map)
   const proposed = new Set(prdCriteria(prd).filter(c => origins.get(c.id) === 'proposed' || origins.get(c.id) === 'unattributed').map(c => c.id))
   const behaviours = intentsOf(n).flatMap(i => i.behaviours.flatMap(b => {
@@ -22,8 +22,11 @@ function proposedMore(n: number, prd: string, map: string | null): ProposedMore 
   return { behaviours, decisions }
 }
 
+// The "proposed by the agent" report, as `prd proposed` prints it (the approval page embeds it).
+export const proposedReport = (n: number): string => prdProposed(n, read(prdPath(n)), conversionMapOf(n), proposedMore(n, read(prdPath(n)), conversionMapOf(n)))
+
 export function cmdPrdMore(sub: string, n: number, json: boolean): void {
-  if (sub === 'proposed') return out(prdProposed(n, read(prdPath(n)), conversionMapOf(n), proposedMore(n, read(prdPath(n)), conversionMapOf(n))))  // the lines nobody at the client said, for the one review
+  if (sub === 'proposed') return out(proposedReport(n)) // the lines nobody at the client said, for the one review
   if (!exists(sourcePath(n))) fail(`sprint ${n} has no source.md: the chart copies the person's PRD there first`)
   if (sub === 'gaps') {
     if (!exists(coveragePath(n))) fail(`sprint ${n} has no coverage.md: write it from source.md first (templates/prd-topics.md)`)
