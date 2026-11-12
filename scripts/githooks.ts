@@ -142,7 +142,7 @@ export function cmdCheckPush(_args: Args): void {
   const findings: Finding[] = errors.map(e => ({ sensor: 'config', severity: 'block', file: SENSORS_JSON, message: e, fix: 'fix the file' }))
   const notes = all.filter(r => !judged(r)).map(r => `${r.remoteRef}: skipped (a delete or tag)`)
   const head = git(['rev-parse', 'HEAD'])
-  const drifted = refs.some(r => r.localSha !== head) || Boolean(git(['status', '--porcelain', '--untracked-files=no']))
+  const drifted = refs.some(r => r.localSha !== head) || Boolean(git(['status', '--porcelain', '--untracked-files=no', '--', '.', ':(exclude,glob).rig/changes/*/evidence/**'])) // the hooks append evidence every turn
   if (drifted) notes.push('note: the full commands and quality ratchet run against your working tree, not the pushed commits; changed-lines sensors skipped (CI runs them)')
   for (const r of refs) {
     const base = pushBase(r)

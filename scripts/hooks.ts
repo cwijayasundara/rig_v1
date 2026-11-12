@@ -16,6 +16,7 @@ import { formatFindings, isSource, isTest, matchesAny, warnRow, type Finding } f
 import { sessionNote } from './githooks.ts'
 import { treeStamp } from './stamp.ts'
 import { rigOff, trunkRef, offLine } from './off.ts'
+import { recordHuman, questionsAsked } from './humanload.ts'
 import { runCommand } from './runs.ts'
 import { policyMode, modelFamily, activeSensors, commandFor, contractGlobs, ALWAYS_ON, type Registry, type Mode } from './registry.ts'
 import { contractsTouched } from './contracts.ts'
@@ -196,6 +197,7 @@ function startNudge(input: HookInput): string {
 // Warnings the last turn left are handed to the agent once, here, because a passing Stop cannot show them to it.
 function hookPromptSubmit(input: HookInput = {}): void {
   if (!exists(SDLC)) return
+  recordHuman('prompt', input)
   const typed = /^\s*\/rig[:-]approve(?:[ \t]+([^\n]*?))?\s*$/.exec(String(input.prompt ?? ''))
   const last = readGate().last
   const carry = !typed && last && !last.shown && last.warns > 0 && last.warnRows?.length ? last.warnRows : null
@@ -285,7 +287,10 @@ const HOOKS: Record<string, (input: HookInput) => void> = {
   'agent-launch': hookAgentLaunch,
   'agent-done': hookAgentDone,
   'prompt-submit': i => hookPromptSubmit(i),
+  asking: i => recordHuman('asking', i),
+  asked: i => recordHuman('question', i, questionsAsked(i)),
   stop: i => {
+    recordHuman('stop', i)
     const r = hookStop(i)
     if (!r.halt && r.warn) out(JSON.stringify({ systemMessage: r.warn }))
   },
