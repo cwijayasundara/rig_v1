@@ -70,3 +70,10 @@ test('a real weakening of a journey rule is still caught', () => {
   assert.deepEqual(weakenings(spec('- B7 (DR-4): a member may hold several books'), JOURNEY), ['B7 cites DR-4 but drops "at most"', 'B7 cites DR-4 but drops "3"'])
   assert.deepEqual(weakenings(spec('- B2 (DR-5): a book is lent for two weeks'), JOURNEY), ['B2 cites DR-5 but drops "14"'])
 })
+
+test('an aliased ledger row is checked under its id and its alias', () => {
+  const req = '- FR-4.2 (AC-4.1) [rule] prd.md:12 "a member may hold at most 3 books"\n'
+  assert.deepEqual(weakenings(spec('- B1 (AC-4.1): a member may hold several books'), req), ['B1 cites AC-4.1 but drops "at most"', 'B1 cites AC-4.1 but drops "3"'])
+  assert.deepEqual(weakenings(spec('- B2 (FR-4.2): a member may hold several books'), req), ['B2 cites FR-4.2 but drops "at most"', 'B2 cites FR-4.2 but drops "3"'])
+  assert.deepEqual(weakenings(spec('- B3 (AC-4.1): a member may hold at most 3 books'), req), [])
+})
