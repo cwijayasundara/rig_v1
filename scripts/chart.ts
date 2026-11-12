@@ -10,7 +10,7 @@ import { stripGenerated, carriedIds } from './carry.ts'
 import { planText, type PlanRow } from './plan.ts'
 import { prdFormatProblems, prdLedger, conversionProblems } from './prdformat.ts'
 import { coverageProblems } from './prdcoverage.ts'
-import { PRODUCT, ARCH_REL, archPath, prdPath, intentsDir, testplanDir, approvalPath, sprintDir, sprintsOnDisk, intentRel, planPath, implPlanPath, sprintRel, ledgerPath, coveragePath, waiversPath, reviewPath, sourcePath, conversionPath, conversionReviewPath } from './product.ts'
+import { PRODUCT, ARCH_REL, archPath, prdPath, intentsDir, testplanDir, holdoutDir, approvalPath, sprintDir, sprintsOnDisk, intentRel, planPath, implPlanPath, sprintRel, ledgerPath, coveragePath, waiversPath, reviewPath, sourcePath, conversionPath, conversionReviewPath } from './product.ts'
 import { designIntents, sharedScopeProblems, architectureProblems, implementationPlanProblems, accessProblems, parseAccess, parseIntent, parseCases, parkedDecisions, prdIds, traceReport, ledgerProblems, parseLedger, parentOf, parseReview, openFindings, type ReviewFinding, type ChartWaiver, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
 
 const SHARED_DIRS = ['adr'].map(d => `${toPosix(path.relative(ROOT, path.join(PRODUCT, d)))}/`)
@@ -74,7 +74,7 @@ export const designFile = (n: number): string[] => { const d = designDocOf(n); r
 
 function ownFiles(n: number): string[] {
   const own = intentsOf(n)
-  return rel([prdPath(n), sourcePath(n), conversionPath(n), coveragePath(n), ledgerPath(n), waiversPath(n), ...designFile(n), implPlanPath(n), ...walk(testplanDir(n)), ...own.map(i => i.file), ...own.flatMap(i => [...i.contractFiles, ...i.exampleFiles]).filter(f => !escapes(f)).map(f => path.join(ROOT, f))])
+  return rel([prdPath(n), sourcePath(n), conversionPath(n), coveragePath(n), ledgerPath(n), waiversPath(n), ...designFile(n), implPlanPath(n), ...walk(testplanDir(n)), ...walk(holdoutDir(n)), ...own.map(i => i.file), ...own.flatMap(i => [...i.contractFiles, ...i.exampleFiles]).filter(f => !escapes(f)).map(f => path.join(ROOT, f))])
 }
 const sharedFiles = (): string[] => rel([archPath, ...walk(path.join(PRODUCT, 'adr')).filter(f => f.endsWith('.md'))])
 export const chartFiles = (n: number): string[] => [...new Set([...ownFiles(n), ...sharedFiles()])].sort()

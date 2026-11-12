@@ -22,4 +22,6 @@
 
 | ID | Requirement | Intent | Behaviour | Level | Data | Expected | Access |
 |---|---|---|---|---|---|---|---|
+<!-- Holdout cases: for each case the QA agent also writes one executable black-box test in .rig/product/sprints/sprint-<N>/holdout/, named by case id: `TC-3.holdout.test.js`, or `test_tc_3_holdout.py` (any name starting `TC-<n>` or `test_tc_<n>` works; the stack pack's `holdout` command runs it with {file}). It exercises the public interface only (CLI, HTTP, contract files), never an internal module, and runs with the repo root as its working directory. The builder never sees these files (a hook hides them during build); `sdlc verify` and rig-check run them, and the chart approval covers them. -->
+
 | TC-1 | FR-1 | <slug> | B1 | unit | - | <observable result> | - |

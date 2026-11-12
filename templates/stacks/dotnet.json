@@ -1,6 +1,7 @@
 {
   "stack": "dotnet",
   "markers": ["*.sln", "*.csproj"],
+  "holdout": "dotnet run --file {file}",
   "paths": { "tests": ["**/*.Tests/**", "**/*.Test/**", "**/*Tests.cs"], "testSupport": ["**/TestData/**"] },
   "contracts": { "files": [], "validate": "", "run": "" },
   "sensors": [

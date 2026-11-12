@@ -1,6 +1,7 @@
 {
   "stack": "python",
   "markers": ["pyproject.toml", "requirements.txt", "setup.py"],
+  "holdout": "pytest -q {file}",
   "paths": { "tests": ["**/test_*.py", "**/*_test.py", "**/tests/**"], "testSupport": ["**/conftest.py", "**/fixtures/**", "**/pytest.ini", "**/tox.ini"] },
   "contracts": { "files": [], "validate": "", "run": "" },
   "sensors": [

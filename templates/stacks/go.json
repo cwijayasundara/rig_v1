@@ -1,6 +1,7 @@
 {
   "stack": "go",
   "markers": ["go.mod"],
+  "holdout": "go test {file}",
   "paths": { "tests": ["**/*_test.go"], "testSupport": ["**/testdata/**"] },
   "contracts": { "files": [], "validate": "", "run": "" },
   "sensors": [

@@ -21,4 +21,5 @@ allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_R
 4. For an operation that can raise, check each step after the commit point (rename, replace, commit, send): it must not make the operation report failure once the change is in place, or the code says why.
 5. The hooks run the sensors after each edit and at the end of each turn. Fix what they report; when a finding survives your fix, write in one sentence the premise that fix rested on and check it before the next fix. Never weaken a test, a sensor or a contract file.
 6. For a large plan, run at most one `general-purpose` agent with model `sonnet` per independent group of files, in the foreground, each with a brief of at most 60 lines: the behaviours, the files and the test command.
-7. When every behaviour has a passing test, continue with `/rig:test <slug>` in this turn.
+7. Hidden acceptance cases run in `/rig:test`; a failure names a case id and its requirement: fix the code against that requirement.
+8. When every behaviour has a passing test, continue with `/rig:test <slug>` in this turn.

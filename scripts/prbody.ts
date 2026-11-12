@@ -9,7 +9,7 @@ import { parseFindings, type ClaimRow } from './claims.ts'
 import { parseLedger } from './chartcheck.ts'
 import type { FreezeRow } from './testfreeze.ts'
 
-type PrBodyInput = { requirements?: string; claims?: ClaimRow[]; intent: string; spec: string; plan: string; verify: { pass: boolean; tree: string | null; blocks: string[]; from?: string } | null; outline: string; review: string; risk: Risk; amendments?: string; runs?: RunRow[]; tests?: string; intentMap?: string; freeze?: FreezeRow[] }
+type PrBodyInput = { requirements?: string; claims?: ClaimRow[]; intent: string; spec: string; plan: string; verify: { pass: boolean; tree: string | null; blocks: string[]; from?: string; holdout?: { passed: number; total: number } } | null; outline: string; review: string; risk: Risk; amendments?: string; runs?: RunRow[]; tests?: string; intentMap?: string; freeze?: FreezeRow[] }
 
 const firstSentence = (text: string): string => /^[\s\S]*?[.!?](?=\s|$)/.exec(text.trim())?.[0].replace(/\s+/g, ' ') ?? text.trim().replace(/\s+/g, ' ')
 
@@ -96,7 +96,7 @@ export function prBody(i: PrBodyInput): string {
   const behaviours = bullets(section(i.spec, 'Behaviours'))
   const radius = (blastRadius(i.spec) ?? []).map(p => `- ${p}`)
   const amended = bullets(section(i.amendments ?? '', 'Amendments')).filter(l => !/^[-*]\s+none\.?$/i.test(l))
-  const evidence = i.verify ? `verify: ${i.verify.pass ? 'pass' : 'fail'} on tree ${i.verify.tree ?? 'unknown'} (${i.verify.blocks.join(', ') || 'no blocking sensors'})` : 'verify: none'
+  const evidence = i.verify ? `verify: ${i.verify.pass ? 'pass' : 'fail'} on tree ${i.verify.tree ?? 'unknown'} (${i.verify.blocks.join(', ') || 'no blocking sensors'})${i.verify.holdout ? `\nHoldout: ${i.verify.holdout.passed}/${i.verify.holdout.total} hidden acceptance cases pass` : ''}` : 'verify: none'
   const missed = bullets(section(i.review, 'Unverifiable'))
   // Only the latest verify's runs: an older run of a check it did not re-run is not evidence about this tree.
   const from = i.verify?.from, runs = (i.runs ?? []).filter(r => !from || r.at >= from)

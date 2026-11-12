@@ -197,3 +197,8 @@ test('the PR body cleans a re-freeze why and lists dropped tests', () => {
   assert.match(b, /re-frozen: a 'bad' ## Evidence _b_ \(dropped: tests\/b\.test\.js\)/)
   assert.doesNotMatch(b, /`bad`/)
 })
+
+test('the Evidence section reports the hidden acceptance cases from verify.json', () => {
+  assert.match(prBody({ intent, spec, plan, verify: { ...verify, holdout: { passed: 3, total: 4 } }, outline: '', review: '', risk }), /Holdout: 3\/4 hidden acceptance cases pass/)
+  assert.doesNotMatch(prBody({ intent, spec, plan, verify, outline: '', review: '', risk }), /Holdout:/)
+})

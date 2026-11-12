@@ -7,7 +7,9 @@ import { branchDiff, showAt } from './diffs.ts'
 import { treeStamp } from './stamp.ts'
 import { formatFindings } from './model.ts'
 import { activeSlug, writeVerify } from './lifecycle.ts'
+import { runHoldout, sprintOf, holdoutLines, holdoutFix } from './holdout.ts'
 
+export { cmdHoldout } from './holdout.ts'
 export function cmdVerify(args: Args): void {
   const given = args.pos[0]
   const slug = given ? checkSlug(given) : activeSlug()
@@ -16,8 +18,10 @@ export function cmdVerify(args: Args): void {
   const base = defaultBase(), ref = base ?? 'HEAD', before = treeStamp(), from = now()
   const budgetMs = Number(optString(args, 'budget-ms') ?? BUDGET_MS.ship)
   const r = runChecks({ point: 'ship', diffs: branchDiff(ref), config, rules, slugs: [slug], commands: 'full', budgetMs, before: f => showAt(ref, f) ?? '', base, ratchet: false, gates: config.gates })
-  const blocks = [...errors.map(e => `config: ${e}`), ...r.blocks.map(f => `${f.sensor}${f.file ? ` ${f.file}` : ''}: ${(f.message.split('\n')[0] ?? '').slice(0, 200)}`)]
-  writeVerify(slug, { at: now(), from, tree: treeStamp() === before ? before : null, base, pass: !blocks.length, blocks })
-  out([formatFindings(r.findings) || 'verify: every commit and ci sensor passed', `verify.json: ${blocks.length ? `fail (${blocks.length} block(s))` : 'pass'}`].join('\n'))
+  const sprint = sprintOf(slug), h = sprint === null ? null : runHoldout(sprint, config.holdout, null)
+  const holdout = h && !h.none ? { passed: h.passed, total: h.total } : undefined
+  const blocks = [...errors.map(e => `config: ${e}`), ...r.blocks.map(f => `${f.sensor}${f.file ? ` ${f.file}` : ''}: ${(f.message.split('\n')[0] ?? '').slice(0, 200)}`), ...(h?.failing.length ? [`holdout: ${h.passed}/${h.total} passed; failing ${h.failing.join(', ')}: ${holdoutFix()}`] : [])]
+  writeVerify(slug, { at: now(), from, tree: treeStamp() === before ? before : null, base, pass: !blocks.length, blocks, ...(holdout ? { holdout } : {}) })
+  out([formatFindings(r.findings) || 'verify: every commit and ci sensor passed', ...(h ? holdoutLines(h) : []), `verify.json: ${blocks.length ? `fail (${blocks.length} block(s))` : 'pass'}`].join('\n'))
   process.exitCode = blocks.length ? 1 : 0
 }

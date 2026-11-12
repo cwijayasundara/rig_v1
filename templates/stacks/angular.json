@@ -1,6 +1,7 @@
 {
   "stack": "angular",
   "markers": ["angular.json"],
+  "holdout": "node --test {file}",
   "paths": { "ignore": ["**/*.md", "**/*.lock", "**/package-lock.json"], "tests": ["**/*.spec.ts", "**/e2e/**"], "testSupport": ["**/testing/**"] },
   "contracts": { "files": [], "validate": "", "run": "" },
   "sensors": [

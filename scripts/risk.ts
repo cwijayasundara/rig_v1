@@ -11,6 +11,7 @@ import { activeSlug } from './lifecycle.ts'
 import { routeCheck } from './route.ts'
 import { archPath } from './product.ts'
 import { isHarnessPath } from './vendor.ts'
+import { touchesHoldout, onChartBranch } from './holdout.ts'
 
 const SHARED = ['.rig/waivers.jsonl', '.rig/autonomy.json', '.rig/.gitignore', '.rig/sensors.json', '.rig/rules.json', '.rig/product/brief.md', '.rig/wiki.json']
 const SHARED_DIRS = ['.rig/guides/', '.rig/wiki/']
@@ -22,7 +23,7 @@ const SHARED_RE = /^\.rig\/product\/sprints\/sprint-\d+\/approval\.json$/
 export const ships = (slug: string) => (f: string): boolean => !isHarnessPath(f) && !f.endsWith(`/${slug}/pr-outline.md`) && (!f.startsWith('.rig/') || f.startsWith(`.rig/changes/${slug}/`) || SHARED_DIRS.some(d => f.startsWith(d)) || SHARED_RE.test(f) || SHARED.includes(f))
 
 export type Risk = { tier: 0 | 1 | 2; reasons: string[] }
-type RiskInput = { files: string[]; lines: number; slugs: string[]; read: (slug: string, name: string) => string; access: AccessRule[]; risk: Registry['risk']; contractGlobs: string[]; ci: boolean; preReview?: boolean; freeze?: Record<string, { fresh: boolean; whys: string[] }> }
+type RiskInput = { files: string[]; lines: number; slugs: string[]; read: (slug: string, name: string) => string; access: AccessRule[]; risk: Registry['risk']; contractGlobs: string[]; ci: boolean; preReview?: boolean; holdoutOk?: boolean; freeze?: Record<string, { fresh: boolean; whys: string[] }> }
 
 const TWO = 'two reviewers, one a code owner, recommended; enforce it in branch protection'
 const count = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`
@@ -45,6 +46,7 @@ export function assessRisk(i: RiskInput): Risk {
   const exempt = (f: string): boolean => { const z = frozen(f); return Boolean(z?.fresh && z.whys.length === 1 && z.whys[0] === 'hand-off') }
   const two = [
     ...i.files.filter(f => (!exempt(f) && isProtected(f, i.ci)) || matchesAny(fold(f), human)).flatMap(f => !exempt(f) && frozen(f)?.whys.length ? (frozen(f)?.whys ?? []).map(w => `test re-frozen: ${w.replace(/\s+/g, ' ').slice(0, 200)}`) : [`always-human path: ${f}`]),
+    ...(!i.holdoutOk && i.files.some(touchesHoldout) ? ['holdout changed'] : []),
     ...i.access.filter(a => i.slugs.includes(a.intent)).map(a => `access: ${a.intent} builds "${a.action}"`),
   ]
   const reviews = i.slugs.map(s => i.read(s, 'review.md'))
@@ -84,7 +86,7 @@ export function riskOf(diffs: FileDiff[], slugs: string[], registry: Registry, a
   return assessRisk({ freeze,
     // a rename is judged by both paths, so moving a workflow or contract out of its glob still counts
     files: diffs.flatMap(d => (d.from ? [d.file, d.from] : [d.file])), lines: diffLines(diffs), slugs,
-    read: (slug, name) => read(path.join(CHANGES, slug, name)), access, risk: registry.risk, contractGlobs: registry.contracts.files, ci, preReview,
+    read: (slug, name) => read(path.join(CHANGES, slug, name)), access, risk: registry.risk, contractGlobs: registry.contracts.files, ci, preReview, holdoutOk: onChartBranch(),
   })
 }
 

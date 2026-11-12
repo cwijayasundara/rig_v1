@@ -20,7 +20,7 @@ export type Paths = { tests: string[]; testSupport: string[]; fixtures: string[]
 export type Risk = { enforce: boolean; alwaysHuman: string[]; maxLines: number; hardCap: boolean; window: number; maxRevertRate: number }
 export type Contracts = { files: string[]; covers: string[]; validate: string; run: string }
 type Policy = Record<string, Mode> & { default: Mode }
-export type Registry = { ratchets?: Record<string, number>; stack: string | null; gates: { plan: boolean; testWriter: boolean }; humanApproval: { selfApprovers: string[]; trusted: string[]; everyTier: boolean }; risk: Risk; contracts: Contracts; models: { build: string; evaluate: string; design: string }; paths: Paths; sensors: RegistrySensor[]; knownRed: string[]; policy: Policy }
+export type Registry = { ratchets?: Record<string, number>; stack: string | null; gates: { plan: boolean; testWriter: boolean }; humanApproval: { selfApprovers: string[]; trusted: string[]; everyTier: boolean }; risk: Risk; contracts: Contracts; holdout: string; models: { build: string; evaluate: string; design: string }; paths: Paths; sensors: RegistrySensor[]; knownRed: string[]; policy: Policy }
 
 type Base = { cadence: Cadence; blocks: boolean; guide: string }
 const BUILTIN_DEFAULTS: Record<BuiltinId, Base> = {
@@ -38,7 +38,7 @@ const BUILTIN_DEFAULTS: Record<BuiltinId, Base> = {
 const GENERIC_TESTS = ['**/test/**', '**/tests/**', '**/__tests__/**']
 const DEFAULT_POLICY: Policy = { haiku: 'continuous', sonnet: 'continuous', opus: 'final', default: 'continuous' }
 const SENSOR_KEYS = ['id', 'cmd', 'builtin', 'cadence', 'blocks', 'count', 'guide', 'timeoutMs', 'enabled', 'options', 'ratchet']
-const TOP_KEYS = ['stack', 'gates', 'humanApproval', 'risk', 'contracts', 'models', 'paths', 'sensors', 'policy', 'knownRed']
+const TOP_KEYS = ['stack', 'gates', 'humanApproval', 'risk', 'contracts', 'holdout', 'models', 'paths', 'sensors', 'policy', 'knownRed']
 const KEBAB = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
 const isBuiltinId = (v: string): v is BuiltinId => (BUILTIN_IDS as readonly string[]).includes(v)
@@ -56,6 +56,7 @@ export function defaultRegistry(): Registry {
     humanApproval: { selfApprovers: [], trusted: [], everyTier: false },
     risk: { enforce: false, alwaysHuman: [], maxLines: 400, hardCap: false, window: 20, maxRevertRate: 0.1 },
     contracts: { files: [], covers: [], validate: '', run: '' },
+    holdout: '',
     models: { build: 'sonnet', evaluate: 'opus', design: 'sonnet' },
     paths: { tests: [...GENERIC_TESTS], testSupport: [], fixtures: [], ignore: ['**/*.md', '**/*.lock'] },
     sensors: BUILTIN_IDS.map(builtinSensor),
@@ -168,6 +169,11 @@ function parseSections(value: Record<string, unknown>, r: Registry, errors: stri
       else if (k === 'validate' || k === 'run') { const s = strings(v, `contracts.${k}`, errors); if (s !== null) r.contracts[k] = s.trim() }
       else errors.push(`contracts: unknown key "${k}"`)
     }
+  }
+  if ('holdout' in value) {
+    const h = strings(value.holdout, 'holdout', errors)
+    if (h !== null && h.trim() && !h.includes('{file}')) errors.push('holdout must contain {file}, the holdout test file the command runs')
+    else if (h !== null) r.holdout = h.trim()
   }
   if ('models' in value) {
     const m = value.models
@@ -327,6 +333,7 @@ export function weakensRegistry(beforeText: string, afterText: string): string[]
   for (const g of b.contracts.files) if (!a.contracts.files.includes(g)) out.push(`contracts.files lost ${g}`)
   for (const g of b.contracts.covers) if (!a.contracts.covers.includes(g)) out.push(`contracts.covers lost ${g}`)
   for (const k of ['validate', 'run'] as const) if (b.contracts[k] && a.contracts[k] !== b.contracts[k]) out.push(`contracts.${k} changed`)
+  if (b.holdout && a.holdout !== b.holdout) out.push('holdout command changed')
   if (b.gates.plan && !a.gates.plan) out.push('gates.plan turned off')
   if (b.gates.testWriter && !a.gates.testWriter) out.push('gates.testWriter turned off')
   for (const u of a.humanApproval.selfApprovers) if (!b.humanApproval.selfApprovers.includes(u)) out.push(`humanApproval.selfApprovers added ${u}`)

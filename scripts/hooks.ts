@@ -18,6 +18,7 @@ import { treeStamp } from './stamp.ts'
 import { rigOff, trunkRef, offLine } from './off.ts'
 import { recordHuman, questionsAsked } from './humanload.ts'
 import { runCommand } from './runs.ts'
+import { holdoutDenied } from './holdout.ts'
 import { policyMode, modelFamily, activeSensors, commandFor, contractGlobs, ALWAYS_ON, type Registry, type Mode } from './registry.ts'
 import { contractsTouched } from './contracts.ts'
 import { syncFindings } from './sync.ts'
@@ -63,6 +64,13 @@ function hookAgentLaunch(input: HookInput): void {
 function hookAgentDone(input: HookInput): void {
   const resolved = input.tool_response?.resolvedModel ?? input.tool_response?.model
   if (exists(SDLC) && input.tool_use_id && resolved) recordResolved(MODEL_STATE, input.tool_use_id, resolved)
+}
+
+// Holdout cases stay hidden while the active change builds or tests: it is at `build` until a verify passes on its tree.
+function hookHoldoutGuard(input: HookInput): void {
+  if (!exists(SDLC)) return
+  const reason = holdoutDenied(input, () => { const a = activeSlug(); return a !== null && status(a, loadConfig().registry.gates, treeStamp()) === 'build' })
+  if (reason) out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }))
 }
 
 function readStdin(): HookInput {
@@ -286,6 +294,7 @@ const HOOKS: Record<string, (input: HookInput) => void> = {
   'model-switch': hookModelSwitch,
   'agent-launch': hookAgentLaunch,
   'agent-done': hookAgentDone,
+  'holdout-guard': hookHoldoutGuard,
   'prompt-submit': i => hookPromptSubmit(i),
   asking: i => recordHuman('asking', i),
   asked: i => recordHuman('question', i, questionsAsked(i)),

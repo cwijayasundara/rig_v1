@@ -128,6 +128,12 @@ jobs:
           BASE: ${{ github.base_ref || github.event.merge_group.base_ref }}
           GH_TOKEN: ${{ github.token }}
         run: node --disable-warning=ExperimentalWarning "$RUNNER_TEMP/sdlc/sdlc.ts" check --at ci --base "origin/${BASE#refs/heads/}" --config-from "origin/${BASE#refs/heads/}"
+      - name: Hidden acceptance cases (holdout)
+        # the cases come from the base branch and run against this PR's tree, so a PR cannot edit them; prints only counts and case ids
+        env:
+          CLAUDE_PROJECT_DIR: ${{ github.workspace }}
+          BASE: ${{ github.base_ref || github.event.merge_group.base_ref }}
+        run: node --disable-warning=ExperimentalWarning "$RUNNER_TEMP/sdlc/sdlc.ts" holdout --ci --base "origin/${BASE#refs/heads/}"
       - name: Wiki staleness (warning only)
         continue-on-error: true
         env:

@@ -21,7 +21,7 @@ export type HookInput = {
   tool_input?: { questions?: unknown[];
     command?: string
     file_path?: string
-    notebook_path?: string
+    notebook_path?: string; path?: string; pattern?: string; glob?: string
     content?: string
     old_string?: string
     new_string?: string

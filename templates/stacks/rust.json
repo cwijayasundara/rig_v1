@@ -1,6 +1,7 @@
 {
   "stack": "rust",
   "markers": ["Cargo.toml"],
+  "holdout": "rustc --edition 2021 -o \"${TMPDIR:-/tmp}/rig-holdout\" {file} && \"${TMPDIR:-/tmp}/rig-holdout\"",
   "paths": { "tests": ["**/tests/**", "**/benches/**"], "testSupport": ["**/fixtures/**"] },
   "contracts": { "files": [], "validate": "", "run": "" },
   "sensors": [

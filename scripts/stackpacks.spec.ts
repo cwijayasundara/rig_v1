@@ -113,3 +113,16 @@ test('the python audit names the project, never the whole environment', () => {
   assert.doesNotMatch(cmd, /pip-audit(?! [-.])/, 'a bare pip-audit audits the environment')
   assert.match(cmd, /nothing to audit/)
 })
+
+test('every pack names the command that runs one holdout file, with the {file} placeholder', () => {
+  for (const p of loadPacks(PACKS_DIR).packs) assert.match(packRegistry(p).holdout, /\{file\}/, p.stack)
+  assert.equal(JSON.parse(fs.readFileSync(path.join(PACKS_DIR, 'node.json'), 'utf8')).holdout, 'node --test {file}')
+  assert.equal(JSON.parse(fs.readFileSync(path.join(PACKS_DIR, 'python.json'), 'utf8')).holdout, 'pytest -q {file}')
+})
+
+test('a holdout command without {file}, or not a string, is a registry error', () => {
+  const pack = (holdout: unknown): string => JSON.stringify({ stack: 'x', markers: ['m'], sensors: [], holdout })
+  assert.match(parsePack(pack('node --test'), 'x.json').errors.join(), /holdout/)
+  assert.match(parsePack(pack(7), 'x.json').errors.join(), /holdout/)
+  assert.deepEqual(parsePack(pack('node --test {file}'), 'x.json').errors, [])
+})
