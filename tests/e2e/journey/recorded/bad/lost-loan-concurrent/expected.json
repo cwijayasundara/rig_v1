@@ -1,0 +1,1 @@
+{"violation": "J3.10", "note": "a concurrent borrow loses a loan"}
