@@ -37,8 +37,8 @@ const CAPPED = [
   path.join(ROOT, 'package.json'),
 ].filter(isFile)
 
-// Cap raised from 6000 to 7000 by the maintainer on 2026-10-21 for Phase 1 (arch made 6 230), then to 8000 the same day for 1.2, 1.3, 1.4 and 1.6; raised to 8100 by the maintainer on 2026-10-25 for the generated PR body (prbody.ts); raised to 10000 by the maintainer on 2026-10-26 for the sprint implementation plan; raised to 11000 by the maintainer on 2026-10-29 for the sprint-1 run fixes (carry.ts, Opus evaluation of every Sonnet output); raised to 11300 by the maintainer on 2026-11-07 for the intent map (intentmap.ts, intentmapio.ts); raised to 12000 by the maintainer on 2026-11-08 for the intent map incorporations (adjudication, ledger-backed results, per-clause mutants); raise it again only by asking.
-test('the harness is at most 12000 lines (tests and docs excluded)', () => {
+// Cap raised from 6000 to 7000 by the maintainer on 2026-10-21 for Phase 1 (arch made 6 230), then to 8000 the same day for 1.2, 1.3, 1.4 and 1.6; raised to 8100 by the maintainer on 2026-10-25 for the generated PR body (prbody.ts); raised to 10000 by the maintainer on 2026-10-26 for the sprint implementation plan; raised to 11000 by the maintainer on 2026-10-29 for the sprint-1 run fixes (carry.ts, Opus evaluation of every Sonnet output); raised to 11300 by the maintainer on 2026-11-07 for the intent map (intentmap.ts, intentmapio.ts); raised to 12000 by the maintainer on 2026-11-08 for the intent map incorporations (adjudication, ledger-backed results, per-clause mutants); raised to 12600 by the maintainer on 2026-11-12 for the three-gates work C2-C4 (frozen tests, hidden acceptance cases, mutation score); raised to 13000 by the maintainer on 2026-11-12 for the three-gates work C4-C6 (mutation score fixes, approval summary, review audits); raise it again only by asking.
+test('the harness is at most 13000 lines (tests and docs excluded)', () => {
   const total = CAPPED.reduce((n, f) => n + count(f), 0)
-  assert.ok(total <= 12000, `harness is ${total} lines`)
+  assert.ok(total <= 13000, `harness is ${total} lines`)
 })

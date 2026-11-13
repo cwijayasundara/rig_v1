@@ -1,13 +1,16 @@
 // The PR body (proposal 2026-10-25 A1): what a reviewer needs before reading the diff. Built from the change's own files, no model
 // call; the pr skill adds the part that takes judgement (special things to note, the change outline) as pr-outline.md.
-import { section, blastRadius, bullets } from './model.ts'
+import { section, blastRadius, bullets, type FileDiff } from './model.ts'
+import { clean } from './core.ts'
 import type { Risk } from './risk.ts'
 import type { RunRow } from './runs.ts'
 import { behaviourIds, missingBehaviours } from './sensors.ts'
 import { parseFindings, type ClaimRow } from './claims.ts'
 import { parseLedger } from './chartcheck.ts'
+import type { FreezeRow } from './testfreeze.ts'
+import { checkQuestions } from './prcheck.ts'
 
-type PrBodyInput = { requirements?: string; claims?: ClaimRow[]; intent: string; spec: string; plan: string; verify: { pass: boolean; tree: string | null; blocks: string[]; from?: string } | null; outline: string; review: string; risk: Risk; amendments?: string; runs?: RunRow[]; tests?: string; intentMap?: string }
+type PrBodyInput = { requirements?: string; claims?: ClaimRow[]; intent: string; spec: string; plan: string; verify: { pass: boolean; tree: string | null; blocks: string[]; from?: string; holdout?: { passed: number; total: number } } | null; outline: string; review: string; risk: Risk; amendments?: string; runs?: RunRow[]; tests?: string; intentMap?: string; freeze?: FreezeRow[]; changes?: FileDiff[] }
 
 const firstSentence = (text: string): string => /^[\s\S]*?[.!?](?=\s|$)/.exec(text.trim())?.[0].replace(/\s+/g, ' ') ?? text.trim().replace(/\s+/g, ' ')
 
@@ -58,6 +61,9 @@ function headChecks(runs: RunRow[]): string {
   return `Checks on the head tree (the latest verify's run of each):\n\n${[...last].map(([n, r]) => line(n, r)).join('\n')}`
 }
 
+// The score the latest mutation-diff run printed (mutscore's summary line), or that it found no mutants; nothing when it did not run.
+const mutationNote = (runs: RunRow[]): string => { const t = runs.findLast(x => x.sensor === 'mutation-diff' && x.source === 'ship' && !x.cwd)?.tail ?? '', m = /mutation: (\d+)\/(\d+) killed on changed lines \(score ([\d.]+)/.exec(t); return m ? `Mutation: ${m[1]}/${m[2]} on changed lines (score ${m[3]})` : /mutation: no mutants on changed lines/.test(t) ? 'Mutation: no mutants on changed lines' : '' }
+
 // The behaviours no test the change adds or edits names, by the traceability sensor's own rule.
 function behaviourTests(spec: string, tests: string | undefined): string {
   const ids = behaviourIds(spec, 'Behaviours')
@@ -86,12 +92,15 @@ function proposedNote(spec: string, requirements: string | undefined): string {
   return rows.length ? `Rests on values nobody at the client said: ${rows.join(', ')}. Ask the owner to confirm them before merging.` : ''
 }
 
+// The test writer's hand-off: when the tests were frozen and why each later freeze changed a frozen test.
+const frozenNote = (rows: FreezeRow[] = []): string => rows.length ? [`Tests frozen at ${rows[0]?.commit.slice(0, 7)} by the test writer`, ...rows.slice(1).map(r => `re-frozen: ${clean(r.why)}${r.dropped?.length ? ` (dropped: ${r.dropped.map(clean).join(', ')})` : ''}`)].join('\n') : 'Tests not frozen (no test-writer hand-off)'
+
 export function prBody(i: PrBodyInput): string {
   const why = firstSentence(section(i.intent, 'Intent')) || 'none recorded'
   const behaviours = bullets(section(i.spec, 'Behaviours'))
   const radius = (blastRadius(i.spec) ?? []).map(p => `- ${p}`)
   const amended = bullets(section(i.amendments ?? '', 'Amendments')).filter(l => !/^[-*]\s+none\.?$/i.test(l))
-  const evidence = i.verify ? `verify: ${i.verify.pass ? 'pass' : 'fail'} on tree ${i.verify.tree ?? 'unknown'} (${i.verify.blocks.join(', ') || 'no blocking sensors'})` : 'verify: none'
+  const evidence = i.verify ? `verify: ${i.verify.pass ? 'pass' : 'fail'} on tree ${i.verify.tree ?? 'unknown'} (${i.verify.blocks.join(', ') || 'no blocking sensors'})${i.verify.holdout ? `\nHoldout: ${i.verify.holdout.passed}/${i.verify.holdout.total} hidden acceptance cases pass` : ''}` : 'verify: none'
   const missed = bullets(section(i.review, 'Unverifiable'))
   // Only the latest verify's runs: an older run of a check it did not re-run is not evidence about this tree.
   const from = i.verify?.from, runs = (i.runs ?? []).filter(r => !from || r.at >= from)
@@ -103,7 +112,8 @@ export function prBody(i: PrBodyInput): string {
     `## Risk\n\n${i.risk.reasons.length ? `Tier ${i.risk.tier}\n\n${i.risk.reasons.map(r => `- ${r}`).join('\n')}` : 'Tier 0: none of the signals'}`,
     `## How to revert\n\n${revert(i.plan)}`,
     `## What the checks would miss\n\n${!i.review.trim() ? 'no review.md' : /^reviewer:\s*none\b/.test(i.review) ? `No agent reviewed this change (tier ${i.risk.tier}): the sensors and the tests are the evidence.` : missed.length ? missed.join('\n') : 'nothing the reviewer named'}`,
-    `## Evidence\n\n${[evidence, baseProof(runs), headChecks(runs), behaviourTests(i.spec, i.tests), claimsNote(i.review, i.claims), proposedNote(i.spec, i.requirements)].filter(Boolean).join('\n\n')}`,
+    `## Evidence\n\n${[evidence, baseProof(runs), headChecks(runs), mutationNote(runs), behaviourTests(i.spec, i.tests), frozenNote(i.freeze), claimsNote(i.review, i.claims), proposedNote(i.spec, i.requirements)].filter(Boolean).join('\n\n')}`,
+    `## Check before approving\n\nAnswer these in your approving review, one line each (\`Q1: <answer>\`, 10+ characters; CI checks they are there; a sample of merged changes is audited):\n\n${checkQuestions(i.changes ?? [], i.spec).join('\n')}`,
     i.intentMap?.trim() ? `## Intent map\n\n${i.intentMap.trim()}` : '',
     i.outline.trim(),
   ]

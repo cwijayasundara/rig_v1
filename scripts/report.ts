@@ -3,12 +3,14 @@
 // (CI outcomes, review time, findings fixed without a person) is listed as unavailable instead of being guessed.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, ageDays, out, readJson, readJsonl, gitIn, type Args } from './core.ts'
+import { ROOT, SENSORS_JSON, read, ageDays, out, readJson, readJsonl, gitIn, type Args } from './core.ts'
 import { mineCandidates, shippedChanges } from './learnmine.ts'
 import type { RunRow } from './runs.ts'
 import { changeHistory } from './reverts.ts'
 import { gh } from './model.ts'
 import { summarise, type HumanRow } from './humanload.ts'
+import { reviewHealth, healthText, readAudits, type Health } from './audit.ts'
+import { parseRegistry } from './registry.ts'
 
 export type Report = {
   merged: number; shipped: number; since: string | null // merged: every change whose pr.md a merge added; shipped: those whose records are still in the tree (a revert removes them)
@@ -22,6 +24,7 @@ export type Report = {
   repeat: { classes: number; changes: number } // finding and waiver classes seen in 2+ changes, and the changes carrying one
   unavailable: string[]
   humanTime?: HumanTime | { unavailable: string } // only with --github: GitHub holds it, git does not
+  reviewHealth?: Health[] | { unavailable: string } // only with --github: per approver over the last risk.window PRs
   humanLoad: HumanLoad | null // from each shipped change's evidence/human.jsonl (the hooks write counts only); null: none has one
 }
 type Stat = { median: number; p95: number }
@@ -158,6 +161,7 @@ export function reportText(r: Report): string {
     `  repeat mistakes            ${r.repeat.classes} class(es) across ${r.repeat.changes} of ${r.shipped} change(s)`,
     ...(r.humanLoad ? humanLoadText(r.humanLoad) : []),
     ...(r.humanTime ? humanTimeText(r.humanTime) : []),
+    ...(r.reviewHealth ? ['  review health (per approver, last risk.window merged PRs):', 'unavailable' in r.reviewHealth ? `    unavailable: ${r.reviewHealth.unavailable}` : r.reviewHealth.length ? healthText(r.reviewHealth) : '    no reviewed PRs'] : []),
     `not available here: ${r.unavailable.join('; ')}`,
   ].join('\n')
 }
@@ -168,6 +172,7 @@ export function cmdReport(args: Args): void {
   const r = buildReport(ROOT, since, Number.isFinite(maxQ) && maxQ >= 0 ? maxQ : 3)
   if (args.opt.github) {
     r.humanTime = humanTime(ghFetch(ROOT), since, Math.max(1, Math.floor(Number(typeof args.opt.limit === 'string' ? args.opt.limit : 50)) || 50))
+    try { r.reviewHealth = reviewHealth(ghFetch(ROOT), since, parseRegistry(read(path.join(ROOT, SENSORS_JSON))).registry.risk.window, readAudits()) } catch (e) { r.reviewHealth = { unavailable: (e as Error).message.split('\n')[0]?.slice(0, 120) ?? 'GitHub was not readable' } }
     if (!('unavailable' in r.humanTime)) r.unavailable = r.unavailable.map(u => u.startsWith('review time') ? 'findings fixed without a person (not recorded anywhere in the repo)' : u)
   }
   out(args.opt.json ? JSON.stringify(r) : reportText(r))

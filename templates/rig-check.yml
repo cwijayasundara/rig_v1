@@ -5,14 +5,15 @@
 # ai-review runs on every PR from this repository (fork PRs have no secrets, so it is skipped there and a person reviews): a clean-context code review and a
 # security review, each briefed from the BASE branch, failing on a critical or high item under ## Findings (## Pre-existing never fails it). Make "ai-review"
 # a required status check too. rig-check prints each PR's risk tier; with risk.enforce in the base .rig/sensors.json it requires one approval from someone
-# other than the author on every PR, except a tier-0 PR by a trusted author at autonomy rung 3 while the revert breaker holds. Two reviewers for tier 2 or risky paths is a branch-protection or ruleset setting (with CODEOWNERS), never this workflow.
+# other than the author on every PR, except a tier-0 PR by a trusted author at autonomy rung 3 while the revert breaker holds (humanApproval.everyTier true removes that exception: every PR needs a person). risk.hardCap true makes a diff over risk.maxLines a block at ship and CI; only a live size waiver lifts it. `init --protect --create` makes the branch protection real (one approving review, code owners, admins included). Two reviewers for tier 2 or risky paths is a branch-protection or ruleset setting (with CODEOWNERS), never this workflow.
+# With risk.enforce or humanApproval.everyTier on, the approving review must also answer the PR body's three check questions (lines `Q1:`, `Q2:`, `Q3:`, 10+ characters each), and a PR labelled `rig-hold` (set and lifted only by the auditor through `sdlc.ts audit`, read by rig-check through gh; an unreadable label list blocks) is held. On the lead-override path the self-approving lead answers in a COMMENTED review of the head commit (`Q1:`..`Q3:` lines), since GitHub does not let an author approve their own PR. Each person's latest non-comment review is the one that counts.
 # Lead override (off unless .rig/sensors.json on the base branch lists you under humanApproval.selfApprovers): label the PR rig-lead-override. The
 # lead-override job then waits for the required reviewer of the rig-lead-override Environment
 # (Settings > Environments: add the lead as required reviewer and leave "prevent self-review" off; rig-check reads GitHub's record of that approval, so an Environment without a reviewer never passes). rig-check accepts the PR's approval rows only when both jobs succeeded on the head commit.
 name: rig-check
 on:
   pull_request:
-    types: [opened, synchronize, reopened, labeled]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   merge_group: # the merge queue re-runs the sensors on main with the change applied; approvals were checked on the PR
 permissions:
   contents: read
@@ -128,6 +129,13 @@ jobs:
           BASE: ${{ github.base_ref || github.event.merge_group.base_ref }}
           GH_TOKEN: ${{ github.token }}
         run: node --disable-warning=ExperimentalWarning "$RUNNER_TEMP/sdlc/sdlc.ts" check --at ci --base "origin/${BASE#refs/heads/}" --config-from "origin/${BASE#refs/heads/}"
+      - name: Hidden acceptance cases (holdout)
+        # runs EVERY case file in the base branch (the PR picks none and cannot edit them) against this PR's tree; prints only counts and case ids.
+        # This job has no project toolchain: the project's setup steps must precede this step (install its runtime, dependencies, build the binary the cases exercise).
+        env:
+          CLAUDE_PROJECT_DIR: ${{ github.workspace }}
+          BASE: ${{ github.base_ref || github.event.merge_group.base_ref }}
+        run: node --disable-warning=ExperimentalWarning "$RUNNER_TEMP/sdlc/sdlc.ts" holdout --ci --base "origin/${BASE#refs/heads/}"
       - name: Wiki staleness (warning only)
         continue-on-error: true
         env:

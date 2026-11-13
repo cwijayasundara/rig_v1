@@ -84,7 +84,7 @@ test('the blast radius reads path lines without bullets, and the revert text fit
 
 // Verification evidence item 2: the Evidence section shows what the recorded runs show, not what anyone claims.
 const run = (o: Partial<RunRow>): RunRow => ({ at: 't', cmd: 'pytest -q', exit: 0, ms: 1, tail: '', source: 'ship', ...o })
-const evidence = (runs: RunRow[], tests?: string): string => { const b = prBody({ intent, spec, plan, verify, outline: '', review: '', risk, runs, tests }); return b.slice(b.indexOf('## Evidence')) }
+const evidence = (runs: RunRow[], tests?: string): string => { const b = prBody({ intent, spec, plan, verify, outline: '', review: '', risk, runs, tests }); return b.slice(b.indexOf('## Evidence')).split('\n## Check before')[0]! }
 
 test('evidence quotes the failure lines of the red run on the base, and flags a red that is only a missing import or symbol', () => {
   const assertion = evidence([run({ cwd: '/tmp/rig-red-1', tail: '..\n' }), run({ cwd: '/tmp/rig-red-1', exit: 1, expectFail: true, tail: 'collected 3 items\nFAILED tests/test_export.py::test_b1_downloads - AssertionError: no csv\n1 failed, 2 passed' })])
@@ -181,4 +181,42 @@ test('an intent-map receipt becomes its own section, and no receipt leaves the b
   assert.ok(b.indexOf('## Evidence') < b.indexOf('## Intent map'))
   assert.equal(prBody({ intent, spec, plan, verify, outline: '', review: '', risk, intentMap: '' }), prBody({ intent, spec, plan, verify, outline: '', review: '', risk }))
   assert.doesNotMatch(prBody({ intent, spec, plan, verify, outline: '', review: '', risk }), /Intent map/)
+})
+
+test('the PR body says when the tests were frozen and each re-freeze\'s why, or that they were not frozen', () => {
+  const row = (commit: string, why: string) => ({ at: '2026-11-12T10:00:00Z', commit, files: [], why })
+  const b = prBody({ intent, spec, plan, verify, outline: '', review: '', risk, freeze: [row('abcdef1234567', 'hand-off'), row('1234567abcdef', 'B2 asserted the wrong value')] })
+  assert.match(b, /Tests frozen at abcdef1 by the test writer\nre-frozen: B2 asserted the wrong value/)
+  assert.match(prBody({ intent, spec, plan, verify, outline: '', review: '', risk, freeze: [] }), /Tests not frozen \(no test-writer hand-off\)/)
+  assert.match(prBody({ intent, spec, plan, verify, outline: '', review: '', risk }), /Tests not frozen \(no test-writer hand-off\)/)
+})
+
+test('the PR body cleans a re-freeze why and lists dropped tests', () => {
+  const row = (why: string, dropped?: string[]) => ({ at: 'x', commit: 'abcdef1234567', files: [], why, ...(dropped ? { dropped } : {}) })
+  const b = prBody({ intent, spec, plan, verify, outline: '', review: '', risk, freeze: [row('hand-off'), row('a `bad`\n## Evidence <b>', ['tests/b.test.js'])] })
+  assert.match(b, /re-frozen: a 'bad' ## Evidence _b_ \(dropped: tests\/b\.test\.js\)/)
+  assert.doesNotMatch(b, /`bad`/)
+})
+
+test('the Evidence section reports the hidden acceptance cases from verify.json', () => {
+  assert.match(prBody({ intent, spec, plan, verify: { ...verify, holdout: { passed: 3, total: 4 } }, outline: '', review: '', risk }), /Holdout: 3\/4 hidden acceptance cases pass/)
+  assert.doesNotMatch(prBody({ intent, spec, plan, verify, outline: '', review: '', risk }), /Holdout:/)
+})
+
+test('the evidence says the mutation score on changed lines when the mutation-diff sensor ran, and says nothing otherwise', () => {
+  const tail = 'src/a.ts:4 EqualityOperator\nmutation: 7/8 killed on changed lines (score 0.88, min 0.8)'
+  assert.match(evidence([run({ sensor: 'mutation-diff', cmd: 'x', tail })]), /^Mutation: 7\/8 on changed lines \(score 0\.88\)$/m)
+  assert.doesNotMatch(evidence([run({ sensor: 'unit', tail: '12 passed' })]), /Mutation:/)
+  assert.match(evidence([run({ sensor: 'mutation-diff', tail: 'mutation: no mutants on changed lines' })]), /^Mutation: no mutants on changed lines$/m)
+  assert.doesNotMatch(evidence([]), /Mutation:/)
+})
+
+test('the body ends its review section with exactly three check questions Q1-Q3, the same every time', () => {
+  const lines = (n: number) => Array.from({ length: n }, (_, i) => ({ n: i + 1, text: i === 0 ? 'export function exportCsv() {' : '  x' }))
+  const changes = [{ file: 'src/export/csv.ts', status: 'M' as const, added: lines(5), removed: [] }]
+  const b = prBody({ intent, spec, plan, verify, outline: '', review: '', risk, changes })
+  assert.match(b, /## Check before approving\n\n[^\n]*approving review[^\n]*\n\nQ1: What breaks if `exportCsv` in src\/export\/csv\.ts returns early\?\nQ2: Which behaviour \(B1, B2\) does src\/export\/csv\.ts serve\?\nQ3: Which test fails if src\/export\/csv\.ts lines 1-5 are reverted\?/)
+  assert.match(b, /a sample of merged changes is audited/); assert.doesNotMatch(b, /the audit checks they are right|seed/i)
+  assert.equal(b.match(/^Q\d:/gm)?.length, 3)
+  assert.equal(prBody({ intent, spec, plan, verify, outline: '', review: '', risk, changes }), b)
 })

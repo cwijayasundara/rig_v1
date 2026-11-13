@@ -77,9 +77,9 @@ export function proposeRung(root = ROOT): { to: number; why: string } | null {
   return null
 }
 
-function autonomyText(a: Autonomy, p: ReturnType<typeof proposeRung>, malformed = false): string {
+function autonomyText(a: Autonomy, p: ReturnType<typeof proposeRung>, malformed = false, everyTier = false): string {
   const lines = [`autonomy rung ${a.rung}${a.since ? ` since ${a.since}` : ''}${malformed ? ' (malformed .rig/autonomy.json: read as rung 0; fix it with `autonomy set <0|1|2|3> --why "<text>"`)' : ''}`]
-  if (a.rung === 3) lines.push('rung 3: rig-check also lets a tier-0 PR by a trusted author merge without a person, while risk.enforce is on and the revert breaker holds')
+  if (a.rung === 3) lines.push('rung 3: rig-check also lets a tier-0 PR by a trusted author merge without a person, while risk.enforce is on and the revert breaker holds' + (everyTier ? '; it is inert while humanApproval.everyTier is on: every PR needs a person' : ''))
   if (a.deferred.length) lines.push(`deferred: ${a.deferred.join(', ')}`)
   lines.push(p ? `proposal: move to rung ${p.to} (${p.why}); a person runs: autonomy set ${p.to} --why "${p.why}"` : 'proposal: none')
   return lines.join('\n')
@@ -94,6 +94,7 @@ export function cmdAutonomy(args: Args): void {
     if (to === 3) {
       // Rung 3 lets a tier-0 PR merge with no person; it means nothing until rig-check enforces approvals and someone is trusted to author such PRs.
       const reg = parseRegistry(read(path.join(SDLC, 'sensors.json'))).registry
+      if (reg.humanApproval.everyTier) fail('rung 3 is refused while humanApproval.everyTier is on (it also turns enforcement on): every PR needs a person, so rung 3 would mean nothing (turn it off in .rig/sensors.json first)')
       const missing = [reg.risk.enforce ? '' : 'risk.enforce is off (run: sdlc.ts init --enforce)', reg.humanApproval.trusted.length ? '' : 'humanApproval.trusted is empty (list the GitHub logins whose tier-0 PRs may merge unattended in .rig/sensors.json)'].filter(Boolean)
       if (missing.length) fail(`rung 3 needs both first: ${missing.join('; ')}`)
     }
@@ -103,5 +104,5 @@ export function cmdAutonomy(args: Args): void {
   }
   const { a, malformed } = load(ROOT)
   const p = proposeRung()
-  out(args.opt.json ? JSON.stringify({ ...a, malformed, proposal: p }) : autonomyText(a, p, malformed))
+  out(args.opt.json ? JSON.stringify({ ...a, malformed, proposal: p }) : autonomyText(a, p, malformed, parseRegistry(read(path.join(SDLC, 'sensors.json'))).registry.humanApproval.everyTier))
 }

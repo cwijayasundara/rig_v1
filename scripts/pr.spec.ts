@@ -3,7 +3,7 @@ import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { makeRepo, sdlc, write, gitIn, approvedChange, verified, ARCH_OK, IMPL_OK } from './testkit.ts'
+import { makeRepo, sdlc, write, gitIn, approvedChange, verified, ARCH_OK, IMPL_OK, approveChart } from './testkit.ts'
 
 let repo: string
 beforeEach(() => { repo = makeRepo(); sdlc(repo, ['init']); write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [] })) })
@@ -221,7 +221,7 @@ const sprintShip = (): void => {
   write(repo, `${SP}/implementation-plan.md`, IMPL_OK(['alpha', 'beta']))
   write(repo, `${SP}/chart-review.md`, 'verdict: pass\n## Findings\n## Deferred\n')
   write(repo, `${SP}/testplan/cases.md`, '| ID | Req | Intent | B | Level | Data | Expected |\n| TC-1 | FR-1 | alpha | B1 | unit | - | ok |\n| TC-2 | FR-1 | beta | B1 | unit | - | ok |\n')
-  const ok = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
+  const ok = approveChart(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
   assert.equal(ok.code, 0, ok.stderr)
   gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'chart')
   const created = sdlc(repo, ['new', 'alpha', '--source', `${SP}/intents/alpha.md`])

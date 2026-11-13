@@ -2,7 +2,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { waiverLive,
-  ROOT, SDLC, CHANGES, WAIVERS, SENSORS_JSON, BUDGET_MS, readJson, exists, read, out, fail, git, toPosix, optString, readJsonl, defaultBase, checkSlug, skillRef,
+  ROOT, SDLC, CHANGES, WAIVERS, SENSORS_JSON, BUDGET_MS, readJson, exists, read, out, fail, git, toPosix, optString, readJsonl, defaultBase, checkSlug, skillRef, clean,
   type Args, type Waiver,
 } from './core.ts'
 import { parseRules, formatFindings, warnLines, matchesAny, isTest, isSource, ghPages, planFiles, type FileDiff, type Finding, type Rule } from './model.ts'
@@ -19,12 +19,14 @@ import { isRegistryShape, parseRegistry, defaultRegistry, updateKnownRed, active
 import { frozenFindings, runContracts } from './contracts.ts'
 import { intentShipFindings } from './intentmapio.ts'
 import { syncFindings } from './sync.ts'
-import { riskOf, formatRisk, type Risk } from './risk.ts'
+import { freezeFindings, freezeRowsAdded } from './testfreeze.ts'
+import { riskOf, formatRisk, hardCapFindings, type Risk } from './risk.ts'
 import { changeHistory, breaker } from './reverts.ts'
 import { parseAccess } from './chartcheck.ts'
 import { ARCH_REL } from './product.ts'
+import { approvalRow, INCOMPLETE } from './approvalsummary.ts'
 import { rigOff, trunkRef, offLine, frozenWhileOff } from './off.ts'
-
+import { answersMissing, heldFindings, ANSWER_FIX } from './prcheck.ts'
 type Point = 'stop' | 'commit' | 'ship' | 'ci'
 type CheckInput = {
   point: Point
@@ -159,9 +161,10 @@ function applyWaivers(findings: Finding[], slugs: string[], ci?: { base: string 
   const scopes = new Map(slugs.map(s => [s, ci ? ciScope(s, ci.base) : () => true] as const))
   // An exception ends: past its expiry a waiver no longer covers anything, so the finding it hid comes back.
   const waivers = readJsonl<Waiver>(WAIVERS).filter(w => slugs.includes(w.slug) && scopes.get(w.slug) !== null && waiverLive(w))
+  // A file-less size finding (the diff total, the hard cap) has no file for the CI scope to test, so a `size *` waiver of a change this PR adds covers it (its row still needs an independent approval).
   // Never waivable: plan-gate (only a person's approval clears it); at CI also contracts and harness-tamper on harness files.
   const never = (f: Finding): boolean => f.sensor === 'plan-gate' || (Boolean(ci) && ((f.sensor === 'harness-tamper' && (!f.file || isProtected(f.file))) || f.sensor === 'contracts'))
-  const waived = (f: Finding): boolean => waivers.some(w => w.sensor === f.sensor && (w.file === '*' || w.file === f.file) && !never(f) && (scopes.get(w.slug) as (file: string | undefined) => boolean)(f.file))
+  const waived = (f: Finding): boolean => waivers.some(w => w.sensor === f.sensor && (w.file === '*' || w.file === f.file) && !never(f) && ((f.sensor === 'size' && !f.file) || (scopes.get(w.slug) as (file: string | undefined) => boolean)(f.file)))
   const kept = findings.filter(f => !waived(f))
   return { findings: kept, blocks: kept.filter(f => f.severity === 'block'), warns: kept.filter(f => f.severity === 'warn'), waived: findings.length - kept.length }
 }
@@ -251,6 +254,7 @@ export function runChecks(i: CheckInput): CheckResult {
   if (i.slugs.length && i.slugs.every(s => approvalState(s) === 'approved')) {
     for (const f of findings) if (f.sensor === 'size' && !f.file) f.severity = 'warn'
   }
+  for (const slug of i.slugs) findings.push(...freezeFindings(slug, point, i.base, config))
   if (point !== 'stop') for (const slug of i.slugs) findings.push(...shipVerdicts(slug, config, diffs, i.base, i.budgetMs, i.gates?.plan ?? true))
   // Contracts (spec §6): ship and CI always, commit always, a turn only when it reaches a contract. Validate gates run.
   const c = config.contracts
@@ -260,7 +264,7 @@ export function runChecks(i: CheckInput): CheckResult {
   if (i.commands !== 'none') findings.push(...runSensors(config, at, i.point === 'ci' ? null : i.slugs[0] ?? null, i.budgetMs, Boolean(i.ratchet) && i.point !== 'ci', new Set([c.validate, c.run].filter(Boolean).map(normCmd)), i.point === 'ci' ? null : i.ratchetWrite ?? null, changed))
   // Journeys run where the heavier sensors do (verify, ship, CI), never at a commit or a turn.
   if (at === 'ci' && i.commands === 'full') findings.push(...journeyFindings(i.budgetMs, undefined, i.point === 'ci'))
-  const result = applyWaivers(builtinsApplied(findings, config), i.slugs, i.point === 'ci' ? { base: i.base } : undefined)
+  const result = applyWaivers([...builtinsApplied(findings, config), ...hardCapFindings(diffs, config, point)], i.slugs, i.point === 'ci' ? { base: i.base } : undefined)
   return result
 }
 
@@ -278,9 +282,6 @@ export const slugsIn = (diffs: FileDiff[]): string[] => [...new Set(diffs.map(d 
 
 // Waivers and approvals are trusted, not recomputed, so CI shows each row a PR adds for a person to review.
 const HUMAN_FILES = [['.rig/waivers.jsonl', 'waiver']] as const
-// PR-controlled text: one line, no backticks or angle brackets (it cannot close the summary fence or start a
-// `::` workflow command, since every row is printed after "  - "), and capped.
-const clean = (v: unknown): string => String(v).replace(/[\u0000-\u001f\u007f\u2028\u2029]/g, ' ').replace(/`/g, "'").replace(/[<>]/g, '_').replace(/"/g, "'").slice(0, 200)
 function humanRowsAdded(base: string): string[] {
   const rows: string[] = []
   for (const [rel, kind] of HUMAN_FILES) {
@@ -292,13 +293,14 @@ function humanRowsAdded(base: string): string[] {
       rows.push(!Object.keys(r).length ? `${kind} (unparseable): ${clean(line)}` : `waiver ${s('slug')}: ${s('sensor')} ${s('file')} "${s('reason')}" by ${s('by')}`)
     }
   }
+  rows.push(...freezeRowsAdded(base, clean))
   // approval.json: every one the PR adds or edits is a person's decision CI cannot verify from the file alone.
   // A sprint chart approval (.rig/product/sprints/sprint-N/approval.json) is the same kind of row.
   for (const f of (git(['diff', '--name-only', base, 'HEAD', '--', '.rig/changes', '.rig/product/sprints']) ?? '').split('\n')) {
     const name = /^\.rig\/changes\/([^/]+)\/approval\.json$/.exec(f)?.[1] ?? (/^\.rig\/product\/sprints\/sprint-(\d+)\/approval\.json$/.exec(f)?.[1] ? `chart-${/^\.rig\/product\/sprints\/sprint-(\d+)\//.exec(f)?.[1]}` : undefined)
     if (!name) continue
     const by = String(readJson<{ by?: unknown } | null>(path.join(ROOT, f), null)?.by ?? '?') // deleted or unreadable: still a row
-    rows.push(`approval ${name} by ${clean(by)}`)
+    rows.push(name.startsWith('chart-') ? approvalRow(f, name, by, clean) : `approval ${name} by ${clean(by)}`)
   }
   // sprint-N/waivers.json: each chart waiver row the PR adds is a person accepting a review finding as it stands.
   for (const f of (git(['diff', '--name-only', base, 'HEAD', '--', '.rig/product/sprints']) ?? '').split('\n')) {
@@ -323,8 +325,8 @@ function humanRowsAdded(base: string): string[] {
 // (gated by a GitHub Environment whose required reviewer clicks in the web UI) succeeded, both on the head commit.
 // The one path where a PR merges with no person (proposal 2026-10-27 B2, C2). Every input is the base's or GitHub's, never the PR's,
 // and every lookup that fails refuses: the unattended path fails closed.
-type Who = { number: number; author: string; sender: string; repo: string; headSha: string; sameRepo: boolean }
-type Pull = { number?: number; user?: { login?: string }; head?: { sha?: string; repo?: { full_name?: string } } }
+type Who = { body: string; number: number; author: string; sender: string; repo: string; headSha: string; sameRepo: boolean }
+type Pull = { body?: string | null; number?: number; user?: { login?: string }; head?: { sha?: string; repo?: { full_name?: string } } }
 type Event = { repository?: { full_name?: string }; sender?: { login?: string }; pull_request?: Pull; merge_group?: { head_ref?: string } }
 
 // Who this run is about: the pull_request event, or in the merge queue the PR its ref names (gh-readonly-queue/<base>/pr-<N>-<sha>), read from GitHub.
@@ -336,7 +338,7 @@ function whoIs(): Who | null {
   const queued = /\/pr-(\d+)-[0-9a-f]+$/.exec(ev.merge_group?.head_ref ?? '')?.[1]
   if (!pr && queued) { try { pr = ghPages(`repos/${repo}/pulls/${queued}`)[0] as Pull } catch { return null } }
   if (!pr?.number || !pr.head?.sha || !repo) return null
-  return { number: pr.number, author: (pr.user?.login ?? '').toLowerCase(), sender: (ev.sender?.login ?? '').toLowerCase(), repo, headSha: pr.head.sha, sameRepo: pr.head.repo?.full_name === repo }
+  return { body: pr.body ?? '', number: pr.number, author: (pr.user?.login ?? '').toLowerCase(), sender: (ev.sender?.login ?? '').toLowerCase(), repo, headSha: pr.head.sha, sameRepo: pr.head.repo?.full_name === repo }
 }
 
 // The latest non-comment review per person; true when someone other than the author approved this head commit.
@@ -348,6 +350,7 @@ function approvedBySomeoneElse(reviews: { user?: { login?: string }; state?: str
 
 // Why a tier-0 PR still needs a person ('' when it does not). `ref` is the live base tip, so lowering the rung or a new revert counts at once.
 function tierZeroRefusal(ref: string, config: Registry, who: Who | null): string {
+  if (config.humanApproval.everyTier) return 'humanApproval.everyTier: every tier needs a person'
   let rung: unknown = 0
   try { rung = (JSON.parse(showAt(ref, '.rig/autonomy.json') ?? '{}') as { rung?: unknown }).rung ?? 0 } catch { /* unreadable: rung 0 */ }
   if (rung !== 3) return `rung ${String(rung)}, not 3`
@@ -363,7 +366,7 @@ function tierZeroRefusal(ref: string, config: Registry, who: Who | null): string
   return breaker(changeHistory(ROOT, labelled, ref, true), config.risk.window, config.risk.maxRevertRate) ?? ''
 }
 
-function independentApproval(selfApprovers: string[], workflowEdited: boolean): string | null {
+function independentApproval(selfApprovers: string[], workflowEdited: boolean, answers = false): string | null {
   const eventPath = process.env.GITHUB_EVENT_PATH
   if (!eventPath || !fs.existsSync(eventPath)) return 'cannot verify a reviewer outside a GitHub pull_request run'
   const who = whoIs()
@@ -372,12 +375,12 @@ function independentApproval(selfApprovers: string[], workflowEdited: boolean): 
   try { reviews = ghPages(`repos/${who.repo}/pulls/${who.number}/reviews?per_page=100`) as typeof reviews } catch { return 'could not read the PR reviews (the job needs pull-requests: read and GH_TOKEN)' }
   // a pull_request checkout is a merge commit (head is its 2nd parent); a workflow re-run reuses an old event
   if (![git(['rev-parse', 'HEAD']), git(['rev-parse', 'HEAD^2'])].includes(who.headSha)) return `the event's head ${who.headSha.slice(0, 7)} is not the checked-out commit (a re-run on a stale event?)`
-  if (approvedBySomeoneElse(reviews, who.author, who.headSha)) return null
+  if (approvedBySomeoneElse(reviews, who.author, who.headSha)) return answers ? answersMissing(reviews, who.headSha, who.author, false, who.body.split('\n')) : null
   const none = `no approving review of ${who.headSha.slice(0, 7)} from someone other than ${who.author || 'the author'}`
   if (!who.author || !selfApprovers.includes(who.author)) return none
   if (workflowEdited) return `${none}; this PR edits .github/workflows, which the lead override will not judge (the workflow is read from the PR)`
   const refused = leadOverride(ghPages, who.repo, who.headSha, selfApprovers)
-  return refused === null ? null : `${none}; ${refused}`
+  return refused === null ? (answers ? answersMissing(reviews, who.headSha, who.author, true, who.body.split('\n')) : null) : `${none}; ${refused}`
 }
 
 // null when this workflow run's ai-review and lead-override jobs both succeeded on the head commit; otherwise why the override does not apply.
@@ -417,6 +420,7 @@ export function cmdCheck(args: Args): void {
   const at = optString(args, 'at')
   if (at !== 'stop' && at !== 'commit' && at !== 'ship' && at !== 'ci') fail('usage: check --at stop|commit|ship|ci [--base <ref>] [--config-from <ref>] [--slug <s>] [--budget-ms <n>] [--json]')
   const { registry: config, rules, errors } = loadConfig(optString(args, 'config-from') ?? null)
+  if (optString(args, 'config-from')) process.env.RIG_BASE = optString(args, 'config-from') // the sensors' commands read base-branch settings there (mutscore: mutation.minScore)
   const baseRef = optString(args, 'base')
   const base = baseRef ? git(['merge-base', 'HEAD', baseRef]) : defaultBase()
   if (at === 'ci' && !base) fail('check --at ci needs --base <ref> with a merge-base (fetch with fetch-depth: 0)')
@@ -457,28 +461,30 @@ export function cmdCheck(args: Args): void {
   const humanRows = at === 'ci' && base && !queued ? humanRowsAdded(base) : []
   // The tier comes from the base config; the Access rows are the base's and the head's together, so a PR cannot drop a row to lower it.
   const risk = at === 'ci' && base ? riskOf(diffs, slugs, config, [...parseAccess(showAt(base, ARCH_REL) ?? ''), ...parseAccess(read(path.join(ROOT, ARCH_REL)))], true) : null
-  const enforced = Boolean(risk && config.risk.enforce && !queued)
+  const enforce = config.risk.enforce || config.humanApproval.everyTier // everyTier is never inert: it implies enforcement
+  const enforced = Boolean(risk && enforce && !queued)
   const live = baseRef ?? base ?? 'HEAD' // the base tip, not the merge base: a rung lowered or a revert made since the PR branched counts
   const refusal = enforced && !humanRows.length && risk?.tier === 0 ? tierZeroRefusal(live, config, whoIs()) : null // '': tier 0 merges without a person
   // The merge queue: approvals were judged on the PR, but the unattended path depends on the rung and the breaker, which move. Re-check it here.
-  const queueWho = queued && risk && config.risk.enforce ? whoIs() : null
+  const queueWho = queued && risk && enforce ? whoIs() : null
   let queueRefusal = ''
-  if (queued && risk && config.risk.enforce) {
+  if (queued && risk && enforce) {
     let reviews: Parameters<typeof approvedBySomeoneElse>[0] = []
     try { if (queueWho) reviews = ghPages(`repos/${queueWho.repo}/pulls/${queueWho.number}/reviews?per_page=100`) as typeof reviews } catch { /* none read: the tier-0 path decides */ }
     const person = queueWho && (approvedBySomeoneElse(reviews, queueWho.author, queueWho.headSha) || config.humanApproval.selfApprovers.includes(queueWho.author))
     if (!person) queueRefusal = risk.tier === 0 ? tierZeroRefusal(live, config, queueWho) : `tier ${risk.tier} and no approval of its head commit`
   }
-  const why = humanRows.length || (enforced && refusal !== '') ? independentApproval(config.humanApproval.selfApprovers, Boolean((git(['diff', '--name-only', base ?? 'HEAD', 'HEAD', '--', '.github/workflows']) ?? '').trim())) : null // before runChecks: the PR's test commands could rewrite the event file or shadow gh
+  const why = humanRows.length || (enforced && refusal !== '') ? independentApproval(config.humanApproval.selfApprovers, Boolean((git(['diff', '--name-only', base ?? 'HEAD', 'HEAD', '--', '.github/workflows']) ?? '').trim()), enforce) : null // before runChecks: the PR's test commands could rewrite the event file or shadow gh
   const result = runChecks({ point: at, diffs, config, rules, slugs, commands: replaying ? 'none' : at === 'stop' ? 'fast' : 'full', budgetMs, before, after, base, ratchet: !optString(args, 'config-from') && at !== 'commit', ratchetWrite: optString(args, 'config-from') ? null : at === 'commit' ? 'stage' : 'write', contracts: at === 'commit' ? !replaying : undefined, gates: config.gates })
   // At commit, like at push, a sensor out of time warns: CI runs it again, and a hanging tool must not hold git commit hostage.
   if (at === 'commit') for (const f of result.findings) if (f.outOfTime) f.severity = 'warn'
   result.blocks = result.findings.filter(f => f.severity === 'block')
   const configFindings: Finding[] = errors.map(e => ({ sensor: 'config', severity: 'block', file: SENSORS_JSON, message: e, fix: 'fix the file; see the sdlc README for its format' }))
-  const queueFindings: Finding[] = queueRefusal ? [{ sensor: 'human-approval', severity: 'block', message: `merge queue: this PR needs a person: ${queueRefusal}`, fix: 'someone other than the author approves the PR\'s head commit, then queue it again' }] : []
-  const humanFindings: Finding[] = why ? [{ sensor: 'human-approval', severity: 'block', message: humanRows.length ? `this PR adds ${humanRows.length} approval/waiver row(s): ${why}` : `risk.enforce: this PR is tier ${risk?.tier} and needs a person: ${refusal ? `${refusal}; ` : ''}${why}`, fix: humanRows.length ? 'a code owner other than the PR author reviews the rows below and approves the current head commit; pushing again needs a fresh approval' : 'someone other than the PR author approves the current head commit; pushing again needs a fresh approval' }] : []
+  const queueFindings: Finding[] = [...(at === 'ci' ? heldFindings(whoIs()) : []), ...(queueRefusal ? [{ sensor: 'human-approval', severity: 'block', message: `merge queue: this PR needs a person: ${queueRefusal}`, fix: 'someone other than the author approves the PR\'s head commit, then queue it again' } as Finding] : [])]
+  const humanFindings: Finding[] = why ? [{ sensor: 'human-approval', severity: 'block', message: humanRows.length ? `this PR adds ${humanRows.length} approval/waiver row(s): ${why}` : `risk.enforce: this PR is tier ${risk?.tier} and needs a person: ${refusal ? `${refusal}; ` : ''}${why}`, fix: why?.includes('does not answer') ? ANSWER_FIX : humanRows.length ? 'a code owner other than the PR author reviews the rows below and approves the current head commit; pushing again needs a fresh approval' : 'someone other than the PR author approves the current head commit; pushing again needs a fresh approval' }] : []
+  const answerFindings: Finding[] = humanRows.filter(r => r.includes(INCOMPLETE)).map(r => ({ sensor: 'human-approval', severity: 'block', message: r, fix: `approve the chart again through ${skillRef('approve')} and answer every check question` }))
   const syncBlocks = (at === 'commit' || at === 'ci') && declaresRegistry() ? syncFindings(config, [], 'block') : [] // config errors already block above
-  const all = { ...result, findings: [...queueFindings, ...humanFindings, ...configFindings, ...syncBlocks, ...result.findings], blocks: [...queueFindings, ...humanFindings, ...configFindings, ...syncBlocks.filter(f => f.severity === 'block'), ...result.blocks] }
+  const all = { ...result, findings: [...queueFindings, ...humanFindings, ...answerFindings, ...configFindings, ...syncBlocks, ...result.findings], blocks: [...queueFindings, ...humanFindings, ...answerFindings, ...configFindings, ...syncBlocks.filter(f => f.severity === 'block'), ...result.blocks] }
   report(at, all, diffs.length, Boolean(args.opt.json), humanRows, inertSensors(config, rules.length, draftApps()), risk && refusal === '' ? { ...risk, reasons: ['tier 0: merges without a person (rung 3, trusted author)'] } : risk)
   process.exitCode = all.blocks.length ? 1 : 0
 }

@@ -127,3 +127,15 @@ test('rung 3 is set only by a person, reads back, and is never proposed', () => 
   assert.match(sdlc(repo, ['autonomy']).stdout, /rung 3[\s\S]*tier-0 PR by a trusted author/)
   assert.notEqual(sdlc(repo, ['autonomy', 'set', '4', '--why', 'x'], human).code, 0)
 })
+
+test('rung 3 is refused while humanApproval.everyTier is on, and the autonomy text says it is inert', () => {
+  const repo = makeRepo()
+  atRung(repo, 2)
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], risk: { enforce: true }, humanApproval: { trusted: ['dev'], everyTier: true } }))
+  const r = sdlc(repo, ['autonomy', 'set', '3', '--why', 'x'], human)
+  assert.notEqual(r.code, 0)
+  assert.match(r.stderr, /humanApproval\.everyTier/)
+  assert.equal(readAutonomy(repo).rung, 2)
+  write(repo, '.rig/autonomy.json', JSON.stringify({ rung: 3, since: 'x', deferred: [], history: [] }))
+  assert.match(sdlc(repo, ['autonomy']).stdout, /inert while humanApproval\.everyTier is on/)
+})

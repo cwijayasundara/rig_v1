@@ -215,8 +215,8 @@ test('humanApproval.selfApprovers parses, rejects other shapes, and adding a log
 
 test('risk parses, rejects other shapes, and loosening it is a weakening', () => {
   const reg = (r: unknown) => JSON.stringify({ sensors: [], risk: r })
-  assert.deepEqual(parseRegistry(reg({ enforce: true, alwaysHuman: ['src/billing/**'], maxLines: 200 })).registry.risk, { enforce: true, alwaysHuman: ['src/billing/**'], maxLines: 200, window: 20, maxRevertRate: 0.1 })
-  assert.deepEqual(parseRegistry('{}').registry.risk, { enforce: false, alwaysHuman: [], maxLines: 400, window: 20, maxRevertRate: 0.1 })
+  assert.deepEqual(parseRegistry(reg({ enforce: true, alwaysHuman: ['src/billing/**'], maxLines: 200 })).registry.risk, { enforce: true, alwaysHuman: ['src/billing/**'], maxLines: 200, hardCap: false, window: 20, maxRevertRate: 0.1 })
+  assert.deepEqual(parseRegistry('{}').registry.risk, { enforce: false, alwaysHuman: [], maxLines: 400, hardCap: false, window: 20, maxRevertRate: 0.1 })
   assert.match(parseRegistry(reg(5)).errors.join(), /risk must be/)
   assert.match(parseRegistry(reg({ maxLines: -1 })).errors.join(), /risk.maxLines must be/)
   assert.match(parseRegistry(reg({ alwaysHuman: 'x' })).errors.join(), /risk.alwaysHuman must be/)
@@ -228,6 +228,18 @@ test('risk parses, rejects other shapes, and loosening it is a weakening', () =>
   assert.match(loose, /risk.alwaysHuman lost src\/billing\/\*\*/)
   assert.match(loose, /risk.maxLines raised/)
   assert.deepEqual(weakensRegistry(reg({}), tight), [])
+})
+
+test('risk.hardCap and humanApproval.everyTier parse as booleans and turning either off is a weakening', () => {
+  const reg = (r: unknown, h: unknown = {}) => JSON.stringify({ sensors: [], risk: r, humanApproval: h })
+  assert.equal(parseRegistry(reg({ hardCap: true })).registry.risk.hardCap, true)
+  assert.equal(parseRegistry(reg({}, { everyTier: true })).registry.humanApproval.everyTier, true)
+  assert.equal(parseRegistry('{}').registry.humanApproval.everyTier, false)
+  assert.match(parseRegistry(reg({ hardCap: 'yes' })).errors.join(), /risk.hardCap must be/)
+  assert.match(parseRegistry(reg({}, { everyTier: 1 })).errors.join(), /humanApproval.everyTier must be/)
+  assert.match(weakensRegistry(reg({ hardCap: true }), reg({})).join(), /risk.hardCap turned off/)
+  assert.match(weakensRegistry(reg({}, { everyTier: true }), reg({})).join(), /humanApproval.everyTier turned off/)
+  assert.deepEqual(weakensRegistry(reg({}), reg({ hardCap: true }, { everyTier: true })), [])
 })
 
 test('the breaker knobs and trusted authors parse, and loosening them is a weakening', () => {
@@ -247,4 +259,27 @@ test('the breaker knobs and trusted authors parse, and loosening them is a weake
 test('a command sensor cannot take an intent-map rule id', () => {
   const { errors } = parseRegistry(JSON.stringify({ sensors: [{ id: 'vacuous', cmd: 'true', cadence: 'ci', blocks: true, guide: 'g' }] }))
   assert.ok(errors.some(e => /vacuous/.test(e)), errors.join('\n'))
+})
+
+test('gates.testWriter parses as a boolean (default false) and turning it off is a weakening', () => {
+  const g = (v: unknown) => JSON.stringify({ sensors: [], gates: v })
+  assert.equal(parseRegistry('{}').registry.gates.testWriter, false)
+  assert.equal(parseRegistry(g({ testWriter: true })).registry.gates.testWriter, true)
+  assert.match(parseRegistry(g({ testWriter: 'yes' })).errors.join(), /gates.testWriter must be/)
+  assert.match(weakensRegistry(g({ testWriter: true }), g({})).join(), /gates.testWriter turned off/)
+  assert.deepEqual(weakensRegistry(g({}), g({ testWriter: true })), [])
+})
+
+test('mutation.minScore defaults to 0.8, accepts a number in (0,1], and lowering it is a weakening', () => {
+  assert.equal(parseRegistry('').registry.mutation.minScore, 0.8)
+  const mk = (v: unknown) => JSON.stringify({ sensors: [], mutation: { minScore: v } })
+  assert.equal(parseRegistry(mk(0.9)).registry.mutation.minScore, 0.9)
+  assert.equal(parseRegistry(mk(1)).registry.mutation.minScore, 1)
+  for (const bad of [0, -0.1, 1.5, '0.9', null]) assert.match(parseRegistry(mk(bad)).errors.join(), /mutation\.minScore must be a number above 0 and at most 1/, String(bad))
+  assert.match(parseRegistry(JSON.stringify({ sensors: [], mutation: { x: 1 } })).errors.join(), /mutation: unknown key "x"/)
+  assert.match(parseRegistry(JSON.stringify({ sensors: [], mutation: 5 })).errors.join(), /mutation must be/)
+  assert.deepEqual(weakensRegistry(mk(0.8), mk(0.9)), [])
+  assert.deepEqual(weakensRegistry(mk(0.8), mk(0.8)), [])
+  assert.deepEqual(weakensRegistry(mk(0.9), mk(0.7)), ['mutation.minScore lowered 0.9 → 0.7'])
+  assert.deepEqual(weakensRegistry(mk(0.9), JSON.stringify({ sensors: [] })), ['mutation.minScore lowered 0.9 → 0.8'])
 })

@@ -307,3 +307,14 @@ test('the size guide says the finding names the lines, so there is nothing to se
   const g = defaultRegistry().sensors.find(s => s.id === 'size')?.guide ?? ''
   assert.match(g, /names each file and line over the limit/)
 })
+
+test('a PR that edits the mutation tool\'s config is a test-tamper block; a new config, or an unrelated setup.cfg/pyproject edit, is not', () => {
+  const hit = (d: FileDiff) => blocks(testTamper([d], reg())).filter(f => /mutation tool config/.test(f.message))
+  for (const f of ['stryker.conf.json', 'web/stryker.conf.mjs', 'stryker-config.json', '.cargo/mutants.toml']) assert.equal(hit(fd(f, ['"thresholds": {}'], ['"mutate": ["src/**"]'])).length, 1, f)
+  assert.equal(hit(fd('setup.cfg', ['paths_to_mutate=src/a.py'], ['paths_to_mutate=src/'])).length, 1)
+  assert.equal(hit(fd('pyproject.toml', ['[tool.mutmut]'], [])).length, 1)
+  assert.equal(hit(fd('setup.cfg', ['[mutmut]', 'runner=true'], [])).length, 1)
+  assert.equal(hit(fd('stryker.conf.json', ['{}'], [], 'A')).length, 0)
+  assert.equal(hit(fd('setup.cfg', ['max-line-length = 100'], ['max-line-length = 80'])).length, 0)
+  assert.equal(hit(fd('pyproject.toml', ['version = "2"'], [])).length, 0)
+})

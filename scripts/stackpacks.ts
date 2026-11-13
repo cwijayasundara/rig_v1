@@ -4,12 +4,12 @@ import path from 'node:path'
 import { globToRegex, isObject, isStringList } from './model.ts'
 import { parseRegistry, type Contracts, type Paths, type Registry } from './registry.ts'
 
-type StackPack = { stack: string; markers: string[]; paths: Partial<Paths>; contracts: Contracts; sensors: unknown[] }
+type StackPack = { stack: string; markers: string[]; paths: Partial<Paths>; contracts: Contracts; holdout: string; sensors: unknown[] }
 export const PACKS_DIR = path.resolve(import.meta.dirname, '../templates/stacks')
-const PACK_KEYS = ['stack', 'markers', 'paths', 'contracts', 'sensors']
+const PACK_KEYS = ['stack', 'markers', 'paths', 'contracts', 'holdout', 'sensors']
 
 // The registry rig init writes for a pack: everything but the markers.
-export const packFile = (p: StackPack): Record<string, unknown> => ({ stack: p.stack, paths: p.paths, contracts: p.contracts, sensors: p.sensors })
+export const packFile = (p: StackPack): Record<string, unknown> => ({ stack: p.stack, paths: p.paths, contracts: p.contracts, ...(p.holdout ? { holdout: p.holdout } : {}), sensors: p.sensors })
 const registryText = (p: StackPack): string => JSON.stringify(packFile(p))
 
 export function parsePack(text: string, file: string): { pack: StackPack | null; errors: string[] } {
@@ -20,6 +20,7 @@ export function parsePack(text: string, file: string): { pack: StackPack | null;
   const name = path.basename(file, '.json')
   if (v.stack !== name) errors.push(`${file}: stack "${String(v.stack)}" does not match file ${file}`)
   if (!isStringList(v.markers) || !v.markers.length) errors.push(`${file}: markers must be a non-empty list of file names or globs`)
+  if ('holdout' in v && typeof v.holdout !== 'string') errors.push(`${file}: holdout must be a string`)
   if (!Array.isArray(v.sensors)) errors.push(`${file}: sensors must be a list`)
   else if (v.sensors.some(s => isObject(s) && s.builtin === true)) errors.push(`${file}: packs declare no built-in sensors`)
   for (const k of Object.keys(v)) if (!PACK_KEYS.includes(k)) errors.push(`${file}: unknown key "${k}"`)
@@ -29,6 +30,7 @@ export function parsePack(text: string, file: string): { pack: StackPack | null;
     markers: v.markers as string[],
     paths: isObject(v.paths) ? (v.paths as Partial<Paths>) : {},
     contracts: isObject(v.contracts) ? { covers: [], ...(v.contracts as Partial<Contracts>) } as Contracts : { files: [], covers: [], validate: '', run: '' },
+    holdout: typeof v.holdout === 'string' ? v.holdout : '',
     sensors: v.sensors as unknown[],
   }
   const parsed = parseRegistry(registryText(pack))

@@ -1,5 +1,6 @@
 // Language-agnostic sensors: pure functions from a parsed diff and config to findings.
 // Language knowledge lives in the pattern tables below, never in code paths per language.
+import type { Paths } from './registry.ts'
 import { parseRules, section, type FileDiff, type Finding, type Layer, isTest, isSource, matchesAny, escapeRe, globToRegex, SECRET_PATTERNS } from './model.ts'
 import { weakensRegistry, parseRegistry, builtinOptions, type Registry } from './registry.ts'
 import { RATCHET_FILE, weakensRatchets } from './counts.ts'
@@ -41,8 +42,8 @@ const REASONED = /(?:\s--\s*|\bbecause\b\s*)\S/i
 const COMMENT_LINE = /^\s*(?:\/\/|#|\*|\/\*|--|;)/
 const ASSERTION = /\bassert(?:\.\w+\s*\(|\w*\s*[!(])|^\s*assert\s|\bexpect\s*[({]|\.should\b|\bAssert\.\w+\s*\(|\bt\.(?:Error|Fatal)f?\s*\(|\brequire\.\w+\s*\(/g
 const THRESHOLD_KEY = /coverage|threshold|fail[_-]under|minimum|\b(?:lines|branches|functions|statements)\b/i
-const CONFIG_FILE = /(?:^|\/)(?:[^/]*\.(?:json|ya?ml|toml|cfg|ini|xml|gradle|kts|properties)|\.[\w-]*rc(?:\.\w+)?|[^/]*\.config\.[cm]?[jt]s)$/
-const SNAPSHOT = /(?:^|\/)__snapshots__\/|\.snap$/
+export const CONFIG_FILE = /(?:^|\/)(?:[^/]*\.(?:json|ya?ml|toml|cfg|ini|xml|gradle|kts|properties)|\.[\w-]*rc(?:\.\w+)?|[^/]*\.config\.[cm]?[jt]s)$/
+export const SNAPSHOT = /(?:^|\/)__snapshots__\/|\.snap$/
 const KEEP_TESTS = `keep the test and make the code pass it; removing a test needs the person's ${skillRef('waive')}`
 
 const countAssertions = (texts: string[]): number =>
@@ -72,6 +73,14 @@ function loweredThresholds(diffs: FileDiff[]): Finding[] {
   return findings
 }
 
+// The mutation tool's own config: what it mutates and ignores. A PR that edits it can mutate less of itself (an added file is the setup, not a loosening).
+const MUTATION_CONFIG = /(?:^|\/)(?:\.?stryker[.-]conf(?:ig)?\.[cm]?[jt]?s?(?:on)?|mutants\.toml)$/
+const MUTMUT_SECTION = /^\s*\[(?:tool\.)?mutmut\]|^\s*(?:paths_to_mutate|do_not_mutate|pre_mutation|post_mutation|dict_synonyms|tests_dir)\s*[=:]/
+function mutationConfig(diffs: FileDiff[]): Finding[] {
+  return diffs.filter(d => !d.binary && d.status !== 'A' && (MUTATION_CONFIG.test(d.file) || (/(?:^|\/)(?:setup\.cfg|pyproject\.toml)$/.test(d.file) && [...d.added, ...d.removed].some(l => MUTMUT_SECTION.test(l.text)))))
+    .map(d => ({ sensor: 'test-tamper', severity: 'block', file: d.file, message: 'mutation tool config changed: it decides what mutation-diff mutates and ignores', fix: 'revert it; changing what is mutated is a reviewed harness change, or the person waives mutation-diff' }))
+}
+
 // Files that intentionally contain detector patterns (a human-approved list) are invisible to the pattern sensors only.
 // Deletions stay visible, so removing a fixture or test file is still reported.
 export const withoutFixtures = (diffs: FileDiff[], r: Registry): FileDiff[] => (r.paths.fixtures.length ? diffs.filter(d => d.status === 'D' || !matchesAny(d.file, r.paths.fixtures)) : diffs)
@@ -99,7 +108,7 @@ export function testTamper(diffs: FileDiff[], r: Registry): Finding[] {
   if (removed > added) {
     findings.push({ sensor: 'test-tamper', severity: 'block', message: `assertions dropped across the test diff: ${removed} removed, ${added} added`, fix: 'keep every assertion that still applies; a weaker test hides bugs' })
   }
-  findings.push(...loweredThresholds(diffs))
+  findings.push(...loweredThresholds(diffs), ...mutationConfig(diffs))
   for (const d of diffs) {
     if (SNAPSHOT.test(d.file) && d.status === 'M') findings.push({ sensor: 'test-tamper', severity: 'warn', file: d.file, message: 'snapshot rewritten', fix: 'check the snapshot change is intended' })
   }
@@ -136,12 +145,15 @@ export function layering(diffs: FileDiff[], r: Registry): Finding[] {
   return findings
 }
 
+// The diffs the size sensor and risk.hardCap count: source text only (no docs, lockfiles, binaries or the vendored harness).
+export const sizeCounted = (diffs: FileDiff[], paths: Paths): FileDiff[] => diffs.filter(d => isSource(d.file, paths) && !d.binary && !isProtected(d.file))
+
 export function size(diffs: FileDiff[], r: Registry, fileLines: Record<string, number>, point: 'edit' | 'stop' | 'ship' | 'ci'): Finding[] {
   const o = builtinOptions(r, 'size')
   const limits = { fileLines: Number(o.fileLines ?? 400), diffLines: Number(o.diffLines ?? 500), lineChars: Number(o.lineChars ?? 160) }
   const findings: Finding[] = diffs.filter(d => d.oversize).map(d => ({ sensor: 'unscanned', severity: 'block', file: d.file, message: 'file is over 20 MB and was not scanned', fix: 'keep it out of the repo (gitignore it, or use LFS); a person can waive `unscanned` for it (a `size` waiver does not cover it)' }))
   // The vendored harness is rig's code, not the project's (harness-tamper watches it), so installing or upgrading it is never a size finding.
-  const counted = diffs.filter(d => isSource(d.file, r.paths) && !d.binary && !isProtected(d.file))
+  const counted = sizeCounted(diffs, r.paths)
   for (const d of counted.filter(f => f.status !== 'D')) {
     const now = fileLines[d.file]
     if (now === undefined) continue
@@ -196,7 +208,7 @@ export function rulesSensor(diffs: FileDiff[], rules: { id: string; pattern: str
 }
 
 // rig-*.yml: every workflow rig writes (check, review, spec); a repo's own rig-*.yml counts too.
-export const PROTECTED = ['.rig/sensors.json', '.rig/rules.json', '.rig/layers.approved.json', '.rig/gen/**', '.rig/ratchets.json', '.rig/verify/**', '.rig/lessons.md', '.rig/lessons-archive.md', '.rig/guides/**', '.rig/bin/**', '.rig/mod/**', '.rig/githooks/**', '.rig/off.json', '.claude-plugin/**', '.rig/changes/*/adjudications.json', 'CLAUDE.md', '.claude/**', '.github/workflows/rig-*.yml', '.github/workflows/sdlc-check.yml', 'CODEOWNERS', '.github/CODEOWNERS']
+export const PROTECTED = ['.rig/sensors.json', '.rig/rules.json', '.rig/layers.approved.json', '.rig/gen/**', '.rig/ratchets.json', '.rig/verify/**', '.rig/lessons.md', '.rig/lessons-archive.md', '.rig/guides/**', '.rig/bin/**', '.rig/mod/**', '.rig/githooks/**', '.rig/off.json', '.claude-plugin/**', '.rig/changes/*/adjudications.json', '.rig/changes/*/tests.freeze.jsonl', 'CLAUDE.md', '.claude/**', '.github/workflows/rig-*.yml', '.github/workflows/sdlc-check.yml', 'CODEOWNERS', '.github/CODEOWNERS']
 // ci: compare case-insensitively (macOS and Windows file systems treat CLAUDE.MD and CLAUDE.md as one file).
 export const isProtected = (file: string, ci = false): boolean => (ci ? matchesAny(file.toLowerCase(), PROTECTED.map(p => p.toLowerCase())) : matchesAny(file, PROTECTED))
 const RULES = '.rig/rules.json'

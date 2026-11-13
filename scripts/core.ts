@@ -14,14 +14,15 @@ export type Args = { pos: string[]; opt: Record<string, string | true> }
 export type HookInput = {
   session_id?: string
   cwd?: string
+  tool_name?: string
   agent_id?: string
   agent_type?: string
   source?: string
-  prompt?: string; transcript_path?: string; model?: string; to_model?: string; from_model?: string; tool_use_id?: string; tool_response?: { resolvedModel?: string; model?: string }
+  prompt?: string; transcript_path?: string; model?: string; to_model?: string; from_model?: string; tool_use_id?: string; tool_response?: { resolvedModel?: string; model?: string; answers?: unknown }
   tool_input?: { questions?: unknown[];
     command?: string
     file_path?: string
-    notebook_path?: string
+    notebook_path?: string; path?: string; pattern?: string; glob?: string
     content?: string
     old_string?: string
     new_string?: string
@@ -310,3 +311,7 @@ export function ownerOrFail(args: Args, what: string): string {
   if (!by || GENERIC_USERS.includes(by.toLowerCase())) fail(`${what} need an owner: set git user.name (git config user.name "<name>") or pass --by "<name>"`)
   return by
 }
+
+// PR-controlled text: one line, no backticks or angle brackets (it cannot close the summary fence or start a
+// `::` workflow command, since every row is printed after "  - "), and capped.
+export const clean = (v: unknown): string => String(v).replace(/[\u0000-\u001f\u007f\u2028\u2029]/g, ' ').replace(/`/g, "'").replace(/[<>]/g, '_').replace(/"/g, "'").slice(0, 200)

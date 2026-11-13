@@ -360,6 +360,23 @@ test('CI lists a sprint chart approval the PR adds, for human review', () => {
   assert.deepEqual(json.humanRows, ['approval chart-3 by Mallory'])
 })
 
+test('CI shows each stored question and answer of a chart approval row (cut to 80 characters) and blocks a row with fewer answers than its page lists questions', () => {
+  gitIn(repo, 'checkout', '-qb', 'pr')
+  const S = '.rig/product/sprints/sprint-3'
+  write(repo, `${S}/approval.json`, JSON.stringify({ by: 'Mallory', at: '2026-10-03T00:00:00Z', digest: 'x', files: [], answers: [{ question: 'Q one ' + 'x'.repeat(100), answer: 'a real answer' }] }))
+  write(repo, `${S}/approval.md`, '# page\n\n## Check questions\n\n1. first\n2. second\n')
+  gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'pr')
+  const r = sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main', '--json'])
+  const json = JSON.parse(r.stdout)
+  assert.match(json.humanRows[0], /^approval chart-3 by Mallory; Q: "Q one x+\.\.\." A: "a real answer" \[INCOMPLETE ANSWERS: 1 for 2 question\(s\)\]$/)
+  assert.ok(json.humanRows[0].length < 200)
+  assert.ok(json.findings.some((f: { sensor: string; message: string }) => f.sensor === 'human-approval' && /INCOMPLETE ANSWERS/.test(f.message)))
+  write(repo, `${S}/approval.json`, JSON.stringify({ by: 'Mallory', at: '2026-10-03T00:00:00Z', digest: 'x', files: [], answers: [{ question: 'a', answer: 'b' }, { question: 'c', answer: 'd' }] }))
+  gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'pr2')
+  const ok = JSON.parse(sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main', '--json']).stdout)
+  assert.ok(!ok.humanRows[0].includes('INCOMPLETE'))
+})
+
 test('CI lists each chart waiver row the PR adds, for human review', () => {
   gitIn(repo, 'checkout', '-qb', 'pr')
   write(repo, '.rig/product/sprints/sprint-3/waivers.json', JSON.stringify([{ finding: 2, text_sha: 'x', by: 'Mallory', at: '2026-10-03T00:00:00Z', reason: 'fine' }]))
@@ -661,7 +678,7 @@ test('an old commands waiver no longer silences a command sensor', () => {
 })
 
 // Risk tiers in CI (proposal 2026-10-27 B1, B2): the base config sets the knobs, the PR's diff and change record set the signals.
-const riskRun = (o: { enforce?: boolean; reviews?: unknown[]; files?: Record<string, string>; baseFiles?: Record<string, string>; remove?: string[]; sensors?: object; history?: (sha: () => string) => void; aiReview?: string; searchFails?: boolean; sender?: string; fork?: boolean; queue?: { baseFiles?: Record<string, string> } } = {}) => {
+const riskRun = (o: { enforce?: boolean; reviews?: unknown[]; files?: Record<string, string>; baseFiles?: Record<string, string>; remove?: string[]; sensors?: object; history?: (sha: () => string) => void; aiReview?: string; searchFails?: boolean; sender?: string; fork?: boolean; queue?: { baseFiles?: Record<string, string> }; message?: string; labels?: string[]; labelsFail?: boolean } = {}) => {
   const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-gh-'))
   gitIn(repo, 'checkout', '-q', 'main')
   o.history?.(() => spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).stdout.trim())
@@ -674,13 +691,13 @@ const riskRun = (o: { enforce?: boolean; reviews?: unknown[]; files?: Record<str
   for (const [f, t] of Object.entries(o.files ?? {})) write(repo, f, t)
   for (const f of o.remove ?? []) fs.rmSync(path.join(repo, f), { force: true })
   gitIn(repo, 'add', '-A')
-  gitIn(repo, 'commit', '-qm', 'pr')
+  gitIn(repo, 'commit', '-qm', o.message ?? 'pr')
   const sha = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).stdout.trim()
   const reviews = (o.reviews ?? []).map(r => ({ ...(r as object), commit_id: sha }))
   // the fake gh answers each route the check asks: revert-labelled PRs, the ai-review check run, the PR itself and its reviews
   const runs = [{ check_runs: [{ name: 'ai-review', conclusion: o.aiReview ?? 'success', head_sha: sha }] }]
   const pull = [{ number: 5, user: { login: 'dev' }, head: { sha, repo: { full_name: 'o/r' } } }]
-  fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\ncase "$*" in\n  *search/issues*) ${o.searchFails ? 'exit 1' : `echo '[{"items":[]}]'`} ;;\n  *check-runs*) echo '${JSON.stringify(runs)}' ;;\n  *pulls/5/reviews*) echo '${JSON.stringify([reviews])}' ;;\n  *pulls/5*) echo '${JSON.stringify(pull)}' ;;\n  *) echo '${JSON.stringify([reviews])}' ;;\nesac\n`, { mode: 0o755 })
+  fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\ncase "$*" in\n  *search/issues*) ${o.searchFails ? 'exit 1' : `echo '[{"items":[]}]'`} ;;\n  *issues/5/labels*) ${o.labelsFail ? 'exit 1' : `echo '${JSON.stringify([(o.labels ?? []).map(name => ({ name }))])}'`} ;;\n  *check-runs*) echo '${JSON.stringify(runs)}' ;;\n  *pulls/5/reviews*) printf '%s\\n' '${JSON.stringify([reviews])}' ;;\n  *pulls/5*) echo '${JSON.stringify(pull)}' ;;\n  *) echo '${JSON.stringify([reviews])}' ;;\nesac\n`, { mode: 0o755 })
   const ev = path.join(bin, 'event.json')
   const sender = { login: o.sender ?? 'dev' }
   if (o.queue) {
@@ -714,7 +731,7 @@ test('with risk.enforce on the base, a PR needs an approval of its head commit f
   const none = riskRun({ enforce: true })
   assert.match(none.stdout, /\[human-approval\]\n\s*✗ risk\.enforce: this PR is tier 1 and needs a person[^\n]*→ someone other than the PR author approves the current head commit/)
   assert.notEqual(none.code, 0)
-  const approved = riskRun({ enforce: true, reviews: [{ user: { login: 'lead' }, state: 'APPROVED', author_association: 'MEMBER' }] })
+  const approved = riskRun({ enforce: true, reviews: [{ user: { login: 'lead' }, state: 'APPROVED', author_association: 'MEMBER', body: ANSWERS }] })
   assert.doesNotMatch(approved.stdout, /human-approval/)
 })
 
@@ -776,5 +793,120 @@ test('the merge queue re-checks the unattended path against the live base: lower
   assert.doesNotMatch(queued({ queue: {} }).stdout, /human-approval/, 'nothing changed: the tier-0 path still holds')
   const lowered = queued({ queue: { baseFiles: rung(0) } })
   assert.match(lowered.stdout, /\[human-approval\]\n\s*✗ merge queue: this PR needs a person: rung 0, not 3/)
-  assert.doesNotMatch(queued({ queue: { baseFiles: rung(0) }, reviews: [{ user: { login: 'lead' }, state: 'APPROVED', author_association: 'MEMBER' }] }).stdout, /human-approval/, 'a person approved it on the PR')
+  assert.doesNotMatch(queued({ queue: { baseFiles: rung(0) }, reviews: [{ user: { login: 'lead' }, state: 'APPROVED', author_association: 'MEMBER', body: ANSWERS }] }).stdout, /human-approval/, 'a person approved it on the PR')
+})
+
+test('humanApproval.everyTier makes even a tier-0 PR at rung 3 by a trusted author need a person', { skip: !posix }, () => {
+  const sensors = { ...trusted, humanApproval: { trusted: ['dev'], everyTier: true } }
+  const r = riskRun({ sensors, baseFiles: rung(3), files: tier0 })
+  assert.match(r.stdout, /\[human-approval\]\n\s*✗ risk\.enforce: this PR is tier 0 and needs a person: humanApproval\.everyTier: every tier needs a person/)
+  assert.doesNotMatch(r.stdout, /merges without a person/)
+  assert.doesNotMatch(riskRun({ sensors, baseFiles: rung(3), files: tier0, reviews: [{ user: { login: 'lead' }, state: 'APPROVED', author_association: 'MEMBER', body: ANSWERS }] }).stdout, /human-approval/)
+})
+
+test('humanApproval.everyTier implies enforcement: with risk.enforce off a tier-0 PR with no approver is still blocked', { skip: !posix }, () => {
+  const sensors = { humanApproval: { everyTier: true } }
+  const r = riskRun({ sensors, files: tier0 })
+  assert.match(r.stdout, /\[human-approval\]\n\s*✗ risk\.enforce: this PR is tier 0 and needs a person: humanApproval\.everyTier/)
+  assert.notEqual(r.code, 0)
+  assert.doesNotMatch(riskRun({ sensors, files: tier0, reviews: [{ user: { login: 'lead' }, state: 'APPROVED', author_association: 'MEMBER', body: ANSWERS }] }).stdout, /human-approval/)
+})
+
+test('the merge queue with humanApproval.everyTier on blocks a tier-0 PR nobody approved', { skip: !posix }, () => {
+  const sensors = { humanApproval: { everyTier: true } }
+  const r = riskRun({ sensors, files: tier0, queue: {} })
+  assert.match(r.stdout, /\[human-approval\]\n\s*✗ merge queue: this PR needs a person: humanApproval\.everyTier: every tier needs a person/)
+  assert.doesNotMatch(riskRun({ sensors, files: tier0, queue: {}, reviews: [{ user: { login: 'lead' }, state: 'APPROVED', author_association: 'MEMBER' }] }).stdout, /human-approval/)
+})
+
+const hardCapRepo = (o: { hardCap?: boolean; file?: string; size?: 'blocks-false' | 'disabled' } = {}) => {
+  const r = makeRepo()
+  sdlc(r, ['init'])
+  const reg = JSON.parse(fromOld({ limits: { diffLines: 50 } })) as { sensors: { id: string; blocks?: boolean; enabled?: boolean }[] }
+  const sz = reg.sensors.find(x => x.id === 'size')
+  if (sz && o.size === 'blocks-false') sz.blocks = false
+  if (sz && o.size === 'disabled') sz.enabled = false
+  write(r, '.rig/sensors.json', JSON.stringify({ ...reg, risk: { hardCap: o.hardCap ?? true, maxLines: 50 } }))
+  gitIn(r, 'add', '.'); gitIn(r, 'commit', '-qm', 'base')
+  gitIn(r, 'checkout', '-qb', 'big')
+  sdlc(r, ['new', 'big-change', '--type', 'refactor'])
+  write(r, '.rig/changes/big-change/spec.md', '# Spec\n\n## Behaviours\n- none\n')
+  write(r, '.rig/changes/big-change/plan.md', '# Plan\n\n## Files\n- src/**\n\n## Verification\n- `node -e 0`\n')
+  write(r, o.file ?? 'src/a.js', Array.from({ length: 80 }, (_, i) => `export const v${i} = ${i}`).join('\n') + '\n')
+  gitIn(r, 'add', '.'); gitIn(r, 'commit', '-qm', 'work')
+  sdlc(r, ['approve', 'big-change'], { env: { SDLC_HUMAN: '1' } })
+  gitIn(r, 'add', '.'); gitIn(r, 'commit', '-qm', 'approved')
+  return r
+}
+const capFindings = (r: string, at: string) => (JSON.parse(sdlc(r, ['check', '--at', at, '--base', 'main', '--json']).stdout) as { findings: { sensor: string; severity: string; file?: string; message: string }[] })
+  .findings.filter(f => f.sensor === 'size' && !f.file)
+
+test('risk.hardCap blocks a diff over risk.maxLines at ci even with an approved plan; a size waiver lifts it at ship; off keeps the warning', () => {
+  const on = hardCapRepo()
+  const ci = capFindings(on, 'ci').filter(f => f.severity === 'block')
+  assert.equal(ci.length, 1)
+  assert.match(ci[0]?.message ?? '', /diff of \d+ source lines is over risk\.maxLines \(50\): risk\.hardCap refuses it/)
+  assert.equal(capFindings(on, 'ship').filter(f => f.severity === 'block').length, 1)
+  sdlc(on, ['waive', 'size', '*', 'one big move'], { env: { SDLC_HUMAN: '1' } })
+  assert.deepEqual(capFindings(on, 'ship').filter(f => f.severity === 'block'), [])
+  assert.deepEqual(capFindings(hardCapRepo({ hardCap: false }), 'ci').map(f => f.severity), ['warn'])
+})
+
+test('risk.hardCap still blocks when the size builtin is advisory or disabled', () => {
+  for (const size of ['blocks-false', 'disabled'] as const) {
+    const blocks = capFindings(hardCapRepo({ size }), 'ci').filter(f => f.severity === 'block')
+    assert.equal(blocks.length, 1, size)
+  }
+})
+
+test('risk.hardCap counts source lines only: a large doc or harness change does not block, a large source change does', () => {
+  for (const file of ['docs/big.md', '.rig/bin/vendored.js']) assert.deepEqual(capFindings(hardCapRepo({ file }), 'ci').filter(f => f.severity === 'block'), [], file)
+  assert.equal(capFindings(hardCapRepo({ file: 'src/b.js' }), 'ci').filter(f => f.severity === 'block').length, 1)
+})
+
+test('a size waiver for * lifts the hard cap at CI when the PR adds the change, and its row still needs an independent approval', () => {
+  const r = hardCapRepo()
+  sdlc(r, ['waive', 'size', '*', 'one big move'], { env: { SDLC_HUMAN: '1' } })
+  gitIn(r, 'add', '.'); gitIn(r, 'commit', '-qm', 'waive')
+  const j = JSON.parse(sdlc(r, ['check', '--at', 'ci', '--base', 'main', '--json']).stdout) as { findings: { sensor: string; severity: string; file?: string }[] }
+  assert.deepEqual(j.findings.filter(f => f.sensor === 'size' && !f.file && f.severity === 'block'), [])
+  assert.ok(j.findings.some(f => f.sensor === 'human-approval' && f.severity === 'block'), 'the waiver row needs a person other than the author')
+})
+
+test('ci with --config-from hands its sensors the ref as RIG_BASE (mutscore reads the minimum there); without it they get none', () => {
+  const probe = `node -e "require('fs').writeFileSync('base.txt', process.env.RIG_BASE ?? 'unset')"`
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [{ id: 'probe', cmd: probe, cadence: 'ci', blocks: true, guide: 'x' }] }) + '\n')
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', 'cfg')
+  check('--at', 'ci', '--base', 'main', '--config-from', 'main')
+  assert.equal(fs.readFileSync(path.join(repo, 'base.txt'), 'utf8'), 'main')
+})
+
+// C6: the approving review must answer the PR body's check questions; a seeded defect in the PR blocks the merge.
+const ANSWERS = 'Q1: the export stops halfway\nQ2: B1, the csv download\nQ3: test/export.test.ts fails'
+const lead = (body?: string) => ({ user: { login: 'lead' }, state: 'APPROVED', author_association: 'MEMBER', ...(body === undefined ? {} : { body }) })
+
+test('with risk.enforce on, an approval without answers to Q1-Q3 blocks, and the fix shows the format', { skip: !posix }, () => {
+  const r = riskRun({ enforce: true, reviews: [lead()] })
+  assert.match(r.stdout, /\[human-approval\]\n\s*✗ [^\n]*answer Q1, Q2, Q3[^\n]*→ [^\n]*Q1: <your answer>/, r.stdout)
+  assert.notEqual(r.code, 0)
+  assert.match(riskRun({ enforce: true, reviews: [lead('Q1: skip\nQ2: lgtm\nQ3: n/a')] }).stdout, /answer Q1, Q2, Q3/)
+  assert.match(riskRun({ enforce: true, reviews: [lead('Q1: the export stops halfway\nQ2: short')] }).stdout, /answer Q2, Q3/)
+})
+
+test('with risk.enforce on, an approving review that answers Q1-Q3 passes; everyTier needs them too; with enforce off no answers are asked', { skip: !posix }, () => {
+  assert.doesNotMatch(riskRun({ enforce: true, reviews: [lead(ANSWERS)] }).stdout, /human-approval/)
+  assert.match(riskRun({ sensors: { humanApproval: { everyTier: true } }, reviews: [lead()] }).stdout, /answer Q1, Q2, Q3/)
+  assert.doesNotMatch(riskRun({ sensors: { humanApproval: { everyTier: true } }, reviews: [lead(ANSWERS)] }).stdout, /human-approval/)
+  assert.doesNotMatch(riskRun({ reviews: [lead()] }).stdout, /answer Q1/)
+})
+
+test('a PR labelled rig-hold is blocked whatever else passes, with a message that names no seed; an unreadable label list blocks', { skip: !posix }, () => {
+  const r = riskRun({ files: { 'a.txt': 'x\n' }, labels: ['rig-hold'] })
+  assert.equal(r.code, 1, r.stdout)
+  assert.match(r.stdout, /merge held by the auditor \(rig-hold\)/)
+  assert.doesNotMatch(r.stdout, /seed/i)
+  assert.doesNotMatch(riskRun({ files: { 'b.txt': 'x\n' }, labels: ['bug'] }).stdout, /rig-hold/)
+  assert.match(riskRun({ files: { 'c.txt': 'x\n' }, labelsFail: true }).stdout, /could not read the PR labels/)
+  assert.doesNotMatch(riskRun({ files: { 'd.txt': 'x\n' }, message: 'audit: seeded defect s5-ab12' }).stdout, /merge held/, 'commit subjects are not trusted either way')
 })

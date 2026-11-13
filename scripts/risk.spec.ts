@@ -8,7 +8,7 @@ import { makeRepo, sdlc, write, gitIn } from './testkit.ts'
 const clean = { 'plan.md': '# Plan\n\n## Contracts\nnone\n', 'review.md': 'verdict: pass\n## Findings\n' }
 const input = (o: Partial<Parameters<typeof assessRisk>[0]> = {}, files: Record<string, string> = clean) => ({
   files: ['src/cart.ts'], lines: 10, slugs: ['cart-add'], read: (_slug: string, name: string) => files[name] ?? '',
-  access: [], risk: { enforce: false, alwaysHuman: [], maxLines: 400, window: 20, maxRevertRate: 0.1 }, contractGlobs: [], ci: false, ...o,
+  access: [], risk: { enforce: false, alwaysHuman: [], maxLines: 400, hardCap: false, window: 20, maxRevertRate: 0.1 }, contractGlobs: [], ci: false, ...o,
 })
 const access = (intent: string) => ({ action: 'refund an order', allowed: ['admin'], nobody: false, interfaces: ['api'], intent })
 const TWO = 'two reviewers, one a code owner, recommended; enforce it in branch protection'
@@ -20,11 +20,11 @@ test('a clean, reviewed, two-way change is tier 0 with no reasons', () => {
 test('an always-human path is tier 2: protected harness files, workflows, and the team globs', () => {
   assert.deepEqual(assessRisk(input({ files: ['.github/workflows/deploy.yml'] })), { tier: 2, reasons: ['always-human path: .github/workflows/deploy.yml', TWO] })
   assert.equal(assessRisk(input({ files: ['CLAUDE.md'] })).tier, 2)
-  assert.equal(assessRisk(input({ files: ['src/billing/charge.ts'], risk: { enforce: false, alwaysHuman: ['src/billing/**'], maxLines: 400, window: 20, maxRevertRate: 0.1 } })).tier, 2)
+  assert.equal(assessRisk(input({ files: ['src/billing/charge.ts'], risk: { enforce: false, alwaysHuman: ['src/billing/**'], maxLines: 400, hardCap: false, window: 20, maxRevertRate: 0.1 } })).tier, 2)
 })
 
 test('in CI a path matches case-insensitively', () => {
-  const risk = { enforce: false, alwaysHuman: ['src/billing/**'], maxLines: 400, window: 20, maxRevertRate: 0.1 }
+  const risk = { enforce: false, alwaysHuman: ['src/billing/**'], maxLines: 400, hardCap: false, window: 20, maxRevertRate: 0.1 }
   assert.equal(assessRisk(input({ files: ['SRC/Billing/x.ts'], risk, ci: true })).tier, 2)
   assert.equal(assessRisk(input({ files: ['SRC/Billing/x.ts'], risk })).tier, 0)
 })
@@ -112,4 +112,33 @@ test('S risk: another change\'s folder and local harness files do not count towa
   write(repo, '.rig/changes/other/spec.md', 'x\n'.repeat(900))
   write(repo, 'src/cart.ts', 'export const a = 1\n')
   assert.match(sdlc(repo, ['risk', 'cart-add', '--pre-review', '--base', 'HEAD']).stdout, /^tier: 0/)
+})
+
+test('a change\'s hand-off tests.freeze.jsonl does not raise the tier, though it is a protected path; adjudications.json still does', () => {
+  const f = '.rig/changes/cart-add/tests.freeze.jsonl'
+  assert.equal(assessRisk(input({ files: [f], freeze: { [f]: { fresh: true, whys: ['hand-off'] } } })).tier, 0)
+  assert.equal(assessRisk(input({ files: [f], ci: true, freeze: { [f]: { fresh: true, whys: ['hand-off'] } } })).tier, 0)
+  assert.equal(assessRisk(input({ files: ['.rig/changes/cart-add/adjudications.json'] })).tier, 2)
+})
+
+test('the freeze file is exempt from tier 2 only as one hand-off row on a new file; a re-freeze row or a base that had rows is always-human', () => {
+  const f = '.rig/changes/cart-add/tests.freeze.jsonl'
+  const at = (fresh: boolean, whys: string[], o: Partial<Parameters<typeof assessRisk>[0]> = {}) => assessRisk(input({ files: [f], freeze: { [f]: { fresh, whys } }, ...o }))
+  assert.equal(at(true, ['hand-off']).tier, 0)
+  const re = at(true, ['hand-off', 'loosen B2'])
+  assert.deepEqual([re.tier, re.reasons.includes('test re-frozen: loosen B2')], [2, true])
+  assert.deepEqual([at(false, ['hand-off']).tier, at(false, ['hand-off']).reasons.includes('test re-frozen: hand-off')], [2, true])
+  assert.equal(assessRisk(input({ files: [f] })).tier, 2)
+  // the exemption is for the protected list only: the person's own globs still apply
+  assert.equal(at(true, ['hand-off'], { risk: { enforce: false, alwaysHuman: ['.rig/changes/**'], maxLines: 400, hardCap: false, window: 20, maxRevertRate: 0.1 } }).tier, 2)
+})
+
+test('a PR touching a sprint holdout directory is tier 2 (holdout changed), on a chart branch too', () => {
+  const f = '.rig/product/sprints/sprint-2/holdout/TC-1.holdout.test.js'
+  assert.deepEqual(assessRisk(input({ files: [f] })), { tier: 2, reasons: ['holdout changed', TWO] })
+  assert.equal(assessRisk(input({ files: ['.rig/product/sprints/sprint-2/testplan/cases.md'] })).tier, 0)
+  const diff = [{ file: f, status: 'A', added: [], removed: [] }] as never
+  const was = process.env.GITHUB_HEAD_REF
+  process.env.GITHUB_HEAD_REF = 'rig/chart-1'
+  try { const r = riskOf(diff, [], defaultRegistry(), [], true); assert.equal(r.tier, 2); assert.ok(r.reasons.includes('holdout changed'), 'a branch name the author picks exempts nothing') } finally { if (was === undefined) delete process.env.GITHUB_HEAD_REF; else process.env.GITHUB_HEAD_REF = was }
 })

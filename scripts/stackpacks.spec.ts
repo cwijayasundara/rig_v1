@@ -23,17 +23,33 @@ test('every pack covers types, lint and unit, has a nightly mutation sensor, and
   }
 })
 
-test('a mutation-diff sensor runs before every PR on the change\'s own lines and blocks', () => {
-  const packs = loadPacks(PACKS_DIR).packs.filter(p => packRegistry(p).sensors.some(s => s.id === 'mutation-diff'))
-  assert.deepEqual(packs.map(p => p.stack).sort(), ['angular', 'node'])
-  for (const p of packs) {
+test('every pack has a blocking ci mutation-diff sensor that scopes to the change and scores it with sdlc mutscore', () => {
+  const TOOL: Record<string, string> = { node: 'stryker', angular: 'stryker', python: 'mutmut', go: 'go-mutesting', rust: 'cargo-mutants', dotnet: 'stryker-net', 'java-maven': 'pitest', 'java-gradle': 'pitest' }
+  for (const p of loadPacks(PACKS_DIR).packs) {
     const s = packRegistry(p).sensors.find(x => x.id === 'mutation-diff')
     assert.equal(s?.cadence, 'ci', p.stack)
     assert.equal(s?.blocks, true, p.stack)
-    assert.match(s?.cmd ?? '', /\{changed-lines:[a-z,]+\}/, `${p.stack} mutates only the changed lines of source it can parse`)
-    assert.match(s?.cmd ?? '', /is not installed[\s\S]*exit 1/, `${p.stack} fails loudly without the tool`)
-    assert.match(s?.cmd ?? '', /rm -rf reports\/mutation; npx/, `${p.stack} never reads a report an earlier run left`)
+    assert.equal(s?.timeoutMs, 600000, p.stack)
+    assert.match(s?.cmd ?? '', /\{changed(-lines)?:[a-z,]+\}|--in-diff|--since|scmMutationCoverage/, `${p.stack} mutates only the change`)
+    assert.match(s?.cmd ?? '', /"\$S" mutscore --tool \S+ --report /, `${p.stack} scores with sdlc mutscore`)
+    assert.ok((s?.cmd ?? '').startsWith('S="${RIG_SDLC:-.rig/bin/sdlc.ts}"; [ -f "$S" ] || { echo \'mutation-diff: sdlc not found; re-run sdlc.ts vendor\'; exit 1; }; '), `${p.stack} finds sdlc first, or says to vendor`)
+    assert.ok((s?.cmd ?? '').includes(`--tool ${TOOL[p.stack]} `), `${p.stack} reads the ${TOOL[p.stack]} report`)
+    assert.match(s?.cmd ?? '', /not installed[\s\S]*or the person waives mutation-diff[\s\S]*exit 1/, `${p.stack} fails loudly without the tool`)
+    assert.ok(packRegistry(p).sensors.some(x => x.id === 'mutation' && x.cadence === 'nightly'), `${p.stack} keeps the nightly whole-repo run`)
   }
+  const cmd = (stack: string): string => packRegistry(loadPacks(PACKS_DIR).packs.find(p => p.stack === stack)!).sensors.find(x => x.id === 'mutation-diff')?.cmd ?? ''
+  const guide = (stack: string): string => packRegistry(loadPacks(PACKS_DIR).packs.find(p => p.stack === stack)!).sensors.find(x => x.id === 'mutation-diff')?.guide ?? ''
+  assert.match(cmd('go'), /go-mutesting --debug /)
+  assert.match(cmd('python'), /mutmut<3/)
+  assert.match(cmd('python'), /mutmut junitxml --untested-policy=failure --suspicious-policy=failure/)
+  assert.match(cmd('java-maven'), /mvn -q test-compile org\.pitest:pitest-maven:mutationCoverage /)
+  assert.match(cmd('java-maven'), /mutations\.xml/)
+  assert.match(guide('java-maven'), /pitest-junit5-plugin/)
+  assert.match(cmd('java-gradle'), /targetClasses/)
+  assert.match(cmd('java-gradle'), /\{changed:java\}|\$\(echo [^)]*java/)
+  assert.match(guide('java-gradle'), /outputFormats=\['XML'\]/)
+  assert.match(guide('java-gradle'), /timestampedReports=false/)
+  for (const stack of ['node', 'angular']) assert.match(packRegistry(loadPacks(PACKS_DIR).packs.find(p => p.stack === stack)!).sensors.find(x => x.id === 'mutation-diff')?.cmd ?? '', /\{changed-lines:[a-z,]+\}/, stack)
 })
 
 test('every pack has a blocking sast sensor: Semgrep on the change\'s own source, no metrics, failing in CI when Semgrep does not run', () => {
@@ -112,4 +128,23 @@ test('the python audit names the project, never the whole environment', () => {
   assert.match(cmd, /pip-audit \.;/)
   assert.doesNotMatch(cmd, /pip-audit(?! [-.])/, 'a bare pip-audit audits the environment')
   assert.match(cmd, /nothing to audit/)
+})
+
+test('every pack names the command that runs one holdout file, with the {file} placeholder', () => {
+  for (const p of loadPacks(PACKS_DIR).packs) assert.match(packRegistry(p).holdout, /\{file\}/, p.stack)
+  assert.equal(JSON.parse(fs.readFileSync(path.join(PACKS_DIR, 'node.json'), 'utf8')).holdout, 'node --test {file}')
+  assert.equal(JSON.parse(fs.readFileSync(path.join(PACKS_DIR, 'python.json'), 'utf8')).holdout, 'pytest -q {file}')
+})
+
+test('a holdout command without {file}, or not a string, is a registry error', () => {
+  const pack = (holdout: unknown): string => JSON.stringify({ stack: 'x', markers: ['m'], sensors: [], holdout })
+  assert.match(parsePack(pack('node --test'), 'x.json').errors.join(), /holdout/)
+  assert.match(parsePack(pack(7), 'x.json').errors.join(), /holdout/)
+  assert.deepEqual(parsePack(pack('node --test {file}'), 'x.json').errors, [])
+})
+
+test('compiled stacks run a holdout shell script with bash; node and angular run node --test', () => {
+  const h = (n: string): string => JSON.parse(fs.readFileSync(path.join(PACKS_DIR, `${n}.json`), 'utf8')).holdout
+  for (const n of ['go', 'rust', 'dotnet', 'java-maven', 'java-gradle']) assert.equal(h(n), 'bash {file}', n)
+  assert.equal(h('angular'), 'node --test {file}')
 })

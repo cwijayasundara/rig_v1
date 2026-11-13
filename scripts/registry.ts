@@ -17,10 +17,10 @@ export const ALWAYS_ON: BuiltinId[] = ['secrets', 'harness-tamper']
 export type RegistrySensor = { id: string; cmd?: string; builtin?: true; cadence: Cadence; blocks: boolean; guide: string; timeoutMs?: number; enabled: boolean; options?: Record<string, unknown>; ratchet?: 'down' | 'up' }
 export type Paths = { tests: string[]; testSupport: string[]; fixtures: string[]; ignore: string[] }
 // The risk tier's knobs (proposal 2026-10-27 B1, B2): paths that always want a person, the diff size above which a person looks, and whether rig-check requires the approval.
-export type Risk = { enforce: boolean; alwaysHuman: string[]; maxLines: number; window: number; maxRevertRate: number }
+export type Risk = { enforce: boolean; alwaysHuman: string[]; maxLines: number; hardCap: boolean; window: number; maxRevertRate: number }
 export type Contracts = { files: string[]; covers: string[]; validate: string; run: string }
 type Policy = Record<string, Mode> & { default: Mode }
-export type Registry = { ratchets?: Record<string, number>; stack: string | null; gates: { plan: boolean }; humanApproval: { selfApprovers: string[]; trusted: string[] }; risk: Risk; contracts: Contracts; models: { build: string; evaluate: string; design: string }; paths: Paths; sensors: RegistrySensor[]; knownRed: string[]; policy: Policy }
+export type Registry = { ratchets?: Record<string, number>; stack: string | null; gates: { plan: boolean; testWriter: boolean }; humanApproval: { selfApprovers: string[]; trusted: string[]; everyTier: boolean }; risk: Risk; contracts: Contracts; holdout: string; mutation: { minScore: number }; models: { build: string; evaluate: string; design: string }; paths: Paths; sensors: RegistrySensor[]; knownRed: string[]; policy: Policy }
 
 type Base = { cadence: Cadence; blocks: boolean; guide: string }
 const BUILTIN_DEFAULTS: Record<BuiltinId, Base> = {
@@ -38,7 +38,7 @@ const BUILTIN_DEFAULTS: Record<BuiltinId, Base> = {
 const GENERIC_TESTS = ['**/test/**', '**/tests/**', '**/__tests__/**']
 const DEFAULT_POLICY: Policy = { haiku: 'continuous', sonnet: 'continuous', opus: 'final', default: 'continuous' }
 const SENSOR_KEYS = ['id', 'cmd', 'builtin', 'cadence', 'blocks', 'count', 'guide', 'timeoutMs', 'enabled', 'options', 'ratchet']
-const TOP_KEYS = ['stack', 'gates', 'humanApproval', 'risk', 'contracts', 'models', 'paths', 'sensors', 'policy', 'knownRed']
+const TOP_KEYS = ['stack', 'gates', 'humanApproval', 'risk', 'contracts', 'holdout', 'mutation', 'models', 'paths', 'sensors', 'policy', 'knownRed']
 const KEBAB = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
 const isBuiltinId = (v: string): v is BuiltinId => (BUILTIN_IDS as readonly string[]).includes(v)
@@ -52,10 +52,12 @@ function builtinSensor(id: BuiltinId): RegistrySensor {
 export function defaultRegistry(): Registry {
   return {
     stack: null,
-    gates: { plan: true },
-    humanApproval: { selfApprovers: [], trusted: [] },
-    risk: { enforce: false, alwaysHuman: [], maxLines: 400, window: 20, maxRevertRate: 0.1 },
+    gates: { plan: true, testWriter: false },
+    humanApproval: { selfApprovers: [], trusted: [], everyTier: false },
+    risk: { enforce: false, alwaysHuman: [], maxLines: 400, hardCap: false, window: 20, maxRevertRate: 0.1 },
     contracts: { files: [], covers: [], validate: '', run: '' },
+    holdout: '',
+    mutation: { minScore: 0.8 },
     models: { build: 'sonnet', evaluate: 'opus', design: 'sonnet' },
     paths: { tests: [...GENERIC_TESTS], testSupport: [], fixtures: [], ignore: ['**/*.md', '**/*.lock'] },
     sensors: BUILTIN_IDS.map(builtinSensor),
@@ -129,19 +131,21 @@ function parseSections(value: Record<string, unknown>, r: Registry, errors: stri
   }
   if ('gates' in value) {
     const g = value.gates
-    if (!isObject(g)) errors.push('gates must be { plan?: boolean }')
+    if (!isObject(g)) errors.push('gates must be { plan?: boolean, testWriter?: boolean }')
     else for (const [k, v] of Object.entries(g)) {
       if (k === 'plan' && typeof v === 'boolean') r.gates.plan = v
+      else if (k === 'testWriter') { if (typeof v === 'boolean') r.gates.testWriter = v; else errors.push('gates.testWriter must be true or false') }
       else if (k === 'merge') continue // retired, accepted and ignored
-      else errors.push(`gates.${k} must be plan, true or false`)
+      else errors.push(`gates.${k} must be plan, testWriter, true or false`)
     }
   }
   if ('humanApproval' in value) {
     const h = value.humanApproval
-    if (!isObject(h)) errors.push('humanApproval must be { selfApprovers?: [GitHub logins], trusted?: [GitHub logins] }')
+    if (!isObject(h)) errors.push('humanApproval must be { selfApprovers?: [GitHub logins], trusted?: [GitHub logins], everyTier?: boolean }')
     else for (const [k, v] of Object.entries(h)) {
-      if ((k === 'selfApprovers' || k === 'trusted') && isStringList(v)) r.humanApproval[k] = [...new Set(v.map(x => x.trim().toLowerCase()).filter(Boolean))]
-      else errors.push(`humanApproval.${k} must be selfApprovers or trusted, a list of GitHub logins`)
+      if (k === 'everyTier') { if (typeof v === 'boolean') r.humanApproval.everyTier = v; else errors.push('humanApproval.everyTier must be true or false') }
+      else if ((k === 'selfApprovers' || k === 'trusted') && isStringList(v)) r.humanApproval[k] = [...new Set(v.map(x => x.trim().toLowerCase()).filter(Boolean))]
+      else errors.push(`humanApproval.${k} must be selfApprovers or trusted (a list of GitHub logins) or everyTier`)
     }
   }
   if ('risk' in value) {
@@ -151,9 +155,10 @@ function parseSections(value: Record<string, unknown>, r: Registry, errors: stri
       if (k === 'enforce') { if (typeof v === 'boolean') r.risk.enforce = v; else errors.push('risk.enforce must be true or false') }
       else if (k === 'alwaysHuman') { if (isStringList(v)) r.risk.alwaysHuman = v; else errors.push('risk.alwaysHuman must be a list of globs') }
       else if (k === 'maxLines') { if (posInt(v)) r.risk.maxLines = v; else errors.push('risk.maxLines must be a positive integer') }
+      else if (k === 'hardCap') { if (typeof v === 'boolean') r.risk.hardCap = v; else errors.push('risk.hardCap must be true or false') }
       else if (k === 'window') { if (posInt(v)) r.risk.window = v; else errors.push('risk.window must be a positive integer') }
       else if (k === 'maxRevertRate') { if (typeof v === 'number' && v >= 0 && v <= 1) r.risk.maxRevertRate = v; else errors.push('risk.maxRevertRate must be a number from 0 to 1') }
-      else errors.push(`risk.${k} is not enforce, alwaysHuman, maxLines, window or maxRevertRate`)
+      else errors.push(`risk.${k} is not enforce, alwaysHuman, maxLines, hardCap, window or maxRevertRate`)
     }
   }
   if ('contracts' in value) {
@@ -165,6 +170,19 @@ function parseSections(value: Record<string, unknown>, r: Registry, errors: stri
       else if (k === 'validate' || k === 'run') { const s = strings(v, `contracts.${k}`, errors); if (s !== null) r.contracts[k] = s.trim() }
       else errors.push(`contracts: unknown key "${k}"`)
     }
+  }
+  if ('mutation' in value) {
+    if (!isObject(value.mutation)) errors.push('mutation must be { minScore?: number }')
+    else for (const [k, v] of Object.entries(value.mutation)) {
+      if (k !== 'minScore') errors.push(`mutation: unknown key "${k}"`)
+      else if (typeof v === 'number' && v > 0 && v <= 1) r.mutation.minScore = v
+      else errors.push('mutation.minScore must be a number above 0 and at most 1')
+    }
+  }
+  if ('holdout' in value) {
+    const h = strings(value.holdout, 'holdout', errors)
+    if (h !== null && h.trim() && !h.includes('{file}')) errors.push('holdout must contain {file}, the holdout test file the command runs')
+    else if (h !== null) r.holdout = h.trim()
   }
   if ('models' in value) {
     const m = value.models
@@ -324,11 +342,16 @@ export function weakensRegistry(beforeText: string, afterText: string): string[]
   for (const g of b.contracts.files) if (!a.contracts.files.includes(g)) out.push(`contracts.files lost ${g}`)
   for (const g of b.contracts.covers) if (!a.contracts.covers.includes(g)) out.push(`contracts.covers lost ${g}`)
   for (const k of ['validate', 'run'] as const) if (b.contracts[k] && a.contracts[k] !== b.contracts[k]) out.push(`contracts.${k} changed`)
+  if (a.mutation.minScore < b.mutation.minScore) out.push(`mutation.minScore lowered ${b.mutation.minScore} → ${a.mutation.minScore}`)
+  if (b.holdout && a.holdout !== b.holdout) out.push('holdout command changed')
   if (b.gates.plan && !a.gates.plan) out.push('gates.plan turned off')
+  if (b.gates.testWriter && !a.gates.testWriter) out.push('gates.testWriter turned off')
   for (const u of a.humanApproval.selfApprovers) if (!b.humanApproval.selfApprovers.includes(u)) out.push(`humanApproval.selfApprovers added ${u}`)
   if (b.risk.enforce && !a.risk.enforce) out.push('risk.enforce turned off')
   for (const g of b.risk.alwaysHuman) if (!a.risk.alwaysHuman.includes(g)) out.push(`risk.alwaysHuman lost ${g}`)
   if (a.risk.maxLines > b.risk.maxLines) out.push('risk.maxLines raised')
+  if (b.risk.hardCap && !a.risk.hardCap) out.push('risk.hardCap turned off')
+  if (b.humanApproval.everyTier && !a.humanApproval.everyTier) out.push('humanApproval.everyTier turned off')
   if (a.risk.window > b.risk.window) out.push('risk.window raised')
   if (a.risk.maxRevertRate > b.risk.maxRevertRate) out.push('risk.maxRevertRate raised')
   for (const u of a.humanApproval.trusted) if (!b.humanApproval.trusted.includes(u)) out.push(`humanApproval.trusted added ${u}`)

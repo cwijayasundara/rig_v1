@@ -18,6 +18,10 @@ import { treeStamp } from './stamp.ts'
 import { rigOff, trunkRef, offLine } from './off.ts'
 import { recordHuman, questionsAsked } from './humanload.ts'
 import { runCommand } from './runs.ts'
+import { holdoutDenied, hidden } from './holdout.ts'
+import { generatedDenied, recordAnswers } from './approvalsummary.ts'
+import { chartState } from './chart.ts'
+import { sprintsOnDisk } from './product.ts'
 import { policyMode, modelFamily, activeSensors, commandFor, contractGlobs, ALWAYS_ON, type Registry, type Mode } from './registry.ts'
 import { contractsTouched } from './contracts.ts'
 import { syncFindings } from './sync.ts'
@@ -63,6 +67,19 @@ function hookAgentLaunch(input: HookInput): void {
 function hookAgentDone(input: HookInput): void {
   const resolved = input.tool_response?.resolvedModel ?? input.tool_response?.model
   if (exists(SDLC) && input.tool_use_id && resolved) recordResolved(MODEL_STATE, input.tool_use_id, resolved)
+}
+
+// Holdout cases stay hidden once their sprint's chart is approved (and not stale); it fails closed: a throw denies.
+function hookHoldoutGuard(input: HookInput): void {
+  if (!exists(SDLC)) return
+  const deny = (r: string): void => out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: r } }))
+  const generated = generatedDenied(input)
+  if (generated) return deny(generated)
+  try {
+    const locked = (n: number | null): boolean => (n === null ? sprintsOnDisk() : [n]).some(m => chartState(m).state === 'approved')
+    const reason = holdoutDenied(input, locked)
+    if (reason) deny(reason)
+  } catch { deny(hidden()) }
 }
 
 function readStdin(): HookInput {
@@ -286,9 +303,10 @@ const HOOKS: Record<string, (input: HookInput) => void> = {
   'model-switch': hookModelSwitch,
   'agent-launch': hookAgentLaunch,
   'agent-done': hookAgentDone,
+  'holdout-guard': hookHoldoutGuard,
   'prompt-submit': i => hookPromptSubmit(i),
   asking: i => recordHuman('asking', i),
-  asked: i => recordHuman('question', i, questionsAsked(i)),
+  asked: i => { recordHuman('question', i, questionsAsked(i)); recordAnswers(i) },
   stop: i => {
     recordHuman('stop', i)
     const r = hookStop(i)

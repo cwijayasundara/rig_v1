@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { makeRepo, sdlc, write, gitIn, verified, ARCH_OK, IMPL_OK } from './testkit.ts'
+import { makeRepo, sdlc, write, gitIn, verified, ARCH_OK, IMPL_OK, approveChart } from './testkit.ts'
 import { reviewItems } from './carry.ts'
 import { openQuestions } from './model.ts'
 import { pathToFileURL } from 'node:url'
@@ -25,7 +25,7 @@ function chart(): void {
   write(repo, `${SP}/implementation-plan.md`, IMPL_OK(['store', 'ops', 'cli']))
   write(repo, `${SP}/chart-review.md`, 'verdict: pass\n## Findings\n## Deferred\n')
   write(repo, `${SP}/testplan/cases.md`, '| ID | Req | Intent | B | Level | Data | Expected |\n' + ['store', 'ops', 'cli'].map((s, i) => `| TC-${i + 1} | FR-1 | ${s} | B1 | unit | - | ok |`).join('\n') + '\n')
-  const ok = sdlc(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
+  const ok = approveChart(repo, ['approve', 'chart-1', '--by', 'Pat'], HUMAN)
   assert.equal(ok.code, 0, ok.stderr)
   gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'chart')
 }

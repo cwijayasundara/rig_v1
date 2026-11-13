@@ -89,8 +89,8 @@ test('rig-check runs in the merge queue: merge_group triggers it, ai-review stay
   assert.ok(Object.keys(w.on as object).includes('merge_group'))
   assert.match((w.jobs as Record<string, { if?: string }>)['ai-review']!.if ?? '', /github\.event_name == 'pull_request'/)
   const t = read('templates/rig-check.yml')
-  assert.equal((t.match(/BASE: \$\{\{ github\.base_ref \|\| github\.event\.merge_group\.base_ref \}\}/g) ?? []).length, 3, 'the check, the base checker and the lessons step (skipped while rig is off)')
-  assert.equal((t.match(/origin\/\$\{BASE#refs\/heads\/\}/g) ?? []).length, 4)
+  assert.equal((t.match(/BASE: \$\{\{ github\.base_ref \|\| github\.event\.merge_group\.base_ref \}\}/g) ?? []).length, 4, 'the check, the base checker, the holdout step and the lessons step (skipped while rig is off)')
+  assert.equal((t.match(/origin\/\$\{BASE#refs\/heads\/\}/g) ?? []).length, 5)
 })
 
 test('CI reviews the delta only, with a turn cap, no lockfiles or vendored harness, and a newer push cancels the older run', () => {
@@ -101,4 +101,10 @@ test('CI reviews the delta only, with a turn cap, no lockfiles or vendored harne
   assert.equal((t.match(/claude -p --model opus --max-turns 25 /g) ?? []).length, 2)
   assert.equal((t.match(/Review only what this diff adds or changes; read another file only to understand a changed line, and never review code the diff does not change\./g) ?? []).length, 2)
   assert.match(t, /git diff "origin\/\$BASE\.\.\.HEAD" -- \. ':\(exclude\)\*package-lock\.json'[^\n]*':\(exclude\)\.rig\/bin'/)
+})
+
+test('the holdout step runs every base case with --base and notes that project setup must precede it', () => {
+  const t = read('templates/rig-check.yml')
+  assert.match(t, /holdout --ci --base "origin\/\$\{BASE#refs\/heads\/\}"/)
+  assert.match(t, /project's setup steps must precede/)
 })

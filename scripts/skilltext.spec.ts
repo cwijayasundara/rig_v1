@@ -136,3 +136,15 @@ test('intent map: plan writes the map and projects Behaviours, build records res
   assert.match(approve, /intent-map\.md/)
   assert.match(approve, /freeze\.json/)
 })
+
+test('build splits the test writer from the implementer and freezes the tests between them', () => {
+  const build = text('skills/build/SKILL.md')
+  assert.match(build, /Test writer: launch one `general-purpose` agent, model `sonnet`, in the foreground, with a brief of at most 40 lines/)
+  assert.match(build, /never the bodies of source files the plan changes[^\n]*--expect-fail/)
+  assert.match(build, /Run `S tests-freeze <slug>`: it hashes[^\n]*and commits them/)
+  assert.match(build, /formal checker[^\n]*frozen[^\n]*## Formal command/)
+    assert.ok(build.indexOf('(c) Implementer') < build.indexOf('S intent-record <slug> <E-id>'), 'intent-record, mutants and adjudication are in (c)')
+  assert.match(build, /enforced once committed/)
+  assert.match(build, /never editing a frozen test[^\n]*`S tests-freeze <slug> --why/)
+  assert.match(build, /at most 60 lines/)
+})

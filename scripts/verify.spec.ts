@@ -52,3 +52,16 @@ test('a tree that changes while verify runs is recorded as tree null', () => {
   sdlc(repo, ['verify', 'demo'])
   assert.equal(verifyJson().tree, null)
 })
+
+test('gates.testWriter: verify fails a change with B-numbered behaviours and no tests.freeze.jsonl row, and passes once frozen', () => {
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], gates: { testWriter: true } }))
+  approvedChange(repo, 'demo')
+  write(repo, 'tests/a.test.js', 'test B1\n')
+  const r = sdlc(repo, ['verify', 'demo'])
+  assert.equal(r.code, 1)
+  assert.match(verifyJson().blocks.join('\n'), /test-tamper.*no tests\.freeze\.jsonl row/)
+  assert.match(r.stdout, /\/rig:build step 3|test writer/)
+  sdlc(repo, ['tests-freeze', 'demo'])
+  sdlc(repo, ['verify', 'demo'])
+  assert.doesNotMatch(verifyJson().blocks.join('\n'), /tests\.freeze/)
+})

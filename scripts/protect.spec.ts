@@ -7,12 +7,12 @@ import path from 'node:path'
 import { makeRepo, sdlc, gitIn } from './testkit.ts'
 
 // A fake gh: `checks` is what the protection lookup answers (null: 404, no protection); every call is logged.
-function fakeGh(checks: string[] | null, secrets = 'CLAUDE_CODE_OAUTH_TOKEN\tUpdated 2026-10-27\n', notFound = 'Branch not protected (HTTP 404)'): { bin: string; calls: () => string[] } {
+function fakeGh(checks: string[] | null, secrets = 'CLAUDE_CODE_OAUTH_TOKEN\tUpdated 2026-10-27\n', notFound = 'Branch not protected (HTTP 404)'): { bin: string; calls: () => string[]; inputs: () => string } {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-gh-'))
   const log = path.join(dir, 'calls')
   const answer = checks === null ? `echo 'gh: ${notFound}' >&2; exit 1` : `echo '${JSON.stringify({ contexts: checks })}'`
-  fs.writeFileSync(path.join(dir, 'gh'), `#!/bin/sh\necho "$*" >> '${log}'\ncase "$*" in\n  "secret list"*) printf '${secrets}' ;;\n  *"-X POST"*) echo '[]' ;;\n  *required_status_checks*) ${answer} ;;\nesac\n`, { mode: 0o755 })
-  return { bin: path.join(dir, 'gh'), calls: () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n') : []) }
+  fs.writeFileSync(path.join(dir, 'gh'), `#!/bin/sh\necho "$*" >> '${log}'\ncase "$*" in\n  "secret list"*) printf '${secrets}' ;;\n  *"-X PUT"*) cat >> '${log}.in' ;;\n  *"-X POST"*) echo '[]' ;;\n  *required_status_checks*) ${answer} ;;\nesac\n`, { mode: 0o755 })
+  return { bin: path.join(dir, 'gh'), inputs: () => (fs.existsSync(log + '.in') ? fs.readFileSync(log + '.in', 'utf8') : ''), calls: () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n') : []) }
 }
 const posix = process.platform !== 'win32'
 const withWorkflow = (repo: string): string => { fs.mkdirSync(path.join(repo, '.github/workflows'), { recursive: true }); fs.writeFileSync(path.join(repo, '.github/workflows/rig-check.yml'), 'name: rig-check\n'); return repo }
@@ -94,4 +94,20 @@ test('init --enforce refuses a sensors.json that is not a registry yet, so a lat
   const r = sdlc(repo, ['init', '--enforce'])
   assert.notEqual(r.code, 0)
   assert.match(r.stderr, /init --stack first/)
+})
+
+test('--create writes the protection itself, with reviews and code owners required; --dry never writes', { skip: !posix }, () => {
+  const repo = makeRepo(), gh = fakeGh(null)
+  const r = run(repo, gh.bin, '--create')
+  assert.match(r.stdout, /main protection created/)
+  assert.match(r.stdout, /a solo maintainer can merge nothing[\s\S]*second collaborator[\s\S]*enforce_admins/)
+  const put = gh.calls().filter(c => c.includes('-X PUT'))
+  assert.equal(put.length, 1)
+  assert.match(put[0] ?? '', /branches\/main\/protection/)
+  assert.match(gh.inputs(), /"enforce_admins":true/)
+  assert.match(gh.inputs(), /"required_approving_review_count":1[\s\S]*"require_code_owner_reviews":true/)
+  const dry = fakeGh(null)
+  const d = run(makeRepo(), dry.bin, '--create', '--dry')
+  assert.equal(dry.calls().filter(c => c.includes('-X')).length, 0)
+  assert.match(d.stdout, /"required_pull_request_reviews":\{"required_approving_review_count":1/)
 })
