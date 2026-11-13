@@ -1,6 +1,6 @@
 // The PR body (proposal 2026-10-25 A1): what a reviewer needs before reading the diff. Built from the change's own files, no model
 // call; the pr skill adds the part that takes judgement (special things to note, the change outline) as pr-outline.md.
-import { section, blastRadius, bullets } from './model.ts'
+import { section, blastRadius, bullets, type FileDiff } from './model.ts'
 import { clean } from './core.ts'
 import type { Risk } from './risk.ts'
 import type { RunRow } from './runs.ts'
@@ -8,8 +8,9 @@ import { behaviourIds, missingBehaviours } from './sensors.ts'
 import { parseFindings, type ClaimRow } from './claims.ts'
 import { parseLedger } from './chartcheck.ts'
 import type { FreezeRow } from './testfreeze.ts'
+import { checkQuestions } from './prcheck.ts'
 
-type PrBodyInput = { requirements?: string; claims?: ClaimRow[]; intent: string; spec: string; plan: string; verify: { pass: boolean; tree: string | null; blocks: string[]; from?: string; holdout?: { passed: number; total: number } } | null; outline: string; review: string; risk: Risk; amendments?: string; runs?: RunRow[]; tests?: string; intentMap?: string; freeze?: FreezeRow[] }
+type PrBodyInput = { requirements?: string; claims?: ClaimRow[]; intent: string; spec: string; plan: string; verify: { pass: boolean; tree: string | null; blocks: string[]; from?: string; holdout?: { passed: number; total: number } } | null; outline: string; review: string; risk: Risk; amendments?: string; runs?: RunRow[]; tests?: string; intentMap?: string; freeze?: FreezeRow[]; changes?: FileDiff[] }
 
 const firstSentence = (text: string): string => /^[\s\S]*?[.!?](?=\s|$)/.exec(text.trim())?.[0].replace(/\s+/g, ' ') ?? text.trim().replace(/\s+/g, ' ')
 
@@ -112,6 +113,7 @@ export function prBody(i: PrBodyInput): string {
     `## How to revert\n\n${revert(i.plan)}`,
     `## What the checks would miss\n\n${!i.review.trim() ? 'no review.md' : /^reviewer:\s*none\b/.test(i.review) ? `No agent reviewed this change (tier ${i.risk.tier}): the sensors and the tests are the evidence.` : missed.length ? missed.join('\n') : 'nothing the reviewer named'}`,
     `## Evidence\n\n${[evidence, baseProof(runs), headChecks(runs), mutationNote(runs), behaviourTests(i.spec, i.tests), frozenNote(i.freeze), claimsNote(i.review, i.claims), proposedNote(i.spec, i.requirements)].filter(Boolean).join('\n\n')}`,
+    `## Check before approving\n\nAnswer these in your approving review, one line each (\`Q1: <answer>\`, 10+ characters; CI checks they are there, the audit checks they are right):\n\n${checkQuestions(i.changes ?? [], i.spec).join('\n')}`,
     i.intentMap?.trim() ? `## Intent map\n\n${i.intentMap.trim()}` : '',
     i.outline.trim(),
   ]

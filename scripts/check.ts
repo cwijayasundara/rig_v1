@@ -26,7 +26,7 @@ import { parseAccess } from './chartcheck.ts'
 import { ARCH_REL } from './product.ts'
 import { approvalRow, INCOMPLETE } from './approvalsummary.ts'
 import { rigOff, trunkRef, offLine, frozenWhileOff } from './off.ts'
-
+import { answersMissing, auditBlock, ANSWER_FIX } from './prcheck.ts'
 type Point = 'stop' | 'commit' | 'ship' | 'ci'
 type CheckInput = {
   point: Point
@@ -366,7 +366,7 @@ function tierZeroRefusal(ref: string, config: Registry, who: Who | null): string
   return breaker(changeHistory(ROOT, labelled, ref, true), config.risk.window, config.risk.maxRevertRate) ?? ''
 }
 
-function independentApproval(selfApprovers: string[], workflowEdited: boolean): string | null {
+function independentApproval(selfApprovers: string[], workflowEdited: boolean, answers = false): string | null {
   const eventPath = process.env.GITHUB_EVENT_PATH
   if (!eventPath || !fs.existsSync(eventPath)) return 'cannot verify a reviewer outside a GitHub pull_request run'
   const who = whoIs()
@@ -375,12 +375,12 @@ function independentApproval(selfApprovers: string[], workflowEdited: boolean): 
   try { reviews = ghPages(`repos/${who.repo}/pulls/${who.number}/reviews?per_page=100`) as typeof reviews } catch { return 'could not read the PR reviews (the job needs pull-requests: read and GH_TOKEN)' }
   // a pull_request checkout is a merge commit (head is its 2nd parent); a workflow re-run reuses an old event
   if (![git(['rev-parse', 'HEAD']), git(['rev-parse', 'HEAD^2'])].includes(who.headSha)) return `the event's head ${who.headSha.slice(0, 7)} is not the checked-out commit (a re-run on a stale event?)`
-  if (approvedBySomeoneElse(reviews, who.author, who.headSha)) return null
+  if (approvedBySomeoneElse(reviews, who.author, who.headSha)) return answers ? answersMissing(reviews, who.headSha, who.author, false) : null
   const none = `no approving review of ${who.headSha.slice(0, 7)} from someone other than ${who.author || 'the author'}`
   if (!who.author || !selfApprovers.includes(who.author)) return none
   if (workflowEdited) return `${none}; this PR edits .github/workflows, which the lead override will not judge (the workflow is read from the PR)`
   const refused = leadOverride(ghPages, who.repo, who.headSha, selfApprovers)
-  return refused === null ? null : `${none}; ${refused}`
+  return refused === null ? (answers ? answersMissing(reviews, who.headSha, who.author, true) : null) : `${none}; ${refused}`
 }
 
 // null when this workflow run's ai-review and lead-override jobs both succeeded on the head commit; otherwise why the override does not apply.
@@ -474,14 +474,14 @@ export function cmdCheck(args: Args): void {
     const person = queueWho && (approvedBySomeoneElse(reviews, queueWho.author, queueWho.headSha) || config.humanApproval.selfApprovers.includes(queueWho.author))
     if (!person) queueRefusal = risk.tier === 0 ? tierZeroRefusal(live, config, queueWho) : `tier ${risk.tier} and no approval of its head commit`
   }
-  const why = humanRows.length || (enforced && refusal !== '') ? independentApproval(config.humanApproval.selfApprovers, Boolean((git(['diff', '--name-only', base ?? 'HEAD', 'HEAD', '--', '.github/workflows']) ?? '').trim())) : null // before runChecks: the PR's test commands could rewrite the event file or shadow gh
+  const why = humanRows.length || (enforced && refusal !== '') ? independentApproval(config.humanApproval.selfApprovers, Boolean((git(['diff', '--name-only', base ?? 'HEAD', 'HEAD', '--', '.github/workflows']) ?? '').trim()), enforce) : null // before runChecks: the PR's test commands could rewrite the event file or shadow gh
   const result = runChecks({ point: at, diffs, config, rules, slugs, commands: replaying ? 'none' : at === 'stop' ? 'fast' : 'full', budgetMs, before, after, base, ratchet: !optString(args, 'config-from') && at !== 'commit', ratchetWrite: optString(args, 'config-from') ? null : at === 'commit' ? 'stage' : 'write', contracts: at === 'commit' ? !replaying : undefined, gates: config.gates })
   // At commit, like at push, a sensor out of time warns: CI runs it again, and a hanging tool must not hold git commit hostage.
   if (at === 'commit') for (const f of result.findings) if (f.outOfTime) f.severity = 'warn'
   result.blocks = result.findings.filter(f => f.severity === 'block')
   const configFindings: Finding[] = errors.map(e => ({ sensor: 'config', severity: 'block', file: SENSORS_JSON, message: e, fix: 'fix the file; see the sdlc README for its format' }))
-  const queueFindings: Finding[] = queueRefusal ? [{ sensor: 'human-approval', severity: 'block', message: `merge queue: this PR needs a person: ${queueRefusal}`, fix: 'someone other than the author approves the PR\'s head commit, then queue it again' }] : []
-  const humanFindings: Finding[] = why ? [{ sensor: 'human-approval', severity: 'block', message: humanRows.length ? `this PR adds ${humanRows.length} approval/waiver row(s): ${why}` : `risk.enforce: this PR is tier ${risk?.tier} and needs a person: ${refusal ? `${refusal}; ` : ''}${why}`, fix: humanRows.length ? 'a code owner other than the PR author reviews the rows below and approves the current head commit; pushing again needs a fresh approval' : 'someone other than the PR author approves the current head commit; pushing again needs a fresh approval' }] : []
+  const queueFindings: Finding[] = [...(at === 'ci' && base ? auditBlock(base) : []), ...(queueRefusal ? [{ sensor: 'human-approval', severity: 'block', message: `merge queue: this PR needs a person: ${queueRefusal}`, fix: 'someone other than the author approves the PR\'s head commit, then queue it again' } as Finding] : [])]
+  const humanFindings: Finding[] = why ? [{ sensor: 'human-approval', severity: 'block', message: humanRows.length ? `this PR adds ${humanRows.length} approval/waiver row(s): ${why}` : `risk.enforce: this PR is tier ${risk?.tier} and needs a person: ${refusal ? `${refusal}; ` : ''}${why}`, fix: why?.includes('does not answer') ? ANSWER_FIX : humanRows.length ? 'a code owner other than the PR author reviews the rows below and approves the current head commit; pushing again needs a fresh approval' : 'someone other than the PR author approves the current head commit; pushing again needs a fresh approval' }] : []
   const answerFindings: Finding[] = humanRows.filter(r => r.includes(INCOMPLETE)).map(r => ({ sensor: 'human-approval', severity: 'block', message: r, fix: `approve the chart again through ${skillRef('approve')} and answer every check question` }))
   const syncBlocks = (at === 'commit' || at === 'ci') && declaresRegistry() ? syncFindings(config, [], 'block') : [] // config errors already block above
   const all = { ...result, findings: [...queueFindings, ...humanFindings, ...answerFindings, ...configFindings, ...syncBlocks, ...result.findings], blocks: [...queueFindings, ...humanFindings, ...answerFindings, ...configFindings, ...syncBlocks.filter(f => f.severity === 'block'), ...result.blocks] }

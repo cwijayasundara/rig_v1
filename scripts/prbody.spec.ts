@@ -84,7 +84,7 @@ test('the blast radius reads path lines without bullets, and the revert text fit
 
 // Verification evidence item 2: the Evidence section shows what the recorded runs show, not what anyone claims.
 const run = (o: Partial<RunRow>): RunRow => ({ at: 't', cmd: 'pytest -q', exit: 0, ms: 1, tail: '', source: 'ship', ...o })
-const evidence = (runs: RunRow[], tests?: string): string => { const b = prBody({ intent, spec, plan, verify, outline: '', review: '', risk, runs, tests }); return b.slice(b.indexOf('## Evidence')) }
+const evidence = (runs: RunRow[], tests?: string): string => { const b = prBody({ intent, spec, plan, verify, outline: '', review: '', risk, runs, tests }); return b.slice(b.indexOf('## Evidence')).split('\n## Check before')[0]! }
 
 test('evidence quotes the failure lines of the red run on the base, and flags a red that is only a missing import or symbol', () => {
   const assertion = evidence([run({ cwd: '/tmp/rig-red-1', tail: '..\n' }), run({ cwd: '/tmp/rig-red-1', exit: 1, expectFail: true, tail: 'collected 3 items\nFAILED tests/test_export.py::test_b1_downloads - AssertionError: no csv\n1 failed, 2 passed' })])
@@ -209,4 +209,13 @@ test('the evidence says the mutation score on changed lines when the mutation-di
   assert.doesNotMatch(evidence([run({ sensor: 'unit', tail: '12 passed' })]), /Mutation:/)
   assert.match(evidence([run({ sensor: 'mutation-diff', tail: 'mutation: no mutants on changed lines' })]), /^Mutation: no mutants on changed lines$/m)
   assert.doesNotMatch(evidence([]), /Mutation:/)
+})
+
+test('the body ends its review section with exactly three check questions Q1-Q3, the same every time', () => {
+  const lines = (n: number) => Array.from({ length: n }, (_, i) => ({ n: i + 1, text: i === 0 ? 'export function exportCsv() {' : '  x' }))
+  const changes = [{ file: 'src/export/csv.ts', status: 'M' as const, added: lines(5), removed: [] }]
+  const b = prBody({ intent, spec, plan, verify, outline: '', review: '', risk, changes })
+  assert.match(b, /## Check before approving\n\n[^\n]*approving review[^\n]*\n\nQ1: What breaks if `exportCsv` in src\/export\/csv\.ts returns early\?\nQ2: Which behaviour \(B1, B2\) does src\/export\/csv\.ts serve\?\nQ3: Which test fails if src\/export\/csv\.ts lines 1-5 are reverted\?/)
+  assert.equal(b.match(/^Q\d:/gm)?.length, 3)
+  assert.equal(prBody({ intent, spec, plan, verify, outline: '', review: '', risk, changes }), b)
 })
