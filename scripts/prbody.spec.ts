@@ -216,6 +216,7 @@ test('the body ends its review section with exactly three check questions Q1-Q3,
   const changes = [{ file: 'src/export/csv.ts', status: 'M' as const, added: lines(5), removed: [] }]
   const b = prBody({ intent, spec, plan, verify, outline: '', review: '', risk, changes })
   assert.match(b, /## Check before approving\n\n[^\n]*approving review[^\n]*\n\nQ1: What breaks if `exportCsv` in src\/export\/csv\.ts returns early\?\nQ2: Which behaviour \(B1, B2\) does src\/export\/csv\.ts serve\?\nQ3: Which test fails if src\/export\/csv\.ts lines 1-5 are reverted\?/)
+  assert.match(b, /a sample of merged changes is audited/); assert.doesNotMatch(b, /the audit checks they are right|seed/i)
   assert.equal(b.match(/^Q\d:/gm)?.length, 3)
   assert.equal(prBody({ intent, spec, plan, verify, outline: '', review: '', risk, changes }), b)
 })

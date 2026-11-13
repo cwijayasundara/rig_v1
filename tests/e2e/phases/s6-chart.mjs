@@ -19,6 +19,15 @@ export function writeFixture(sb) {
   }
 }
 
+// The person's side of the gate: list the questions (--ask), then answer them through the AskUserQuestion hook, as /rig-approve does.
+function answerChart(sb, n) {
+  const asked = sb.sdlc(['approve', `chart-${n}`, '--ask'], { human: true }), sha = /page sha ([0-9a-f]{64})/.exec(asked.stderr)?.[1]
+  if (!sha) return
+  const qs = [...asked.stderr.matchAll(/^  \d+\. (.*)$/gm)].map(m => `[page sha ${sha.slice(0, 12)}] ${m[1]}`)
+  const tool_response = { answers: Object.fromEntries(qs.map(q => [q, 'The person confirmed this in their own words.'])) }
+  sb.sdlc(['hook', 'asked'], { input: JSON.stringify({ tool_name: 'AskUserQuestion', tool_input: { questions: qs.map(question => ({ question })) }, tool_response }) })
+}
+
 export async function runChart(sb) {
   const c = new Checks('S6 chart')
   const start = sb.git('rev-parse', 'HEAD')
@@ -28,6 +37,7 @@ export async function runChart(sb) {
     const found = json(sb.sdlc(['chart', 'check', '1', '--cases', '--json']))
     await c.check('S6: the known-good chart has no blocking finding', () => (Array.isArray(found) && !found.some(f => f.severity === 'block')) || JSON.stringify(found))
     await c.check('S6: approve chart-1 is human-only (exit 3 without SDLC_HUMAN)', () => { const r = sb.sdlc(['approve', 'chart-1']); return r.status === 3 || `exit ${r.status}` })
+    answerChart(sb, 1)
     await c.check('S6: a person approves chart-1 and the approval file is written', () => { const r = sb.sdlc(['approve', 'chart-1'], { human: true }); return (r.status === 0 && sb.exists('.rig/product/sprints/sprint-1/approval.json')) || `exit ${r.status}: ${r.stderr.trim().split('\n')[0]}` })
     await c.check('S6: only the intent with no dependency is ready', () => { const ready = json(sb.sdlc(['ready', '--json'])); return JSON.stringify((ready ?? []).map(i => i.slug)) === JSON.stringify([intent]) || JSON.stringify(ready) })
     const started = sb.sdlc(['new', intent, '--source', SRC])

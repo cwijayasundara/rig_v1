@@ -479,7 +479,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   risk: cmdRisk,
   claims: cmdClaims,
   weight: cmdWeight, 'route-check': cmdRouteCheck, 'intent-record': cmdIntentRecord, 'intent-adjudicate': cmdIntentAdjudicate, off: cmdOff, on: cmdOn,
-  'tests-freeze': cmdTestsFreeze, 'intent-recheck': cmdIntentRecheck, 'intent-project': cmdIntentProject,
+  'intent-recheck': cmdIntentRecheck, 'tests-freeze': cmdTestsFreeze, 'intent-project': cmdIntentProject,
 }
 
 const [command = '', ...rest] = process.argv.slice(2)

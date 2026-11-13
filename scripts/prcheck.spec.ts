@@ -1,7 +1,7 @@
 // C6: the comprehension check (questions in the PR body, answers in the approving review) and the audit-in-progress block.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { checkQuestions, answersMissing, auditOpen } from './prcheck.ts'
+import { checkQuestions, answersMissing, auditBlock, HOLD } from './prcheck.ts'
 import type { FileDiff } from './model.ts'
 
 const lines = (from: number, n: number) => Array.from({ length: n }, (_, i) => ({ n: from + i, text: i === 0 ? 'export function exportCsv(rows) {' : `  row ${i}` }))
@@ -42,9 +42,29 @@ test('answers: the approving review of the head commit must carry Q1-Q3 of 10+ c
   assert.equal(answersMissing([review(good, { user: { login: 'dev' }, state: 'COMMENTED' })], 'h1', 'dev', true), null, 'the lead override path: the self-approver answers in a review comment')
 })
 
-test('an audit commit with no revert of it blocks; a reverted one does not', () => {
-  assert.match(auditOpen(['feat: x', 'audit: seeded defect s5-ab12'])!, /audit in progress: a seeded defect is present/)
-  assert.equal(auditOpen(['feat: x']), null)
-  assert.equal(auditOpen(['Revert "audit: seeded defect s5-ab12"', 'audit: seeded defect s5-ab12']), null)
-  assert.match(auditOpen(['Revert "audit: seeded defect s5-ab12"', 'audit: seeded defect s5-ab12', 'audit: seeded defect s5-cd34'])!, /audit in progress/)
+test('questions are drawn from source files only: a big doc or test change does not name them', () => {
+  const docOnly: FileDiff[] = [{ file: 'docs/big.md', status: 'M', added: lines(1, 50), removed: [] }, { file: 'test/x.test.ts', status: 'A', added: lines(1, 50), removed: [] }]
+  assert.match(checkQuestions(docOnly, spec)[0]!, /main function returns early/)
+  assert.doesNotMatch(checkQuestions([...docOnly, diffs[0]!], spec).join('\n'), /big\.md|x\.test\.ts/)
+})
+
+test('answers: a later non-comment review replaces an earlier approval; identical answers and echoed questions do not count; the lead path says how', () => {
+  assert.match(answersMissing([review(good), review('', { state: 'CHANGES_REQUESTED' })], 'h1', 'dev', false)!, /Q1/, 'the latest non-comment review is the one that counts')
+  assert.equal(answersMissing([review(''), review(good)], 'h1', 'dev', false), null)
+  assert.equal(answersMissing([review(good), review('see the code', { state: 'COMMENTED' })], 'h1', 'dev', false), null, 'a comment does not replace the approval')
+  const same = 'Q1: the export stops halfway\nQ2: the export stops halfway\nQ3: the export stops halfway'
+  assert.match(answersMissing([review(same)], 'h1', 'dev', false)!, /Q2, Q3/, 'identical answers are one answer')
+  const qs = ['Q1: What breaks if `f` in src/a.ts returns early?', 'Q2: Which intent does src/a.ts serve?', 'Q3: Which test fails if src/a.ts lines 1-5 are reverted?']
+  assert.match(answersMissing([review('Q1: What breaks if `f` in src/a.ts returns early?\nQ2: the export intent only\nQ3: test/a.test.ts fails then')], 'h1', 'dev', false, qs)!, /Q1/, 'an answer that repeats the question')
+  assert.match(answersMissing([review('')], 'h1', 'dev', true)!, /COMMENTED review on the head commit/, 'the lead path is told how to answer')
+  assert.doesNotMatch(answersMissing([review('')], 'h1', 'dev', false)!, /COMMENTED review/)
+})
+
+test('auditBlock: the rig-hold label blocks without naming a seed; an unreadable label list blocks (fail closed)', () => {
+  const held = auditBlock(() => [{ name: 'bug' }, { name: HOLD }])
+  assert.equal(held.length, 1)
+  assert.equal(held[0]!.message, 'merge held by the auditor (rig-hold)')
+  assert.doesNotMatch(JSON.stringify(held), /seed|defect/i)
+  assert.deepEqual(auditBlock(() => [{ name: 'bug' }]), [])
+  assert.match(auditBlock(() => { throw new Error('no gh') })[0]!.message, /could not read the PR labels/)
 })

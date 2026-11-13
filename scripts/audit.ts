@@ -1,16 +1,18 @@
-// `sdlc audit seed|reveal <pr>` (three-gates C6, human-only): a seeded defect measures whether the final review really reads the diff. `seed` flips one operator on a line the PR
-// changed and pushes ONE commit `audit: seeded defect <id>` (rig-check blocks the merge while it stands, see prcheck.ts); `reveal` records whether a review comment named that
-// file:line (+-2) and reverts the seed. The record is {pr, id, file, line, at, by} in <git dir>/rig-audits.jsonl: inside .git, so it is in no commit, never on the PR branch
-// where the reviewer could read it, and survives branch switches; it lives on the auditor's clone, where `report --github` reads it. Review health: `healthText`, `reviewHealth`.
+// `sdlc audit seed|reveal <pr>` (three-gates C6, human-only): a seeded defect measures whether the final review really reads the diff. Run `seed` right after the PR opens, before the first
+// review: it labels the PR `rig-hold` (a hold no commit can clear, read by rig-check through gh; see prcheck.ts), then pushes ONE commit `fix: tidy <file>` that flips an operator on a line the PR
+// changed. `reveal` records whether a comment or review made after the seed (not by the auditor or the PR author) named that file:line (+-2), pulls, reverts the seed unless the head already
+// reverts it, checks the flipped hunk is gone from the remote head, and only then lifts the label. The record {pr, id, sha, login, file, line, at, by} is in <git dir>/rig-audits.jsonl: inside .git,
+// so in no commit, never on the PR branch where the reviewer could read it, and it lives on the auditor's clone, where `report --github` reads it. Review health: `healthText`, `reviewHealth`.
 import fs from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
 import { ROOT, read, readJsonl, out, fail, git, whoami, optString, type Args } from './core.ts'
 import { gh } from './model.ts'
 import { parseReport } from './mutscore.ts'
-import { TEST } from './prcheck.ts'
+import { isSrc, HOLD } from './prcheck.ts'
 
-export type Audit = { pr: number; id: string; file: string; line: number; at: string; by: string; caught?: boolean; reviewers?: string[]; catchers?: string[]; revealedAt?: string }
+export type Audit = { pr: number; id: string; sha?: string; login?: string; file: string; line: number; at: string; by: string; caught?: boolean; reviewers?: string[]; catchers?: string[]; revealedAt?: string }
 const auditPath = (): string => path.resolve(ROOT, git(['rev-parse', '--git-path', 'rig-audits.jsonl']) ?? '.git/rig-audits.jsonl')
 export const readAudits = (): Audit[] => (fs.existsSync(auditPath()) ? readJsonl<Audit>(auditPath()) : [])
 const writeAudits = (rows: Audit[]): void => fs.writeFileSync(auditPath(), rows.map(r => JSON.stringify(r)).join('\n') + '\n')
@@ -36,15 +38,23 @@ function addedLines(base: string): Added[] {
     else if (/^@@/.test(l)) n = Number(/\+(\d+)/.exec(l)?.[1] ?? 0)
     else if (l.startsWith('+') && file) { out.push({ file, n, text: l.slice(1) }); n++ }
   }
-  return out.filter(a => /\.(?:ts|tsx|js|jsx|mjs|cjs|py|go|rs|java|cs|kt|rb|php|c|cpp)$/.test(a.file) && !TEST.test(a.file) && !a.file.startsWith('.rig/'))
+  return out.filter(a => isSrc(a.file))
 }
 
-type PrInfo = { headRefName: string; baseRefName: string }
+type PrInfo = { headRefName: string; baseRefName: string; author?: { login?: string } }
 function onBranch(pr: number): PrInfo {
-  const info = JSON.parse(gh(['pr', 'view', String(pr), '--json', 'headRefName,baseRefName'], ROOT)) as PrInfo
+  const info = JSON.parse(gh(['pr', 'view', String(pr), '--json', 'headRefName,baseRefName,author'], ROOT)) as PrInfo
   if (git(['rev-parse', '--abbrev-ref', 'HEAD']) !== info.headRefName) fail(`check out the PR's branch first (${info.headRefName}); the seed commit is made on it`)
   if (git(['status', '--porcelain'])) fail('the working tree has changes: commit or stash them first')
   return info
+}
+
+const holdRoute = (pr: number): string => `repos/{owner}/{repo}/issues/${pr}/labels`
+// True while the seed's hunk can still be reverse-applied to the working tree (the flipped line is there).
+function seeded(sha: string): boolean {
+  const d = git(['diff', '-U0', '--no-color', `${sha}^`, sha])
+  if (!d) fail(`the seed commit ${sha.slice(0, 7)} is not in this clone: reveal from the clone that seeded`)
+  try { execFileSync('git', ['apply', '-R', '--check', '--unidiff-zero'], { cwd: ROOT, input: d + '\n', stdio: ['pipe', 'ignore', 'ignore'] }); return true } catch { return false }
 }
 
 function seed(pr: number, args: Args): void {
@@ -56,33 +66,42 @@ function seed(pr: number, args: Args): void {
   const hot = from ? (() => { const ms = parseReport(optString(args, 'tool') ?? 'stryker', read(path.resolve(ROOT, from))); return (ms.some(m => !m.killed) ? ms.filter(m => !m.killed) : ms).map(m => ({ file: m.file, line: m.line })) })() : []
   const pick = seedPick(addedLines(base), pr, hot)
   if (!pick) fail('no changed source line holds an operator to flip: seed by hand')
+  let login = ''
+  try { login = gh(['api', 'user', '--jq', '.login'], ROOT).trim(); gh(['api', '-X', 'POST', holdRoute(pr), '-f', `labels[]=${HOLD}`], ROOT) } catch { fail(`could not label PR ${pr} ${HOLD} (gh needs pull-request write access): nothing was changed`) }
   const file = path.join(ROOT, pick.file), lines = read(file).split('\n')
   lines[pick.line - 1] = pick.text
   fs.writeFileSync(file, lines.join('\n'))
   const id = `s${pr}-${createHash('sha1').update(`${pick.file}:${pick.line}`).digest('hex').slice(0, 6)}`
-  if (git(['add', pick.file]) === null || git(['commit', '-q', '-m', `audit: seeded defect ${id}`]) === null) fail('could not commit the seed (a git hook refused it?)')
-  if (git(['push', '-q', 'origin', `HEAD:${info.headRefName}`]) === null) fail(`the seed is committed locally but the push failed: push ${info.headRefName}, or git reset --hard HEAD~1 to drop it`)
-  writeAudits([...readAudits(), { pr, id, file: pick.file, line: pick.line, at: new Date().toISOString(), by: whoami() ?? 'unknown' }])
-  out(`seeded ${id} on PR ${pr}: one commit pushed; the record is in ${path.relative(ROOT, auditPath())} (not in any commit). rig-check blocks the merge until: audit reveal ${pr}`)
+  const unhold = (why: string): never => { try { gh(['api', '-X', 'DELETE', `${holdRoute(pr)}/${HOLD}`], ROOT) } catch { /* the label stays: lift it by hand */ } return fail(why) }
+  if (git(['add', pick.file]) === null || git(['commit', '-q', '-m', `fix: tidy ${path.basename(pick.file)}`]) === null) unhold('could not commit the seed (a git hook refused it?): the working tree still holds the flip')
+  if (git(['push', '-q', 'origin', `HEAD:${info.headRefName}`]) === null) unhold(`the seed is committed locally but the push failed: git reset --hard HEAD~1 to drop it, or push ${info.headRefName} and add the ${HOLD} label again`)
+  writeAudits([...readAudits(), { pr, id, sha: git(['rev-parse', 'HEAD']) ?? '', login, file: pick.file, line: pick.line, at: new Date().toISOString(), by: whoami() ?? 'unknown' }])
+  out(`seeded ${id} on PR ${pr}: PR labelled ${HOLD}, one commit pushed; the record is in ${path.relative(ROOT, auditPath())} (not in any commit). rig-check holds the merge until: audit reveal ${pr}`)
 }
 
-type Rev = { user?: { login?: string; type?: string } | null; state?: string; body?: string | null; path?: string; line?: number | null; original_line?: number | null }
+type Rev = { user?: { login?: string; type?: string } | null; state?: string; body?: string | null; path?: string; line?: number | null; original_line?: number | null; created_at?: string; submitted_at?: string }
 function reveal(pr: number): void {
   const rows = readAudits(), row = rows.find(a => a.pr === pr && a.caught === undefined)
   if (!row) fail(`no unrevealed seeded defect recorded for PR ${pr} (run audit seed ${pr} on the clone that seeded it)`)
-  const info = onBranch(pr)
+  if (!row.sha) fail('this record predates seed holds: lift any hold by hand and revert the seed commit')
+  const info = onBranch(pr), head = info.headRefName
+  if (git(['fetch', '-q', 'origin', head]) === null || git(['pull', '-q', '--ff-only', 'origin', head]) === null) fail(`could not bring ${head} up to date (git pull --ff-only failed): resolve it, then run audit reveal ${pr} again`)
   const all = (route: string): Rev[] => (JSON.parse(gh(['api', '--paginate', '--slurp', route], ROOT)) as Rev[][]).flat()
-  const comments = all(`repos/{owner}/{repo}/pulls/${pr}/comments?per_page=100`), reviews = all(`repos/{owner}/{repo}/pulls/${pr}/reviews?per_page=100`)
-  const hit = (r: Rev): boolean => (r.path === row.file && Math.abs((r.line ?? r.original_line ?? 1e9) - row.line) <= 2) || mentions(r.body ?? '', row.file, row.line)
+  // only what came after the seed, from people other than the auditor and the PR author
+  const skip = new Set([row.login, info.author?.login].map(x => (x ?? '').toLowerCase()))
+  const fresh = (rs: Rev[]): Rev[] => rs.filter(r => Date.parse(r.created_at ?? r.submitted_at ?? '') > Date.parse(row.at) && !skip.has((r.user?.login ?? '').toLowerCase()))
+  const comments = fresh(all(`repos/{owner}/{repo}/pulls/${pr}/comments?per_page=100`)), reviews = fresh(all(`repos/{owner}/{repo}/pulls/${pr}/reviews?per_page=100`)), talk = fresh(all(`repos/{owner}/{repo}/issues/${pr}/comments?per_page=100`))
+  const says = (r: Rev): boolean => mentions(r.body ?? '', row.file, row.line)
   const names = (rs: Rev[]): string[] => [...new Set(rs.map(r => r.user?.login ?? '').filter(Boolean))]
-  const catchers = names([...comments.filter(hit), ...reviews.filter(r => mentions(r.body ?? '', row.file, row.line))])
-  const sha = git(['log', '-1', '--format=%H', `--grep=^audit: seeded defect ${row.id}$`])
-  if (!sha) fail(`the seed commit ${row.id} is not on this branch`)
-  if (git(['revert', '--no-edit', sha]) === null) fail('git revert failed; resolve it, then push the branch')
-  if (git(['push', '-q', 'origin', `HEAD:${info.headRefName}`]) === null) fail(`reverted locally but the push failed: push ${info.headRefName}`)
+  const catchers = names([...comments.filter(r => (r.path === row.file && Math.abs((r.line ?? r.original_line ?? 1e9) - row.line) <= 2) || says(r)), ...reviews.filter(says), ...talk.filter(says)])
+  if (seeded(row.sha) && git(['revert', '--no-edit', row.sha]) === null) fail('git revert failed; resolve it, then run audit reveal again')
+  if (git(['push', '-q', 'origin', `HEAD:${head}`]) === null) fail(`reverted locally but the push failed: push ${head}, then run audit reveal ${pr} again`)
+  git(['fetch', '-q', 'origin', head])
+  if (git(['rev-parse', 'HEAD']) !== git(['rev-parse', `origin/${head}`]) || seeded(row.sha)) fail(`the flipped line is still on the remote head of ${head}: the ${HOLD} label stays; fix it, push, then run audit reveal ${pr} again`)
+  try { gh(['api', '-X', 'DELETE', `${holdRoute(pr)}/${HOLD}`], ROOT) } catch { fail(`the seed is gone but the ${HOLD} label could not be removed: remove it by hand`) }
   const caught = catchers.length > 0
-  writeAudits(rows.map(a => (a === row ? { ...row, caught, catchers, reviewers: names([...comments, ...reviews]), revealedAt: new Date().toISOString() } : a)))
-  out(`audit ${row.id}: ${caught ? `caught by ${catchers.join(', ')}` : 'missed'} (${row.file}:${row.line}); seed reverted and pushed`)
+  writeAudits(rows.map(a => (a === row ? { ...row, caught, catchers, reviewers: names([...comments, ...reviews, ...talk]), revealedAt: new Date().toISOString() } : a)))
+  out(`audit ${row.id}: ${caught ? `caught by ${catchers.join(', ')}` : 'missed'} (${row.file}:${row.line}); seed reverted, hold lifted`)
 }
 
 export function cmdAudit(args: Args): void {

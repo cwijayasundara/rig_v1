@@ -678,7 +678,7 @@ test('an old commands waiver no longer silences a command sensor', () => {
 })
 
 // Risk tiers in CI (proposal 2026-10-27 B1, B2): the base config sets the knobs, the PR's diff and change record set the signals.
-const riskRun = (o: { enforce?: boolean; reviews?: unknown[]; files?: Record<string, string>; baseFiles?: Record<string, string>; remove?: string[]; sensors?: object; history?: (sha: () => string) => void; aiReview?: string; searchFails?: boolean; sender?: string; fork?: boolean; queue?: { baseFiles?: Record<string, string> }; message?: string } = {}) => {
+const riskRun = (o: { enforce?: boolean; reviews?: unknown[]; files?: Record<string, string>; baseFiles?: Record<string, string>; remove?: string[]; sensors?: object; history?: (sha: () => string) => void; aiReview?: string; searchFails?: boolean; sender?: string; fork?: boolean; queue?: { baseFiles?: Record<string, string> }; message?: string; labels?: string[]; labelsFail?: boolean } = {}) => {
   const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-gh-'))
   gitIn(repo, 'checkout', '-q', 'main')
   o.history?.(() => spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).stdout.trim())
@@ -697,7 +697,7 @@ const riskRun = (o: { enforce?: boolean; reviews?: unknown[]; files?: Record<str
   // the fake gh answers each route the check asks: revert-labelled PRs, the ai-review check run, the PR itself and its reviews
   const runs = [{ check_runs: [{ name: 'ai-review', conclusion: o.aiReview ?? 'success', head_sha: sha }] }]
   const pull = [{ number: 5, user: { login: 'dev' }, head: { sha, repo: { full_name: 'o/r' } } }]
-  fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\ncase "$*" in\n  *search/issues*) ${o.searchFails ? 'exit 1' : `echo '[{"items":[]}]'`} ;;\n  *check-runs*) echo '${JSON.stringify(runs)}' ;;\n  *pulls/5/reviews*) printf '%s\\n' '${JSON.stringify([reviews])}' ;;\n  *pulls/5*) echo '${JSON.stringify(pull)}' ;;\n  *) echo '${JSON.stringify([reviews])}' ;;\nesac\n`, { mode: 0o755 })
+  fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\ncase "$*" in\n  *search/issues*) ${o.searchFails ? 'exit 1' : `echo '[{"items":[]}]'`} ;;\n  *issues/5/labels*) ${o.labelsFail ? 'exit 1' : `echo '${JSON.stringify([(o.labels ?? []).map(name => ({ name }))])}'`} ;;\n  *check-runs*) echo '${JSON.stringify(runs)}' ;;\n  *pulls/5/reviews*) printf '%s\\n' '${JSON.stringify([reviews])}' ;;\n  *pulls/5*) echo '${JSON.stringify(pull)}' ;;\n  *) echo '${JSON.stringify([reviews])}' ;;\nesac\n`, { mode: 0o755 })
   const ev = path.join(bin, 'event.json')
   const sender = { login: o.sender ?? 'dev' }
   if (o.queue) {
@@ -901,9 +901,12 @@ test('with risk.enforce on, an approving review that answers Q1-Q3 passes; every
   assert.doesNotMatch(riskRun({ reviews: [lead()] }).stdout, /answer Q1/)
 })
 
-test('a PR carrying an unreverted seeded-defect commit is blocked whatever else passes', { skip: !posix }, () => {
-  const r = riskRun({ files: { 'a.txt': 'x\n' }, message: 'audit: seeded defect s5-ab12' })
+test('a PR labelled rig-hold is blocked whatever else passes, with a message that names no seed; an unreadable label list blocks', { skip: !posix }, () => {
+  const r = riskRun({ files: { 'a.txt': 'x\n' }, labels: ['rig-hold'] })
   assert.equal(r.code, 1, r.stdout)
-  assert.match(r.stdout, /audit in progress: a seeded defect is present/)
-  assert.doesNotMatch(riskRun({ files: { 'b.txt': 'x\n' } }).stdout, /audit in progress/)
+  assert.match(r.stdout, /merge held by the auditor \(rig-hold\)/)
+  assert.doesNotMatch(r.stdout, /seed/i)
+  assert.doesNotMatch(riskRun({ files: { 'b.txt': 'x\n' }, labels: ['bug'] }).stdout, /rig-hold/)
+  assert.match(riskRun({ files: { 'c.txt': 'x\n' }, labelsFail: true }).stdout, /could not read the PR labels/)
+  assert.doesNotMatch(riskRun({ files: { 'd.txt': 'x\n' }, message: 'audit: seeded defect s5-ab12' }).stdout, /merge held/, 'commit subjects are not trusted either way')
 })

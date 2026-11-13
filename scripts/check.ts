@@ -26,7 +26,7 @@ import { parseAccess } from './chartcheck.ts'
 import { ARCH_REL } from './product.ts'
 import { approvalRow, INCOMPLETE } from './approvalsummary.ts'
 import { rigOff, trunkRef, offLine, frozenWhileOff } from './off.ts'
-import { answersMissing, auditBlock, ANSWER_FIX } from './prcheck.ts'
+import { answersMissing, heldFindings, ANSWER_FIX } from './prcheck.ts'
 type Point = 'stop' | 'commit' | 'ship' | 'ci'
 type CheckInput = {
   point: Point
@@ -325,8 +325,8 @@ function humanRowsAdded(base: string): string[] {
 // (gated by a GitHub Environment whose required reviewer clicks in the web UI) succeeded, both on the head commit.
 // The one path where a PR merges with no person (proposal 2026-10-27 B2, C2). Every input is the base's or GitHub's, never the PR's,
 // and every lookup that fails refuses: the unattended path fails closed.
-type Who = { number: number; author: string; sender: string; repo: string; headSha: string; sameRepo: boolean }
-type Pull = { number?: number; user?: { login?: string }; head?: { sha?: string; repo?: { full_name?: string } } }
+type Who = { body: string; number: number; author: string; sender: string; repo: string; headSha: string; sameRepo: boolean }
+type Pull = { body?: string | null; number?: number; user?: { login?: string }; head?: { sha?: string; repo?: { full_name?: string } } }
 type Event = { repository?: { full_name?: string }; sender?: { login?: string }; pull_request?: Pull; merge_group?: { head_ref?: string } }
 
 // Who this run is about: the pull_request event, or in the merge queue the PR its ref names (gh-readonly-queue/<base>/pr-<N>-<sha>), read from GitHub.
@@ -338,7 +338,7 @@ function whoIs(): Who | null {
   const queued = /\/pr-(\d+)-[0-9a-f]+$/.exec(ev.merge_group?.head_ref ?? '')?.[1]
   if (!pr && queued) { try { pr = ghPages(`repos/${repo}/pulls/${queued}`)[0] as Pull } catch { return null } }
   if (!pr?.number || !pr.head?.sha || !repo) return null
-  return { number: pr.number, author: (pr.user?.login ?? '').toLowerCase(), sender: (ev.sender?.login ?? '').toLowerCase(), repo, headSha: pr.head.sha, sameRepo: pr.head.repo?.full_name === repo }
+  return { body: pr.body ?? '', number: pr.number, author: (pr.user?.login ?? '').toLowerCase(), sender: (ev.sender?.login ?? '').toLowerCase(), repo, headSha: pr.head.sha, sameRepo: pr.head.repo?.full_name === repo }
 }
 
 // The latest non-comment review per person; true when someone other than the author approved this head commit.
@@ -375,12 +375,12 @@ function independentApproval(selfApprovers: string[], workflowEdited: boolean, a
   try { reviews = ghPages(`repos/${who.repo}/pulls/${who.number}/reviews?per_page=100`) as typeof reviews } catch { return 'could not read the PR reviews (the job needs pull-requests: read and GH_TOKEN)' }
   // a pull_request checkout is a merge commit (head is its 2nd parent); a workflow re-run reuses an old event
   if (![git(['rev-parse', 'HEAD']), git(['rev-parse', 'HEAD^2'])].includes(who.headSha)) return `the event's head ${who.headSha.slice(0, 7)} is not the checked-out commit (a re-run on a stale event?)`
-  if (approvedBySomeoneElse(reviews, who.author, who.headSha)) return answers ? answersMissing(reviews, who.headSha, who.author, false) : null
+  if (approvedBySomeoneElse(reviews, who.author, who.headSha)) return answers ? answersMissing(reviews, who.headSha, who.author, false, who.body.split('\n')) : null
   const none = `no approving review of ${who.headSha.slice(0, 7)} from someone other than ${who.author || 'the author'}`
   if (!who.author || !selfApprovers.includes(who.author)) return none
   if (workflowEdited) return `${none}; this PR edits .github/workflows, which the lead override will not judge (the workflow is read from the PR)`
   const refused = leadOverride(ghPages, who.repo, who.headSha, selfApprovers)
-  return refused === null ? (answers ? answersMissing(reviews, who.headSha, who.author, true) : null) : `${none}; ${refused}`
+  return refused === null ? (answers ? answersMissing(reviews, who.headSha, who.author, true, who.body.split('\n')) : null) : `${none}; ${refused}`
 }
 
 // null when this workflow run's ai-review and lead-override jobs both succeeded on the head commit; otherwise why the override does not apply.
@@ -480,7 +480,7 @@ export function cmdCheck(args: Args): void {
   if (at === 'commit') for (const f of result.findings) if (f.outOfTime) f.severity = 'warn'
   result.blocks = result.findings.filter(f => f.severity === 'block')
   const configFindings: Finding[] = errors.map(e => ({ sensor: 'config', severity: 'block', file: SENSORS_JSON, message: e, fix: 'fix the file; see the sdlc README for its format' }))
-  const queueFindings: Finding[] = [...(at === 'ci' && base ? auditBlock(base) : []), ...(queueRefusal ? [{ sensor: 'human-approval', severity: 'block', message: `merge queue: this PR needs a person: ${queueRefusal}`, fix: 'someone other than the author approves the PR\'s head commit, then queue it again' } as Finding] : [])]
+  const queueFindings: Finding[] = [...(at === 'ci' ? heldFindings(whoIs()) : []), ...(queueRefusal ? [{ sensor: 'human-approval', severity: 'block', message: `merge queue: this PR needs a person: ${queueRefusal}`, fix: 'someone other than the author approves the PR\'s head commit, then queue it again' } as Finding] : [])]
   const humanFindings: Finding[] = why ? [{ sensor: 'human-approval', severity: 'block', message: humanRows.length ? `this PR adds ${humanRows.length} approval/waiver row(s): ${why}` : `risk.enforce: this PR is tier ${risk?.tier} and needs a person: ${refusal ? `${refusal}; ` : ''}${why}`, fix: why?.includes('does not answer') ? ANSWER_FIX : humanRows.length ? 'a code owner other than the PR author reviews the rows below and approves the current head commit; pushing again needs a fresh approval' : 'someone other than the PR author approves the current head commit; pushing again needs a fresh approval' }] : []
   const answerFindings: Finding[] = humanRows.filter(r => r.includes(INCOMPLETE)).map(r => ({ sensor: 'human-approval', severity: 'block', message: r, fix: `approve the chart again through ${skillRef('approve')} and answer every check question` }))
   const syncBlocks = (at === 'commit' || at === 'ci') && declaresRegistry() ? syncFindings(config, [], 'block') : [] // config errors already block above
