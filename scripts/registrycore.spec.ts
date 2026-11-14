@@ -109,6 +109,15 @@ test('a waiver row cannot clear plan-gate, even a hand-written one', () => {
   assert.match(sdlc(repo, ['verify', 'demo']).stdout, /\[plan-gate\]/)
 })
 
+test('a requested waiver cannot clear plan-gate either', () => {
+  commit(registry({}))
+  sdlc(repo, ['new', 'demo', '--type', 'chore'])
+  write(repo, '.rig/changes/demo/spec.md', '# Spec\n\n## Behaviours\n- none\n')
+  write(repo, '.rig/changes/demo/plan.md', '# Plan\n')
+  write(repo, '.rig/waivers.jsonl', JSON.stringify({ slug: 'demo', sensor: 'plan-gate', file: '*', reason: 'x', by: 'agent (request)', requested: true, at: 't' }) + '\n')
+  assert.match(sdlc(repo, ['verify', 'demo']).stdout, /\[plan-gate\]/)
+})
+
 test('a resumed session after a passing verify is told to open the PR', () => {
   commit(registry({}))
   sdlc(repo, ['new', 'demo', '--type', 'chore'])

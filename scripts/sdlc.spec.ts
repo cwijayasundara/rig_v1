@@ -239,3 +239,21 @@ test('SessionStart names the queue pick at rung 1 with no active change, and say
   assert.match(ctx(), /Queue: start add-item now with \/rig:start \.rig\/product\/sprints\/sprint-0\/intents\/add-item\.md \(rung 1\)/)
   assert.doesNotMatch(ctx(), /No active change/)
 })
+
+test('waive --request lets an agent ask for a waiver; the row is marked requested, and a plain agent waive still fails', () => {
+  run(['new', 'xx', '--type', 'chore'])
+  assert.equal(run(['waive', 'size', 'src/a.ts', 'too', 'big']).code, 3)
+  const r = run(['waive', '--request', 'size', 'src/a.ts', 'too', 'big', 'for', 'now'])
+  assert.equal(r.code, 0, r.stderr)
+  assert.match(r.stdout, /requested a waiver of size for src\/a\.ts in xx: too big for now; the PR's approval grants it/)
+  const w = JSON.parse(fs.readFileSync(path.join(repo, '.rig/waivers.jsonl'), 'utf8').trim())
+  assert.equal(w.requested, true)
+  assert.equal(w.by, 'agent (request)')
+  assert.equal(run(['waive', 'size', 'src/b.ts', 'too', 'big', '--request']).code, 0, '--request may come last')
+})
+
+test('waive --request on a chart target fails: chart waivers are a person\'s', () => {
+  const r = run(['waive', 'chart-1', '2', 'x', '--request'])
+  assert.notEqual(r.code, 0)
+  assert.match(r.stderr, /chart waivers are a person's: \/rig:waive chart-<n>/)
+})

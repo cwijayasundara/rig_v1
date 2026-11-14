@@ -368,21 +368,21 @@ function cmdDiff(args: Args): void {
 }
 
 function cmdWaive(args: Args): void {
-  if (process.env.SDLC_HUMAN !== '1') fail(`waivers are human-only: the person runs ${skillRef('waive')} <sensor> <file|*> <reason>. If that command is not listed, restart Claude Code, or the person types: ${humanFallback('waive', "<sensor> <file|*> '<reason>'")}`, 3)
+  const request = args.opt.request !== undefined; if (typeof args.opt.request === 'string') args.pos.unshift(args.opt.request) // an agent's request (the PR's approval grants it); `--request size ...` took `size` as its value
+  if (process.env.SDLC_HUMAN !== '1' && !request) fail(`waivers are human-only: the person runs ${skillRef('waive')} <sensor> <file|*> <reason>. If that command is not listed, restart Claude Code, or the person types: ${humanFallback('waive', "<sensor> <file|*> '<reason>'")}`, 3)
   const chart = CHART_RE.exec(words(args)[0] ?? '')?.[1]
-  if (chart) return waiveChart(Number(chart), args)
+  if (chart) return request ? fail(`chart waivers are a person's: ${skillRef('waive')} chart-<n> <finding number> <reason>`, 3) : waiveChart(Number(chart), args)
   const [sensor, file, ...reason] = words(args)
-  const given = optString(args, 'slug')
-  const slug = given ? checkSlug(given) : activeSlug()
+  const slug = ((g: string | undefined) => (g ? checkSlug(g) : activeSlug()))(optString(args, 'slug'))
   if (!sensor || !file || !reason.length || !slug) fail('usage: waive <sensor> <file|*> <reason...>  (needs an active change)')
   const commandIds = loadConfig().registry.sensors.filter(s => s.cmd).map(s => s.id)
   if (!SENSOR_NAMES.includes(sensor) && !commandIds.includes(sensor)) fail(`unknown sensor "${sensor}"; known: ${[...SENSOR_NAMES, ...commandIds].join(', ')}`)
-  const by = ownerOrFail(args, 'waivers')
+  const by = request && process.env.SDLC_HUMAN !== '1' ? 'agent (request)' : ownerOrFail(args, 'waivers')
   const days = optString(args, 'days') === undefined ? 30 : Number(optString(args, 'days'))
   if (!Number.isInteger(days) || days < 1 || days > MAX_WAIVER_DAYS) fail(`--days must be a whole number from 1 to ${MAX_WAIVER_DAYS}: a waiver ends, and is renewed by waiving again`)
-  const row: Waiver = { slug, sensor, file, reason: reason.join(' '), by, at: now(), expires: new Date(Date.now() + days * 86_400_000).toISOString() }
+  const row: Waiver = { slug, sensor, file, reason: reason.join(' '), by, at: now(), expires: new Date(Date.now() + days * 86_400_000).toISOString(), ...(request ? { requested: true } : {}) }
   fs.appendFileSync(WAIVERS, JSON.stringify(row) + '\n')
-  out(`waived ${sensor} for ${file} in ${slug}: ${row.reason} (by ${by}, expires in ${days} day${days === 1 ? '' : 's'})`)
+  out(request ? `requested a waiver of ${sensor} for ${file} in ${slug}: ${row.reason}; the PR's approval grants it` : `waived ${sensor} for ${file} in ${slug}: ${row.reason} (by ${by}, expires in ${days} day${days === 1 ? '' : 's'})`)
 }
 
 // A person accepts a chart review finding as it stands: no active change and no expiry, since it is an approval decision.

@@ -910,3 +910,22 @@ test('a PR labelled rig-hold is blocked whatever else passes, with a message tha
   assert.match(riskRun({ files: { 'c.txt': 'x\n' }, labelsFail: true }).stdout, /could not read the PR labels/)
   assert.doesNotMatch(riskRun({ files: { 'd.txt': 'x\n' }, message: 'audit: seeded defect s5-ab12' }).stdout, /merge held/, 'commit subjects are not trusted either way')
 })
+
+test('a requested waiver drops the finding locally', () => {
+  sdlc(repo, ['new', 'xx', '--type', 'chore'])
+  hook(repo, 'prompt-submit', {})
+  write(repo, 'src/app.js', 'export const a = 9 // eslint-disable-line\n')
+  assert.equal(check('--at', 'stop').code, 1)
+  assert.equal(sdlc(repo, ['waive', '--request', 'suppression', 'src/app.js', 'generated']).code, 0)
+  assert.equal(check('--at', 'stop').code, 0)
+})
+
+test('CI lists a requested waiver row as "waiver request <slug>: ..." for a person to approve', () => {
+  gitIn(repo, 'checkout', '-qb', 'pr')
+  sdlc(repo, ['new', 'tiny', '--type', 'chore'])
+  write(repo, '.rig/waivers.jsonl', JSON.stringify({ slug: 'tiny', sensor: 'size', file: '*', reason: 'big', by: 'agent (request)', requested: true, at: '2026-10-03T00:00:00Z' }) + '\n')
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', 'pr')
+  const json = JSON.parse(sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main', '--json']).stdout)
+  assert.ok(json.humanRows.includes('waiver request tiny: size * "big" by agent (request)'), JSON.stringify(json.humanRows))
+})

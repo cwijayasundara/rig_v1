@@ -1,0 +1,25 @@
+# Why this workflow exists: an agent can request a waiver (S waive --request), and the PR's approval grants it. rig-check reads the
+# approval when it runs, so a review that lands after it must re-run it. GitHub counts a skipped required job as passing, so this
+# does not re-run the whole rig-check workflow (the workflow's other jobs would be skipped, not re-run); it re-runs only its rig-check job.
+name: rig-approved
+on:
+  pull_request_review:
+    types: [submitted, dismissed]
+permissions:
+  actions: write
+  contents: read
+jobs:
+  rerun-rig-check:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Re-run the rig-check job of this head commit's run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          run=$(gh api "repos/$REPO/actions/workflows/rig-check.yml/runs?head_sha=$SHA&event=pull_request&per_page=1" -q '.workflow_runs[0] | select(.status == "completed") | .id')
+          if [ -z "$run" ]; then echo "::notice::no completed rig-check run for $SHA; it reads the approval when it finishes"; exit 0; fi
+          job=$(gh api "repos/$REPO/actions/runs/$run/jobs?per_page=100" -q '.jobs[] | select(.name == "rig-check") | .id')
+          gh run rerun "$run" --job "$job" -R "$REPO"

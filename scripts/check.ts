@@ -290,7 +290,7 @@ function humanRowsAdded(base: string): string[] {
       let r: Record<string, unknown> = {}
       try { r = JSON.parse(line) as Record<string, unknown> } catch { /* shown raw below */ }
       const s = (k: string): string => clean(r[k] ?? '?')
-      rows.push(!Object.keys(r).length ? `${kind} (unparseable): ${clean(line)}` : `waiver ${s('slug')}: ${s('sensor')} ${s('file')} "${s('reason')}" by ${s('by')}`)
+      rows.push(!Object.keys(r).length ? `${kind} (unparseable): ${clean(line)}` : `waiver${r.requested === true ? ' request' : ''} ${s('slug')}: ${s('sensor')} ${s('file')} "${s('reason')}" by ${s('by')}`)
     }
   }
   rows.push(...freezeRowsAdded(base, clean))
