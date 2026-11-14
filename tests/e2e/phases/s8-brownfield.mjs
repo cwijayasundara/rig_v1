@@ -153,7 +153,7 @@ async function py(out) {
     return c
   }
   await assertOnboarding(c, sb, { lane: 'brownfield', modules: ['src/shopsvc/', 'tests/', 'dashboard/'], testCmd: pytest ? ['python3', '-m', 'pytest', '-q', '--deselect', 'tests/test_integration_db.py'] : ['npm', '--prefix', 'dashboard', 'test', '--silent'] })
-  const skip = (name, why) => { skipped.push(name); return c.check(`S8 py: ${name}: skipped, ${why}`, () => true) }
+  const skip = (name, why) => { skipped.push(name); c.skip(`S8 py: ${name}`, why) }
   await c.check('S8 py: the registry keeps a single stack; the Node subproject is a custom sensor that runs', () => {
     const reg = json(sb.read('.rig/sensors.json'))
     const dash = reg.sensors.find(s => s.id === 'dashboard')

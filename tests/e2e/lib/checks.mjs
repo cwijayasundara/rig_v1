@@ -21,16 +21,25 @@ export class Checks {
     }
   }
 
+  // A check that could not run here (a missing tool): counted in the group's size for FLOOR, never as a pass.
+  skip(name, why) {
+    this.results.push({ status: 'SKIP', name, why })
+  }
+
+  get skipped() {
+    return this.results.filter(r => r.status === 'SKIP')
+  }
+
   get failed() {
     return this.results.filter(r => r.status === 'FAIL')
   }
 
   print(log = console.log) {
     for (const r of this.results) log(`${r.status}  ${r.name}${r.why ? `  (${r.why})` : ''}`)
-    log(`${this.title}: ${this.results.length - this.failed.length}/${this.results.length} checks passed`)
+    log(`${this.title}: ${this.results.length - this.failed.length - this.skipped.length}/${this.results.length} checks passed${this.skipped.length ? `, ${this.skipped.length} skipped` : ''}`)
   }
 
   toJSON() {
-    return { title: this.title, passed: this.results.length - this.failed.length, total: this.results.length, results: this.results }
+    return { title: this.title, passed: this.results.length - this.failed.length - this.skipped.length, skipped: this.skipped.length, total: this.results.length, results: this.results }
   }
 }

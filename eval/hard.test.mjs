@@ -165,6 +165,12 @@ test('race check: the reference passes 20 of 20 repetitions, the naive placement
   assert.equal(await run(naive), 0)
 })
 
+test('nfr is not flaky: a correct page that stalls 200 ms on its first request (a lazy index, a GC pause) still passes', async () => {
+  const stall = edit('src/http/handler.js', 'pageOrders(Number(p), 20)', '(globalThis.__stalled ? pageOrders(Number(p), 20) : (globalThis.__stalled = true, (() => { const end = Date.now() + 200; while (Date.now() < end); return pageOrders(Number(p), 20) })()))')
+  const r = await checks(build(stall), { only: ['nfr'] })
+  assert.equal(r.traps.nfr, true, JSON.stringify(r.failures))
+})
+
 test(`nfr: the reference is under ${BOUND_MS} ms and the sort-everything version is at least 5x over it`, async () => {
   const ref = await checks(build(), { only: ['nfr'] })
   assert.equal(ref.traps.nfr, true, JSON.stringify(ref.failures))

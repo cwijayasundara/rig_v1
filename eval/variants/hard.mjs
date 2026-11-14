@@ -142,16 +142,20 @@ const CHECKS = [
     const SKUS = ['TEA-001', 'MUG-002', 'LMT-003']
     loadOrders(Array.from({ length: ORDERS }, (_, i) => ({ id: `ORD-${String(i + 1).padStart(6, '0')}`, customer: `customer-${i % 5000}`, status: 'paid', version: 1, lines: [{ sku: SKUS[i % 3], qty: 1 + (i % 3) }], payableCents: 500 + ((i * 7919) % 9000), placedAt: new Date(t0 + i * 60_000).toISOString() })))
     const handle = createHandler(new Catalog())
-    let worst = 0, basic = true
+    // Each page is timed twice and keeps its faster try, and the median page is judged: one GC pause, a loaded machine or an index
+    // built on the first request does not fail a correct solution, while a sort on every request is slow on every try.
+    const times = []
+    let basic = true
     for (const page of [1, 2, 3, 5000, 10_000]) {
-      const t = performance.now()
-      const r = await handle({ method: 'GET', path: `/orders?page=${page}` })
-      worst = Math.max(worst, performance.now() - t)
+      let r, best = Infinity
+      for (let k = 0; k < 2; k++) { const t = performance.now(); r = await handle({ method: 'GET', path: `/orders?page=${page}` }); best = Math.min(best, performance.now() - t) }
+      times.push(best)
       const ids = r.body?.items?.map(o => o.id)
       const want = Array.from({ length: 20 }, (_, k) => ORDERS - (page - 1) * 20 - k).map(n => `ORD-${String(n).padStart(6, '0')}`)
       if (basic === true && (r.status !== 200 || r.body?.total !== ORDERS || r.body?.page !== page || JSON.stringify(ids) !== JSON.stringify(want))) basic = `page ${page} of ${ORDERS} orders gave ${r.status}, total ${r.body?.total} and ${JSON.stringify(ids?.slice(0, 2))}, want the newest first from ${want[0]}`
     }
-    return { basic, trap: worst < BOUND_MS || `the slowest of 5 pages took ${Math.round(worst)} ms on ${ORDERS} orders, want under ${BOUND_MS} ms` }
+    const median = times.sort((a, b) => a - b)[2]
+    return { basic, trap: median < BOUND_MS || `the median of 5 pages took ${Math.round(median)} ms on ${ORDERS} orders, want under ${BOUND_MS} ms` }
   },
   // flag: B19, the flag once, then twice in both spellings
   repo => {
