@@ -1,0 +1,84 @@
+diff --git a/lib/option.js b/lib/option.js
+index bded840..4426e28 100644
+--- a/lib/option.js
++++ b/lib/option.js
+@@ -133,6 +133,28 @@ class Option {
+     return this;
+   }
+ 
++  /**
++   * Collect each use of the option, given as `key=value`, into an object.
++   * The key is everything before the first `=` and the value is the rest.
++   *
++   * @example
++   * new Option('-D, --define <pair>').keyValue();
++   * // -D a=1 --define b=2  =>  { a: '1', b: '2' }
++   *
++   * @return {Option}
++   */
++
++  keyValue() {
++    this.parseArg = (value, previous) => {
++      const split = value.indexOf('=');
++      if (split < 1) {
++        throw new InvalidArgumentError('Expected key=value.');
++      }
++      return { ...previous, [value.slice(0, split)]: value.slice(split + 1) };
++    };
++    return this;
++  }
++
+   /**
+    * Whether the option is mandatory and must have a value after parsing.
+    *
+diff --git a/tests/option.keyValue.test.js b/tests/option.keyValue.test.js
+new file mode 100644
+index 0000000..e71ae0e
+--- /dev/null
++++ b/tests/option.keyValue.test.js
+@@ -0,0 +1,45 @@
++const commander = require('../');
++
++describe('option.keyValue()', () => {
++  function makeProgram() {
++    const program = new commander.Command();
++    program
++      .exitOverride()
++      .configureOutput({ writeErr: () => {}, writeOut: () => {} })
++      .addOption(
++        new commander.Option('-D, --define <pair>', 'define a value').keyValue(),
++      );
++    return program;
++  }
++
++  test('when option not used then undefined', () => {
++    const program = makeProgram();
++    program.parse(['node', 'test']);
++    expect(program.opts().define).toBeUndefined();
++  });
++
++  test('when option used once then object with the pair', () => {
++    const program = makeProgram();
++    program.parse(['node', 'test', '-D', 'greeting=hello']);
++    expect(program.opts().define).toEqual({ greeting: 'hello' });
++  });
++
++  test('when option used several times then all pairs collected', () => {
++    const program = makeProgram();
++    program.parse(['node', 'test', '-D', 'a=1', '--define', 'b=2', '-Dc=3']);
++    expect(program.opts().define).toEqual({ a: '1', b: '2', c: '3' });
++  });
++
++  test('when key repeated then last wins', () => {
++    const program = makeProgram();
++    program.parse(['node', 'test', '-D', 'a=1', '-D', 'a=2']);
++    expect(program.opts().define).toEqual({ a: '2' });
++  });
++
++  test('when value has no equals then error', () => {
++    const program = makeProgram();
++    expect(() => program.parse(['node', 'test', '-D', 'novalue'])).toThrow(
++      "error: option '-D, --define <pair>' argument 'novalue' is invalid. Expected key=value.",
++    );
++  });
++});
