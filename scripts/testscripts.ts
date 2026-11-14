@@ -44,9 +44,10 @@ export const scriptCommand = (name: string): string => `npm run ${name}` // pack
 export const TURN_SCRIPT_MS = 15_000
 
 // The command sensor baseline registers for an uncovered test script, given its one measured run: it judges a rig-on turn
-// (cadence turn) only when it passed fast enough to share the turn budget; otherwise ship runs it (cadence ci).
+// (cadence turn) whenever its one run finished fast enough to share the turn budget, pass or fail (a failing one is known red,
+// see initbaseline); a timed-out or slower script is run by ship (cadence ci).
 export function scriptSensor(name: string, run: { exit: number | null, ms: number, timedOut?: boolean }) {
-  const fast = !run.timedOut && run.exit === 0 && run.ms <= TURN_SCRIPT_MS
+  const fast = !run.timedOut && run.ms <= TURN_SCRIPT_MS
   return { id: `script-${name.replace(/[^a-z0-9]+/gi, '-')}`, cmd: scriptCommand(name), cadence: fast ? 'turn' as const : 'ci' as const, blocks: true, count: 'exit' as const, guide: `The ${name} script passes; fix the code, never the tests.` }
 }
 

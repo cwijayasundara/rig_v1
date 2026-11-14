@@ -139,7 +139,7 @@ export function runSensors(r: Registry, at: Cadence, slug: string | null, budget
       severity: !s.blocks || (known && !row.timedOut) ? 'warn' : 'block',
       message: `${s.id} failed (exit ${row.exit}${row.timedOut ? ', timed out' : ''}): ${s.guide}\n${tail}`,
       fix: known && !row.timedOut ? 'known red before this change: fix it when you can' : `fix what it reports, then rerun: ${cmd}`,
-      ...(row.timedOut ? { outOfTime: true as const } : {}),
+      ...(row.timedOut ? { outOfTime: true as const } : known ? { knownRed: true as const } : {}),
     })
   }
   if (cleared.length && allowRatchet) ratchet(cleared)

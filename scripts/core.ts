@@ -271,9 +271,9 @@ export type Waiver = { slug: string; sensor: string; file: string; reason: strin
 
 export type GateSummary = { at: string; blocks: number; warns: number; bySensor: Record<string, number>; warnRows?: string[]; shown?: boolean }
 // trees: stamps of working trees on which the fast commands passed, kept across turns (the per-turn fields reset at each prompt).
-export type Gate = { turn: string; blocks: Record<string, number>; passed: Record<string, string>; tool: string[]; guides: Record<string, string[]>; trees: string[]; last?: GateSummary }
+export type Gate = { turn: string; blocks: Record<string, number>; passed: Record<string, string>; tool: string[]; guides: Record<string, string[]>; trees: string[]; nudged: string[]; last?: GateSummary }
 export const GATE = path.join(SDLC, '.gate')
-const emptyGate = (): Gate => ({ turn: '', blocks: {}, passed: {}, tool: [], guides: {}, trees: [] })
+const emptyGate = (): Gate => ({ turn: '', blocks: {}, passed: {}, tool: [], guides: {}, trees: [], nudged: [] })
 
 export function readGate(): Gate {
   try {
@@ -283,6 +283,7 @@ export function readGate(): Gate {
     return {
       turn: typeof g.turn === 'string' ? g.turn : d.turn, blocks: obj(g.blocks, d.blocks), passed: obj(g.passed, d.passed),
       tool: Array.isArray(g.tool) ? g.tool.map(String) : d.tool, guides: obj(g.guides, d.guides), trees: Array.isArray(g.trees) ? g.trees.map(String) : d.trees,
+      nudged: Array.isArray(g.nudged) ? g.nudged.map(String) : d.nudged,
       ...(g.last && typeof g.last === 'object' ? { last: g.last as GateSummary } : {}),
     }
   } catch {

@@ -187,6 +187,26 @@ test('I3: Stop ratchets a known-red command that now passes; it then blocks when
   assert.match(out.reason, /\[lint\][\s\S]*lint failed/)
 })
 
+test('a known-red command that still fails blocks the first Stop once with its tail, then only warns; a no-diff Stop is silent', () => {
+  sdlc(repo, ['new', 'xx', '--type', 'chore'])
+  const red = 'node -e "console.log(\'AssertionError refund 404\'); process.exit(1)"'
+  write(repo, '.rig/sensors.json', fromOld({ fast: { lint: red }, knownRed: ['fast.lint'] }) + '\n')
+  gitIn(repo, 'add', '.')
+  gitIn(repo, 'commit', '-qm', 'cfg')
+  hook(repo, 'prompt-submit', {})
+  assert.equal(stop().stdout, '', 'no diff: no nudge')
+  write(repo, 'src/a.js', 'export const a = 1\n')
+  const out = JSON.parse(stop().stdout)
+  assert.equal(out.decision, 'block')
+  assert.match(out.reason, /these suites were red before this change and still fail[\s\S]*never edit or skip the tests[\s\S]*AssertionError refund 404/)
+  assert.ok(!fs.existsSync(path.join(repo, '.rig/unresolved.json')), 'the nudge is not an unresolved block')
+  const second = stop().stdout
+  assert.ok(!second.includes('"block"'), 'the same session is nudged once')
+  hook(repo, 'prompt-submit', {})
+  write(repo, 'src/a.js', 'export const a = 2\n')
+  assert.ok(!stop().stdout.includes('"block"'), 'and not again on a later turn')
+})
+
 const stop = () => hook(repo, 'stop', { session_id: 's1' })
 const tamper = () => write(repo, 'test/a.test.js', "it.only('x', () => {})\n")
 

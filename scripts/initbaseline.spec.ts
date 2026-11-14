@@ -48,13 +48,15 @@ test('baseline registers a passing fast test script no sensor runs at cadence tu
   assert.equal(JSON.parse(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8')).sensors.length, n, 'a second baseline adds nothing')
 })
 
-test('baseline registers a failing test script at cadence ci and never lists it in knownRed', () => {
+test('baseline registers a fast failing test script at cadence turn and lists it in knownRed', () => {
   const repo = makeRepo()
   sdlc(repo, ['init'])
   write(repo, 'package.json', JSON.stringify({ scripts: { test: ok, 'test:all': bad } }))
   write(repo, '.rig/sensors.json', registry({ turn: { unit: ok } }))
-  assert.match(sdlc(repo, ['baseline']).stdout, /^script-test-all: registered at cadence ci \(fail \(exit 3\)\)/m)
+  assert.match(sdlc(repo, ['baseline']).stdout, /^script-test-all: registered at cadence turn, known red \(fail \(exit 3\)\)/m)
   const cfg = JSON.parse(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8'))
-  assert.equal(cfg.sensors.find((x: { id: string }) => x.id === 'script-test-all').cadence, 'ci')
-  assert.ok(!(cfg.knownRed ?? []).includes('script-test-all'))
+  assert.equal(cfg.sensors.find((x: { id: string }) => x.id === 'script-test-all').cadence, 'turn')
+  assert.deepEqual(cfg.knownRed, ['script-test-all'])
+  sdlc(repo, ['baseline'])
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8')).knownRed, ['script-test-all'], 'a second baseline adds nothing twice')
 })
