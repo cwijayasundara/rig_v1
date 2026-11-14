@@ -220,3 +220,29 @@ test('the body ends its review section with exactly three check questions Q1-Q3,
   assert.equal(b.match(/^Q\d:/gm)?.length, 3)
   assert.equal(prBody({ intent, spec, plan, verify, outline: '', review: '', risk, changes }), b)
 })
+
+// N5/N6 (proposal 2026-11-14): agent reports and cost in the PR body; a BLOCKED agent or --draft makes it a draft.
+const row = (o: Partial<import('./agents.ts').AgentRow> = {}): import('./agents.ts').AgentRow => ({ id: 't1', agent: 'rig:builder', model: 'haiku', at: '2026-11-14T00:00:00Z', status: 'DONE', note: '', tokens: 1200, toolUses: 7, ms: 90000, ...o })
+
+test('a DONE_WITH_CONCERNS agent lists its note under what the checks would miss, and ## Agents shows its cost', () => {
+  const b = prBody({ intent, spec, plan, verify, outline: '', review: '# Review\nverdict: pass\n', risk, agents: [row({ status: 'DONE_WITH_CONCERNS', note: 'no test for empty input' }), row({ id: 't2', status: null, tokens: null })] })
+  assert.match(b, /## What the checks would miss\n\n- rig:builder \(haiku\): no test for empty input/)
+  assert.match(b, /## Agents\n\n- rig:builder on haiku: DONE_WITH_CONCERNS, 1200 tokens, 7 tool uses, 1\.5 min\n- rig:builder on haiku: no report, \? tokens, 7 tool uses, 1\.5 min/)
+  assert.match(b, /Total: 2 launches, 1200 tokens, 3\.0 min \(some unknown\)/)
+})
+
+test('DONE_WITH_CONCERNS lines show under what the checks would miss with no review.md and with reviewer: none too', () => {
+  const agents = [row({ status: 'DONE_WITH_CONCERNS', note: 'no test for empty input' })]
+  assert.match(prBody({ intent, spec, plan, verify, outline: '', review: '', risk, agents }), /## What the checks would miss\n\nno review\.md\n- rig:builder \(haiku\): no test for empty input/)
+  assert.match(prBody({ intent, spec, plan, verify, outline: '', review: 'reviewer: none\n', risk, agents }), /## What the checks would miss\n\nNo agent reviewed[^\n]*\n- rig:builder \(haiku\): no test for empty input/)
+})
+
+test('a BLOCKED agent or a draft reason starts the body with the draft banner', () => {
+  assert.match(prBody({ intent, spec, plan, verify, outline: '', review: '', risk, agents: [row({ status: 'BLOCKED', note: 'no API key' })] }), /^> Draft: blocked\. no API key\n/)
+  assert.match(prBody({ intent, spec, plan, verify, outline: '', review: '', risk, draft: 'budget spent' }), /^> Draft: blocked\. budget spent\n/)
+})
+
+test('no agents means no ## Agents section and no banner', () => {
+  const b = prBody({ intent, spec, plan, verify, outline: '', review: '', risk })
+  assert.doesNotMatch(b, /## Agents|Draft: blocked/)
+})

@@ -2,7 +2,7 @@
 // this tree is committed on sdlc/<slug>, pushed, and gets a PR, or stays local-only without a remote.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, CHANGES, WAIVERS, waiverLive, exists, isTrunk, trunkName, read, readJsonl, out, fail, git, checkSlug, optString, ensureGitignore, dirtyFiles, skillRef, defaultBase, type Args, type Waiver } from './core.ts'
+import { ROOT, CHANGES, WAIVERS, UNREQUESTABLE, waiverLive, readJson, exists, isTrunk, trunkName, read, readJsonl, out, fail, git, checkSlug, optString, ensureGitignore, dirtyFiles, skillRef, defaultBase, type Args, type Waiver } from './core.ts'
 import { frozenFindings, frozenFor } from './contracts.ts'
 import { loadConfig } from './check.ts'
 import { gh as ghRun, section, isTest } from './model.ts'
@@ -10,6 +10,7 @@ import type { RunRow } from './runs.ts'
 import { treeStamp } from './stamp.ts'
 import { activeSlug, setActive, approvalState, verifyFresh, isShipped, changeDir } from './lifecycle.ts'
 import { prBody } from './prbody.ts'
+import { agentRows } from './agents.ts'
 import { intentReceipt } from './intentmapio.ts'
 import { claimRows, type ClaimRow } from './claims.ts'
 import { riskOf, ships } from './risk.ts'
@@ -21,14 +22,15 @@ import { isHarnessPath } from './vendor.ts'
 import { untestedAcs } from './actrace.ts'
 import { routeReview, recordAdditions } from './carry.ts'
 import { readFreeze } from './testfreeze.ts'
+import { setDraft, draftLine, draftSecrets } from './draft.ts'
 
 const ghLast = (text: string): string => text.trim().split('\n').at(-1) ?? ''
 const URL_RE = /^https?:\/\//
 
-function openPr(slug: string, branch: string, title: string): string | null {
+function openPr(slug: string, branch: string, title: string, draft: boolean): string | null {
   const body = path.join(CHANGES, slug, 'pr-body.md')
   const gh = (argv: string[]): string => ghRun(argv, ROOT)
-  try { gh(['pr', 'create', '--title', title, '--body-file', body]) } catch (e) {
+  try { gh(['pr', 'create', ...(draft ? ['--draft'] : []), '--title', title, '--body-file', body]) } catch (e) {
     const x = e as { stdout?: unknown; stderr?: unknown }
     // The PR already exists (a rerun, or opened by hand): report its url.
     if (!/already exists/i.test(`${String(x.stdout ?? '')}${String(x.stderr ?? '')}`)) return null
@@ -55,15 +57,21 @@ export function cmdPr(args: Args): void {
     if (!isTrunk(head)) fail(`not shipping: HEAD is ${head}; a change ships from the trunk or from ${branch}, never on top of another branch`)
   }
   const gates = loadConfig().registry.gates
+  // A draft PR (D2: the launch budget's way out, or an agent BLOCKED) opens without a fresh verify or AC-named tests; every other refusal stays.
+  // Only an explicit --draft skips them: a BLOCKED agent row alone makes `S pr` fail, unless a passing verify.json is newer than the row.
+  const draft = args.opt.draft !== undefined, reason = optString(args, 'draft') || 'no reason given'
+  const verified = readJson<{ at?: string; pass?: boolean } | null>(path.join(CHANGES, slug, 'verify.json'), null)
+  const blocked = agentRows(slug).find(a => a.status === 'BLOCKED' && !(verified?.pass && verified.at && a.at < verified.at))
+  if (blocked && !draft) fail(`not shipping: ${blocked.agent} reported BLOCKED: ${blocked.note}. Open a draft with S pr ${slug} --draft "<why>" --message ..., or fix it and verify`)
   if (gates.plan && approvalState(slug) !== 'approved') fail(`not shipping: ${slug}'s plan is not approved (a person runs ${skillRef('approve')} ${slug})`)
-  if (!verifyFresh(slug, treeStamp())) fail(`not shipping: verify.json is missing, failing or from another tree; run ${skillRef('test')} ${slug}`)
+  if (!draft && !verifyFresh(slug, treeStamp())) fail(`not shipping: verify.json is missing, failing or from another tree; run ${skillRef('test')} ${slug}`)
   // Contract files can sit under .rig/, which the tree stamp leaves out: judge the freeze here, with the person's waivers.
-  const waived = readJsonl<Waiver>(WAIVERS).filter(w => w.slug === slug && w.sensor === 'harness-tamper' && waiverLive(w))
+  const waived = readJsonl<Waiver>(WAIVERS).filter(w => w.slug === slug && w.sensor === 'harness-tamper' && waiverLive(w) && !(w.requested && UNREQUESTABLE.includes(w.sensor)))
   const frozen = frozenFindings([slug], Object.keys(frozenFor(slug)), f => read(path.join(ROOT, f))).filter(f => !waived.some(w => w.file === '*' || w.file === f.file))
   if (frozen.length) fail(`not shipping: ${frozen.map(f => f.message).join('; ')}. Revert it, or a person re-approves or waives it`)
   // A review fix wave that changed behaviour amends the spec, but spec.md is hashed into the approval: the amendment goes in amendments.md (or "none").
   if (/^\s*[-*] .*→ fixed\b/m.test(section(read(path.join(CHANGES, slug, 'review.md')), 'Findings')) && !exists(path.join(CHANGES, slug, 'amendments.md'))) fail(`not shipping: review.md has fixed findings but ${slug} has no amendments.md; write it: one "- A<n> (B<n>): what now behaves differently, and why" line per fix that changed documented behaviour, or "none" under ## Amendments`)
-  const missing = untestedAcs(slug, loadConfig().registry.paths)
+  const missing = draft ? [] : untestedAcs(slug, loadConfig().registry.paths)
   if (missing.length) fail(`not shipping: no test names these acceptance criteria (name each test after its AC, e.g. test_ac_1_2_..., or put the id in the test title):\n${missing.map(m => `  ${m}`).join('\n')}`)
   if (head !== branch) {
     if (git(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]) !== null) fail(`not shipping: branch ${branch} already exists; check it out first`)
@@ -72,7 +80,7 @@ export function cmdPr(args: Args): void {
   const remote = git(['remote', 'get-url', 'origin']) !== null
   const title = (message.split('\n')[0] ?? slug).slice(0, 200)
   if (!followUp) {
-    fs.writeFileSync(path.join(CHANGES, slug, 'pr.md'), `---\nstate: ${remote ? 'open' : 'local-only'}\nbranch: ${branch}\n---\n${title}\n`)
+    fs.writeFileSync(path.join(CHANGES, slug, 'pr.md'), `---\nstate: ${remote ? 'open' : 'local-only'}\nbranch: ${branch}\n${draft ? draftLine(reason) : ''}---\n${title}\n`)
     ensureGitignore()
     const c = (name: string): string => read(path.join(CHANGES, slug, name))
     let verify: (Parameters<typeof prBody>[0]['verify'] & { base?: string }) | null = null
@@ -82,8 +90,11 @@ export function cmdPr(args: Args): void {
     // Suggestions only: a failure here must never stop a ship.
     let claims: ClaimRow[] | undefined
     try { claims = claimRows(slug); fs.writeFileSync(path.join(CHANGES, slug, 'claims.json'), JSON.stringify(claims, null, 2) + '\n') } catch { claims = undefined }
-    fs.writeFileSync(path.join(CHANGES, slug, 'pr-body.md'), prBody({ claims, requirements: c('requirements.md'), intent: c('intent.md'), spec: c('spec.md'), plan: c('plan.md'), verify, outline: c('pr-outline.md'), review: c('review.md'), amendments: c('amendments.md'), runs: readJsonl<RunRow>(path.join(CHANGES, slug, 'evidence', 'runs.jsonl')), tests, intentMap: intentReceipt(slug), freeze: readFreeze(slug), changes: diff, risk: riskOf(diff.filter(d => ships(slug)(d.file)), [slug], registry, parseAccess(read(archPath)), false) }))
+    fs.writeFileSync(path.join(CHANGES, slug, 'pr-body.md'), prBody({ agents: agentRows(slug), draft: draft ? reason : undefined, claims, requirements: c('requirements.md'), intent: c('intent.md'), spec: c('spec.md'), plan: c('plan.md'), verify, outline: c('pr-outline.md'), review: c('review.md'), amendments: c('amendments.md'), runs: readJsonl<RunRow>(path.join(CHANGES, slug, 'evidence', 'runs.jsonl')), tests, intentMap: intentReceipt(slug), freeze: readFreeze(slug), changes: diff, risk: riskOf(diff.filter(d => ships(slug)(d.file)), [slug], registry, parseAccess(read(archPath)), false) }))
   }
+  // A follow-up without --draft ends the draft (it ran the normal refusals above); with --draft it records the reason again.
+  const prMd = path.join(CHANGES, slug, 'pr.md'), prMdBefore = followUp ? read(prMd) : ''
+  if (followUp) setDraft(slug, draft ? reason : null)
   // The merge ships this change: write the sprint plan as it will read then, so nothing regenerates dirty afterwards.
   // Another change of the sprint in flight would find the plan changed under it, so the plan waits for the last one.
   // A change whose PR is open (a local pr.md) counts as shipped too, so the last PR of a sprint still writes the plan.
@@ -98,6 +109,8 @@ export function cmdPr(args: Args): void {
   if (!files.length) return out(followUp ? `${slug} already has a PR (.rig/changes/${slug}/pr.md); nothing new to commit` : 'not shipping: nothing to commit')
   // A first run that fails before the PR is open must leave no pr.md (and no commit), or a rerun reads it as a follow-up and never opens the PR.
   const undo = (committed: boolean): void => { if (followUp) return; if (committed) git(['reset', '-q', 'HEAD~1']); fs.rmSync(path.join(CHANGES, slug, 'pr.md'), { force: true }); fs.rmSync(path.join(CHANGES, slug, 'pr-body.md'), { force: true }) }
+  const leaked = draft ? draftSecrets(files) : null
+  if (leaked) { if (followUp) fs.writeFileSync(prMd, prMdBefore); undo(false); fail(`not shipping a draft: secrets in ${leaked}`) }
   if (git(['add', '--', ...files]) === null) { undo(false); fail('git add failed') }
   // verify judged this tree with waivers applied: the git hooks would only run the same checks again.
   if (git(['commit', '-q', '--no-verify', '-m', message]) === null) { undo(false); fail('git commit failed') }
@@ -108,7 +121,7 @@ export function cmdPr(args: Args): void {
   const retry = `gh pr create --title ${JSON.stringify(title)} --body-file .rig/changes/${slug}/pr-body.md`
   if (git(['push', '--no-verify', '-u', 'origin', branch]) === null) { undo(true); fail(`git push failed; ${followUp ? `the follow-up is committed on ${branch}: push it` : 'nothing was kept: fix the remote and rerun pr'}`) }
   if (followUp) return out(`pr ${slug}: follow-up pushed to ${branch}`)
-  const url = openPr(slug, branch, title)
+  const url = openPr(slug, branch, title, draft)
   if (!url) fail(`pushed ${branch} but gh pr create printed no PR url: run ${retry}`)
-  out(`pr ${slug}: ${url}`)
+  out(`pr ${slug}: ${url}${draft ? ' (draft)' : ''}`)
 }

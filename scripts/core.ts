@@ -18,7 +18,7 @@ export type HookInput = {
   agent_id?: string
   agent_type?: string
   source?: string
-  prompt?: string; transcript_path?: string; model?: string; to_model?: string; from_model?: string; tool_use_id?: string; tool_response?: { resolvedModel?: string; model?: string; answers?: unknown }
+  prompt?: string; transcript_path?: string; model?: string; to_model?: string; from_model?: string; tool_use_id?: string; tool_response?: { resolvedModel?: string; model?: string; answers?: unknown; content?: unknown; totalTokens?: unknown; totalToolUseCount?: unknown; totalDurationMs?: unknown }
   tool_input?: { questions?: unknown[];
     command?: string
     file_path?: string
@@ -29,7 +29,7 @@ export type HookInput = {
     replace_all?: boolean
     edits?: { old_string?: string; new_string?: string; replace_all?: boolean }[]
     skill?: string
-    args?: string; subagent_type?: string; model?: string
+    args?: string; subagent_type?: string; description?: string; model?: string
   }
 }
 
@@ -263,7 +263,9 @@ export const WAIVERS = path.join(SDLC, 'waivers.jsonl')
 // expires: when the waiver stops applying (a row written before expiry existed has none and never lapses).
 // A waiver covers only until it expires; an unreadable expiry counts as expired, and a row with none (from before expiry existed) never lapses.
 export const waiverLive = (w: { expires?: string }): boolean => !w.expires || Date.parse(w.expires) > Date.now()
-export type Waiver = { slug: string; sensor: string; file: string; reason: string; by: string; at: string; expires?: string }
+// Guards an agent's waiver request can never lift (a person runs /rig:waive): the request is refused, and a requested row is ignored wherever waivers are read.
+export const UNREQUESTABLE = ['plan-gate', 'harness-tamper', 'contracts', 'secrets']
+export type Waiver = { slug: string; sensor: string; file: string; reason: string; by: string; at: string; expires?: string; requested?: boolean }
 
 // ---------- the turn gate (.rig/.gate) ----------
 

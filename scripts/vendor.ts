@@ -8,7 +8,7 @@ import { HOOK_SCRIPTS, installHooks } from './githooks.ts'
 import { parseProfile, skillIn, agentIn, type Profile } from './profile.ts'
 
 // Every script the checker imports; testkit and specs stay behind. CI runs this copy, so it never needs the plugin.
-export const VENDORED = ['core', 'model', 'sensors', 'diffs', 'runs', 'check', 'stamp', 'basetree', 'verify', 'hooks', 'pr', 'carry', 'prbody', 'sdlc', 'githooks', 'vendor', 'initbaseline', 'registry', 'stackpacks', 'modelstate', 'stackinit', 'contracts', 'sync', 'lifecycle', 'chart', 'superpowers', 'chartcheck', 'prdformat', 'prdcoverage', 'prdcmd', 'plan', 'product', 'journey', 'wiki', 'wikicite', 'wikigen', 'wikistate', 'wikivalidate', 'learn', 'learnfile', 'learnmine', 'learnreplay', 'learntranscripts', 'report', 'arch', 'counts', 'queue', 'app', 'scope', 'slice', 'maintain', 'readiness', 'autonomy', 'upgrade', 'migrations', 'risk', 'route', 'reverts', 'reviewcases', 'protect', 'actrace', 'claims', 'intentmap', 'intentmapio', 'intenttargets', 'intentrecheck', 'profile', 'readyclient', 'off', 'weaken', 'humanload', 'testfreeze', 'holdout', 'mutscore', 'approvalsummary', 'prcheck', 'audit']
+export const VENDORED = ['agents', 'core', 'model', 'sensors', 'diffs', 'runs', 'check', 'stamp', 'basetree', 'verify', 'hooks', 'pr', 'carry', 'prbody', 'sdlc', 'githooks', 'vendor', 'initbaseline', 'registry', 'stackpacks', 'modelstate', 'stackinit', 'contracts', 'sync', 'lifecycle', 'chart', 'superpowers', 'chartcheck', 'prdformat', 'prdcoverage', 'prdcmd', 'plan', 'product', 'journey', 'wiki', 'wikicite', 'wikigen', 'wikistate', 'wikivalidate', 'learn', 'learnfile', 'learnmine', 'learnreplay', 'learntranscripts', 'report', 'arch', 'counts', 'queue', 'app', 'scope', 'slice', 'maintain', 'readiness', 'autonomy', 'upgrade', 'migrations', 'risk', 'route', 'reverts', 'reviewcases', 'protect', 'actrace', 'claims', 'intentmap', 'intentmapio', 'intenttargets', 'intentrecheck', 'profile', 'readyclient', 'off', 'weaken', 'humanload', 'testfreeze', 'holdout', 'mutscore', 'approvalsummary', 'prcheck', 'audit', 'draft']
 const SDLC_HOOK = '.rig/bin/sdlc.ts'
 type HookGroup = { matcher?: string; hooks: { type: string; command: string; timeout?: number; async?: boolean }[] }
 
@@ -260,7 +260,7 @@ export function installStandalone(workflows: boolean, profile: Profile = 'full')
   writeFile('.claude/settings.json', JSON.stringify(merged, null, 2) + '\n', written)
   lines.push('merged templates/settings.json into .claude/settings.json (existing values kept)')
   if (workflows) {
-    for (const [from, to] of [['rig-check.yml', '.github/workflows/rig-check.yml'], ['rig-maintain.yml', '.github/workflows/rig-maintain.yml'], ['REVIEW.md', 'REVIEW.md']] as const) {
+    for (const [from, to] of [['rig-check.yml', '.github/workflows/rig-check.yml'], ['rig-maintain.yml', '.github/workflows/rig-maintain.yml'], ['rig-approved.yml', '.github/workflows/rig-approved.yml'], ['REVIEW.md', 'REVIEW.md']] as const) {
       if (profile === 'core' && from === 'rig-maintain.yml') continue // Maintain is off in core
       if (fs.existsSync(path.join(ROOT, to))) lines.push(`${to} already exists; left as it is`)
       else { writeFile(to, read(path.join(PLUGIN_ROOT, 'templates', from)), written); lines.push(`wrote ${to}`) }

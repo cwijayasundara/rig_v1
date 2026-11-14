@@ -20,7 +20,7 @@ export type Paths = { tests: string[]; testSupport: string[]; fixtures: string[]
 export type Risk = { enforce: boolean; alwaysHuman: string[]; maxLines: number; hardCap: boolean; window: number; maxRevertRate: number }
 export type Contracts = { files: string[]; covers: string[]; validate: string; run: string }
 type Policy = Record<string, Mode> & { default: Mode }
-export type Registry = { ratchets?: Record<string, number>; stack: string | null; gates: { plan: boolean; testWriter: boolean }; humanApproval: { selfApprovers: string[]; trusted: string[]; everyTier: boolean }; risk: Risk; contracts: Contracts; holdout: string; mutation: { minScore: number }; models: { build: string; evaluate: string; design: string }; paths: Paths; sensors: RegistrySensor[]; knownRed: string[]; policy: Policy }
+export type Registry = { ratchets?: Record<string, number>; stack: string | null; gates: { plan: boolean; testWriter: boolean }; humanApproval: { selfApprovers: string[]; trusted: string[]; everyTier: boolean }; risk: Risk; contracts: Contracts; holdout: string; mutation: { minScore: number }; models: { build: string; evaluate: string; design: string; light: { build: string; evaluate: string }; full: { build: string; evaluate: string } }; paths: Paths; sensors: RegistrySensor[]; knownRed: string[]; policy: Policy }
 
 type Base = { cadence: Cadence; blocks: boolean; guide: string }
 const BUILTIN_DEFAULTS: Record<BuiltinId, Base> = {
@@ -58,7 +58,7 @@ export function defaultRegistry(): Registry {
     contracts: { files: [], covers: [], validate: '', run: '' },
     holdout: '',
     mutation: { minScore: 0.8 },
-    models: { build: 'sonnet', evaluate: 'opus', design: 'sonnet' },
+    models: { build: 'sonnet', evaluate: 'opus', design: 'sonnet', light: { build: 'haiku', evaluate: 'sonnet' }, full: { build: 'sonnet', evaluate: 'opus' } },
     paths: { tests: [...GENERIC_TESTS], testSupport: [], fixtures: [], ignore: ['**/*.md', '**/*.lock'] },
     sensors: BUILTIN_IDS.map(builtinSensor),
     knownRed: [],
@@ -189,7 +189,11 @@ function parseSections(value: Record<string, unknown>, r: Registry, errors: stri
     if (!isObject(m)) errors.push('models must be { build?: string, evaluate?: string, design?: string }')
     else for (const [k, v] of Object.entries(m)) {
       if ((k === 'build' || k === 'evaluate' || k === 'design') && typeof v === 'string' && v.trim()) r.models[k] = v.trim()
-      else errors.push(`models.${k} must be build, evaluate or design, a model name`)
+      else if (k === 'light' || k === 'full') {
+        // a pair keeps its default for a side left out; a side that is not a model name is an error
+        if (!isObject(v) || Object.entries(v).some(([s, x]) => (s !== 'build' && s !== 'evaluate') || typeof x !== 'string' || !x.trim())) errors.push(`models.${k} must be { build?: string, evaluate?: string }`)
+        else for (const [s, x] of Object.entries(v)) r.models[k][s as 'build' | 'evaluate'] = (x as string).trim()
+      } else errors.push(`models.${k} must be build, evaluate or design, a model name (or light or full, a pair)`)
     }
   }
   if ('paths' in value) {

@@ -11,6 +11,7 @@ import { gh } from './model.ts'
 import { summarise, type HumanRow } from './humanload.ts'
 import { reviewHealth, healthText, readAudits, type Health } from './audit.ts'
 import { parseRegistry } from './registry.ts'
+import { agentRows } from './agents.ts'
 
 export type Report = {
   merged: number; shipped: number; since: string | null // merged: every change whose pr.md a merge added; shipped: those whose records are still in the tree (a revert removes them)
@@ -25,6 +26,7 @@ export type Report = {
   unavailable: string[]
   humanTime?: HumanTime | { unavailable: string } // only with --github: GitHub holds it, git does not
   reviewHealth?: Health[] | { unavailable: string } // only with --github: per approver over the last risk.window PRs
+  agents: { launches: number; tokens: number; minutes: number; changes: number } // summed over the shipped changes' evidence/agents.jsonl (N6)
   humanLoad: HumanLoad | null // from each shipped change's evidence/human.jsonl (the hooks write counts only); null: none has one
 }
 type Stat = { median: number; p95: number }
@@ -105,6 +107,8 @@ export function buildReport(root: string, since: string | null = null, maxQuesti
   const all = readJsonl<{ slug: string; by?: string; at?: string }>(path.join(root, '.rig', 'waivers.jsonl'))
   const waivers = all.filter(w => slugs.has(w.slug)).length
   const ages = all.map(w => ageDays(w.at ?? ''))
+  const rows = shipped.map(c => agentRows(c.slug, root)).filter(r => r.length)
+  const agents = { launches: rows.flat().length, tokens: rows.flat().reduce((t, r) => t + (r.tokens ?? 0), 0), minutes: Math.round(rows.flat().reduce((t, r) => t + (r.ms ?? 0), 0) / 6000) / 10, changes: rows.length }
   const humanLoad = humanLoadOf(root, shipped.map(c => c.slug), all, maxQuestions)
   const classes = mineCandidates(root).map(c => ({ ...c, changes: c.changes.filter(s => slugs.has(s)) })).filter(c => c.changes.length >= 2)
   return {
@@ -116,7 +120,7 @@ export function buildReport(root: string, since: string | null = null, maxQuesti
     waiverRows: { unowned: all.filter(w => !w.by || w.by === 'unknown').length, oldestDays: ages.length ? Math.max(...ages) : null },
     repeat: { classes: classes.length, changes: new Set(classes.flatMap(c => c.changes)).size },
     unavailable: ['CI first-pass rate (the CI provider holds it)', 'review time and findings fixed without a person (not recorded anywhere in the repo)', ...(humanLoad ? [] : ['human load (no shipped change has evidence/human.jsonl yet)'])],
-    humanLoad,
+    agents, humanLoad,
   }
 }
 
@@ -159,6 +163,7 @@ export function reportText(r: Report): string {
     `  hours, first commit to approval  ${r.hoursToApproval ? `median ${r.hoursToApproval.median} (${r.hoursToApproval.of} change(s))` : 'n/a'}`,
     `  waivers per change         ${r.waiversPerChange} (${r.waiverRows.unowned} with no owner; oldest ${r.waiverRows.oldestDays === null ? 'n/a' : (Number.isFinite(r.waiverRows.oldestDays) ? `${r.waiverRows.oldestDays} day(s)` : 'age unknown')})`,
     `  repeat mistakes            ${r.repeat.classes} class(es) across ${r.repeat.changes} of ${r.shipped} change(s)`,
+    `  agent cost                 ${r.agents.launches} launches, ${r.agents.tokens} tokens, ${r.agents.minutes} min over ${r.agents.changes} change(s)`,
     ...(r.humanLoad ? humanLoadText(r.humanLoad) : []),
     ...(r.humanTime ? humanTimeText(r.humanTime) : []),
     ...(r.reviewHealth ? ['  review health (per approver, last risk.window merged PRs):', 'unavailable' in r.reviewHealth ? `    unavailable: ${r.reviewHealth.unavailable}` : r.reviewHealth.length ? healthText(r.reviewHealth) : '    no reviewed PRs'] : []),

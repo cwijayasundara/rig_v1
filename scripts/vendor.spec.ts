@@ -327,7 +327,7 @@ test('the settings template protects evidence with deny rules and the harness co
   const settings = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, '..', 'templates', 'settings.json'), 'utf8')) as { permissions: { allow: string[]; ask: string[]; deny: string[] } }
   const deny = new Set(settings.permissions.deny)
   for (const f of ['waivers.jsonl', '.gate', '.baseline', 'unresolved.json']) assert.ok(deny.has(`Edit(/.rig/${f})`), f)
-  for (const f of ['approval.json', 'verify.json', 'evidence/runs.jsonl']) assert.ok(deny.has(`Edit(/.rig/changes/*/${f})`), f)
+  for (const f of ['approval.json', 'verify.json', 'evidence/runs.jsonl', 'evidence/agents.jsonl']) assert.ok(deny.has(`Edit(/.rig/changes/*/${f})`), f)
   assert.ok(deny.has('Read(.env)') && deny.has('Edit(.env)'), 'the .env rules stay')
   assert.deepEqual(settings.permissions.ask, [
     'Edit(/.rig/sensors.json)', 'Edit(/.rig/rules.json)', 'Edit(/.rig/layers.approved.json)', 'Edit(/.rig/ratchets.json)', 'Edit(/.rig/gen/**)', 'Edit(/.rig/lessons.md)', 'Edit(/.rig/lessons-archive.md)', 'Edit(/.claude/settings.json)',

@@ -910,3 +910,47 @@ test('a PR labelled rig-hold is blocked whatever else passes, with a message tha
   assert.match(riskRun({ files: { 'c.txt': 'x\n' }, labelsFail: true }).stdout, /could not read the PR labels/)
   assert.doesNotMatch(riskRun({ files: { 'd.txt': 'x\n' }, message: 'audit: seeded defect s5-ab12' }).stdout, /merge held/, 'commit subjects are not trusted either way')
 })
+
+test('a requested waiver drops the finding locally', () => {
+  sdlc(repo, ['new', 'xx', '--type', 'chore'])
+  hook(repo, 'prompt-submit', {})
+  write(repo, 'src/app.js', 'export const a = 9 // eslint-disable-line\n')
+  assert.equal(check('--at', 'stop').code, 1)
+  assert.equal(sdlc(repo, ['waive', '--request', 'suppression', 'src/app.js', 'generated']).code, 0)
+  assert.equal(check('--at', 'stop').code, 0)
+})
+
+test('CI lists a requested waiver row as "waiver request <slug>: ..." for a person to approve', () => {
+  gitIn(repo, 'checkout', '-qb', 'pr')
+  sdlc(repo, ['new', 'tiny', '--type', 'chore'])
+  write(repo, '.rig/waivers.jsonl', JSON.stringify({ slug: 'tiny', sensor: 'size', file: '*', reason: 'big', by: 'agent (request)', requested: true, at: '2026-10-03T00:00:00Z' }) + '\n')
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', 'pr')
+  const json = JSON.parse(sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main', '--json']).stdout)
+  assert.ok(json.humanRows.includes('waiver request tiny: size * "big" by agent (request)'), JSON.stringify(json.humanRows))
+})
+
+test('waive --request refuses plan-gate, harness-tamper, contracts and secrets (exit 3); a hand-written requested row never clears them', () => {
+  sdlc(repo, ['new', 'xx', '--type', 'chore'])
+  for (const sensor of ['plan-gate', 'harness-tamper', 'contracts', 'secrets']) {
+    const r = sdlc(repo, ['waive', '--request', sensor, '*', 'because'])
+    assert.equal(r.code, 3, sensor)
+    assert.match(r.stderr, new RegExp(`${sensor} is never an agent's to waive`))
+  }
+  hook(repo, 'prompt-submit', {})
+  write(repo, '.rig/sensors.json', fromOld({ limits: { diffLines: 9000 } }))
+  assert.match(check('--at', 'stop').stdout, /harness-tamper 1/)
+  write(repo, '.rig/waivers.jsonl', JSON.stringify({ slug: 'xx', sensor: 'harness-tamper', file: '*', reason: 'r', by: 'agent (request)', requested: true, at: new Date().toISOString(), expires: new Date(Date.now() + 86_400_000).toISOString() }) + '\n')
+  assert.match(check('--at', 'stop').stdout, /harness-tamper 1/)
+})
+
+test('CI fails while a change the PR carries is a draft PR, and a waiver does not clear it', () => {
+  gitIn(repo, 'checkout', '-qb', 'pr')
+  sdlc(repo, ['new', 'tiny', '--type', 'chore'])
+  write(repo, '.rig/changes/tiny/pr.md', '---\nstate: open\nbranch: sdlc/tiny\ndraft: budget spent\n---\nt\n')
+  write(repo, '.rig/waivers.jsonl', JSON.stringify({ slug: 'tiny', sensor: 'draft', file: '*', reason: 'r', by: 'a person', at: new Date().toISOString(), expires: new Date(Date.now() + 86_400_000).toISOString() }) + '\n')
+  gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'pr')
+  const r = sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main'])
+  assert.equal(r.code, 1, r.stdout)
+  assert.match(r.stdout, /tiny is a draft PR: fix it, then run S pr tiny without --draft/)
+})

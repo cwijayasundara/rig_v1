@@ -23,7 +23,7 @@ This repo uses **rig-core**: each change (`/rig:start <idea>`) becomes a gated, 
 | Plan it | `/rig:plan` |
 | Approve it (a person only) | `/rig:approve <slug>` |
 | Build, test and open the PR | `/rig:build <slug>` (runs `/rig:test` and `/rig:pr`) |
-| Waive a failing sensor with a reason (a person only) | `/rig:waive <sensor> <file> <reason>` |
+| Waive a failing sensor with a reason | `/rig:waive <sensor> <file> <reason>` (a person only); an agent may request one (`S waive --request`), and a person grants it by approving the PR. Copy `templates/rig-approved.yml` beside `rig-check.yml`. |
 | Turn a repeated mistake into a rule | `/rig:rule`; `/rig:learn` proposes them from history |
 | See where a change stands | `node .rig/bin/sdlc.ts status` |
 

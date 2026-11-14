@@ -1,7 +1,7 @@
 // Orchestrates sensors at a firing point (stop, ship, ci): one set of checks everywhere, so local == CI.
 import fs from 'node:fs'
 import path from 'node:path'
-import { waiverLive,
+import { waiverLive, UNREQUESTABLE,
   ROOT, SDLC, CHANGES, WAIVERS, SENSORS_JSON, BUDGET_MS, readJson, exists, read, out, fail, git, toPosix, optString, readJsonl, defaultBase, checkSlug, skillRef, clean,
   type Args, type Waiver,
 } from './core.ts'
@@ -26,7 +26,7 @@ import { parseAccess } from './chartcheck.ts'
 import { ARCH_REL } from './product.ts'
 import { approvalRow, INCOMPLETE } from './approvalsummary.ts'
 import { rigOff, trunkRef, offLine, frozenWhileOff } from './off.ts'
-import { answersMissing, heldFindings, ANSWER_FIX } from './prcheck.ts'
+import { answersMissing, heldFindings, ANSWER_FIX } from './prcheck.ts'; import { draftFindings } from './draft.ts'
 type Point = 'stop' | 'commit' | 'ship' | 'ci'
 type CheckInput = {
   point: Point
@@ -160,10 +160,10 @@ function ciScope(slug: string, base: string | null | undefined): ((file: string 
 function applyWaivers(findings: Finding[], slugs: string[], ci?: { base: string | null | undefined }): CheckResult {
   const scopes = new Map(slugs.map(s => [s, ci ? ciScope(s, ci.base) : () => true] as const))
   // An exception ends: past its expiry a waiver no longer covers anything, so the finding it hid comes back.
-  const waivers = readJsonl<Waiver>(WAIVERS).filter(w => slugs.includes(w.slug) && scopes.get(w.slug) !== null && waiverLive(w))
+  const waivers = readJsonl<Waiver>(WAIVERS).filter(w => slugs.includes(w.slug) && scopes.get(w.slug) !== null && waiverLive(w) && !(w.requested && UNREQUESTABLE.includes(w.sensor)))
   // A file-less size finding (the diff total, the hard cap) has no file for the CI scope to test, so a `size *` waiver of a change this PR adds covers it (its row still needs an independent approval).
   // Never waivable: plan-gate (only a person's approval clears it); at CI also contracts and harness-tamper on harness files.
-  const never = (f: Finding): boolean => f.sensor === 'plan-gate' || (Boolean(ci) && ((f.sensor === 'harness-tamper' && (!f.file || isProtected(f.file))) || f.sensor === 'contracts'))
+  const never = (f: Finding): boolean => f.sensor === 'plan-gate' || f.sensor === 'draft' || (Boolean(ci) && ((f.sensor === 'harness-tamper' && (!f.file || isProtected(f.file))) || f.sensor === 'contracts'))
   const waived = (f: Finding): boolean => waivers.some(w => w.sensor === f.sensor && (w.file === '*' || w.file === f.file) && !never(f) && ((f.sensor === 'size' && !f.file) || (scopes.get(w.slug) as (file: string | undefined) => boolean)(f.file)))
   const kept = findings.filter(f => !waived(f))
   return { findings: kept, blocks: kept.filter(f => f.severity === 'block'), warns: kept.filter(f => f.severity === 'warn'), waived: findings.length - kept.length }
@@ -290,7 +290,7 @@ function humanRowsAdded(base: string): string[] {
       let r: Record<string, unknown> = {}
       try { r = JSON.parse(line) as Record<string, unknown> } catch { /* shown raw below */ }
       const s = (k: string): string => clean(r[k] ?? '?')
-      rows.push(!Object.keys(r).length ? `${kind} (unparseable): ${clean(line)}` : `waiver ${s('slug')}: ${s('sensor')} ${s('file')} "${s('reason')}" by ${s('by')}`)
+      rows.push(!Object.keys(r).length ? `${kind} (unparseable): ${clean(line)}` : `waiver${r.requested === true ? ' request' : ''} ${s('slug')}: ${s('sensor')} ${s('file')} "${s('reason')}" by ${s('by')}`)
     }
   }
   rows.push(...freezeRowsAdded(base, clean))
@@ -480,7 +480,7 @@ export function cmdCheck(args: Args): void {
   if (at === 'commit') for (const f of result.findings) if (f.outOfTime) f.severity = 'warn'
   result.blocks = result.findings.filter(f => f.severity === 'block')
   const configFindings: Finding[] = errors.map(e => ({ sensor: 'config', severity: 'block', file: SENSORS_JSON, message: e, fix: 'fix the file; see the sdlc README for its format' }))
-  const queueFindings: Finding[] = [...(at === 'ci' ? heldFindings(whoIs()) : []), ...(queueRefusal ? [{ sensor: 'human-approval', severity: 'block', message: `merge queue: this PR needs a person: ${queueRefusal}`, fix: 'someone other than the author approves the PR\'s head commit, then queue it again' } as Finding] : [])]
+  const queueFindings: Finding[] = [...(at === 'ci' ? [...heldFindings(whoIs()), ...draftFindings(slugs)] : []), ...(queueRefusal ? [{ sensor: 'human-approval', severity: 'block', message: `merge queue: this PR needs a person: ${queueRefusal}`, fix: 'someone other than the author approves the PR\'s head commit, then queue it again' } as Finding] : [])]
   const humanFindings: Finding[] = why ? [{ sensor: 'human-approval', severity: 'block', message: humanRows.length ? `this PR adds ${humanRows.length} approval/waiver row(s): ${why}` : `risk.enforce: this PR is tier ${risk?.tier} and needs a person: ${refusal ? `${refusal}; ` : ''}${why}`, fix: why?.includes('does not answer') ? ANSWER_FIX : humanRows.length ? 'a code owner other than the PR author reviews the rows below and approves the current head commit; pushing again needs a fresh approval' : 'someone other than the PR author approves the current head commit; pushing again needs a fresh approval' }] : []
   const answerFindings: Finding[] = humanRows.filter(r => r.includes(INCOMPLETE)).map(r => ({ sensor: 'human-approval', severity: 'block', message: r, fix: `approve the chart again through ${skillRef('approve')} and answer every check question` }))
   const syncBlocks = (at === 'commit' || at === 'ci') && declaresRegistry() ? syncFindings(config, [], 'block') : [] // config errors already block above

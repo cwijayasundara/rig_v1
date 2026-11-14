@@ -139,7 +139,7 @@ test('intent map: plan writes the map and projects Behaviours, build records res
 
 test('build splits the test writer from the implementer and freezes the tests between them', () => {
   const build = text('skills/build/SKILL.md')
-  assert.match(build, /Test writer: launch one `general-purpose` agent, model `sonnet`, in the foreground, with a brief of at most 40 lines/)
+  assert.match(build, /Test writer: launch one `general-purpose` agent on the `build` model, in the foreground, with a brief of at most 40 lines/)
   assert.match(build, /never the bodies of source files the plan changes[^\n]*--expect-fail/)
   assert.match(build, /Run `S tests-freeze <slug>`: it hashes[^\n]*and commits them/)
   assert.match(build, /formal checker[^\n]*frozen[^\n]*## Formal command/)
@@ -147,4 +147,19 @@ test('build splits the test writer from the implementer and freezes the tests be
   assert.match(build, /enforced once committed/)
   assert.match(build, /never editing a frozen test[^\n]*`S tests-freeze <slug> --why/)
   assert.match(build, /at most 60 lines/)
+})
+
+test('build, pr and test carry the model pair, status line, draft-PR and waiver-request text', () => {
+  const build = text('skills/build/SKILL.md'), pr = text('skills/pr/SKILL.md'), test_ = text('skills/test/SKILL.md')
+  const status = 'End your answer with one line: status: DONE, status: DONE_WITH_CONCERNS <the concern>, or status: BLOCKED <why>.'
+  assert.match(build, /run `S models <slug>`/)
+  assert.match(build, /`weight: light`, one `general-purpose` agent on the `build` model[^\n]*the main thread does not write the code/)
+  assert.match(build, /fails twice on that build, launch one implementer on the `fallback` model/)
+  assert.match(build, /S pr <slug> --draft "<why>" --message/)
+  assert.match(pr, /S pr <slug> --draft "<why>" --message/)
+  for (const f of ['skills/build/SKILL.md', 'skills/pr/SKILL.md', 'templates/review-brief.md', 'templates/confirm-brief.md']) assert.ok(text(f).includes(status), f)
+  assert.match(test_, /request a waiver with S waive --request <sensor> <file> <reason>[^\n]*the PR's approval grants it/)
+  assert.doesNotMatch(test_, /stop and show it to the person with that sentence/)
+  assert.match(test_, /plan-gate, harness-tamper, contracts and secrets there is no request: stop and show the finding to the person, who runs `\/rig:waive`/)
+  for (const f of ['templates/readme-rig.md', 'templates/readme-rig-core.md']) assert.match(text(f), /S waive --request[\s\S]*rig-approved\.yml/, f)
 })

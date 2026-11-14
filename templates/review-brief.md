@@ -15,7 +15,7 @@ Before you report a finding, run `git blame <base> -- <file>` on its line. A lin
 
 You may read files and run read-only commands (git, cat, `node --test` on existing tests). Edit nothing.
 
-Answer in exactly this shape. Unverifiable items never change the verdict. Pre-existing items never change the verdict:
+Answer in exactly this shape, then the status line. Unverifiable items never change the verdict. Pre-existing items never change the verdict:
 
 verdict: pass | changes-needed
 ## Findings
@@ -26,3 +26,5 @@ verdict: pass | changes-needed
 - <what reading cannot settle> → settle by: <a journey, a live config or a test>
 ## Pre-existing
 - path:line: problem → fix
+
+End your answer with one line: status: DONE, status: DONE_WITH_CONCERNS <the concern>, or status: BLOCKED <why>.

@@ -73,6 +73,7 @@
       "Edit(/.rig/unresolved.json)",
       "Edit(/.rig/gates.jsonl)",
       "Edit(/.rig/changes/*/evidence/runs.jsonl)",
+      "Edit(/.rig/changes/*/evidence/agents.jsonl)",
       "Edit(/.rig/changes/*/evidence/human.jsonl)",
       "Edit(/.rig/changes/*/verify.json)",
       "Edit(/.rig/changes/*/pr.md)"

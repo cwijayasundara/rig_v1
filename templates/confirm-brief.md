@@ -12,8 +12,10 @@ When a finding has `Repro: <command>`, run it once from the repo root before you
 
 Raise nothing new: a problem a finding does not name is not yours to report. Edit nothing. You may run read-only commands (git, cat, `node --test` on existing tests).
 
-Answer one line per finding, in order, and nothing else:
+Answer one line per finding, in order, then the status line, and nothing else:
 <n>. confirmed
 <n>. reopened: <why>
 
 `<why>` names the file and line that still shows the problem.
+
+End your answer with one line: status: DONE, status: DONE_WITH_CONCERNS <the concern>, or status: BLOCKED <why>.

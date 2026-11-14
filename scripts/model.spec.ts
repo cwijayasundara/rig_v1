@@ -84,6 +84,7 @@ test('every sensor name emitted by the scripts is waivable', async () => {
   }
   emitted.delete('human-approval') // deliberately not waivable: it asks CI for an independent reviewer
   emitted.delete('plan-gate') // deliberately not waivable: only a person's approval clears it
+  emitted.delete('draft') // deliberately not waivable: a draft PR merges only after S pr without --draft
   emitted.delete('sync') // deliberately not waivable: the fix is always `rig sync` or a test that names the behaviour
   assert.deepEqual([...emitted].filter(n => !SENSOR_NAMES.includes(n)), [])
   assert.deepEqual(SENSOR_NAMES.filter(n => !emitted.has(n)), [])

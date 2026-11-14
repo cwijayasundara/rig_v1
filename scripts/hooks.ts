@@ -8,6 +8,7 @@ import {
   ROOT, SDLC, SENSORS_JSON, SENSORS_PATH, BUDGET_MS, IS_VENDORED, skillRef, now, exists, read, out, fail, frontmatter,
   managedSettings, scanSecrets, UNRESOLVED, readUnresolved, relPosix, sha, readGate, updateGate, type Args, type HookInput, type GateSummary,
 } from './core.ts'
+import { admitLaunch, recordDone, EXEMPT } from './agents.ts'
 import { activeSlug, status, nextStep, changeType } from './lifecycle.ts'
 import { snapshot, writeBaseline, readBaseline, turnDiff, showAt, diffHash } from './diffs.ts'
 import { isProtected } from './sensors.ts'
@@ -61,12 +62,18 @@ function hookModelSwitch(input: HookInput): void {
 
 function hookAgentLaunch(input: HookInput): void {
   if (!exists(SDLC) || !input.tool_use_id) return
-  recordLaunch(MODEL_STATE, { session: input.session_id ?? 'default', id: input.tool_use_id, agent: String(input.tool_input?.subagent_type ?? 'general-purpose'), requested: input.tool_input?.model ?? null, resolved: null, at: now() })
+  const slug = activeSlug(), agent = String(input.tool_input?.subagent_type ?? 'general-purpose'), requested = input.tool_input?.model ?? null
+  // The sixth counted launch of a change is refused (D2) and recorded nowhere; with no active change there is no budget. The mandatory passes are never denied.
+  const refusal = slug ? admitLaunch(slug, { id: input.tool_use_id, agent, model: typeof requested === 'string' ? requested : null, at: now() }, EXEMPT.test(String(input.tool_input?.description ?? ''))) : null
+  if (refusal) return out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: refusal } }))
+  recordLaunch(MODEL_STATE, { session: input.session_id ?? 'default', id: input.tool_use_id, agent, requested, resolved: null, at: now() })
 }
 
 function hookAgentDone(input: HookInput): void {
   const resolved = input.tool_response?.resolvedModel ?? input.tool_response?.model
   if (exists(SDLC) && input.tool_use_id && resolved) recordResolved(MODEL_STATE, input.tool_use_id, resolved)
+  const slug = exists(SDLC) && input.tool_use_id ? activeSlug() : null
+  if (slug && input.tool_use_id) recordDone(slug, input.tool_use_id, input.tool_response)
 }
 
 // Holdout cases stay hidden once their sprint's chart is approved (and not stale); it fails closed: a throw denies.

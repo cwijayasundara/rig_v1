@@ -1,0 +1,32 @@
+# Why this workflow exists: an agent can request a waiver (S waive --request), and the PR's approval grants it. rig-check reads the
+# approval when it runs, so a review that lands after it must re-run it. GitHub counts a skipped required job as passing, so this
+# does not re-run the whole rig-check workflow (the workflow's other jobs would be skipped, not re-run); it re-runs only its rig-check job.
+# It also re-runs when a review is edited (the Q1-Q3 answers live in the review body). Protect it: put a CODEOWNERS entry on /.github/workflows/rig-*.yml,
+# so a PR cannot change the workflow that re-runs its own check.
+name: rig-approved
+on:
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+permissions:
+  actions: write
+  contents: read
+jobs:
+  rerun-rig-check:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Re-run the rig-check job of this head commit's run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          row=$(gh api "repos/$REPO/actions/workflows/rig-check.yml/runs?head_sha=$SHA&event=pull_request&per_page=20" | jq -r --arg PR "$PR" '[.workflow_runs[] | select(.pull_requests[]?.number == ($PR|tonumber))][0] // empty | "\(.id) \(.status)"')
+          run=${row% *}; status=${row#* }
+          if [ -z "$run" ]; then echo "::notice::no rig-check run of PR $PR for $SHA; it reads the approval when it runs"; exit 0; fi
+          if [ "$status" != completed ]; then timeout 1500 gh run watch "$run" -R "$REPO" >/dev/null || true; fi
+          job=$(gh api "repos/$REPO/actions/runs/$run/jobs?per_page=100" -q '.jobs[] | select(.name == "rig-check") | .id')
+          if [ -z "$job" ]; then echo "::notice::run $run has no rig-check job to re-run"; exit 0; fi
+          gh run rerun "$run" --job "$job" -R "$REPO"
