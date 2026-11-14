@@ -163,3 +163,21 @@ test('build, pr and test carry the model pair, status line, draft-PR and waiver-
   assert.match(test_, /plan-gate, harness-tamper, contracts and secrets there is no request: stop and show the finding to the person, who runs `\/rig:waive`/)
   for (const f of ['templates/readme-rig.md', 'templates/readme-rig-core.md']) assert.match(text(f), /S waive --request[\s\S]*rig-approved\.yml/, f)
 })
+
+// The 2026-11-14 eval: every rig-start run found test/integration/refund-policy.test.js, called its rule out of scope and shipped past it.
+test("start keeps an existing test's rule: a contradiction is an open question answered by the test, never out of scope", () => {
+  const start = text('skills/start/SKILL.md')
+  assert.match(start, /An existing test states a rule too: Grep every test directory/)
+  assert.match(start, /recommended answer keeps the test's rule/)
+  assert.match(start, /never put an existing test's rule under `## Out of scope` or leave its test to fail/)
+  assert.match(text('skills/plan/SKILL.md'), /Grep every test directory, also those only a separate script runs/)
+})
+
+test('init registers every test script the baseline names as uncovered, at cadence ci', () => {
+  assert.match(text('skills/init/SKILL.md'), /For each `WARNING test script` line it prints, add a command sensor that runs that script at cadence `ci`/)
+})
+
+// The 2026-11-14 brownfield dry run: commander's typed `eslint .` failed on all of the vendored .rig/bin/*.ts (167 errors).
+test("init keeps rig's own files out of a repo-wide linter, formatter or type checker", () => {
+  assert.match(text('skills/init/SKILL.md'), /add `\.rig\/` and `\.claude\/` to its ignore list/)
+})

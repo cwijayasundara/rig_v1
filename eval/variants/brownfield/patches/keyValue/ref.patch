@@ -33,10 +33,10 @@ index bded840..4426e28 100644
     *
 diff --git a/tests/option.keyValue.test.js b/tests/option.keyValue.test.js
 new file mode 100644
-index 0000000..e71ae0e
+index 0000000..5466eec
 --- /dev/null
 +++ b/tests/option.keyValue.test.js
-@@ -0,0 +1,45 @@
+@@ -0,0 +1,48 @@
 +const commander = require('../');
 +
 +describe('option.keyValue()', () => {
@@ -46,7 +46,10 @@ index 0000000..e71ae0e
 +      .exitOverride()
 +      .configureOutput({ writeErr: () => {}, writeOut: () => {} })
 +      .addOption(
-+        new commander.Option('-D, --define <pair>', 'define a value').keyValue(),
++        new commander.Option(
++          '-D, --define <pair>',
++          'define a value',
++        ).keyValue(),
 +      );
 +    return program;
 +  }

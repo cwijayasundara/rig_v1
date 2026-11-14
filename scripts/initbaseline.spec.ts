@@ -33,3 +33,13 @@ test('baseline: refuses without sensors.json', () => {
   assert.notEqual(r.code, 0)
   assert.match(r.stderr + r.stdout, /no \.rig\/sensors\.json/)
 })
+
+test('baseline names a package test script no sensor runs, so init registers it before ship blocks on it', () => {
+  const repo = makeRepo()
+  sdlc(repo, ['init'])
+  write(repo, 'package.json', JSON.stringify({ scripts: { test: ok, 'test:all': bad } }))
+  write(repo, '.rig/sensors.json', registry({ turn: { unit: ok } }))
+  assert.match(sdlc(repo, ['baseline']).stdout, /^WARNING test script "test:all" is run by no sensor: add a command sensor for it \(cadence ci\)/m)
+  write(repo, '.rig/sensors.json', registry({ turn: { unit: ok }, ci: { all: bad } }))
+  assert.doesNotMatch(sdlc(repo, ['baseline']).stdout, /WARNING test script/)
+})

@@ -1,7 +1,7 @@
 // The linear route runner: the model plans, the person approves, the model builds. No next --json loop.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { runChange } from './flow.mjs'
+import { runChange, ANSWER_ROUNDS } from './flow.mjs'
 
 const fakeSb = (approve = { status: 0, stdout: 'approved demo', stderr: '' }) => {
   const calls = []
@@ -40,7 +40,7 @@ test('a live driver leaves session evidence; the run commits it after the build'
   assert.deepEqual(sb.calls.at(-1), ['commit', 'chore: session leftovers'])
 })
 
-// A person answers a change's open questions; in a live run the driver stands in for them, once, then approval is tried again.
+// A person answers a change's open questions; in a live run the driver stands in for them, up to ANSWER_ROUNDS times, retrying approval after each.
 const refusal = (why) => ({ status: 1, stdout: '', stderr: why })
 const OPEN = 'resolve the open question(s) first: answer each\n  - spec.md: which file?'
 
@@ -55,12 +55,23 @@ test('an approval refused for open questions gets one answer from the driver, th
   assert.deepEqual(calls[3], ['answer', 'demo', true], 'the driver is told which questions are open')
 })
 
-test('the driver answers only once: a second refusal stops the run', async () => {
+test('a question the answer raised gets a second round, then the run builds', async () => {
+  const calls = []
+  const replies = [refusal(OPEN), refusal(OPEN), { status: 0, stdout: 'approved demo', stderr: '' }]
+  const sb = { calls, sdlc: () => replies.shift(), commitAll: () => true }
+  const driver = { ...fakeDriver(calls), answer: async () => { calls.push(['answer']) } }
+  const r = await runChange(sb, { id: 'S9' }, driver)
+  assert.equal(r.answered, true)
+  assert.equal(calls.filter(c => c[0] === 'answer').length, 2)
+  assert.ok(calls.some(c => c[0] === 'build'))
+})
+
+test(`the driver answers at most ANSWER_ROUNDS (${ANSWER_ROUNDS}) times; the stop names every open question`, async () => {
   const calls = []
   const sb = { calls, sdlc: () => refusal(OPEN), commitAll: () => true }
   const driver = { ...fakeDriver(calls), answer: async () => { calls.push(['answer']) } }
-  await assert.rejects(runChange(sb, { id: 'S9' }, driver), /approve refused: resolve the open question/)
-  assert.equal(calls.filter(c => c[0] === 'answer').length, 1)
+  await assert.rejects(runChange(sb, { id: 'S9' }, driver), /approve refused: resolve the open question[\s\S]*spec\.md: which file\?/)
+  assert.equal(calls.filter(c => c[0] === 'answer').length, ANSWER_ROUNDS)
   assert.ok(!calls.some(c => c[0] === 'build'))
 })
 

@@ -70,7 +70,12 @@
 
   - rig-on is the better arm: it caught every trap, at 1/7 to 1/10 of the cost and 1/7 to 1/12 of the time of rig-start.
   - Each rig-start gap is a harness bug:
-    - **The refund-policy escape (`rule`):** the rule lives only in an integration test that `npm test` skips. No rig sensor runs
-      that test, and the spec and plan phases did not look for existing tests that constrain the code they change.
-    - **Run 1 stopped at approve:** the approve gate refused because open questions were left in the spec.
+    - **The refund-policy escape (`rule`):** the rule lives only in an integration test that `npm test` skips, and no rig sensor
+      runs that test. All three rig-start specs found the test, then recommended dropping its rule as outside the brief's B15
+      ("it will fail until a person waives"), and the eval's stand-in person took that recommendation.
+      - Fix (W3d): `check --at ship` blocks on a package `test*` script that no sensor runs (`scripts/testscripts.ts`).
+      - Fix (W3d): `/rig:start` makes an existing test's rule a behaviour. A request that contradicts the rule is an open
+        question whose recommended answer keeps it.
+    - **Run 1 stopped at approve:** the plan review raised a sixth question after the five answered ones. Fix (W3d): the eval's
+      stand-in answers up to 2 rounds (`tests/e2e/lib/flow.mjs`).
     - **One brownfield run was invalid (`sleep`):** it was retried once and then passed.
