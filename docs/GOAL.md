@@ -4,10 +4,13 @@
 
 rig is a thin layer on top of Claude Code. Claude Code already writes code well, so rig does not compete with it. rig adds only
 what a measurement or a missing native feature says is needed to make the work correct, traceable, cheap and safe to merge.
-"Production ready" means the evals below show a lift, not that the features are built.
-Status 2026-10-31: no eval has shown a lift over plain Claude Code yet. On the tasks tried the bare models pass, and rig costs
-about 3x plain Haiku and takes about 3x as long (README, "Is it worth using?"). What rig adds today is a trail and gates; a quality
-lift is the open question, and the next test is work that drifts across sessions.
+**Rig mode is on once rig is installed** (decided 2026-11-14). Like poteto mode, the guidelines and sensors fire on every turn in a
+rig repo, whether the person types `/rig-start` or just prompts. The full change workflow (spec, plan, frozen tests, review, the two
+human gates) is what a person opts into on top of that.
+"Production ready" means the evals below show that rig ships few escaped defects per dollar, with rig on: hidden checks on traps
+that unit tests pass and a running app fails (`eval/variants/hard.mjs`, `eval/variants/brownfield.mjs`). Every escape is a harness
+bug to fix. The arms are `rig-on` (rig installed, plain prompts) and `rig-start` (the full workflow), compared across rig versions,
+model pairs and ablations. Bare Claude Code is no longer an arm any wave depends on: target projects always run rig.
 
 ## What "a very good engineer" means here
 
@@ -35,8 +38,8 @@ These come from the research (`docs/research/`) and from the one week this repo 
    - it is the minimum glue that points a native feature at our artefacts.
 3. **Models advise, scripts decide.** No hook calls a model. Verdicts come from captured exit codes. A person approves; the agent
    never approves its own work. CI judges a PR with the base branch's checker, so a PR cannot weaken its own judge.
-4. **Measure, then keep or cut.** Every part has an arm in `eval/`. Cut a part only when a native feature covers it or its eval
-   shows no lift after two passes. Do not cut because a source article is silent about it. The metric is dollars per accepted task.
+4. **Measure, then keep or cut.** Every part has an arm in `eval/`. Cut a part only when a native feature covers it or its ablation
+   shows it lowers no escapes per dollar after two passes. Do not cut because a source article is silent about it. The metric is escaped defects per dollar, with rig on.
 5. **Cadence follows model grade.** The only cost study (Jain, two OpenAI models, one task) found a harness was pure overhead on the
    strong model (7x cost, no gain) and decisive on the cheap one (3/10 to 10/10). Sensors run continuously for cheaper models and
    as a final gate for stronger ones; CI always runs everything. No Claude model has been measured, so ours is a hypothesis.
