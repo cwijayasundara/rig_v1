@@ -329,7 +329,7 @@ test("an arm's models.light reaches the sandbox registry", async () => {
   const plain = createSandbox({ name: 'models-none', out: fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-models-')) })
   await setupRig(plain, ARMS.find(a => a.id === 'sonnet-rig'), { dry: true })
   assert.equal(JSON.parse(plain.read('.rig/sensors.json')).models, undefined, 'an arm without models leaves the registry default')
-  assert.deepEqual(ARMS.filter(a => a.id.startsWith('sonnet-rig')).map(a => [a.id, a.model, a.rig, a.policy]), [['sonnet-rig', 'claude-sonnet-5-5', true, 'continuous'], ['sonnet-rig-light-haiku', 'claude-sonnet-5-5', true, 'continuous'], ['sonnet-rig-light-sonnet', 'claude-sonnet-5-5', true, 'continuous']])
+  assert.deepEqual(ARMS.filter(a => a.id.startsWith('sonnet-rig')).map(a => [a.id, a.model, a.rig, a.policy]), [['sonnet-rig', 'claude-sonnet-5-5', true, 'continuous'], ['sonnet-rig-light-haiku', 'claude-sonnet-5-5', true, 'continuous'], ['sonnet-rig-on', 'claude-sonnet-5-5', true, 'continuous'], ['sonnet-rig-light-sonnet', 'claude-sonnet-5-5', true, 'continuous']])
 })
 
 test("a plugin whose registry.ts has models but no light pair (ref 7324485) gets no models key and modelsIgnored", async () => {
@@ -405,4 +405,48 @@ test('a rig change stopped midway still has its traps scored, with the phases do
   assert.equal(typeof row.plugin === 'string' || row.plugin === null, true)
   const bare = await runOne(ARMS.find(a => a.id === 'sonnet-bare'), 1, { dry: true, out, capRunUsd: 6, variant: 'traps' })
   assert.ok(!('plugin' in bare), 'a bare row records no plugin')
+})
+
+test('rig-on dry run on hard and brownfield: accepted, escaped 0, mode on, no change records under .rig/changes', async () => {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-on-'))
+  for (const variant of ['hard', 'brownfield']) {
+    const row = await runOne(ARMS.find(a => a.id === 'sonnet-rig-on'), 1, { dry: true, out, capRunUsd: 6, variant })
+    assert.deepEqual([row.accepted, row.escaped, row.mode, row.error, row.usd], [true, 0, 'on', undefined, 0], `${variant} ${JSON.stringify(row)}`)
+    assert.equal(row.phasesDone, 0)
+  }
+  const start = await runOne(ARMS.find(a => a.id === 'haiku-rig'), 1, { dry: true, out, capRunUsd: 6 })
+  assert.equal(start.mode, 'start')
+  const bare = await runOne(ARMS.find(a => a.id === 'haiku-bare'), 1, { dry: true, out, capRunUsd: 6 })
+  assert.equal('mode' in bare, false)
+})
+
+test('rig-on dry run leaves no change records under .rig/changes', async () => {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-on-'))
+  const arm = ARMS.find(a => a.id === 'sonnet-rig-on')
+  const sb = createSandbox({ name: 'on-changes', out })
+  await setupRig(sb, arm, { dry: true, variant: 'hard' })
+  dryBare(sb, { variant: 'hard', base: false })
+  const dir = path.join(sb.dir, '.rig/changes')
+  assert.equal(fs.existsSync(dir) ? fs.readdirSync(dir).length : 0, 0)
+})
+
+test('rig-on live session is launched with the plugin and without /rig-start', async () => {
+  const calls = []
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-on-'))
+  await runOne(ARMS.find(a => a.id === 'sonnet-rig-on'), 1, { dry: false, out, capRunUsd: 6, variant: 'hard', sessionsFactory: () => ({ sessions: [], run: (...a) => { calls.push(a); throw new Error('stop') } }) })
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0][2]?.withPlugin, true)
+  assert.doesNotMatch(calls[0][1], /rig-start|rig:start/)
+  assert.match(calls[0][1], /B15/)
+})
+
+test('the rig-on base equals the rig-start base', async () => {
+  const list = d => { const o = []; const w = p => { for (const e of fs.readdirSync(p, { withFileTypes: true })) { if (e.name === '.git') continue; const f = path.join(p, e.name); e.isDirectory() ? w(f) : o.push(path.relative(d, f)) } }; w(d); return o.sort() }
+  const files = []
+  for (const id of ['sonnet-rig', 'sonnet-rig-on']) {
+    const sb = createSandbox({ name: `base-${id}`, out: fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-base-')) })
+    await setupRig(sb, ARMS.find(a => a.id === id), { dry: true, variant: 'hard' })
+    files.push(list(sb.dir))
+  }
+  assert.deepEqual(files[0], files[1])
 })
