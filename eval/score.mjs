@@ -6,14 +6,14 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { Checks } from '../tests/e2e/lib/checks.mjs'
-import { PLUGIN } from '../tests/e2e/lib/sandbox.mjs'
 import { assertShopHttp } from '../tests/e2e/acceptance/shop-http.mjs'
 import { linksHttp } from './variants/links.mjs'
 
 const RULES = path.resolve(import.meta.dirname, 'variants/rules.mjs')
 const PRICING = path.resolve(import.meta.dirname, 'variants/pricing.mjs')
 
-const SDLC = path.join(PLUGIN, 'scripts/sdlc.ts')
+// This repo's own tamper checker, whatever RIG_EVAL_PLUGIN points the sandboxes at: both plugin refs are judged by one yardstick.
+export const SDLC = path.resolve(import.meta.dirname, '../scripts/sdlc.ts')
 const ACCEPTANCE = path.resolve(import.meta.dirname, '../tests/e2e/acceptance/shop.mjs')
 
 // Its own process group with output to a file (no pipe a grandchild can hold open), killed as a group at the limit.
@@ -113,8 +113,17 @@ export async function scoreRun(sb, base, { timeoutMs = 300_000, sdlc = SDLC, var
   // B15–B18: five traps, each a defect that unit tests pass and the running app fails (traps.mjs). Escaped: a trap that got past a passing npm test.
   let traps = null
   let trapFailures = []
-  if (variant === 'traps') ({ traps, failures: trapFailures } = await import('./variants/traps.mjs').then(m => m.trapChecks(sb.dir)))
+  let escaped = null
+  let missing = []
+  if (variant === 'traps') {
+    const m = await import('./variants/traps.mjs')
+    ;({ traps, failures: trapFailures } = await m.trapChecks(sb.dir))
+    // A trap escaped only if its behaviour's test file exists and npm test passed; no test file means the behaviour was never built.
+    const failed = Object.keys(traps).filter(n => !traps[n])
+    missing = failed.filter(n => !fs.existsSync(path.join(sb.dir, m.TRAP_TEST[n])))
+    escaped = npmTest ? failed.length - missing.length : null
+  }
   const all = [npmTest, acceptance === true, http === true, ...(withLinks ? [links === true] : []), ...(rules ? [...Array.from({ length: 6 }, (_, i) => i < rules.b8), rules.b9] : []), ...(pricing ? [...Array.from({ length: 5 }, (_, i) => i < pricing.b10), ...Array.from({ length: 5 }, (_, i) => i < pricing.b11), ...Array.from({ length: 4 }, (_, i) => i < pricing.b12)] : []), ...(contract ? [...Array.from({ length: 8 }, (_, i) => i < contract.b13), ...Array.from({ length: 7 }, (_, i) => i < contract.b14), ...Array.from({ length: 2 }, (_, i) => i < contract.files)] : []), ...(traps ? Object.values(traps) : [])]
   const checks = all.filter(Boolean).length
-  return { checks, of: all.length, accepted: checks === all.length, npmTest, acceptance, http, ...(withLinks ? { links } : {}), ...(rules ? { rules } : {}), ...(pricing ? { pricing } : {}), ...(contract ? { contract } : {}), ...(traps ? { traps, trapFailures, escaped: npmTest ? Object.values(traps).filter(v => !v).length : null } : {}), layerViolations: withLinks && links !== true ? null : layerViolations(sb.dir), tamper: tamperOf(sb, judgeFrom, sdlc) }
+  return { checks, of: all.length, accepted: checks === all.length, npmTest, acceptance, http, ...(withLinks ? { links } : {}), ...(rules ? { rules } : {}), ...(pricing ? { pricing } : {}), ...(contract ? { contract } : {}), ...(traps ? { traps, trapFailures, escaped, missing } : {}), layerViolations: withLinks && links !== true ? null : layerViolations(sb.dir), tamper: tamperOf(sb, judgeFrom, sdlc) }
 }

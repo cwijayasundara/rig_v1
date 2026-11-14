@@ -64,3 +64,17 @@ test('report sums escaped and groups by arm@plugin', () => {
   // one plugin: arms keep their plain names
   assert.ok(summarize(rows.slice(0, 3)).some(x => x.arm === 'sonnet-rig'))
 })
+
+test('only rig arms split by plugin; rows without a plugin stay in the plain arm; the baseline is the bare arm', () => {
+  const r = (arm, run, plugin, accepted = true) => ({ arm, run, at: `${arm}${run}${plugin}`, accepted, checks: 40, of: 47, usd: 1, ...(plugin && { plugin }) })
+  const s = summarize([r('haiku-bare', 1, undefined), r('haiku-bare', 2, undefined, false), r('sonnet-rig', 1, 'aaaaaaa'), r('sonnet-rig', 2, 'bbbbbbb'), r('sonnet-bare', 1, undefined)])
+  assert.ok(s.some(x => x.arm === 'haiku-bare' && x.runs === 2), 'bare arm is not split')
+  assert.ok(!s.some(x => x.arm.startsWith('sonnet-bare@') || x.arm.includes('@unknown')))
+  assert.ok(s.some(x => x.arm === 'sonnet-rig@aaaaaaa') && s.some(x => x.arm === 'sonnet-rig@bbbbbbb'))
+  const md = renderMarkdown(s, { date: 'd', files: ['f'] })
+  assert.match(md, /\| haiku-bare \| 1\/2 \| baseline \|/)
+  assert.match(md, /\| sonnet-rig@aaaaaaa \| 1\/1 \| \+50 pts \| 40\.0\/47 \|/, 'checks show the real total, not /3')
+  assert.doesNotMatch(md, /B1–B6/)
+  // one rig plugin plus plugin-less rig rows: no split
+  assert.ok(summarize([r('sonnet-rig', 1, 'aaaaaaa'), r('sonnet-rig', 2, undefined)]).some(x => x.arm === 'sonnet-rig' && x.runs === 2))
+})

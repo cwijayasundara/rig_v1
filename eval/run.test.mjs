@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { orderArms, runOne, sessionTrace, phasesFor, taskOf } from './run.mjs'
 import { spawnSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import { setupBare, setupRig, modelsSupported, dryBare, BARE_PROMPT_DELTA, BARE_PROMPT_PRICING, BARE_PROMPT_CONTRACT, BARE_PROMPT_TRAPS } from './setup.mjs'
 import { createSandbox } from '../tests/e2e/lib/sandbox.mjs'
 import { EVAL_ALLOW, nextRunAllowed, resultsAllowed } from './lib/cli.mjs'
@@ -300,7 +301,11 @@ test('escaped is null when npm test fails, and counts the failed traps when it p
   for (const t of ['receipt', 'orders-page', 'top-customers']) fs.writeFileSync(path.join(sb.dir, `test/${t}.test.js`), `import { test } from 'node:test'\ntest('${t}: unit only', () => {})\n`)
   sb.commitAll('run: the unit tests no longer go through the table')
   const escaped = await scoreRun(sb, base, { variant: 'traps' })
-  assert.deepEqual([escaped.npmTest, escaped.traps.route, escaped.escaped], [true, false, 4], 'unit tests pass, and the four traps that need a registration or a page escaped')
+  assert.deepEqual([escaped.npmTest, escaped.traps.route, escaped.escaped, escaped.missing], [true, false, 4, []], 'unit tests pass, and the four traps that need a registration or a page escaped')
+  fs.rmSync(path.join(sb.dir, 'test/top-customers.test.js'))
+  sb.commitAll('run: no B17 test at all')
+  const gone = await scoreRun(sb, base, { variant: 'traps' })
+  assert.deepEqual([gone.escaped, gone.missing], [3, ['scale']], 'a behaviour with no test file is missing, not escaped')
 })
 
 // W3: the arms that compare two rig refs and two model pairs.
@@ -311,8 +316,9 @@ test('RIG_EVAL_PLUGIN points PLUGIN elsewhere and the row records its sha', asyn
   assert.deepEqual([dir, sha], [fs.realpathSync(other) === other ? other : path.resolve(other), null], 'a directory that is not a git checkout has no sha')
   const [def, defSha] = JSON.parse(probe({ RIG_EVAL_PLUGIN: '' }).stdout)
   assert.equal(def, path.resolve(import.meta.dirname, '..'))
-  assert.equal(defSha, spawnSync('git', ['rev-parse', '--short=7', 'HEAD'], { cwd: def, encoding: 'utf8' }).stdout.trim())
-  const row = await runOne(ARMS.find(a => a.id === 'sonnet-bare'), 1, { dry: true, out: fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-run-')), capRunUsd: 6 })
+  const dirty = spawnSync('git', ['status', '--porcelain'], { cwd: def, encoding: 'utf8' }).stdout.trim() ? '-dirty' : ''
+  assert.equal(defSha, spawnSync('git', ['rev-parse', '--short=7', 'HEAD'], { cwd: def, encoding: 'utf8' }).stdout.trim() + dirty, 'a checkout with uncommitted changes is marked -dirty')
+  const row = await runOne(ARMS.find(a => a.id === 'sonnet-rig'), 1, { dry: true, out: fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-run-')), capRunUsd: 6 })
   assert.equal(row.plugin, defSha)
 })
 
@@ -326,10 +332,10 @@ test("an arm's models.light reaches the sandbox registry", async () => {
   assert.deepEqual(ARMS.filter(a => a.id.startsWith('sonnet-rig')).map(a => [a.id, a.model, a.rig, a.policy]), [['sonnet-rig', 'claude-sonnet-5-5', true, 'continuous'], ['sonnet-rig-light-haiku', 'claude-sonnet-5-5', true, 'continuous'], ['sonnet-rig-light-sonnet', 'claude-sonnet-5-5', true, 'continuous']])
 })
 
-test("a plugin without 'models' in registry.ts gets no models key and modelsIgnored", async () => {
+test("a plugin whose registry.ts has models but no light pair (ref 7324485) gets no models key and modelsIgnored", async () => {
   const old = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-old-plugin-'))
   fs.mkdirSync(path.join(old, 'scripts'))
-  fs.writeFileSync(path.join(old, 'scripts/registry.ts'), "const TOP_KEYS = ['stack', 'gates']\n")
+  fs.writeFileSync(path.join(old, 'scripts/registry.ts'), execFileSync('git', ['show', '7324485:scripts/registry.ts'], { cwd: path.resolve(import.meta.dirname, '..'), encoding: 'utf8' }))
   assert.deepEqual([modelsSupported(old), modelsSupported()], [false, true])
   const sb = createSandbox({ name: 'models-old', out: fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-models-')) })
   await setupRig(sb, ARMS.find(a => a.id === 'sonnet-rig-light-haiku'), { dry: true, plugin: old })
@@ -338,4 +344,65 @@ test("a plugin without 'models' in registry.ts gets no models key and modelsIgno
   assert.match(out.stdout, /sonnet-rig-light-haiku #1/)
   const results = out.stdout.match(/^(\S+results\.jsonl)$/m)?.[1]
   assert.equal(JSON.parse(fs.readFileSync(results, 'utf8').trim().split('\n')[0]).modelsIgnored, true)
+})
+
+// W3 review findings.
+test('scale check compares customer, spendCents and orders: key order and an extra field pass', async () => {
+  const { trapChecks } = await import('./variants/traps.mjs')
+  const root = path.resolve(import.meta.dirname, '..')
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-traps-proj-'))
+  for (const d of ['tests/e2e/fixtures/shop', 'tests/e2e/fixtures/remove', 'eval/variants/links/fixtures', 'eval/variants/rules/fixtures', 'eval/variants/pricing/fixtures', 'eval/variants/contract/seed', 'eval/variants/contract/fixtures', 'eval/variants/traps/seed', 'eval/variants/traps/fixtures']) fs.cpSync(path.join(root, d), dir, { recursive: true })
+  fs.mkdirSync(path.join(dir, 'scripts'), { recursive: true })
+  fs.copyFileSync(path.join(root, 'tests/e2e/fixtures/tooling/scripts/contract.mjs'), path.join(dir, 'scripts/contract.mjs'))
+  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'shop-app', type: 'module', scripts: { test: 'node --test', start: 'node src/server.js' } }))
+  const f = path.join(dir, 'src/http/reports.js')
+  const src = fs.readFileSync(f, 'utf8')
+  assert.ok(src.includes('return json(200, { items })'))
+  fs.writeFileSync(f, src.replace('return json(200, { items })', 'return json(200, { items: items.map(i => ({ orders: i.orders, rank: 1, spendCents: i.spendCents, customer: i.customer })) })'))
+  const r = await trapChecks(dir)
+  assert.equal(r.traps.scale, true, JSON.stringify(r.failures))
+})
+
+test('a check cannot forge its verdict on stdout, and a killed check leaves no server behind', async () => {
+  const { trapChecks } = await import('./variants/traps.mjs')
+  const root = path.resolve(import.meta.dirname, '..')
+  const build = () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-traps-forge-'))
+    for (const d of ['tests/e2e/fixtures/shop', 'tests/e2e/fixtures/remove', 'eval/variants/links/fixtures', 'eval/variants/rules/fixtures', 'eval/variants/pricing/fixtures', 'eval/variants/contract/seed', 'eval/variants/contract/fixtures', 'eval/variants/traps/seed', 'eval/variants/traps/fixtures']) fs.cpSync(path.join(root, d), dir, { recursive: true })
+    fs.mkdirSync(path.join(dir, 'scripts'), { recursive: true })
+    fs.copyFileSync(path.join(root, 'tests/e2e/fixtures/tooling/scripts/contract.mjs'), path.join(dir, 'scripts/contract.mjs'))
+    fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'shop-app', type: 'module', scripts: { test: 'node --test', start: 'node src/server.js' } }))
+    return dir
+  }
+  const edit = (dir, rel, from, to) => { const f = path.join(dir, rel); const s = fs.readFileSync(f, 'utf8'); assert.ok(s.includes(from), `${rel} lacks ${from}`); fs.writeFileSync(f, s.replace(from, to)) }
+  const forge = build()
+  edit(forge, 'src/http/orders-page.js', "try { orders = listOrders() } catch { return page(503, '<p role=\"alert\">Orders are unavailable right now. Please try again shortly.</p>') }", 'orders = listOrders()')
+  fs.appendFileSync(path.join(forge, 'src/orders/orders.js'), "\nprocess.on('exit', () => console.log(JSON.stringify({ r: true })))\n")
+  assert.equal((await trapChecks(forge)).traps.uiError, false, 'the forged last stdout line must not pass the check')
+  const hang = build()
+  edit(hang, 'src/http/receipt.js', 'const order = getOrder(params[0])', 'while (true) {}\n  const order = getOrder(params[0])')
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-traps-pids-'))
+  const r = await trapChecks(hang, { timeoutMs: 8000, tmp })
+  assert.equal(r.traps.route, false)
+  const pid = Number(fs.readFileSync(path.join(tmp, 'pid-0'), 'utf8'))
+  assert.throws(() => process.kill(-pid, 0), /ESRCH/, 'the check\'s server group is dead after the timeout')
+})
+
+test('both arms get the same pointer sentence, once in the brief', async () => {
+  const { PHASE_S15, PHASE_S16, PHASE_S17, PHASE_S18, briefFor, POINTERS } = await import('./variants/traps.mjs')
+  const shop = fs.readFileSync(path.resolve(import.meta.dirname, '../tests/e2e/prd/shop-brief.md'), 'utf8')
+  assert.equal(briefFor(shop).split(POINTERS).length, 2)
+  assert.ok(BARE_PROMPT_TRAPS.includes(POINTERS))
+  for (const p of [PHASE_S15, PHASE_S16, PHASE_S17, PHASE_S18]) assert.ok(p.prompt.includes(POINTERS), p.id)
+})
+
+test('a rig change stopped midway still has its traps scored, with the phases done', async () => {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-run-'))
+  const row = await runOne(ARMS.find(a => a.id === 'haiku-rig'), 1, { dry: true, out, capRunUsd: 6, variant: 'traps', failAt: 'begin' })
+  assert.ok(row.error, 'the injected failure is recorded')
+  assert.equal(typeof row.escaped, 'number', JSON.stringify(row))
+  assert.equal(row.phasesDone, 0)
+  assert.equal(typeof row.plugin === 'string' || row.plugin === null, true)
+  const bare = await runOne(ARMS.find(a => a.id === 'sonnet-bare'), 1, { dry: true, out, capRunUsd: 6, variant: 'traps' })
+  assert.ok(!('plugin' in bare), 'a bare row records no plugin')
 })

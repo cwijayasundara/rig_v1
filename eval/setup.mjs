@@ -9,7 +9,7 @@ import { briefFor, dryOverlay } from './variants/links.mjs'
 import { briefFor as rulesBrief, dryOverlay as rulesOverlay } from './variants/rules.mjs'
 import { briefFor as pricingBrief, dryOverlay as pricingOverlay } from './variants/pricing.mjs'
 import { briefFor as contractBrief, dryOverlay as contractOverlay, SEED as CONTRACT_SEED } from './variants/contract.mjs'
-import { briefFor as trapsBrief, dryOverlay as trapsOverlay, SEED as TRAPS_SEED } from './variants/traps.mjs'
+import { briefFor as trapsBrief, dryOverlay as trapsOverlay, SEED as TRAPS_SEED, POINTERS } from './variants/traps.mjs'
 import { applyAblation } from './ablation.mjs'
 
 const BRIEF = path.resolve(import.meta.dirname, '../tests/e2e/prd/shop-brief.md')
@@ -26,7 +26,7 @@ export const BARE_PROMPT_PRICING = BARE_PROMPT.replace('Build the shop described
 // The contract variant: B1–B12 are built and passing; the session adds B13 and B14, whose wire rules are in docs/api-conventions.md, not in the prompt.
 export const BARE_PROMPT_CONTRACT = BARE_PROMPT.replace('Build the shop described in BRIEF.md: behaviours B1–B6, in src/,', 'The shop described in BRIEF.md already has behaviours B1–B12 built and passing. Add B13 and B14 to it, editing the existing files in src/,').replace('whose names start with their B-number', 'whose names start with their B-number (B13 in test/orders-api.test.js, B14 in test/cancel-api.test.js)')
 // The traps variant: B1–B14 are built and passing; the session adds B15–B18. Each behaviour's rules are in the brief and in the repo's docs/ conventions.
-export const BARE_PROMPT_TRAPS = BARE_PROMPT.replace('Build the shop described in BRIEF.md: behaviours B1–B6, in src/,', 'The shop described in BRIEF.md already has behaviours B1–B14 built and passing. Add B15, B16, B17 and B18 to it, editing the existing files in src/ and bin/,').replace('whose names start with their B-number', 'whose names start with their B-number (B15 in test/receipt.test.js, B16 in test/cli.test.js, B17 in test/top-customers.test.js, B18 in test/orders-page.test.js)').replace('Keep the HTTP contract in api/openapi.yaml and contracts/examples/ (', 'Keep the HTTP contract and its examples in step with the code (')
+export const BARE_PROMPT_TRAPS = BARE_PROMPT.replace('Build the shop described in BRIEF.md: behaviours B1–B6, in src/,', 'The shop described in BRIEF.md already has behaviours B1–B14 built and passing. Add B15, B16, B17 and B18 to it, editing the existing files in src/ and bin/,').replace('whose names start with their B-number', 'whose names start with their B-number (B15 in test/receipt.test.js, B16 in test/cli.test.js, B17 in test/top-customers.test.js, B18 in test/orders-page.test.js)').replace(/Keep the HTTP contract in api\/openapi\.yaml and contracts\/examples\/ \([^)]*\)\./, () => POINTERS)
 const BRIEFS = { links: briefFor, rules: rulesBrief, delta: rulesBrief, pricing: pricingBrief, contract: contractBrief, traps: trapsBrief }
 const briefText = variant => (BRIEFS[variant] ?? (b => b))(fs.readFileSync(BRIEF, 'utf8'))
 
@@ -58,10 +58,11 @@ export function setupBare(sb, { dry = false, variant = null } = {}) {
 
 // The short sha of the plugin checkout under test (null when it is not a git checkout), recorded in every row so the report can pair runs of two refs.
 export function pluginSha(plugin = PLUGIN) {
-  try { return execFileSync('git', ['-C', plugin, 'rev-parse', '--short=7', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null } catch { return null }
+  const git = (...a) => execFileSync('git', ['-C', plugin, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+  try { const sha = git('rev-parse', '--short=7', 'HEAD'); return sha ? (git('status', '--porcelain') ? `${sha}-dirty` : sha) : null } catch { return null }
 }
-// An old plugin ref rejects registry keys added since: models goes in only when that plugin's registry.ts knows it.
-export const modelsSupported = (plugin = PLUGIN) => { try { return fs.readFileSync(path.join(plugin, 'scripts/registry.ts'), 'utf8').includes("'models'") } catch { return false } }
+// An old plugin ref rejects registry keys added since (7324485 has models but its parser refuses models.light): the pair goes in only when that plugin's registry.ts knows `light`.
+export const modelsSupported = (plugin = PLUGIN) => { try { return /\blight\s*:/.test(fs.readFileSync(path.join(plugin, 'scripts/registry.ts'), 'utf8')) } catch { return false } }
 
 // The scaffold commit is the base for tamper scoring; install and brief land on top of it.
 export async function setupRig(sb, arm, { dry = false, variant = null, plugin = PLUGIN } = {}) {

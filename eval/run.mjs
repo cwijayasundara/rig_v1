@@ -52,13 +52,14 @@ export async function runOne(arm, n, { dry, out, capRunUsd, failAt, seed = null,
   // Subagents run on the arm's own model (the template pins them to Sonnet), so an arm measures its model; rig's evaluator agent keeps
   // its own pin (spec §3.5) and shows in the per-model usage.
   const sessions = dry ? null : createSessions({ sb, out: sb.root, capUsd: capRunUsd, model: arm.model, effort: arm.effort, allow: EVAL_ALLOW, env: { CLAUDE_CODE_SUBAGENT_MODEL: arm.model } })
-  const row = { arm: arm.id, run: n, model: arm.model, rig: arm.rig, policy: arm.policy ?? null, variant, seed, position, plugin: pluginSha(), ...(arm.models && !modelsSupported() && { modelsIgnored: true }), at: new Date().toISOString() }
+  const row = { arm: arm.id, run: n, model: arm.model, rig: arm.rig, policy: arm.policy ?? null, variant, seed, position, ...(arm.rig && { plugin: pluginSha() }), ...(arm.models && !modelsSupported() && { modelsIgnored: true }), at: new Date().toISOString() }
   let base = null
   let settled = null // HEAD once rig's own setup commits are down: tamper judges the builder's commits, not the harness's
   try {
     if (arm.rig) {
       base = await setupRig(sb, arm, { dry, variant })
       settled = sb.git('rev-parse', 'HEAD')
+      row.phasesDone = 0
       for (const phase of phasesFor(variant)) {
         const driver = failing(dry ? scriptedDriver(sb, phase) : liveDriver(sb, arm.full ? { ...phase, prompt: `${phase.prompt} --full` } : phase, { sessions }), failAt)
         const { slug, answered } = await runChange(sb, phase, driver)
@@ -66,6 +67,7 @@ export async function runOne(arm, n, { dry, out, capRunUsd, failAt, seed = null,
         if (driver.reapprovalNotes?.length) row.reapprovalNotes = [...(row.reapprovalNotes ?? []), ...driver.reapprovalNotes]
         row.answered = (row.answered ?? 0) + (answered ? 1 : 0) // changes whose open questions the driver answered: they cost an extra session
         mergeToMain(sb, slug)
+        row.phasesDone++
       }
     } else {
       base = setupBare(sb, { dry, variant })
@@ -86,7 +88,7 @@ export async function runOne(arm, n, { dry, out, capRunUsd, failAt, seed = null,
   const infra = sessions?.sessions.some(x => x.slept) ? 'sleep' : null
   const estimated = sessions?.sessions.some(x => x.estimated) ?? false
   return {
-    ...row, ...score, ...(variant === 'traps' && (row.error || score.error || score.escaped === undefined) && { escaped: null }), accepted: !infra && !row.error && score.accepted, error: row.error ?? score.error, ...(infra && { infra }), ...(estimated && { estimated }),
+    ...row, ...score, ...(variant === 'traps' && (score.error || score.escaped === undefined) && { escaped: null }), accepted: !infra && !row.error && score.accepted, error: row.error ?? score.error, ...(infra && { infra }), ...(estimated && { estimated }),
     inputTokens: t.inputTokens, outputTokens: t.outputTokens, usd: Number(t.costUsd.toFixed(4)),
     minutes: Number(((Date.now() - t0) / 60_000).toFixed(2)), sessions: sessions?.sessions.length ?? 0,
     denials: t.denials.length, models: t.models, commits, ...(sessions && { trace: sessionTrace(sessions.sessions) }),

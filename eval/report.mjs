@@ -10,12 +10,14 @@ export function summarize(rows) {
   // The same row read twice (a file passed twice, a copy) counts once; two real runs differ in their start time.
   const seen = new Set()
   const unique = rows.filter(r => { const k = `${r.arm}|${r.run}|${r.at}`; if (seen.has(k)) return false; seen.add(k); return true })
-  // Two plugin refs in one report (RIG_EVAL_PLUGIN): every arm is split by the ref it ran on, as arm@plugin.
-  const plugins = new Set(unique.map(r => r.plugin ?? null))
+  // Two plugin refs among the rig rows (RIG_EVAL_PLUGIN): rig arms are split by the ref, as arm@plugin. Bare arms never run the plugin, so they are
+  // never split; a row with no plugin field belongs to the plain arm.
+  const rigIds = new Set(ARMS.filter(a => a.rig).map(a => a.id))
+  const plugins = new Set(unique.filter(r => rigIds.has(r.arm) && r.plugin).map(r => r.plugin))
   const groups = ARMS.flatMap(({ id }) => {
-    if (plugins.size < 2) return [{ id, label: id, plugin: undefined }]
+    if (!rigIds.has(id) || plugins.size < 2) return [{ id, label: id, plugin: undefined }]
     const refs = [...new Set(unique.filter(r => r.arm === id).map(r => r.plugin ?? null))].sort()
-    return (refs.length ? refs : [undefined]).map(p => ({ id, label: p === undefined ? id : `${id}@${p ?? 'unknown'}`, plugin: p }))
+    return (refs.length ? refs : [null]).map(p => ({ id, label: p === null ? id : `${id}@${p}`, plugin: p }))
   })
   return groups.map(({ id, label, plugin }) => {
     // A run the machine slept through measured the laptop: its cost counts, its result does not.
@@ -23,7 +25,7 @@ export function summarize(rows) {
     const rs = all.filter(r => !r.infra)
     return {
       arm: label, id, runs: rs.length, invalid: all.length - rs.length, invalidUsd: all.filter(r => r.infra).reduce((n, r) => n + (r.usd ?? 0), 0), accepted: rs.filter(r => r.accepted).length,
-      checksMean: mean(rs.map(r => r.checks ?? 0)), inMedian: median(rs.map(r => r.inputTokens ?? 0)), outMedian: median(rs.map(r => r.outputTokens ?? 0)),
+      checksMean: mean(rs.map(r => r.checks ?? 0)), ofMean: mean(rs.map(r => r.of ?? 0)), inMedian: median(rs.map(r => r.inputTokens ?? 0)), outMedian: median(rs.map(r => r.outputTokens ?? 0)),
       usdMean: mean(rs.map(r => r.usd ?? 0)), usdTotal: rs.reduce((n, r) => n + (r.usd ?? 0), 0), minutesMedian: median(rs.map(r => r.minutes ?? 0)),
       tamper: rs.reduce((n, r) => n + (r.tamper?.testTamper ?? 0) + (r.tamper?.suppression ?? 0), 0),
       // Only runs that got far enough to be judged (null: errored, or B7 never built, so an empty tree must not read as clean).
@@ -51,13 +53,13 @@ const mix = summary => {
 
 export function renderMarkdown(summary, { date, files }) {
   const base = rate(summary.find(a => a.id === 'haiku-bare') ?? { runs: 0 })
-  const lift = a => (a.id === 'haiku-bare' ? 'baseline' : rate(a) === null || base === null ? '–' : `${rate(a) >= base ? '+' : ''}${Math.round((rate(a) - base) * 100)} pts`)
-  const rows = summary.map(a => `| ${a.arm} | ${a.accepted}/${a.runs} | ${lift(a)} | ${dash(a.checksMean, x => x.toFixed(1))}/3 | ${dash(a.inMedian, Math.round)} | ${dash(a.outMedian, Math.round)} | ${dash(a.usdMean, x => '$' + x.toFixed(2))} | ${a.runs ? (a.accepted ? '$' + (a.usdTotal / a.accepted).toFixed(2) : 'none accepted') : '–'} | ${dash(a.minutesMedian, x => x.toFixed(1))} | ${a.runs ? `${a.tamper}${a.unjudged ? ` (+${a.unjudged} unjudged)` : ''}` : '–'} | ${a.runs ? `${a.layerViolations} (of ${a.layerMeasured} runs)` : '–'} | ${a.escapedRuns ? `${a.escaped} (of ${a.escapedRuns} runs)` : '–'} | ${a.escapedRuns ? (a.escapeFree ? '$' + (a.usdTotal / a.escapeFree).toFixed(2) : 'none escape-free') : '–'} |`)
+  const lift = a => (a.arm === 'haiku-bare' ? 'baseline' : rate(a) === null || base === null ? '–' : `${rate(a) >= base ? '+' : ''}${Math.round((rate(a) - base) * 100)} pts`)
+  const rows = summary.map(a => `| ${a.arm} | ${a.accepted}/${a.runs} | ${lift(a)} | ${dash(a.checksMean, x => x.toFixed(1))}${a.ofMean === null ? '' : `/${Math.round(a.ofMean * 10) / 10}`} | ${dash(a.inMedian, Math.round)} | ${dash(a.outMedian, Math.round)} | ${dash(a.usdMean, x => '$' + x.toFixed(2))} | ${a.runs ? (a.accepted ? '$' + (a.usdTotal / a.accepted).toFixed(2) : 'none accepted') : '–'} | ${dash(a.minutesMedian, x => x.toFixed(1))} | ${a.runs ? `${a.tamper}${a.unjudged ? ` (+${a.unjudged} unjudged)` : ''}` : '–'} | ${a.runs ? `${a.layerViolations} (of ${a.layerMeasured} runs)` : '–'} | ${a.escapedRuns ? `${a.escaped} (of ${a.escapedRuns} runs)` : '–'} | ${a.escapedRuns ? (a.escapeFree ? '$' + (a.usdTotal / a.escapeFree).toFixed(2) : 'none escape-free') : '–'} |`)
   const thin = summary.filter(a => a.runs && a.runs < 3).map(a => a.arm)
   const errs = summary.filter(a => a.errors.length).map(a => `${a.arm} ${a.errors.length} (${[...new Set(a.errors)].slice(0, 2).join('; ')})`)
   return [
     `# Eval results ${date}`, '',
-    `Task: the shop brief (B1–B6), scored by the hidden acceptance (npm test, import, HTTP). Spec §9. Source: ${files.join(', ')}.`, '',
+    `Task: the shop brief, scored by the hidden acceptance (npm test, import, HTTP). Spec §9. Source: ${files.join(', ')}.`, '',
     '| arm | accepted | lift vs haiku-bare | checks (mean) | input tokens (median) | output tokens (median) | USD (mean) | USD per accepted | minutes (median) | tamper findings | layer violations | escaped | $/escaped-free run |',
     '|---|---|---|---|---|---|---|---|---|---|---|---|---|',
     ...rows, '',
