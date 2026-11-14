@@ -8,7 +8,7 @@ import path from 'node:path'
 import { spawnSync, execFileSync } from 'node:child_process'
 import { createSandbox } from '../tests/e2e/lib/sandbox.mjs'
 import { cloneUpstream, seedUpstream, upstreamAvailable } from './lib/upstream.mjs'
-import { UPSTREAM, TASKS, TRAP_TEST, TRAP_WORDS, BARE_PROMPT, PHASES, CLAUDE_MD, setupBare, checks } from './variants/knex.mjs'
+import { UPSTREAM, TASKS, TRAP_TEST, TRAP_WORDS, BARE_PROMPT, PHASES, CLAUDE_MD, setupBare, checks, applyPatch } from './variants/knex.mjs'
 import { phasesFor } from './run.mjs'
 import { BARE_PROMPT_KNEX } from './setup.mjs'
 
@@ -90,3 +90,87 @@ netTest('base passes npm test and test:sqlite, and every trap fails there', asyn
   const r = await checks(sb.dir)
   assert.ok(Object.values(r.traps).every(v => v === false), JSON.stringify(r.traps))
 })
+
+// --- T1 notLike (traps caller, types) -----------------------------------------------------------------------------------------------------
+const notLikeSandbox = (name, kind) => {
+  const sb = createSandbox({ name, out: tmp(name) })
+  setupBare(sb, { dry: true })
+  applyPatch(sb.dir, 'notLike', kind)
+  return sb
+}
+const npmTest = sb => spawnSync('npm', ['test', '--silent'], { cwd: sb.dir, encoding: 'utf8', timeout: 900_000 })
+
+netTest('notLike ref patch passes caller and types', async () => {
+  const sb = notLikeSandbox('kx-nl-ref', 'ref')
+  const t = npmTest(sb)
+  assert.equal(t.status, 0, (t.stdout + t.stderr).slice(-400))
+  const r = await checks(sb.dir)
+  assert.equal(r.traps.caller, true, r.failures.join('; '))
+  assert.equal(r.traps.types, true, r.failures.join('; '))
+})
+
+netTest('notLike slip patch passes npm test and fails only caller', async () => {
+  const sb = notLikeSandbox('kx-nl-slip', 'slip')
+  const t = npmTest(sb)
+  assert.equal(t.status, 0, (t.stdout + t.stderr).slice(-400))
+  const r = await checks(sb.dir)
+  assert.equal(r.traps.caller, false)
+  assert.equal(r.traps.types, true, r.failures.join('; '))
+  assert.match(r.failures.join('\n'), /caller: (mysql|mssql)/)
+})
+
+netTest('a types-only slip (no d.ts entries) passes npm test and fails only types', async () => {
+  const sb = notLikeSandbox('kx-nl-notypes', 'slip-notypes')
+  const t = npmTest(sb)
+  assert.equal(t.status, 0, (t.stdout + t.stderr).slice(-400))
+  const r = await checks(sb.dir)
+  assert.equal(r.traps.caller, true, r.failures.join('; '))
+  assert.equal(r.traps.types, false)
+})
+// --- end T1 ---------------------------------------------------------------------------------------------------------------------------
+
+// === T2 emptyUpsert (traps rule, dialect) ===
+const bounded = async (cmd, args, { cwd, timeoutMs, env }) => { const r = spawnSync(cmd, args, { cwd, env, encoding: 'utf8', timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024 }); return { status: r.status, stdout: r.stdout, stderr: r.stderr } }
+const t2 = async kind => {
+  const sb = createSandbox({ name: `kx-t2-${kind}`, out: tmp(`t2-${kind}`) })
+  setupBare(sb, { dry: true })
+  applyPatch(sb.dir, 'emptyUpsert', kind)
+  return { sb, r: await score(sb, { timeoutMs: 900_000, runBounded: bounded, tamper: () => null }) }
+}
+const sqliteSuite = dir => spawnSync('npm', ['run', 'test:sqlite', '--silent'], { cwd: dir, encoding: 'utf8', timeout: 900_000, maxBuffer: 64 * 1024 * 1024 })
+
+test('the emptyUpsert issue names no trap and leaves plain empty inserts alone', () => {
+  const issue = fs.readFileSync(path.join(HERE, 'variants/knex/tasks/emptyUpsert.md'), 'utf8')
+  for (const w of TRAP_WORDS) assert.ok(!issue.toLowerCase().includes(w.toLowerCase()), w)
+  assert.ok(!/insert\(\s*\[\s*\]\s*\)(?!\.)/.test(issue.replace(/insert\(rows\)/g, '')), 'no plain insert([])')
+  assert.match(issue, /\[\]/)
+})
+
+netTest('emptyUpsert ref patch passes rule and dialect, and test:sqlite is green', async () => {
+  const { sb, r } = await t2('ref')
+  assert.equal(r.npmTest, true)
+  assert.equal(r.traps.rule, true, r.trapFailures.join('; '))
+  assert.equal(r.traps.dialect, true, r.trapFailures.join('; '))
+  assert.ok(fs.existsSync(path.join(sb.dir, TRAP_TEST.emptyUpsert)))
+  const s = sqliteSuite(sb.dir)
+  assert.equal(s.status, 0, (s.stdout + s.stderr).slice(-400))
+})
+
+netTest('emptyUpsert slip patch passes npm test and fails rule; test:sqlite is red under it', async () => {
+  const { sb, r } = await t2('slip')
+  assert.equal(r.npmTest, true)
+  assert.equal(r.traps.rule, false)
+  assert.equal(r.traps.dialect, true, r.trapFailures.join('; '))
+  assert.match(r.trapFailures.join('\n'), /rule: test:sqlite failed/)
+  const s = sqliteSuite(sb.dir)
+  assert.notEqual(s.status, 0)
+  assert.match(s.stdout, /should throw an error if the array passed in is empty/)
+})
+
+netTest('a sqlite-only fix fails only dialect', async () => {
+  const { r } = await t2('slip-sqlite-only')
+  assert.equal(r.npmTest, true)
+  assert.equal(r.traps.rule, true, r.trapFailures.join('; '))
+  assert.equal(r.traps.dialect, false)
+})
+// === end T2 emptyUpsert ===
