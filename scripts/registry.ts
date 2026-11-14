@@ -20,7 +20,7 @@ export type Paths = { tests: string[]; testSupport: string[]; fixtures: string[]
 export type Risk = { enforce: boolean; alwaysHuman: string[]; maxLines: number; hardCap: boolean; window: number; maxRevertRate: number }
 export type Contracts = { files: string[]; covers: string[]; validate: string; run: string }
 type Policy = Record<string, Mode> & { default: Mode }
-export type Registry = { ratchets?: Record<string, number>; stack: string | null; gates: { plan: boolean; testWriter: boolean }; humanApproval: { selfApprovers: string[]; trusted: string[]; everyTier: boolean }; risk: Risk; contracts: Contracts; holdout: string; mutation: { minScore: number }; models: { build: string; evaluate: string; design: string; light: { build: string; evaluate: string }; full: { build: string; evaluate: string } }; paths: Paths; sensors: RegistrySensor[]; knownRed: string[]; policy: Policy }
+export type Registry = { ratchets?: Record<string, number>; stack: string | null; gates: { plan: boolean; testWriter: boolean }; humanApproval: { selfApprovers: string[]; trusted: string[]; everyTier: boolean }; risk: Risk; contracts: Contracts; holdout: string; mutation: { minScore: number }; proof: 'warn' | 'block'; models: { build: string; evaluate: string; design: string; light: { build: string; evaluate: string }; full: { build: string; evaluate: string } }; paths: Paths; sensors: RegistrySensor[]; knownRed: string[]; policy: Policy }
 
 type Base = { cadence: Cadence; blocks: boolean; guide: string }
 const BUILTIN_DEFAULTS: Record<BuiltinId, Base> = {
@@ -38,7 +38,7 @@ const BUILTIN_DEFAULTS: Record<BuiltinId, Base> = {
 const GENERIC_TESTS = ['**/test/**', '**/tests/**', '**/__tests__/**']
 const DEFAULT_POLICY: Policy = { haiku: 'continuous', sonnet: 'continuous', opus: 'final', default: 'continuous' }
 const SENSOR_KEYS = ['id', 'cmd', 'builtin', 'cadence', 'blocks', 'count', 'guide', 'timeoutMs', 'enabled', 'options', 'ratchet']
-const TOP_KEYS = ['stack', 'gates', 'humanApproval', 'risk', 'contracts', 'holdout', 'mutation', 'models', 'paths', 'sensors', 'policy', 'knownRed']
+const TOP_KEYS = ['stack', 'gates', 'humanApproval', 'risk', 'contracts', 'holdout', 'mutation', 'proof', 'models', 'paths', 'sensors', 'policy', 'knownRed']
 const KEBAB = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
 const isBuiltinId = (v: string): v is BuiltinId => (BUILTIN_IDS as readonly string[]).includes(v)
@@ -58,6 +58,7 @@ export function defaultRegistry(): Registry {
     contracts: { files: [], covers: [], validate: '', run: '' },
     holdout: '',
     mutation: { minScore: 0.8 },
+    proof: 'warn',
     models: { build: 'sonnet', evaluate: 'opus', design: 'sonnet', light: { build: 'haiku', evaluate: 'sonnet' }, full: { build: 'sonnet', evaluate: 'opus' } },
     paths: { tests: [...GENERIC_TESTS], testSupport: [], fixtures: [], ignore: ['**/*.md', '**/*.lock'] },
     sensors: BUILTIN_IDS.map(builtinSensor),
@@ -178,6 +179,10 @@ function parseSections(value: Record<string, unknown>, r: Registry, errors: stri
       else if (typeof v === 'number' && v > 0 && v <= 1) r.mutation.minScore = v
       else errors.push('mutation.minScore must be a number above 0 and at most 1')
     }
+  }
+  if ('proof' in value) {
+    if (value.proof === 'warn' || value.proof === 'block') r.proof = value.proof
+    else errors.push('proof must be "warn" or "block"')
   }
   if ('holdout' in value) {
     const h = strings(value.holdout, 'holdout', errors)

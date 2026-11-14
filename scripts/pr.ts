@@ -5,7 +5,7 @@ import path from 'node:path'
 import { ROOT, CHANGES, WAIVERS, UNREQUESTABLE, waiverLive, readJson, exists, isTrunk, trunkName, read, readJsonl, out, fail, git, checkSlug, optString, ensureGitignore, dirtyFiles, skillRef, defaultBase, type Args, type Waiver } from './core.ts'
 import { frozenFindings, frozenFor } from './contracts.ts'
 import { loadConfig } from './check.ts'
-import { planCheck, planChangesAfterBuild } from './plancheck.ts'
+import { planCheck, planChangesAfterBuild } from './plancheck.ts'; import { unproved } from './proof.ts'
 import { gh as ghRun, section, isTest } from './model.ts'
 import type { RunRow } from './runs.ts'
 import { treeStamp } from './stamp.ts'
@@ -93,7 +93,7 @@ export function cmdPr(args: Args): void {
     // Suggestions only: a failure here must never stop a ship.
     let claims: ClaimRow[] | undefined
     try { claims = claimRows(slug); fs.writeFileSync(path.join(CHANGES, slug, 'claims.json'), JSON.stringify(claims, null, 2) + '\n') } catch { claims = undefined }
-    fs.writeFileSync(path.join(CHANGES, slug, 'pr-body.md'), prBody({ agents: agentRows(slug), draft: draft ? reason : undefined, claims, planChanges: gates.plan ? undefined : planChangesAfterBuild(slug, verify?.base ?? defaultBase() ?? 'HEAD'), requirements: c('requirements.md'), intent: c('intent.md'), spec: c('spec.md'), plan: c('plan.md'), verify, outline: c('pr-outline.md'), review: c('review.md'), amendments: c('amendments.md'), runs: readJsonl<RunRow>(path.join(CHANGES, slug, 'evidence', 'runs.jsonl')), tests, intentMap: intentReceipt(slug), freeze: readFreeze(slug), changes: diff, risk: riskOf(diff.filter(d => ships(slug)(d.file)), [slug], registry, parseAccess(read(archPath)), false) }))
+    fs.writeFileSync(path.join(CHANGES, slug, 'pr-body.md'), prBody({ proof: unproved(slug), agents: agentRows(slug), draft: draft ? reason : undefined, claims, planChanges: gates.plan ? undefined : planChangesAfterBuild(slug, verify?.base ?? defaultBase() ?? 'HEAD'), requirements: c('requirements.md'), intent: c('intent.md'), spec: c('spec.md'), plan: c('plan.md'), verify, outline: c('pr-outline.md'), review: c('review.md'), amendments: c('amendments.md'), runs: readJsonl<RunRow>(path.join(CHANGES, slug, 'evidence', 'runs.jsonl')), tests, intentMap: intentReceipt(slug), freeze: readFreeze(slug), changes: diff, risk: riskOf(diff.filter(d => ships(slug)(d.file)), [slug], registry, parseAccess(read(archPath)), false) }))
   }
   // A follow-up without --draft ends the draft (it ran the normal refusals above); with --draft it records the reason again.
   const prMd = path.join(CHANGES, slug, 'pr.md'), prMdBefore = followUp ? read(prMd) : ''

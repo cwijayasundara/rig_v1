@@ -11,7 +11,7 @@ import { readBaseline, snapshot, turnDiff, fileDiff, branchDiff, showAt, fileLin
 import { runCommand, recordRun, normCmd } from './runs.ts'
 import { withBaseTree } from './basetree.ts'
 import { activeSlug, approvalState, changeType, unapprovedBuild } from './lifecycle.ts'
-import { approvedLayers } from './arch.ts'; import { planCheck } from './plancheck.ts'
+import { approvedLayers } from './arch.ts'; import { planCheck } from './plancheck.ts'; import { proofFindings } from './proof.ts'
 import { journeyFindings, draftApps } from './app.ts'
 import { scopeFindings, intentScope } from './scope.ts'
 import { RATCHET_FILE, lastNumber, loadRatchets, judge, tighten, type RatchetWrite } from './counts.ts'
@@ -254,7 +254,7 @@ export function runChecks(i: CheckInput): CheckResult {
   if (i.slugs.length && i.slugs.every(s => approvalState(s) === 'approved')) {
     for (const f of findings) if (f.sensor === 'size' && !f.file) f.severity = 'warn'
   }
-  for (const slug of i.slugs) findings.push(...freezeFindings(slug, point, i.base, config), ...(i.point === 'ci' && i.gates?.plan === false ? planCheck(slug, { base: i.base ?? null, ci: true }) : []))
+  for (const slug of i.slugs) findings.push(...freezeFindings(slug, point, i.base, config), ...(i.point === 'ci' && i.gates?.plan === false ? planCheck(slug, { base: i.base ?? null, ci: true }) : []), ...(i.point === 'ship' || i.point === 'ci' ? proofFindings(slug, config) : []))
   if (point !== 'stop') for (const slug of i.slugs) findings.push(...shipVerdicts(slug, config, diffs, i.base, i.budgetMs, i.gates?.plan ?? true))
   // Contracts (spec §6): ship and CI always, commit always, a turn only when it reaches a contract. Validate gates run.
   const c = config.contracts
