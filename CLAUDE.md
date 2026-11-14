@@ -32,6 +32,13 @@ change: at most 4 subagent launches, under 45 minutes, under $8.
 A subagent brief is at most 60 lines: file paths, the interface, the acceptance test, the verification command.
 Never paste the plan or the conversation into it.
 
+Give the exact line ranges to edit (`scripts/check.ts:285-300`), not only file names, so the subagent does not spend its run reading.
+
+Implementers never run the full `npm test`. They run only the spec files they touch or that pin wording they changed
+(`node --disable-warning=ExperimentalWarning --test <files>`), plus `scripts/size.spec.ts`, `scripts/neutrality.spec.ts` and
+`npm run typecheck`. The coordinator runs `npm test` once per change, before the review. The full suite includes the e2e unit
+tests, the scripted journey and the parallel-instances journey, and it takes several minutes.
+
 ## Verification
 
 `npm test` runs the spec files, the e2e unit tests and the scripted journey (`e2e:scripted`, which also runs the scripted-only Node shop extras). `npm run e2e` is the live journey under a 20 minute hard deadline (two build legs from recorded approved-chart snapshots; `npm run e2e:record` is the one-time hour-plus recording of those snapshots, not a test; Haiku acts, Sonnet inspects; costs money, started by a person; it logs and alerts violations and fixes nothing: decisions go in `tests/e2e/journey/triage.json`), `npm run eval:journey` its eval and `npm run eval` the paired eval runner. `npm run typecheck` is incremental
