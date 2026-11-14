@@ -19,7 +19,7 @@ test('pr skill reviews with a clean-context agent and a security review agent be
 
 test('the reviewer is a fresh agent that is given the brief and nothing else', () => {
   const t = pr()
-  assert.match(t, /launch one `Agent` \(`general-purpose`, `model: opus`, foreground\)/)
+  assert.match(t, /launch one `Agent` \(`general-purpose`, the `evaluate` model, foreground\)/)
   assert.match(t, /Give it nothing else: not the plan's reasoning, not this conversation/)
   assert.match(t, /`<base>` and `<slug>`/)
 })
@@ -107,11 +107,13 @@ test('the security pass checks every touched action against its ## Access row on
 })
 
 // Person's rule 2026-10-28: Sonnet writes, Opus evaluates.
-test('every pr evaluation runs on Opus: the code review, the security review and the confirm pass', () => {
+test('every pr evaluation runs on the model `S models --after-diff` names: the code review and confirm on evaluate, the security review on security', () => {
   const t = pr()
-  assert.equal(t.match(/launch one `Agent` \(`general-purpose`, `model: opus`, foreground\)/g)?.length, 3)
-  assert.match(t, /confirm once:[^\n]*`model: opus`/)
-  assert.doesNotMatch(t, /model: sonnet/)
+  assert.match(t, /`S models <slug> --after-diff`/)
+  assert.equal(t.match(/launch one `Agent` \(`general-purpose`, the `evaluate` model, foreground\)/g)?.length, 2)
+  assert.equal(t.match(/launch one `Agent` \(`general-purpose`, the `security` model, foreground\)/g)?.length, 1)
+  assert.match(t, /confirm once:[^\n]*the `evaluate` model/)
+  assert.doesNotMatch(t, /model: (opus|sonnet)/)
   assert.doesNotMatch(t, /ask for `\/security-review`|^\s*- `\/security-review/m, 'the main-thread /security-review runs on the session\'s Sonnet')
 })
 

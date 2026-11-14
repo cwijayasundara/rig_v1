@@ -50,7 +50,7 @@ Claude Code only discovers skills, agents and hooks under `.claude/`; everything
 | Start a change | `/rig:start "<what you want>"` |
 | Continue a change | `/rig:start <slug>` (it picks up at the first missing step) |
 | Approve a change | `/rig:approve <slug>`; only a person can |
-| Waive a failing sensor with a reason | `/rig:waive <sensor> <file> <reason>` (a file or `*`, for the active change; only a person can) |
+| Waive a failing sensor with a reason | `/rig:waive <sensor> <file> <reason>` (a file or `*`, for the active change; only a person can). An agent may request one (`S waive --request <sensor> <file> <reason>`), and a person grants it by approving the PR; copy `templates/rig-approved.yml` beside `rig-check.yml` so the approval re-runs the check |
 | See where a change stands | `node .rig/bin/sdlc.ts status` |
 
 **New repo with a PRD?** Start the outer loop, not `/rig:start`. Put the product brief in `.rig/product/brief.md` and the PRD in `docs/prd/sprint-0/prd.md`, one folder per sprint (`docs/prd/prd-template.md` is the format; others in `.rig/templates/`; give every requirement an id like `FR-1`). Then `/rig:chart 0 @docs/prd/sprint-0/prd.md` (gap questions, intents, architecture, ADRs, test plan and cases, an Opus review), review the branch, `/rig:approve chart-0` (a person), merge, and build each intent with `/rig:start .rig/product/sprints/sprint-<N>/intents/<slug>.md`. `node .rig/bin/sdlc.ts ready` lists what can start.
