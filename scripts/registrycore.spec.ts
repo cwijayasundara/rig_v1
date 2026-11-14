@@ -34,9 +34,11 @@ test('Stop runs turn sensors, commit runs commit sensors, never nightly', () => 
   assert.deepEqual(ran(m), ['turn', 'turn', 'commit'])
 })
 
-test('blocks:false warns; a failing knownRed sensor warns; a passing one leaves knownRed by its id', () => {
+test('blocks:false warns; a failing knownRed sensor is shown to the model once per session, then warns; a passing one leaves knownRed by its id', () => {
   const m = marker()
   commit(registry({ turn: { soft: mark(m, 'soft', 1), red: mark(m, 'red', 1) }, advisory: ['soft'], knownRed: ['red'] }))
+  const first = turn()
+  assert.match(first.stdout, /"decision":"block".*were red before this change/, first.stdout)
   const r = turn()
   assert.doesNotMatch(r.stdout, /"decision":"block"/, r.stdout)
   commit(registry({ turn: { red: mark(m, 'red', 0) }, knownRed: ['red'] }))
