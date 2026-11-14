@@ -6,7 +6,8 @@ import path from 'node:path'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { cleanClaudeEnv } from '../../../scripts/model.ts'
 
-export const PLUGIN = path.resolve(import.meta.dirname, '../../..')
+// RIG_EVAL_PLUGIN points the sandboxes at another checkout of rig (a worktree of an older ref), to measure the change between two refs.
+export const PLUGIN = path.resolve(process.env.RIG_EVAL_PLUGIN || path.resolve(import.meta.dirname, '../../..'))
 
 // The runner's own test or CI context must not leak into the sandbox's commands.
 const { NODE_TEST_CONTEXT: _n, GITHUB_EVENT_PATH: _e, GITHUB_STEP_SUMMARY: _s, CLAUDE_PROJECT_DIR: _p, SDLC_HUMAN: _h, ...RUNNER_ENV } = process.env

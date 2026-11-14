@@ -4,7 +4,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { orderArms, runOne, sessionTrace, phasesFor, taskOf } from './run.mjs'
-import { setupBare, dryBare, BARE_PROMPT_DELTA, BARE_PROMPT_PRICING, BARE_PROMPT_CONTRACT, BARE_PROMPT_TRAPS } from './setup.mjs'
+import { spawnSync } from 'node:child_process'
+import { setupBare, setupRig, modelsSupported, dryBare, BARE_PROMPT_DELTA, BARE_PROMPT_PRICING, BARE_PROMPT_CONTRACT, BARE_PROMPT_TRAPS } from './setup.mjs'
 import { createSandbox } from '../tests/e2e/lib/sandbox.mjs'
 import { EVAL_ALLOW, nextRunAllowed, resultsAllowed } from './lib/cli.mjs'
 import { ARMS } from './arms.mjs'
@@ -300,4 +301,41 @@ test('escaped is null when npm test fails, and counts the failed traps when it p
   sb.commitAll('run: the unit tests no longer go through the table')
   const escaped = await scoreRun(sb, base, { variant: 'traps' })
   assert.deepEqual([escaped.npmTest, escaped.traps.route, escaped.escaped], [true, false, 4], 'unit tests pass, and the four traps that need a registration or a page escaped')
+})
+
+// W3: the arms that compare two rig refs and two model pairs.
+test('RIG_EVAL_PLUGIN points PLUGIN elsewhere and the row records its sha', async () => {
+  const other = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-plugin-'))
+  const probe = env => spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', "const s = await import('./tests/e2e/lib/sandbox.mjs'); const u = await import('./eval/setup.mjs'); console.log(JSON.stringify([s.PLUGIN, u.pluginSha()]))"], { cwd: path.resolve(import.meta.dirname, '..'), encoding: 'utf8', env: { ...process.env, ...env } })
+  const [dir, sha] = JSON.parse(probe({ RIG_EVAL_PLUGIN: other }).stdout)
+  assert.deepEqual([dir, sha], [fs.realpathSync(other) === other ? other : path.resolve(other), null], 'a directory that is not a git checkout has no sha')
+  const [def, defSha] = JSON.parse(probe({ RIG_EVAL_PLUGIN: '' }).stdout)
+  assert.equal(def, path.resolve(import.meta.dirname, '..'))
+  assert.equal(defSha, spawnSync('git', ['rev-parse', '--short=7', 'HEAD'], { cwd: def, encoding: 'utf8' }).stdout.trim())
+  const row = await runOne(ARMS.find(a => a.id === 'sonnet-bare'), 1, { dry: true, out: fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-run-')), capRunUsd: 6 })
+  assert.equal(row.plugin, defSha)
+})
+
+test("an arm's models.light reaches the sandbox registry", async () => {
+  const sb = createSandbox({ name: 'models-light', out: fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-models-')) })
+  await setupRig(sb, ARMS.find(a => a.id === 'sonnet-rig-light-sonnet'), { dry: true })
+  assert.deepEqual(JSON.parse(sb.read('.rig/sensors.json')).models.light, { build: 'sonnet', evaluate: 'opus' })
+  const plain = createSandbox({ name: 'models-none', out: fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-models-')) })
+  await setupRig(plain, ARMS.find(a => a.id === 'sonnet-rig'), { dry: true })
+  assert.equal(JSON.parse(plain.read('.rig/sensors.json')).models, undefined, 'an arm without models leaves the registry default')
+  assert.deepEqual(ARMS.filter(a => a.id.startsWith('sonnet-rig')).map(a => [a.id, a.model, a.rig, a.policy]), [['sonnet-rig', 'claude-sonnet-5-5', true, 'continuous'], ['sonnet-rig-light-haiku', 'claude-sonnet-5-5', true, 'continuous'], ['sonnet-rig-light-sonnet', 'claude-sonnet-5-5', true, 'continuous']])
+})
+
+test("a plugin without 'models' in registry.ts gets no models key and modelsIgnored", async () => {
+  const old = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-old-plugin-'))
+  fs.mkdirSync(path.join(old, 'scripts'))
+  fs.writeFileSync(path.join(old, 'scripts/registry.ts'), "const TOP_KEYS = ['stack', 'gates']\n")
+  assert.deepEqual([modelsSupported(old), modelsSupported()], [false, true])
+  const sb = createSandbox({ name: 'models-old', out: fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-models-')) })
+  await setupRig(sb, ARMS.find(a => a.id === 'sonnet-rig-light-haiku'), { dry: true, plugin: old })
+  assert.equal(JSON.parse(sb.read('.rig/sensors.json')).models, undefined)
+  const out = spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', 'eval/run.mjs', '--dry', '--runs', '1', '--arms', 'sonnet-rig-light-haiku', '--out', fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-old-'))], { cwd: path.resolve(import.meta.dirname, '..'), encoding: 'utf8', env: { ...process.env, RIG_EVAL_PLUGIN: old } })
+  assert.match(out.stdout, /sonnet-rig-light-haiku #1/)
+  const results = out.stdout.match(/^(\S+results\.jsonl)$/m)?.[1]
+  assert.equal(JSON.parse(fs.readFileSync(results, 'utf8').trim().split('\n')[0]).modelsIgnored, true)
 })

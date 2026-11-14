@@ -2,7 +2,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { install, REGISTRY, copyContractTool } from '../tests/e2e/phases/s0-install.mjs'
-import { installedPlugins } from '../tests/e2e/lib/sandbox.mjs'
+import { execFileSync } from 'node:child_process'
+import { installedPlugins, PLUGIN } from '../tests/e2e/lib/sandbox.mjs'
 import { runBrief } from '../tests/e2e/phases/s1-brief.mjs'
 import { briefFor, dryOverlay } from './variants/links.mjs'
 import { briefFor as rulesBrief, dryOverlay as rulesOverlay } from './variants/rules.mjs'
@@ -55,9 +56,17 @@ export function setupBare(sb, { dry = false, variant = null } = {}) {
   return sb.git('rev-parse', 'HEAD')
 }
 
+// The short sha of the plugin checkout under test (null when it is not a git checkout), recorded in every row so the report can pair runs of two refs.
+export function pluginSha(plugin = PLUGIN) {
+  try { return execFileSync('git', ['-C', plugin, 'rev-parse', '--short=7', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null } catch { return null }
+}
+// An old plugin ref rejects registry keys added since: models goes in only when that plugin's registry.ts knows it.
+export const modelsSupported = (plugin = PLUGIN) => { try { return fs.readFileSync(path.join(plugin, 'scripts/registry.ts'), 'utf8').includes("'models'") } catch { return false } }
+
 // The scaffold commit is the base for tamper scoring; install and brief land on top of it.
-export async function setupRig(sb, arm, { dry = false, variant = null } = {}) {
+export async function setupRig(sb, arm, { dry = false, variant = null, plugin = PLUGIN } = {}) {
   const registry = { ...REGISTRY, policy: { haiku: arm.policy, sonnet: 'continuous', opus: 'final', default: 'continuous' } }
+  if (arm.models && modelsSupported(plugin)) registry.models = { ...REGISTRY.models, ...arm.models }
   const c = await install(sb, { registry, plugins: dry ? [] : installedPlugins() })
   if (c.failed.length) throw new Error(`install failed: ${c.failed.map(f => f.name).join('; ')}`)
   const base = sb.git('rev-list', '--max-parents=0', 'HEAD')

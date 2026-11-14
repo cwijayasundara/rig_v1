@@ -14,7 +14,7 @@ import { PHASE as S3 } from '../tests/e2e/phases/s3-delete.mjs'
 import { EVAL_ALLOW, arg, nextRunAllowed, resultsAllowed } from './lib/cli.mjs'
 import { armsFrom } from './arms.mjs'
 import { scoreRun } from './score.mjs'
-import { setupBare, setupRig, dryBare, BARE_PROMPT, BARE_PROMPT_LINKS, BARE_PROMPT_RULES, BARE_PROMPT_DELTA, BARE_PROMPT_PRICING, BARE_PROMPT_CONTRACT, BARE_PROMPT_TRAPS } from './setup.mjs'
+import { setupBare, setupRig, dryBare, pluginSha, modelsSupported, BARE_PROMPT, BARE_PROMPT_LINKS, BARE_PROMPT_RULES, BARE_PROMPT_DELTA, BARE_PROMPT_PRICING, BARE_PROMPT_CONTRACT, BARE_PROMPT_TRAPS } from './setup.mjs'
 import { PHASE as S7 } from './variants/links.mjs'
 import { PHASE_S8 as S8, PHASE_S9 as S9 } from './variants/rules.mjs'
 import { PHASE_S10 as S10, PHASE_S11 as S11, PHASE_S12 as S12 } from './variants/pricing.mjs'
@@ -52,7 +52,7 @@ export async function runOne(arm, n, { dry, out, capRunUsd, failAt, seed = null,
   // Subagents run on the arm's own model (the template pins them to Sonnet), so an arm measures its model; rig's evaluator agent keeps
   // its own pin (spec §3.5) and shows in the per-model usage.
   const sessions = dry ? null : createSessions({ sb, out: sb.root, capUsd: capRunUsd, model: arm.model, effort: arm.effort, allow: EVAL_ALLOW, env: { CLAUDE_CODE_SUBAGENT_MODEL: arm.model } })
-  const row = { arm: arm.id, run: n, model: arm.model, rig: arm.rig, policy: arm.policy ?? null, variant, seed, position, at: new Date().toISOString() }
+  const row = { arm: arm.id, run: n, model: arm.model, rig: arm.rig, policy: arm.policy ?? null, variant, seed, position, plugin: pluginSha(), ...(arm.models && !modelsSupported() && { modelsIgnored: true }), at: new Date().toISOString() }
   let base = null
   let settled = null // HEAD once rig's own setup commits are down: tamper judges the builder's commits, not the harness's
   try {

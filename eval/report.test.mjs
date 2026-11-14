@@ -6,7 +6,7 @@ const row = (arm, run, ok, usd = 1, extra = {}) => ({ arm, run, accepted: ok, ch
 
 test('summarize merges rows from several files and keeps ARMS order', () => {
   const s = summarize([row('opus-bare', 1, true), row('haiku-bare', 1, false), row('haiku-bare', 2, true), row('opus-bare', 2, true)])
-  assert.deepEqual(s.map(a => a.arm), ['haiku-rig', 'haiku-bare', 'sonnet-bare', 'opus-bare', 'haiku-rig-arch', 'haiku-rig-full', 'haiku-low-bare', 'haiku-low-rig', 'haiku-rig-final'])
+  assert.deepEqual(s.map(a => a.arm), ['haiku-rig', 'haiku-bare', 'sonnet-bare', 'opus-bare', 'haiku-rig-arch', 'haiku-rig-full', 'haiku-low-bare', 'haiku-low-rig', 'haiku-rig-final', 'sonnet-rig', 'sonnet-rig-light-haiku', 'sonnet-rig-light-sonnet'])
   const hb = s.find(a => a.arm === 'haiku-bare')
   assert.deepEqual([hb.runs, hb.accepted, hb.checksMean, hb.inMedian, hb.usdMean, hb.tamper], [2, 1, 2, 1500, 1, 1])
 })
@@ -48,4 +48,19 @@ test('a run the machine slept through is not scored: its cost is shown apart and
   const a = s.find(x => x.arm === 'haiku-rig')
   assert.deepEqual([a.runs, a.accepted, a.invalid, a.invalidUsd], [1, 1, 1, 4])
   assert.match(renderMarkdown(s, { date: 'd', files: ['f'] }), /not scored \(machine slept mid-run.*haiku-rig 1 \(\$4\.00\)/)
+})
+
+test('report sums escaped and groups by arm@plugin', () => {
+  const r = (arm, run, escaped, usd, plugin) => ({ arm, run, at: `${arm}${run}${plugin}`, accepted: true, checks: 47, usd, plugin, escaped })
+  const rows = [r('sonnet-rig', 1, 2, 3, 'aaaaaaa'), r('sonnet-rig', 2, 0, 1, 'aaaaaaa'), r('sonnet-rig', 3, null, 9, 'aaaaaaa'), r('sonnet-rig', 1, 0, 2, 'bbbbbbb'), r('sonnet-rig', 2, 0, 2, 'bbbbbbb')]
+  const s = summarize(rows)
+  const a = s.find(x => x.arm === 'sonnet-rig@aaaaaaa'), b = s.find(x => x.arm === 'sonnet-rig@bbbbbbb')
+  assert.deepEqual([a.escaped, a.escapedRuns, a.escapeFree, b.escaped, b.escapeFree], [2, 2, 1, 0, 2])
+  assert.ok(!s.some(x => x.arm === 'sonnet-rig'), 'with two plugins no bare arm row')
+  const md = renderMarkdown(s, { date: 'd', files: ['f'] })
+  assert.match(md, /\| escaped \| \$\/escaped-free run \|/)
+  assert.match(md, /\| sonnet-rig@aaaaaaa \|[^\n]*\| 2 \(of 2 runs\) \| \$13\.00 \|/, 'the null run counts in the cost, not in escaped')
+  assert.match(md, /\| sonnet-rig@bbbbbbb \|[^\n]*\| 0 \(of 2 runs\) \| \$2\.00 \|/)
+  // one plugin: arms keep their plain names
+  assert.ok(summarize(rows.slice(0, 3)).some(x => x.arm === 'sonnet-rig'))
 })
