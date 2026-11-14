@@ -23,8 +23,8 @@ re-fires every Stop hook); launch agents in the foreground and let the tool resu
 ## No review by default
 
 This repo builds the harness; it is not built with rig's process. Plain Claude Code plus superpowers: implement the plan
-inline (`superpowers:executing-plans`) or with at most one Sonnet implementer per independent group of files, run the
-suite once, and stop. The specs that fail without each change are the check. Run a review only when the person asks for one,
+inline (`superpowers:executing-plans`) or with at most one Sonnet implementer per independent group of files, run
+`npm run test:changed`, and stop. The specs that fail without each change are the check. Run a review only when the person asks for one,
 and then of the changed lines only (`git diff main...HEAD`, with the hunks' own functions for context), never across the codebase. Target per Spec-2-sized change: at most 3 subagent launches, under 30 minutes.
 
 ## Briefs, not transcripts
@@ -34,18 +34,16 @@ Never paste the plan or the conversation into it.
 
 Give the exact line ranges to edit (`scripts/check.ts:285-300`), not only file names, so the subagent does not spend its run reading.
 
-Implementers never run the full `npm test`. They run only the spec files they touch or that pin wording they changed
-(`node --disable-warning=ExperimentalWarning --test <files>`), plus `scripts/size.spec.ts`, `scripts/neutrality.spec.ts` and
-`npm run typecheck`. The coordinator runs the suite once per change, and picks the steps from `git diff --name-only main...HEAD`:
-`scripts/`, `hooks/`, `skills/`, `agents/`, `templates/` or `package.json` changed → full `npm test`; only `eval/` or `tests/` changed →
-skip `scripts/*.spec.ts` and run `npm run test:e2e:unit && npm run e2e:scripted && npm run test:e2e:parallel` (drop the last two
-when `tests/e2e/` is untouched); only docs → nothing. The full suite includes the e2e unit
-tests, the scripted journey and the parallel-instances journey, and it takes several minutes.
+Only the unit specs of the changed code run, never the whole suite: `npm run test:changed` (`tests/changed.mjs`) runs typecheck,
+size, neutrality and each `scripts/*.spec.ts` that is changed or names a changed file; docs only runs nothing. Implementers run it
+or the spec files they touch (`node --disable-warning=ExperimentalWarning --test <files>`); the coordinator runs it once per change.
+**Never start `npm test`, the e2e tests (`e2e:scripted`, `test:e2e:*`, `e2e`) or any eval (`eval*`) yourself**: a person runs them by
+hand. When a change likely needs one (a hook, skill or journey change, or an eval variant), say which, in one line, and stop.
 
 ## Verification
 
 `npm test` runs the spec files, the e2e unit tests and the scripted journey (`e2e:scripted`, which also runs the scripted-only Node shop extras). `npm run e2e` is the live journey under a 20 minute hard deadline (two build legs from recorded approved-chart snapshots; `npm run e2e:record` is the one-time hour-plus recording of those snapshots, not a test; Haiku acts, Sonnet inspects; costs money, started by a person; it logs and alerts violations and fixes nothing: decisions go in `tests/e2e/journey/triage.json`), `npm run eval:journey` its eval and `npm run eval` the paired eval runner. `npm run typecheck` is incremental
-(`node_modules/.cache/rig-scripts.tsbuildinfo`). Run them yourself and quote the output; never report a pass you did not see.
+(`node_modules/.cache/rig-scripts.tsbuildinfo`). Quote the output of what you ran; never report a pass you did not see, and never imply `npm test`, e2e or an eval passed when only `test:changed` ran.
 
 ## Plugin scope
 
