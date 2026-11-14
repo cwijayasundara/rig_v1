@@ -59,7 +59,11 @@ function hardBase(sb) {
   pricingOverlay(sb)
   fs.cpSync(CONTRACT_SEED, sb.dir, { recursive: true })
   contractOverlay(sb)
+  // The seed's scripts are merged into the package.json already there (rig's onboarding scripts, test-fast and lint, stay); the seed's win on a clash.
+  const seed = JSON.parse(fs.readFileSync(path.join(HARD_SEED, 'package.json'), 'utf8'))
+  const had = fs.existsSync(sb.file('package.json')) ? JSON.parse(fs.readFileSync(sb.file('package.json'), 'utf8')) : {}
   fs.cpSync(HARD_SEED, sb.dir, { recursive: true })
+  fs.writeFileSync(sb.file('package.json'), JSON.stringify({ ...had, ...seed, scripts: { ...had.scripts, ...seed.scripts } }, null, 2) + '\n')
 }
 
 export function setupBare(sb, { dry = false, variant = null } = {}) {
@@ -89,6 +93,7 @@ export const modelsSupported = (plugin = PLUGIN) => { try { return /\blight\s*:/
 export async function setupRig(sb, arm, { dry = false, variant = null, plugin = PLUGIN } = {}) {
   const registry = { ...REGISTRY, policy: { haiku: arm.policy, sonnet: 'continuous', opus: 'final', default: 'continuous' } }
   if (arm.models && modelsSupported(plugin)) registry.models = { ...REGISTRY.models, ...arm.models }
+  if (variant === 'hard') delete registry.contracts // the hard bare prompt has no contract sentence, so the rig arm has no contract to keep
   if (variant === 'brownfield') return brownfield.setupRig(sb, { dry, registry }) // existing repo: onboarding on the upstream tree, no brief
   const c = await install(sb, { registry, plugins: dry ? [] : installedPlugins() })
   if (c.failed.length) throw new Error(`install failed: ${c.failed.map(f => f.name).join('; ')}`)

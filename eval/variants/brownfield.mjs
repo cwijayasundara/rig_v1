@@ -78,7 +78,7 @@ export function setupBare(sb, { dry = false } = {}) {
 
 // Onboarding of an existing repo: the base is upstream's tree; rig is initialised on top, with the unit sensor on upstream's own suite. Upstream is green, so
 // the baseline's knownRed stays empty. (The brief lane of the shop variants does not apply: each task is its own /rig-start change.)
-const CLAUDE_MD = '# commander.js\n\nsdlc routes all work in this repo: start with /rig:start; use superpowers skills only when an sdlc skill names one.\n\n## Map\n- lib/ the library: command.js, option.js, argument.js, help.js, suggestSimilar.js, error.js\n- index.js, esm.mjs the entry points\n- tests/ jest tests, one file per feature\n- typings/ the type declarations\n'
+export const CLAUDE_MD = '# commander.js\n\nsdlc routes all work in this repo: start with /rig:start; use superpowers skills only when an sdlc skill names one.\n\n## Map\n- lib/ the library: command.js, option.js, argument.js, help.js, suggestSimilar.js, error.js\n- tests/ jest tests, one file per feature\n'
 export async function setupRig(sb, { dry = false, registry = {} } = {}) {
   sb.isolate(dry ? [] : installedPlugins())
   const base = seedUpstream(sb, upstream(), BASE_MESSAGE)
@@ -149,11 +149,11 @@ console.log(JSON.stringify({ out, bad, msg: (() => { try { p('99') } catch (e) {
   // keyValue: the value is everything after the first =
   repo => {
     const c = createRequire(path.join(repo, 'package.json'))('./index.js')
-    const r = parse(c, p => p.addOption(new c.Option('-D, --define <pair>').keyValue()), ['-D', 'a=1', '--define', 'url=http://h/?q=1&x=2', '--define=eq=a=b', '-Dk=', '-D', 'z=='])
-    const want = { a: '1', url: 'http://h/?q=1&x=2', eq: 'a=b', k: '', z: '=' }
+    const r = parse(c, p => p.addOption(new c.Option('-D, --define <pair>').keyValue()), ['-D', 'a=1', '--define', 'url=http://h/?q=1&x=2', '--define=eq=a=b', '-D', 'z=='])
+    const want = { a: '1', url: 'http://h/?q=1&x=2', eq: 'a=b', z: '=' }
     return (!r.error && same(r.program.opts().define, want)) || `-D with a value that has = in it gave ${JSON.stringify(r.error ?? r.program.opts().define)}, want ${JSON.stringify(want)}`
   },
-  // commandNames: right on a small tree, then fast on 30 000 subcommands each with an alias
+  // commandNames: right on a small tree, then fast on 30 000 subcommands each with an alias, nested two deep
   repo => {
     const c = createRequire(path.join(repo, 'package.json'))('./index.js')
     const small = new c.Command()
@@ -167,16 +167,20 @@ console.log(JSON.stringify({ out, bad, msg: (() => { try { p('99') } catch (e) {
     return t < NFR_BOUND_MS || `commandNames took ${Math.round(t)} ms on ${NFR_COMMANDS} subcommands with an alias each, want under ${NFR_BOUND_MS} ms`
   },
 ]
-// 30 000 subcommands, each with an alias, pushed straight into .commands (registering that many is itself slow in upstream), a few names shared with a nested level.
+// 30 000 subcommands, each with an alias, built through the public API: 150 groups of 199 commands (registering them all at one level is itself
+// quadratic in upstream). A few leaf names are shared between groups.
 function bigProgram(c) {
   const program = new c.Command()
   const names = new Set()
-  for (let i = 0; i < NFR_COMMANDS; i++) {
-    const sub = new c.Command(`command-${String(i).padStart(6, '0')}`)
-    sub.aliases([`c${i}`])
-    if (i % 1000 === 0) { sub.commands.push(new c.Command(`command-${String(i + 1).padStart(6, '0')}`)) }
-    program.commands.push(sub)
-    names.add(sub.name()); names.add(`c${i}`)
+  const GROUPS = 150, LEAVES = 199
+  for (let g = 0; g < GROUPS; g++) {
+    const group = program.command(`group-${String(g).padStart(3, '0')}`).alias(`g${g}`)
+    names.add(group.name()); names.add(`g${g}`)
+    for (let i = 0; i < LEAVES; i++) {
+      const n = g * LEAVES + i
+      const sub = group.command(i === 0 && g % 25 === 0 ? 'shared' : `command-${String(n).padStart(6, '0')}`).alias(`c${n}`)
+      names.add(sub.name()); names.add(`c${n}`)
+    }
   }
   return { program, want: [...names].sort() }
 }

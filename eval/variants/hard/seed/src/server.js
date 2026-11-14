@@ -8,9 +8,9 @@ import { loadOrders } from './orders/orders.js'
 import { seedStock } from './inventory/inventory.js'
 
 const catalog = new Catalog()
-catalog.add({ sku: 'TEA-001', name: 'Green tea', priceCents: 450 })
-catalog.add({ sku: 'MUG-002', name: 'Mug', priceCents: 1200 })
-catalog.add({ sku: 'LMT-003', name: 'Limited print', priceCents: 2500 })
+catalog.add({ sku: 'TEA-001', name: 'Green tea', priceCents: 450, stock: 100 })
+catalog.add({ sku: 'MUG-002', name: 'Mug', priceCents: 1200, stock: 100 })
+catalog.add({ sku: 'LMT-003', name: 'Limited print', priceCents: 2500, stock: 1 })
 seedStock({ 'TEA-001': 100, 'MUG-002': 100, 'LMT-003': 1 })
 if (process.env.ORDERS_FILE) loadOrders(JSON.parse(fs.readFileSync(process.env.ORDERS_FILE, 'utf8')))
 const handle = createHandler(catalog)
