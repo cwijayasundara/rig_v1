@@ -13,19 +13,19 @@ exist because one week of building this repo cost $1k and 3 hours per change (`d
 | Coordinator (main thread) | the session's model, never switched mid-session | keep it under 100k context; `/compact` before it passes that |
 | Reads: code search, docs lookup, Explore | `haiku` | read-only |
 | Writes: implementer, test writer | `sonnet` | one fresh context per independent group of tasks |
-| Final review of a change's diff | `opus` | one review per change, at the end; Sonnet output is always evaluated by Opus |
+| Review of a change's diff | `opus` | only when the person asks for one |
 | Chart reviewer (`rig:evaluator`, chart mode) | `opus` | one per chart, after the generators |
 | Design of a tier L change | `opus` | only when the person asks for it |
 
 Never run Opus as the coordinator. Never use `SendMessage` to hand a subagent's result back as a new user turn (each one
 re-fires every Stop hook); launch agents in the foreground and let the tool result return.
 
-## One review per change
+## No review by default
 
-Do not run implement-then-review pairs per task. Implement all tasks of a plan inline (`superpowers:executing-plans`) or
-with at most one Sonnet implementer per independent group of files, run `npm test` once, then one review of
-`git diff main...HEAD` (`/code-review` or a single reviewer agent). Fix findings in one wave. Target per Spec-2-sized
-change: at most 4 subagent launches, under 45 minutes, under $8.
+This repo builds the harness; it is not built with rig's process. Plain Claude Code plus superpowers: implement the plan
+inline (`superpowers:executing-plans`) or with at most one Sonnet implementer per independent group of files, run the
+suite once, and stop. The specs that fail without each change are the check. Run a review of `git diff main...HEAD`
+only when the person asks for one. Target per Spec-2-sized change: at most 3 subagent launches, under 30 minutes.
 
 ## Briefs, not transcripts
 
@@ -36,7 +36,7 @@ Give the exact line ranges to edit (`scripts/check.ts:285-300`), not only file n
 
 Implementers never run the full `npm test`. They run only the spec files they touch or that pin wording they changed
 (`node --disable-warning=ExperimentalWarning --test <files>`), plus `scripts/size.spec.ts`, `scripts/neutrality.spec.ts` and
-`npm run typecheck`. The coordinator runs the suite once per change, before the review, and picks the steps from `git diff --name-only main...HEAD`:
+`npm run typecheck`. The coordinator runs the suite once per change, and picks the steps from `git diff --name-only main...HEAD`:
 `scripts/`, `hooks/`, `skills/`, `agents/`, `templates/` or `package.json` changed → full `npm test`; only `eval/` or `tests/` changed →
 skip `scripts/*.spec.ts` and run `npm run test:e2e:unit && npm run e2e:scripted && npm run test:e2e:parallel` (drop the last two
 when `tests/e2e/` is untouched); only docs → nothing. The full suite includes the e2e unit
