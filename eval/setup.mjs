@@ -8,6 +8,7 @@ import { briefFor, dryOverlay } from './variants/links.mjs'
 import { briefFor as rulesBrief, dryOverlay as rulesOverlay } from './variants/rules.mjs'
 import { briefFor as pricingBrief, dryOverlay as pricingOverlay } from './variants/pricing.mjs'
 import { briefFor as contractBrief, dryOverlay as contractOverlay, SEED as CONTRACT_SEED } from './variants/contract.mjs'
+import { briefFor as trapsBrief, dryOverlay as trapsOverlay, SEED as TRAPS_SEED } from './variants/traps.mjs'
 import { applyAblation } from './ablation.mjs'
 
 const BRIEF = path.resolve(import.meta.dirname, '../tests/e2e/prd/shop-brief.md')
@@ -23,7 +24,9 @@ export const BARE_PROMPT_DELTA = BARE_PROMPT.replace('Build the shop described i
 export const BARE_PROMPT_PRICING = BARE_PROMPT.replace('Build the shop described in BRIEF.md: behaviours B1–B6, in src/,', 'The shop described in BRIEF.md already has behaviours B1–B9 built and passing. Add B10, B11 and B12 to it, editing the existing files in src/,').replace('whose names start with their B-number', 'whose names start with their B-number (B10 in test/pricing.test.js, B11 in test/coupons.test.js, B12 in test/cancel.test.js)')
 // The contract variant: B1–B12 are built and passing; the session adds B13 and B14, whose wire rules are in docs/api-conventions.md, not in the prompt.
 export const BARE_PROMPT_CONTRACT = BARE_PROMPT.replace('Build the shop described in BRIEF.md: behaviours B1–B6, in src/,', 'The shop described in BRIEF.md already has behaviours B1–B12 built and passing. Add B13 and B14 to it, editing the existing files in src/,').replace('whose names start with their B-number', 'whose names start with their B-number (B13 in test/orders-api.test.js, B14 in test/cancel-api.test.js)')
-const BRIEFS = { links: briefFor, rules: rulesBrief, delta: rulesBrief, pricing: pricingBrief, contract: contractBrief }
+// The traps variant: B1–B14 are built and passing; the session adds B15–B18. Each behaviour's rules are in the brief and in the repo's docs/ conventions.
+export const BARE_PROMPT_TRAPS = BARE_PROMPT.replace('Build the shop described in BRIEF.md: behaviours B1–B6, in src/,', 'The shop described in BRIEF.md already has behaviours B1–B14 built and passing. Add B15, B16, B17 and B18 to it, editing the existing files in src/ and bin/,').replace('whose names start with their B-number', 'whose names start with their B-number (B15 in test/receipt.test.js, B16 in test/cli.test.js, B17 in test/top-customers.test.js, B18 in test/orders-page.test.js)').replace('Keep the HTTP contract in api/openapi.yaml and contracts/examples/ (', 'Keep the HTTP contract and its examples in step with the code (')
+const BRIEFS = { links: briefFor, rules: rulesBrief, delta: rulesBrief, pricing: pricingBrief, contract: contractBrief, traps: trapsBrief }
 const briefText = variant => (BRIEFS[variant] ?? (b => b))(fs.readFileSync(BRIEF, 'utf8'))
 
 // The layers the shop brief's own Architecture section states: http on top, nothing depends on http.
@@ -34,8 +37,9 @@ function seedBase(sb, variant) {
   fs.cpSync(path.join(FX, 'shop'), sb.dir, { recursive: true })
   fs.cpSync(path.join(FX, 'remove'), sb.dir, { recursive: true })
   dryOverlay(sb)
-  if (variant === 'pricing' || variant === 'contract') rulesOverlay(sb)
-  if (variant === 'contract') { pricingOverlay(sb); fs.cpSync(CONTRACT_SEED, sb.dir, { recursive: true }) }
+  if (['pricing', 'contract', 'traps'].includes(variant)) rulesOverlay(sb)
+  if (['contract', 'traps'].includes(variant)) { pricingOverlay(sb); fs.cpSync(CONTRACT_SEED, sb.dir, { recursive: true }) }
+  if (variant === 'traps') { contractOverlay(sb); fs.cpSync(TRAPS_SEED, sb.dir, { recursive: true }) } // B13–B14 are built; the seed adds the route table, the CLI and the conventions
 }
 
 export function setupBare(sb, { dry = false, variant = null } = {}) {
@@ -46,7 +50,7 @@ export function setupBare(sb, { dry = false, variant = null } = {}) {
   copyContractTool(sb)
   sb.write('BRIEF.md', briefText(variant))
   sb.write('CLAUDE.md', '# shop-app\n\nThe product brief is BRIEF.md.\n')
-  if (['delta', 'pricing', 'contract'].includes(variant)) seedBase(sb, variant)
+  if (['delta', 'pricing', 'contract', 'traps'].includes(variant)) seedBase(sb, variant)
   sb.commitAll('chore: scaffold')
   return sb.git('rev-parse', 'HEAD')
 }
@@ -60,7 +64,7 @@ export async function setupRig(sb, arm, { dry = false, variant = null } = {}) {
   const b = await runBrief(sb, { brief: briefText(variant) })
   if (b.failed.length) throw new Error(`brief failed: ${b.failed.map(f => f.name).join('; ')}`)
   // Rig is onboarded on the empty scaffold; the built shop lands after, in a commit of its own that tamper does not judge (run.mjs settles after setup).
-  if (['delta', 'pricing', 'contract'].includes(variant)) { seedBase(sb, variant); sb.commitAll(`chore: ${{ pricing: 'B1–B9', contract: 'B1–B12' }[variant] ?? 'B1–B7'} baseline`) }
+  if (['delta', 'pricing', 'contract', 'traps'].includes(variant)) { seedBase(sb, variant); sb.commitAll(`chore: ${{ pricing: 'B1–B9', contract: 'B1–B12', traps: 'B1–B14' }[variant] ?? 'B1–B7'} baseline`) }
   if (arm.arch) {
     // The person declares the layers and approves them once, before the sessions start: this arm differs only in that.
     sb.write('.rig/product/architecture.md', LAYERS)
@@ -77,8 +81,9 @@ export async function setupRig(sb, arm, { dry = false, variant = null } = {}) {
 export function dryBare(sb, { variant = null } = {}) {
   fs.cpSync(path.join(FX, 'shop'), sb.dir, { recursive: true })
   fs.cpSync(path.join(FX, 'remove'), sb.dir, { recursive: true })
-  if (['links', 'rules', 'delta', 'pricing', 'contract'].includes(variant)) dryOverlay(sb)
-  if (['rules', 'delta', 'pricing', 'contract'].includes(variant)) rulesOverlay(sb)
-  if (variant === 'pricing' || variant === 'contract') pricingOverlay(sb)
+  if (['links', 'rules', 'delta', 'pricing', 'contract', 'traps'].includes(variant)) dryOverlay(sb)
+  if (['rules', 'delta', 'pricing', 'contract', 'traps'].includes(variant)) rulesOverlay(sb)
+  if (['pricing', 'contract', 'traps'].includes(variant)) pricingOverlay(sb)
   if (variant === 'contract') { fs.cpSync(CONTRACT_SEED, sb.dir, { recursive: true }); contractOverlay(sb) }
+  if (variant === 'traps') { fs.cpSync(CONTRACT_SEED, sb.dir, { recursive: true }); contractOverlay(sb); fs.cpSync(TRAPS_SEED, sb.dir, { recursive: true }); trapsOverlay(sb) }
 }

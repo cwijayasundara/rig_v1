@@ -1,0 +1,9 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/orders/ORD-9999/receipt"
+  },
+  "response": {
+    "status": 404
+  }
+}
