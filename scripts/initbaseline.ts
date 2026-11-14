@@ -7,7 +7,7 @@ import { ROOT, SENSORS_JSON, BUDGET_MS, read, out, fail, sanctionWrites, skillRe
 import { runCommand } from './runs.ts'
 import { loadConfig } from './check.ts'
 import { updateKnownRed, activeSensors, commandFor } from './registry.ts'
-import { uncoveredTestScripts } from './testscripts.ts'
+import { uncoveredTestScripts, scriptSensor, scriptCommand } from './testscripts.ts'
 
 
 export function cmdBaseline(): void {
@@ -26,14 +26,27 @@ export function cmdBaseline(): void {
     if (r.exit !== 0) red.push(s.id)
     rows.push(`${s.id}: ${r.exit === 0 ? 'pass' : `fail (exit ${r.exit}) → knownRed`} in ${r.ms} ms`)
   }
-  if (!rows.length) return out('nothing declared to measure in .rig/sensors.json')
+  // A test script no sensor runs is a rule nothing checks, and a rig-on session runs only edit and turn sensors: baseline registers
+  // each one itself, at turn when it passes fast, else at ci (ship runs it). It never goes into knownRed.
+  const scripts = uncoveredTestScripts(registry, ROOT).map(name => {
+    const r = runCommand(scriptCommand(name), { timeoutMs: BUDGET_MS.stop })
+    const sensor = scriptSensor(name, r)
+    const why = sensor.cadence === 'turn' ? `passed in ${r.ms} ms` : r.timedOut ? 'timed out' : r.exit !== 0 ? `fail (exit ${r.exit})` : `${r.ms} ms`
+    return { sensor, row: `${sensor.id}: registered at cadence ${sensor.cadence} (${why})` }
+  })
+  if (!rows.length && !scripts.length) return out('nothing declared to measure in .rig/sensors.json')
   const known = new Set(registry.knownRed)
   const added = red.filter(k => !known.has(k))
-  if (added.length) {
-    fs.writeFileSync(file, updateKnownRed(read(file), added, []))
+  if (added.length || scripts.length) {
+    let text = read(file)
+    if (added.length) text = updateKnownRed(text, added, [])
+    if (scripts.length) {
+      const raw = JSON.parse(text) as { sensors: unknown[] }
+      raw.sensors = [...raw.sensors, ...scripts.map(x => x.sensor)]
+      text = JSON.stringify(raw, null, 2) + '\n'
+    }
+    fs.writeFileSync(file, text)
     sanctionWrites([SENSORS_JSON])
   }
-  // A test script no sensor runs is a rule nothing checks: init registers it now (cadence ci, so ship runs it), or ship blocks later.
-  const loose = uncoveredTestScripts(registry, ROOT).map(n => `WARNING test script "${n}" is run by no sensor: add a command sensor for it (cadence ci) to ${SENSORS_JSON}; ship blocks until one runs it`)
-  out([...rows, '', `known red: ${[...known, ...added].join(', ') || 'none'}${added.length ? ' (written to .rig/sensors.json)' : ''}`, ...loose].join('\n'))
+  out([...rows, ...scripts.map(x => x.row), '', `known red: ${[...known, ...added].join(', ') || 'none'}${added.length ? ' (written to .rig/sensors.json)' : ''}`].join('\n'))
 }

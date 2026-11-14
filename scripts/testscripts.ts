@@ -1,6 +1,7 @@
 // A package test script that no command sensor runs can hold a rule the change breaks with nothing to notice: the 2026-11-14
 // eval's refund policy lived in a test only `test:all` ran, and every rig-start run shipped past it. The script names are the
-// data; no runner is named here.
+// data; no runner is named here. `sdlc baseline` registers each uncovered script itself (scriptSensor); testScriptFindings stays
+// for ship and CI, which block on any script still uncovered.
 import fs from 'node:fs'
 import path from 'node:path'
 import type { Registry } from './registry.ts'
@@ -34,6 +35,19 @@ export function uncoveredTestScripts(r: Registry, root: string): string[] {
     }
   }
   return Object.keys(scripts).filter(n => TEST_SCRIPT.test(n) && !NEVER_ENDS.test(n) && !covered.has(n)).sort()
+}
+
+// A package.json script has one runner by definition, so this is the one place a core script names it.
+export const scriptCommand = (name: string): string => `npm run ${name}` // package-script runner (neutrality.spec skips this marker)
+
+// A quarter of the stop budget: the unit sensor shares the turn's budget, so a script slower than this runs at ci instead.
+export const TURN_SCRIPT_MS = 15_000
+
+// The command sensor baseline registers for an uncovered test script, given its one measured run: it judges a rig-on turn
+// (cadence turn) only when it passed fast enough to share the turn budget; otherwise ship runs it (cadence ci).
+export function scriptSensor(name: string, run: { exit: number | null, ms: number, timedOut?: boolean }) {
+  const fast = !run.timedOut && run.exit === 0 && run.ms <= TURN_SCRIPT_MS
+  return { id: `script-${name.replace(/[^a-z0-9]+/gi, '-')}`, cmd: scriptCommand(name), cadence: fast ? 'turn' as const : 'ci' as const, blocks: true, count: 'exit' as const, guide: `The ${name} script passes; fix the code, never the tests.` }
 }
 
 export function testScriptFindings(r: Registry, root: string): Finding[] {

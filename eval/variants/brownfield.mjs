@@ -13,7 +13,6 @@ import path from 'node:path'
 import { createRequire } from 'node:module'
 import { spawn, spawnSync, execFileSync } from 'node:child_process'
 import { cloneUpstream, seedUpstream } from '../lib/upstream.mjs'
-import { withScriptSensors } from '../lib/scriptsensors.mjs'
 import { installedPlugins } from '../../tests/e2e/lib/sandbox.mjs'
 import { assertOnboarding } from '../../tests/e2e/assert/onboarding.mjs'
 import { Checks, must } from '../../tests/e2e/lib/checks.mjs'
@@ -86,13 +85,13 @@ export async function setupRig(sb, { dry = false, registry = {} } = {}) {
   const reg = { ...registry, sensors: [{ id: 'unit', cmd: 'npm test', cadence: 'turn', blocks: true, count: 'exit', guide: 'Run the unit suite before claiming done; fix the code, never the tests.' }] }
   delete reg.contracts
   must(sb.sdlc(['init']), 'init')
-  sb.write('.rig/sensors.json', withScriptSensors(JSON.stringify(reg), ['test-all'])) // test-all runs test-esm too
+  sb.write('.rig/sensors.json', JSON.stringify(reg, null, 2) + '\n') // the baseline below registers test-all (which runs test-esm too)
   sb.write('CLAUDE.md', CLAUDE_MD)
   must(sb.sdlc(['init', '--full']), 'init --full')
   // What /rig:init does for a repo-wide linter: commander's typed `eslint .` would fail on the vendored .rig/bin/*.ts otherwise.
   sb.write('eslint.config.js', sb.read('eslint.config.js').replace('module.exports = tseslint.config(', "module.exports = tseslint.config(\n  { ignores: ['.rig/', '.claude/'] },"))
-  must(sb.sdlc(['sync']), 'sync')
   must(sb.sdlc(['baseline']), 'baseline')
+  must(sb.sdlc(['sync']), 'sync') // after the baseline: it registers test-all, and the guides block lists every sensor
   sb.commitAll('chore: onboard rig')
   const c = new Checks('brownfield onboarding')
   await assertOnboarding(c, sb, { lane: 'brownfield', modules: ['lib/', 'tests/'] })

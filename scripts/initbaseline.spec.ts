@@ -34,12 +34,27 @@ test('baseline: refuses without sensors.json', () => {
   assert.match(r.stderr + r.stdout, /no \.rig\/sensors\.json/)
 })
 
-test('baseline names a package test script no sensor runs, so init registers it before ship blocks on it', () => {
+test('baseline registers a passing fast test script no sensor runs at cadence turn, once', () => {
+  const repo = makeRepo()
+  sdlc(repo, ['init'])
+  write(repo, 'package.json', JSON.stringify({ scripts: { test: ok, 'test:all': 'node -e "process.exit(0 )"' } }))
+  write(repo, '.rig/sensors.json', registry({ turn: { unit: ok } }))
+  assert.match(sdlc(repo, ['baseline']).stdout, /^script-test-all: registered at cadence turn \(passed in \d+ ms\)/m)
+  const cfg = JSON.parse(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8'))
+  const s = cfg.sensors.find((x: { id: string }) => x.id === 'script-test-all')
+  assert.deepEqual({ ...s, guide: undefined }, { id: 'script-test-all', cmd: 'npm run test:all', cadence: 'turn', blocks: true, count: 'exit', guide: undefined })
+  const n = cfg.sensors.length
+  sdlc(repo, ['baseline'])
+  assert.equal(JSON.parse(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8')).sensors.length, n, 'a second baseline adds nothing')
+})
+
+test('baseline registers a failing test script at cadence ci and never lists it in knownRed', () => {
   const repo = makeRepo()
   sdlc(repo, ['init'])
   write(repo, 'package.json', JSON.stringify({ scripts: { test: ok, 'test:all': bad } }))
   write(repo, '.rig/sensors.json', registry({ turn: { unit: ok } }))
-  assert.match(sdlc(repo, ['baseline']).stdout, /^WARNING test script "test:all" is run by no sensor: add a command sensor for it \(cadence ci\)/m)
-  write(repo, '.rig/sensors.json', registry({ turn: { unit: ok }, ci: { all: bad } }))
-  assert.doesNotMatch(sdlc(repo, ['baseline']).stdout, /WARNING test script/)
+  assert.match(sdlc(repo, ['baseline']).stdout, /^script-test-all: registered at cadence ci \(fail \(exit 3\)\)/m)
+  const cfg = JSON.parse(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8'))
+  assert.equal(cfg.sensors.find((x: { id: string }) => x.id === 'script-test-all').cadence, 'ci')
+  assert.ok(!(cfg.knownRed ?? []).includes('script-test-all'))
 })
