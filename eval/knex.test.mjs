@@ -175,3 +175,42 @@ netTest('a sqlite-only fix fails only dialect', async () => {
   assert.equal(r.traps.dialect, false)
 })
 // === end T2 emptyUpsert ===
+
+// === whole variant: dry runs and the combined slips =====================================================================================
+import { runOne } from './run.mjs'
+import { scoreRun } from './score.mjs'
+import { ARMS } from './arms.mjs'
+
+netTest('dry knex run: full marks, escaped 0, for a bare arm (rig-start is frozen; W5 measures rig-on only)', async () => {
+  const out = tmp('dry')
+  for (const id of ['sonnet-bare']) {
+    const row = await runOne(ARMS.find(a => a.id === id), 1, { dry: true, out, capRunUsd: 6, variant: 'knex' })
+    assert.equal(row.error, undefined, `${id}: ${row.error}`)
+    assert.deepEqual(row.traps, { caller: true, types: true, rule: true, dialect: true }, `${id}: ${JSON.stringify(row.trapFailures)}`)
+    assert.deepEqual([row.accepted, row.checks, row.of, row.escaped, row.missing, row.npmTest], [true, 5, 5, 0, [], true], id)
+  }
+})
+
+netTest('dry knex rig-on run: accepted, escaped 0, mode on', async () => {
+  const row = await runOne(ARMS.find(a => a.id === 'sonnet-rig-on'), 1, { dry: true, out: tmp('dry-on'), capRunUsd: 6, variant: 'knex' })
+  assert.deepEqual([row.accepted, row.escaped, row.mode, row.error], [true, 0, 'on', undefined], JSON.stringify(row))
+})
+
+for (const [task, kind, trap] of [['notLike', 'slip', 'caller'], ['notLike', 'slip-notypes', 'types'], ['emptyUpsert', 'slip', 'rule'], ['emptyUpsert', 'slip-sqlite-only', 'dialect']]) {
+  netTest(`${task}/${kind} with the other task's ref: scored through scoreRun, npm test passes and only ${trap} fails`, async () => {
+    const sb = createSandbox({ name: `kx-both-${task}-${kind}`, out: tmp('both') })
+    const base = setupBare(sb, { dry: true })
+    for (const t of TASKS) applyPatch(sb.dir, t, t === task ? kind : 'ref')
+    sb.commitAll('chore: run result')
+    const r = await scoreRun(sb, base, { variant: 'knex' })
+    assert.deepEqual(r.traps, { caller: true, types: true, rule: true, dialect: true, [trap]: false }, JSON.stringify(r.trapFailures))
+    assert.deepEqual([r.npmTest, r.escaped, r.missing, r.accepted], [true, 1, [], false])
+  })
+}
+
+netTest('a trap whose test file was never written is missing, not escaped', async () => {
+  const sb = createSandbox({ name: 'kx-missing', out: tmp('missing') })
+  const base = setupBare(sb, { dry: true })
+  const r = await scoreRun(sb, base, { variant: 'knex' })
+  assert.deepEqual([r.npmTest, r.escaped, r.missing.length], [true, 0, 2])
+})
