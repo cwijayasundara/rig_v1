@@ -4,6 +4,8 @@ import assert from 'node:assert/strict'
 import { makeRepo, sdlc, write, gitIn, registry } from './testkit.ts'
 import { parseRegistry } from './registry.ts'
 import { prBody } from './prbody.ts'
+import fs from 'node:fs'
+import path from 'node:path'
 
 let repo: string
 const SPEC = '# Spec\n\n## Behaviours\n- B1: the thing works (FR-1)\n- B2: the other thing works (FR-2)\n\n## Open questions\nnone\n'
@@ -45,9 +47,9 @@ test('a holdout row naming B1 proves B1', () => {
 
 test('a current journey naming B2 proves B2; a stale one does not', () => {
   setup(); cases(row('TC-1', 'demo', 'B1', 'holdout'))
-  journey('covers B2')
+  journey('covers demo#B2')
   assert.doesNotMatch(verify().stdout, /[ (]proof \d/)
-  write(repo, '.rig/verify/shop/driver.mjs', driver('covers B2, edited after approval'))
+  write(repo, '.rig/verify/shop/driver.mjs', driver('covers demo#B2, edited after approval'))
   assert.match(verify().stdout, /proof 1\b/)
 })
 
@@ -75,4 +77,23 @@ test('PR body lists unproved ids', () => {
   const b = prBody({ ...base, proof: { ids: ['B2'], exempt: null } })
   assert.match(b, /## What the checks would miss[\s\S]*B2 is proved only by unit tests/)
   assert.match(prBody({ ...base, proof: { ids: [], exempt: 'no app.json and no holdout cases for this change' } }), /## What the checks would miss[\s\S]*proof: exempt, no app\.json and no holdout cases for this change/)
+})
+
+test('a journey proves an id only when it names <slug>#B<n>', () => {
+  setup(); cases(row('TC-1', 'demo', 'B1', 'unit'))
+  journey('other#B1 and a bare B1, B2 and demo#B10')
+  assert.match(verify().stdout, /proof 2\b/)
+  journey('demo#B1 only')
+  assert.match(verify().stdout, /proof 1\b/)
+})
+
+test('the app skill tells authors to name journey steps <slug>#B<n>', () => {
+  assert.match(fs.readFileSync(path.resolve(import.meta.dirname, '../skills/app/SKILL.md'), 'utf8'), /`<slug>#B<n>`/)
+})
+
+test('at CI a PR adding its own holdout rows for its slug does not prove it', () => {
+  setup('block'); journey('names no behaviour'); gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'journey')
+  gitIn(repo, 'checkout', '-qb', 'pr'); cases(row('TC-1', 'demo', 'B1', 'holdout'), row('TC-2', 'demo', 'B2', 'holdout')); gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'own proof')
+  const r = sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--slug', 'demo'])
+  assert.match(r.stdout, /B1 is proved only by unit tests/)
 })

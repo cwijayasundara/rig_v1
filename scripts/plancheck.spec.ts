@@ -152,3 +152,90 @@ test('gates.plan true: planCheck is not run by pr or ci', () => {
   assert.doesNotMatch(r.stderr, /plan-check/)
   assert.doesNotMatch(ciCheck().stdout, /plan-check/)
 })
+
+// ---- review fixes (order check, inputs from the base, untracked PRs) ----
+import fs from 'node:fs'
+import os from 'node:os'
+const ciWith = (env: Record<string, string> = {}, ...extra: string[]) => sdlc(repo, ['check', '--at', 'ci', '--base', 'main', ...extra], { env })
+const prEnv = (timeline: string | null): Record<string, string> => {
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-gh-')), ev = path.join(bin, 'event.json')
+  fs.writeFileSync(path.join(bin, 'gh'), timeline === null ? '#!/bin/sh\nexit 1\n' : `#!/bin/sh\necho '${timeline}'\n`, { mode: 0o755 })
+  fs.writeFileSync(ev, JSON.stringify({ repository: { full_name: 'o/r' }, pull_request: { number: 5, user: { login: 'dev' }, head: { sha: 'abc' } } }))
+  return { RIG_GH: path.join(bin, 'gh'), GITHUB_EVENT_PATH: ev, GITHUB_EVENT_NAME: 'pull_request' }
+}
+const goodBranch = () => { setup(); branched(); write(repo, 'src/a.js', 'export const a = 1\n'); gitIn(repo, 'add', 'src'); gitIn(repo, 'commit', '-qm', 'code') }
+
+test('source added by a merge commit before the plan commit blocks', () => {
+  setup(); gitIn(repo, 'checkout', '-q', '-b', 'side'); write(repo, '.rig/notes.md', 'x\n'); gitIn(repo, 'add', '.rig/notes.md'); gitIn(repo, 'commit', '-qm', 'side')
+  gitIn(repo, 'checkout', '-q', '-b', 'sdlc/demo', 'main')
+  gitIn(repo, 'merge', '--no-ff', '--no-commit', 'side'); write(repo, 'src/evil.js', 'export {}\n'); gitIn(repo, 'add', 'src'); gitIn(repo, 'commit', '-qm', 'merge')
+  write(repo, '.rig/changes/demo/spec.md', SPEC); gitIn(repo, 'add', '-f', '.rig/changes/demo'); gitIn(repo, 'commit', '-qm', 'plan')
+  assert.match(planCheck().stdout, /source committed before the plan/)
+})
+
+test('plan and source in one commit blocks', () => {
+  setup(); gitIn(repo, 'checkout', '-q', '-b', 'sdlc/demo')
+  write(repo, 'src/a.js', 'export const a = 1\n'); gitIn(repo, 'add', '-f', 'src', '.rig/changes/demo'); gitIn(repo, 'commit', '-qm', 'both')
+  assert.match(planCheck().stdout, /source committed before the plan/)
+})
+
+test('the merge queue run skips the order check', () => {
+  badBranch()
+  assert.match(ciWith({}, '--slug', 'demo').stdout, /source committed before the plan/)
+  assert.doesNotMatch(ciWith({ GITHUB_EVENT_NAME: 'merge_group' }, '--slug', 'demo').stdout, /source committed before the plan/)
+})
+
+test('CI blocks a force-pushed PR branch, and an unreadable timeline', () => {
+  goodBranch()
+  assert.match(ciWith(prEnv('[[{"event":"head_ref_force_pushed"}]]'), '--slug', 'demo').stdout, /the branch was force-pushed: plan-before-code cannot be vouched for; push the plan commit and later commits without rewriting/)
+  assert.match(ciWith(prEnv(null), '--slug', 'demo').stdout, /\[plan-check\]\n[^\n]*timeline/)
+  assert.doesNotMatch(ciWith(prEnv('[[{"event":"commented"}]]'), '--slug', 'demo').stdout, /force-pushed|timeline/)
+})
+
+test('the plan skill forbids rewriting history after the plan commit', () => {
+  assert.match(fs.readFileSync(path.resolve(import.meta.dirname, '../skills/plan/SKILL.md'), 'utf8'), /never rewrite the branch history \(rebase, amend, force-push\) after the plan commit/)
+})
+
+test('a contract renamed into a contract glob blocks, naming the new path', () => {
+  setup(); branched()
+  gitIn(repo, 'mv', 'README.md', '.rig/contracts/readme.md'); gitIn(repo, 'commit', '-qm', 'mv-in')
+  assert.match(planCheck().stdout, /contract \.rig\/contracts\/readme\.md changed/)
+})
+
+test('a head sensors.json dropping the contract glob still blocks at CI', () => {
+  setup(); branched()
+  write(repo, '.rig/contracts/api.yaml', 'changed\n'); write(repo, '.rig/sensors.json', registry({ extra: { gates: { plan: false } } }))
+  gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'drop glob')
+  assert.match(ciWith({}, '--slug', 'demo').stdout, /contract \.rig\/contracts\/api\.yaml changed/)
+})
+
+test('an untracked new contract file blocks locally', () => {
+  setup(); branched(); write(repo, '.rig/contracts/new.yaml', 'x: 1\n')
+  assert.match(planCheck().stdout, /contract \.rig\/contracts\/new\.yaml changed/)
+})
+
+test('CI: a head intent the base does not have blocks, and so does a head intent that widens the base one', () => {
+  setup({ intent: null }); branched()
+  write(repo, INTENT, '---\nscope: [src, lib]\n---\n# Demo\n\nFR-1 FR-9\n'); gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'intent')
+  assert.match(ciWith({}, '--slug', 'demo').stdout, /intent demo is not on the trunk: chart it first/)
+})
+
+test('CI: a change intent naming a sprint with no base intent blocks', () => {
+  setup({ intent: null }); write(repo, '.rig/changes/demo/intent.md', '---\nslug: demo\nsprint: 1\n---\n# demo\n'); branched()
+  assert.match(ciWith({}, '--slug', 'demo').stdout, /intent demo is not on the trunk: chart it first/)
+})
+
+test('CI: a PR widening the scope and ledger of the charted intent still blocks', () => {
+  setup({ plan_: '# Plan\n\n## Files\n- lib/other.js\n\n## Open questions\nnone\n', spec: SPEC.replace('(FR-1)', '(FR-1, FR-9)') }); gitIn(repo, 'checkout', '-q', '-b', 'sdlc/demo')
+  write(repo, INTENT, '---\nscope: [src, lib]\n---\n# Demo\n\nFR-1 FR-9\n'); gitIn(repo, 'add', '-A'); gitIn(repo, 'add', '-f', '.rig/changes/demo'); gitIn(repo, 'commit', '-qm', 'plan')
+  const o = ciWith({}, '--slug', 'demo').stdout
+  assert.match(o, /scope change: lib\/other\.js is outside intent demo/); assert.match(o, /scope change: FR-9 is outside intent demo/)
+})
+
+test('CI: source changed with no change record blocks when gates.plan is false', () => {
+  write(repo, '.rig/sensors.json', registry({ extra: { gates: { plan: false } } })); gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'cfg')
+  gitIn(repo, 'checkout', '-q', '-b', 'feature'); write(repo, 'src/x.js', 'export {}\n'); gitIn(repo, 'add', 'src'); gitIn(repo, 'commit', '-qm', 'code')
+  assert.match(ciWith().stdout, /\[plan-check\]\n[^\n]*source changed with no change record: a change needs \.rig\/changes\/<slug>\/ and a plan commit \(S plan-check <slug> --commit\)/)
+  gitIn(repo, 'checkout', '-q', 'main'); gitIn(repo, 'checkout', '-q', '-b', 'docs'); write(repo, '.rig/notes.md', 'x\n'); gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'rig only')
+  assert.doesNotMatch(ciWith().stdout, /source changed with no change record/)
+})

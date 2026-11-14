@@ -2,6 +2,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { ROOT, CHANGES, read, exists, readJson } from './core.ts'
+import { showAt } from './diffs.ts'
 import { type Finding } from './model.ts'
 import type { Registry } from './registry.ts'
 import { behaviourIds, missingBehaviours } from './sensors.ts'
@@ -25,17 +26,20 @@ function journeyText(): { any: boolean; text: string } {
   return { any: apps.length > 0, text }
 }
 
-export function unproved(slug: string): { ids: string[]; exempt: string | null } {
+// At CI the test plan is the base's: a PR cannot prove its own change with a holdout row it adds. A journey names a behaviour of this change as <slug>#B<n>, like a case orphan.
+export function unproved(slug: string, base: string | null = null): { ids: string[]; exempt: string | null } {
   const ids = behaviourIds(read(path.join(CHANGES, slug, 'spec.md')), 'Behaviours')
   const sprint = sprintOf(slug)
   const planFile = sprint === null ? '' : path.join(testplanDir(sprint), 'cases.md')
-  const holdout = (exists(planFile) ? parseCases(read(planFile)) : []).filter(c => c.intent === slug && c.level.toLowerCase() === 'holdout')
+  const cases = base && sprint !== null ? showAt(base, path.relative(ROOT, planFile).split(path.sep).join('/')) ?? '' : exists(planFile) ? read(planFile) : ''
+  const holdout = parseCases(cases).filter(c => c.intent === slug && c.level.toLowerCase() === 'holdout')
   const j = journeyText()
   if (!j.any && !holdout.length) return { ids: [], exempt: EXEMPT }
-  return { ids: missingBehaviours(ids, `${holdout.map(c => c.behaviour).join('\n')}\n${j.text}`), exempt: null }
+  const named = (id: string): boolean => new RegExp(`(?<![A-Za-z0-9])${slug.replace(/[^\w-]/g, '')}#${id}(?!\\d)`).test(j.text)
+  return { ids: missingBehaviours(ids, holdout.map(c => c.behaviour).join('\n')).filter(id => !named(id)), exempt: null }
 }
 
-export function proofFindings(slug: string, registry: Registry): Finding[] {
+export function proofFindings(slug: string, registry: Registry, base: string | null = null): Finding[] {
   if (!exists(path.join(CHANGES, slug, 'spec.md'))) return []
-  return unproved(slug).ids.map(id => ({ sensor: 'proof', severity: registry.proof, message: `${id} is proved only by unit tests: name it in a holdout case (test plan row) or an approved journey step`, fix: 'add a holdout case row naming the behaviour, or a step of an approved journey that covers it' }))
+  return unproved(slug, base).ids.map(id => ({ sensor: 'proof', severity: registry.proof, message: `${id} is proved only by unit tests: name it in a holdout case (test plan row) or an approved journey step as <slug>#B<n>`, fix: 'add a holdout case row naming the behaviour, or a step of an approved journey that covers it' }))
 }
