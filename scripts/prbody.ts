@@ -9,8 +9,9 @@ import { parseFindings, type ClaimRow } from './claims.ts'
 import { parseLedger } from './chartcheck.ts'
 import type { FreezeRow } from './testfreeze.ts'
 import { checkQuestions } from './prcheck.ts'
+import type { AgentRow } from './agents.ts'
 
-type PrBodyInput = { requirements?: string; claims?: ClaimRow[]; intent: string; spec: string; plan: string; verify: { pass: boolean; tree: string | null; blocks: string[]; from?: string; holdout?: { passed: number; total: number } } | null; outline: string; review: string; risk: Risk; amendments?: string; runs?: RunRow[]; tests?: string; intentMap?: string; freeze?: FreezeRow[]; changes?: FileDiff[] }
+type PrBodyInput = { requirements?: string; claims?: ClaimRow[]; intent: string; spec: string; plan: string; verify: { pass: boolean; tree: string | null; blocks: string[]; from?: string; holdout?: { passed: number; total: number } } | null; outline: string; review: string; risk: Risk; amendments?: string; runs?: RunRow[]; tests?: string; intentMap?: string; freeze?: FreezeRow[]; changes?: FileDiff[]; agents?: AgentRow[]; draft?: string }
 
 const firstSentence = (text: string): string => /^[\s\S]*?[.!?](?=\s|$)/.exec(text.trim())?.[0].replace(/\s+/g, ' ') ?? text.trim().replace(/\s+/g, ' ')
 
@@ -95,6 +96,14 @@ function proposedNote(spec: string, requirements: string | undefined): string {
 // The test writer's hand-off: when the tests were frozen and why each later freeze changed a frozen test.
 const frozenNote = (rows: FreezeRow[] = []): string => rows.length ? [`Tests frozen at ${rows[0]?.commit.slice(0, 7)} by the test writer`, ...rows.slice(1).map(r => `re-frozen: ${clean(r.why)}${r.dropped?.length ? ` (dropped: ${r.dropped.map(clean).join(', ')})` : ''}`)].join('\n') : 'Tests not frozen (no test-writer hand-off)'
 
+// N5/N6: what each agent reported and what it cost; an agent that ended without a status line is "no report", never BLOCKED.
+const agentsNote = (rows: AgentRow[] = []): string => {
+  if (!rows.length) return ''
+  const sum = (k: 'tokens' | 'ms'): number => rows.reduce((t, r) => t + (r[k] ?? 0), 0), unknown = rows.some(r => r.tokens === null || r.ms === null)
+  const line = (r: AgentRow): string => `- ${r.agent} on ${r.model ?? 'unknown model'}: ${r.status ?? 'no report'}, ${r.tokens ?? '?'} tokens, ${r.toolUses ?? '?'} tool uses, ${r.ms === null ? '?' : (r.ms / 60000).toFixed(1)} min`
+  return `## Agents\n\n${rows.map(line).join('\n')}\n\nTotal: ${rows.length} launches, ${sum('tokens')} tokens, ${(sum('ms') / 60000).toFixed(1)} min${unknown ? ' (some unknown)' : ''}`
+}
+
 export function prBody(i: PrBodyInput): string {
   const why = firstSentence(section(i.intent, 'Intent')) || 'none recorded'
   const behaviours = bullets(section(i.spec, 'Behaviours'))
@@ -104,16 +113,19 @@ export function prBody(i: PrBodyInput): string {
   const missed = bullets(section(i.review, 'Unverifiable'))
   // Only the latest verify's runs: an older run of a check it did not re-run is not evidence about this tree.
   const from = i.verify?.from, runs = (i.runs ?? []).filter(r => !from || r.at >= from)
+  const blocked = (i.agents ?? []).filter(a => a.status === 'BLOCKED'), concerns = (i.agents ?? []).filter(a => a.status === 'DONE_WITH_CONCERNS')
   const parts = [
+    blocked.length || i.draft !== undefined ? `> Draft: blocked. ${blocked.map(a => a.note).filter(Boolean).join('; ') || i.draft || 'no reason given'}` : '',
     `## Why the change\n\n${why}`,
     behaviours.length ? `## Behaviours\n\n${behaviours.join('\n')}` : '',
     amended.length ? `## Amendments after approval\n\n${amended.join('\n')}` : '',
     `## Blast radius\n\n${radius.length ? radius.join('\n') : 'none recorded'}\n\nDoor: ${door(i.plan)}`,
     `## Risk\n\n${i.risk.reasons.length ? `Tier ${i.risk.tier}\n\n${i.risk.reasons.map(r => `- ${r}`).join('\n')}` : 'Tier 0: none of the signals'}`,
     `## How to revert\n\n${revert(i.plan)}`,
-    `## What the checks would miss\n\n${!i.review.trim() ? 'no review.md' : /^reviewer:\s*none\b/.test(i.review) ? `No agent reviewed this change (tier ${i.risk.tier}): the sensors and the tests are the evidence.` : missed.length ? missed.join('\n') : 'nothing the reviewer named'}`,
+    `## What the checks would miss\n\n${!i.review.trim() ? 'no review.md' : /^reviewer:\s*none\b/.test(i.review) ? `No agent reviewed this change (tier ${i.risk.tier}): the sensors and the tests are the evidence.` : [...missed, ...concerns.map(a => `- ${a.agent} (${a.model ?? 'unknown model'}): ${a.note}`)].join('\n') || 'nothing the reviewer named'}`,
     `## Evidence\n\n${[evidence, baseProof(runs), headChecks(runs), mutationNote(runs), behaviourTests(i.spec, i.tests), frozenNote(i.freeze), claimsNote(i.review, i.claims), proposedNote(i.spec, i.requirements)].filter(Boolean).join('\n\n')}`,
     `## Check before approving\n\nAnswer these in your approving review, one line each (\`Q1: <answer>\`, 10+ characters; CI checks they are there; a sample of merged changes is audited):\n\n${checkQuestions(i.changes ?? [], i.spec).join('\n')}`,
+    agentsNote(i.agents),
     i.intentMap?.trim() ? `## Intent map\n\n${i.intentMap.trim()}` : '',
     i.outline.trim(),
   ]

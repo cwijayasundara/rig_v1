@@ -124,3 +124,11 @@ test('report --github through the CLI: the default report stays git-only, --gith
   assert.match(r.stdout, /human time \(GitHub\)\s+unavailable/)
   assert.match(r.stdout, /not available here: CI first-pass rate .*review time/, 'review time stays unavailable when GitHub could not be read')
 })
+
+test('report: agent cost sums the shipped changes\' agents.jsonl', () => {
+  write(repo, '.rig/changes/alpha/evidence/agents.jsonl', [{ kind: 'launch', id: 'a', agent: 'x', model: 'haiku', at: 'now' }, { kind: 'done', id: 'a', status: 'DONE', note: '', tokens: 1200, toolUses: 3, ms: 120000 }, { kind: 'launch', id: 'b', agent: 'x', model: null, at: 'now' }].map(r => JSON.stringify(r)).join('\n') + '\n')
+  commit('agents')
+  const r = buildReport(repo)
+  assert.deepEqual(r.agents, { launches: 2, tokens: 1200, minutes: 2, changes: 1 })
+  assert.match(reportText(r), /agent cost +2 launches, 1200 tokens, 2 min over 1 change\(s\)/)
+})

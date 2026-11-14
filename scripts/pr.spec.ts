@@ -256,3 +256,37 @@ test('a local-only pr names the merge and the next ready intent, and starts noth
   assert.match(r.stdout, /Next: merge sdlc\/alpha into main, then \/rig[:-]start beta\b/)
   assert.ok(!fs.existsSync(path.join(repo, '.rig/changes/beta')))
 })
+
+// D2: --draft (or a BLOCKED agent) opens a draft PR past a stale verify.json and AC-less tests; every other refusal stays.
+function fakeGh(): { env: Record<string, string>; log: string } {
+  const dir = fs.mkdtempSync(path.join(repo, '..', 'rig-gh-')), log = path.join(dir, 'calls.log'), bin = path.join(dir, 'gh')
+  fs.writeFileSync(bin, `#!/bin/sh\necho "$@" >> '${log}'\n[ "$1 $2" = "pr view" ] && echo https://example.com/pr/1\nexit 0\n`, { mode: 0o755 })
+  const bare = fs.mkdtempSync(path.join(repo, '..', 'rig-bare-')); gitIn(bare, 'init', '-q', '--bare'); gitIn(repo, 'remote', 'add', 'origin', bare)
+  return { env: { RIG_GH: bin }, log }
+}
+
+test('pr --draft with a stale verify.json runs gh pr create --draft; without it the refusal stands', () => {
+  approvedChange(repo, 'demo')
+  write(repo, 'test/a.test.js', '// B1\n')
+  const { env, log } = fakeGh()
+  assert.match(pr().stderr, /verify\.json is missing, failing or from another tree/)
+  const r = sdlc(repo, ['pr', 'demo', '--draft', 'budget spent', '--message', 'feat: demo'], { env })
+  assert.equal(r.code, 0, r.stderr)
+  assert.match(r.stdout, /\(draft\)\s*$/)
+  assert.match(fs.readFileSync(log, 'utf8'), /pr create --draft/)
+  assert.match(fs.readFileSync(path.join(repo, '.rig/changes/demo/pr-body.md'), 'utf8'), /^> Draft: blocked\. budget spent/)
+})
+
+test('a BLOCKED agent row drafts the PR on its own, and --draft still keeps the plan-approval refusal', () => {
+  sdlc(repo, ['new', 'demo'])
+  assert.match(sdlc(repo, ['pr', 'demo', '--draft', '--message', 'feat: demo']).stderr, /plan is not approved/)
+  repo = makeRepo(); sdlc(repo, ['init']); write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [] }))
+  approvedChange(repo, 'demo')
+  write(repo, 'test/a.test.js', '// B1\n')
+  write(repo, '.rig/changes/demo/evidence/agents.jsonl', [{ kind: 'launch', id: 'a', agent: 'x', model: 'haiku', at: 'n' }, { kind: 'done', id: 'a', status: 'BLOCKED', note: 'no API key', tokens: null, toolUses: null, ms: null }].map(r => JSON.stringify(r)).join('\n') + '\n')
+  const { env, log } = fakeGh()
+  const r = sdlc(repo, ['pr', 'demo', '--message', 'feat: demo'], { env })
+  assert.equal(r.code, 0, r.stderr); assert.match(r.stdout, /\(draft\)\s*$/)
+  assert.match(fs.readFileSync(log, 'utf8'), /pr create --draft/)
+  assert.match(fs.readFileSync(path.join(repo, '.rig/changes/demo/pr-body.md'), 'utf8'), /^> Draft: blocked\. no API key/)
+})

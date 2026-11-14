@@ -7,7 +7,7 @@ import { CHANGES, readJsonl } from './core.ts'
 export const LAUNCH_BUDGET = 5
 export type AgentRow = { id: string; agent: string; model: string | null; at: string; status: 'DONE' | 'DONE_WITH_CONCERNS' | 'BLOCKED' | null; note: string; tokens: number | null; toolUses: number | null; ms: number | null }
 type Rec = { kind: 'launch'; id: string; agent: string; model: string | null; at: string } | { kind: 'done'; id: string; status: AgentRow['status']; note: string; tokens: number | null; toolUses: number | null; ms: number | null }
-const file = (slug: string): string => path.join(CHANGES, slug, 'evidence', 'agents.jsonl')
+const file = (slug: string, root?: string): string => path.join(root ?? '', root ? '.rig/changes' : CHANGES, slug, 'evidence', 'agents.jsonl')
 const append = (slug: string, r: Rec): void => { fs.mkdirSync(path.dirname(file(slug)), { recursive: true }); fs.appendFileSync(file(slug), JSON.stringify(r) + '\n') }
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 
@@ -30,8 +30,9 @@ export function recordDone(slug: string, id: string, resp: unknown): void {
 }
 
 // Launch rows in launch order, each merged with its done row (the last one wins).
-export function agentRows(slug: string): AgentRow[] {
-  const recs = readJsonl<Rec>(file(slug))
+// `root` reads another checkout (the report); by default the current repo.
+export function agentRows(slug: string, root?: string): AgentRow[] {
+  const recs = readJsonl<Rec>(file(slug, root))
   return recs.flatMap(r => {
     if (r.kind !== 'launch') return []
     const d = recs.filter((x): x is Extract<Rec, { kind: 'done' }> => x.kind === 'done' && x.id === r.id).pop()
