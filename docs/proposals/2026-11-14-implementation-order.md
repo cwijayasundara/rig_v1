@@ -9,24 +9,52 @@
 ## Rules for every wave
 
 - **One wave is one branch, one plan and one PR to main** (superpowers: `writing-plans`, then `executing-plans`), followed by
-  `npm test` once and one Opus review of `git diff main...HEAD`. Budget: at most 4 launches, 45 minutes and $8 (CLAUDE.md).
-- **Every item gets a spec that fails without it.** The "spec" column of each proposal's order table is the acceptance test.
-- **Size cap.** The harness is about 12,745 of 13,000 lines. W1 fits inside that. W2 and later need either a cap raise, which the
-  maintainer grants by being asked, or offsetting deletions. The decision is due before W2.
-- **Measure before arming.** The eval waves (W0, W3) decide whether the later waves ship on by default or as eval arms.
+  `npm test` once. No review unless the maintainer asks for one, and then of the changed lines only. Budget per CLAUDE.md: at most
+  3 launches and 30 minutes.
+- **Every item gets a spec that fails without it.**
+- **Size cap.** The harness is about 13,500 of 15,000 lines. W6 (the map) cannot fit without offsetting deletions; the frozen
+  workflow parts (below) are where they come from.
+- **An eval escape decides what is built.** An item is built only when an eval run shows rig-on letting through a defect that the
+  item would catch. Without one, it stays on the deferred list.
 
-## Waves
+## Done (W0 to W3d)
+
+| Wave | What landed | Result |
+|---|---|---|
+| W0 | `traps` eval variant, bare arms | Exit gate failed: bare caught 5 of 5 traps in 6 runs |
+| W1 | N5 status lines, N6 cost per launch, D1 model pairs, D2 launch budget, G0 waiver requests | Merged `2bb6c96` |
+| W2 | G1 `plan-check` and its CI recompute, N1 proof per behaviour, N3 deterministic stand-ins | Merged `08e8a95` |
+| W3, W3b, W3c | Eval arms; `hard` and `brownfield` variants; `rig-on` and `rig-start` arms | rig-on 0 escapes at 1/7 to 1/10 of rig-start's cost (Results) |
+| W3d | `check --at ship` blocks on an unsensed `test*` script; `/rig:start` keeps an existing test's rule; stand-in answers 2 rounds | Merged `40b4873` |
+
+Not done from the old W3: the Haiku-light against Sonnet-light comparison (the D1 check). Not done from W0: the U0 UI task.
+
+## Why the order changed
+
+The old W4 to W7 were written before the rig-on result. W4 (chart PR, plan-review veto) and W5 (a review on every change, G4) add
+gates and reviews to `rig-start`, the arm that cost 7 to 10 times more, took 7 to 12 times longer and was the only arm with an
+escape. `docs/GOAL.md` says production ready means few escaped defects per dollar **with rig on**, and rig-on already caught every
+trap on `hard` and `brownfield`. So the eval set, not the workflow, is now the bottleneck: until rig-on escapes something, there
+is nothing to fix and no way to tell which new item earns its cost.
+
+## Waves from here
 
 | Wave | Items | Why here | Exit |
 |---|---|---|---|
-| W0 | Prod Phase 1 eval set, plus poteto P0 traps and frontend U0 UI task, bare arms only | Nothing has shown a lift yet (GOAL.md). The traps must escape bare Claude Code, or the later waves cannot be measured | At least 2 traps escape the bare arm |
-| W1 | Poteto N5 (DONE / CONCERNS / BLOCKED), N6 (tokens and minutes per launch), D1 model pairs (`S models`), D2 launch budget; two-gates G0 (review trigger, waiver requests) | Cheap and deterministic. N6 is needed to measure anything after this | Specs green; one scripted journey records its cost per launch |
-| W2 | G1 `plan-check` with its CI recompute; poteto N1 (each behaviour proved by a journey step or holdout), N3 (deterministic stand-ins) | The core of "scripts decide" once the per-change approval goes | A contract edit on a change PR blocks in CI |
-| W3 | Rig arms on the W0 set: rig today against W1+W2, Haiku-light against Sonnet-light | The kill rule (prod D4) and the D1 check | Escaped defects per dollar, per arm |
-| W4 | G2 chart as a PR (`chart seal`); G3 plan review as an `ai-review` veto, draft PR on a stop; poteto N2 (scale cases from a QA generator), N4 (interface table) | Gate 1 becomes a PR, and the chart gains its scale and interface artefacts | One approved chart PR is gate 1 |
-| W5 | Poteto R1 (local review on every change), R2 (second family in CI); G4 (`SDLC_HUMAN` gone, rung 2 fixed) | The review cause, measured against W3 | The scripted journey has exactly 2 human acts per change |
-| W6 | Frontend U1 to U3 (Experience, designer at chart, `kind: ui`, React + Vite pack, a11y / states / contract-client sensors) | The largest piece, and it builds on gate 1 being a PR | The UI eval task passes on the rig arm |
-| W7 | Prod Phase 2 (`sdlc map`, `sdlc impact`, brownfield), then Phases 4–5 | Brownfield needs the map; adoption needs a measured lift | Per the production doc |
+| W4 | Settle the arm. One `rig-start` run on `hard` to confirm W3d closes the `rule` escape (about $5). The D1 check: rig-on with Haiku and with Sonnet, 3 runs each on `hard` (about $3). Record in `docs/GOAL.md`: rig-on is the product default; `rig-start` is opt-in and **frozen** (no new gates) until an eval shows rig-on missing what it catches. Tag the release. | Cheap, and it ends the W3 loop | The `rule` trap is caught on rig-start; a Haiku-or-Sonnet default is recorded |
+| W5 | A harder eval rig-on can fail: one larger brownfield variant (a repo too big to read whole, a contract with callers in other modules, a rule only a skipped suite holds), plus the U0 UI task (one endpoint and one screen, a hidden Playwright check, two traps). rig-on only, 3 runs each (about $10). | Without an escape there is no signal for W6 to W8 | At least 2 traps escape rig-on. If none do after one more variant, rig-on is production ready on the evidence: skip to W8 |
+| W6 | Prod Phase 2: `sdlc map` (`.rig/map/graph.json`), the `impact` sensor at plan and ship, affected tests at turn cadence. Offset its size by deleting frozen `rig-start` code the ablation shows unused. Only if W5's escapes are blast-radius misses. | The one new capability most likely to catch what rig-on misses in a large repo | The computed blast radius covers at least 95% of the files the hidden checks show must change; kill below 80% |
+| W7 | Prod section 6 sensors, one per W5 escape type: `complexity`, `dead-code`, `api-diff`, `adr-conformance`. Each needs a catch on the eval set or it is not added. Can run beside W6. | Zero tokens, and each one serves rig-on directly | Each added sensor catches a W5 escape |
+| W8 | Adoption (prod Phase 5, trimmed): the floor (sensors, git hooks, `rig-check`) packaged on its own, a one-page quickstart, the public reference repo with one recorded brownfield change, marketplace submission at `--scope project`. | Adoption follows a measured result, not more features | One external repo installs it from the quickstart with no help |
+
+## Deferred (each needs an eval escape it would catch before it is planned)
+
+- Two gates: G2 chart as a PR (`chart seal`), G3 plan review as an `ai-review` veto, G4 (`SDLC_HUMAN` gone, rung 2).
+- Poteto: N2 scale cases from a QA generator, N4 interface table, R1 local review on every change, R2 second model family in CI.
+- Frontend: U1 to U3 (Experience, designer at chart, `kind: ui`, React + Vite pack, UI sensors). U0 moved into W5 so a UI escape
+  can make the case for them.
+- Prod Phase 4: parallel intents, the HTML gate pages, the verifier pass, the breaker on every tier. These speed up `rig-start`,
+  which is frozen.
 
 ## Decisions still open (recommended defaults are used unless you say otherwise)
 
