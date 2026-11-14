@@ -14,9 +14,11 @@ const readyOk = (dir, sha) => { try { return fs.readFileSync(path.join(dir, MARK
 const taken = e => e?.code === 'ENOTEMPTY' || e?.code === 'EEXIST'
 
 // -> the directory of the verified clone. install: false skips `npm ci` (a spec on a fixture repo has no lockfile).
+// lockfile: a path copied over package-lock.json before the install (for a repo that does not commit one); with none, the repo's own lockfile
+// is used by `npm ci`, and a repo without one gets `npm install`. rebuild: package names, each `npm rebuild <name>` after the install (native modules).
 // Two processes on a cold cache each build their own partial directory; the one that renames second finds the dir taken and uses it when it is ready.
 // beforeRename is a seam for a spec that plays the other process.
-export function cloneUpstream({ url, tag, sha, name, cacheDir = DEFAULT_CACHE, install = true, beforeRename }) {
+export function cloneUpstream({ url, tag, sha, name, cacheDir = DEFAULT_CACHE, install = true, lockfile, rebuild = [], beforeRename }) {
   const dir = path.join(cacheDir, `${name}-${sha.slice(0, 7)}`)
   if (readyOk(dir, sha)) return dir
   fs.mkdirSync(cacheDir, { recursive: true })
@@ -26,7 +28,12 @@ export function cloneUpstream({ url, tag, sha, name, cacheDir = DEFAULT_CACHE, i
     run('git', ['clone', '-q', '--depth', '1', '--branch', tag, url, tmp])
     const head = run('git', ['-C', tmp, 'rev-parse', 'HEAD'])
     if (head !== sha) throw new Error(`upstream sha mismatch: ${url} at ${tag} is ${head}, pinned ${sha}`)
-    if (install) run('npm', ['ci', '--no-audit', '--no-fund', '--ignore-scripts'], { cwd: tmp, timeout: 600_000 })
+    if (lockfile) fs.copyFileSync(lockfile, path.join(tmp, 'package-lock.json'))
+    if (install) {
+      const cmd = fs.existsSync(path.join(tmp, 'package-lock.json')) ? 'ci' : 'install'
+      run('npm', [cmd, '--no-audit', '--no-fund', '--ignore-scripts'], { cwd: tmp, timeout: 600_000 })
+      for (const pkg of rebuild) run('npm', ['rebuild', pkg], { cwd: tmp, timeout: 600_000 })
+    }
     fs.writeFileSync(path.join(tmp, MARKER), `${sha}\n`)
     beforeRename?.()
     try { fs.renameSync(tmp, dir) } catch (e) {
@@ -42,11 +49,13 @@ export function cloneUpstream({ url, tag, sha, name, cacheDir = DEFAULT_CACHE, i
 }
 
 // Copy the clone (node_modules included, symlinks kept as they are) into the sandbox repo and commit it as its one base commit.
-export function seedUpstream(sb, dir, message) {
+// patch: a path applied with `git apply` to the copied tree first (the harness's own edits to the base, e.g. a test script that runs on this Node).
+export function seedUpstream(sb, dir, message, { patch } = {}) {
   fs.cpSync(dir, sb.dir, {
     recursive: true, verbatimSymlinks: true, mode: fs.constants.COPYFILE_FICLONE,
     filter: src => { const b = path.basename(src); return b !== '.git' && b !== '.rig-eval-ready' },
   })
+  if (patch) execFileSync('git', ['apply', '--whitespace=nowarn', patch], { cwd: sb.dir, stdio: 'pipe' })
   sb.commitAll(message)
   return sb.git('rev-parse', 'HEAD')
 }

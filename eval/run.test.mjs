@@ -409,7 +409,7 @@ test('a rig change stopped midway still has its traps scored, with the phases do
 
 test('rig-on dry run on hard and brownfield: accepted, escaped 0, mode on, no change records under .rig/changes', async () => {
   const out = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-on-'))
-  for (const variant of ['hard', 'brownfield']) {
+  for (const variant of ['hard', 'brownfield', 'knex']) {
     const row = await runOne(ARMS.find(a => a.id === 'sonnet-rig-on'), 1, { dry: true, out, capRunUsd: 6, variant })
     assert.deepEqual([row.accepted, row.escaped, row.mode, row.error, row.usd], [true, 0, 'on', undefined, 0], `${variant} ${JSON.stringify(row)}`)
     assert.equal(row.phasesDone, 0)

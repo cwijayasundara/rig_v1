@@ -1,0 +1,26 @@
+diff --git a/package.json b/package.json
+index 98993db..7beb36b 100644
+--- a/package.json
++++ b/package.json
+@@ -28,7 +28,7 @@
+     "test:db": "mocha --exit -t 10000 --config test/mocha-integration-config-test.js",
+     "test:db:coverage": "nyc mocha --exit --check-leaks -t 10000 --config test/mocha-integration-config-test.js && npm run test:tape",
+     "test:db:no-oracle": "cross-env DB=\"mssql mysql mysql2 postgres sqlite3\" mocha --exit -t 10000 --config test/mocha-integration-config-test.js && npm run test:tape",
+-    "test": "mocha --exit -t 10000 --config test/mocha-all-config-test.js && npm run test:tape && npm run test:cli",
++    "test": "cross-env DB=sqlite3 mocha --exit -t 10000 --config test/mocha-unit-config-test.js",
+     "test:coverage": "nyc mocha --exit --check-leaks -t 10000 --config test/mocha-all-config-test.js && npm run test:tape && npm run test:cli",
+     "test:everything": "npm run lint:everything && npm run test:coverage",
+     "test:mssql": "cross-env DB=mssql npm run test:db",
+diff --git a/test/db-less-test-suite.js b/test/db-less-test-suite.js
+index 8f2dc93..25cd261 100644
+--- a/test/db-less-test-suite.js
++++ b/test/db-less-test-suite.js
+@@ -29,8 +29,6 @@ describe('Query Building Tests', function () {
+   require('./unit/schema-builder/oracle');
+   require('./unit/schema-builder/mssql');
+   require('./unit/schema-builder/oracledb');
+-  require('./unit/migrations/migrate/migration-list-resolver');
+-  require('./unit/migrations/seed/seeder');
+   // require('./unit/interface'); ToDo Uncomment after fixed
+   require('./unit/knex');
+ });

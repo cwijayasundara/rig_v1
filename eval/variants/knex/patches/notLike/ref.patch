@@ -1,0 +1,116 @@
+diff --git a/lib/query/method-constants.js b/lib/query/method-constants.js
+index afafe07..aff6b7b 100644
+--- a/lib/query/method-constants.js
++++ b/lib/query/method-constants.js
+@@ -37,6 +37,10 @@ module.exports = [
+   'whereILike',
+   'andWhereILike',
+   'orWhereILike',
++  'whereNotLike',
++  'orWhereNotLike',
++  'whereNotILike',
++  'orWhereNotILike',
+   'whereRaw',
+   'whereWrapped',
+   'havingWrapped',
+diff --git a/lib/query/querybuilder.js b/lib/query/querybuilder.js
+index 0d3cff5..e796824 100644
+--- a/lib/query/querybuilder.js
++++ b/lib/query/querybuilder.js
+@@ -724,6 +724,26 @@ class Builder extends EventEmitter {
+     return this._bool('or')._whereLike('whereILike', column, value);
+   }
+ 
++  // Adds a `where not like` clause to the query.
++  whereNotLike(column, value) {
++    return this._not(true)._whereLike('whereLike', column, value);
++  }
++
++  // Adds a `or where not like` clause to the query.
++  orWhereNotLike(column, value) {
++    return this._bool('or')._not(true)._whereLike('whereLike', column, value);
++  }
++
++  // Adds a `where not ilike` clause to the query.
++  whereNotILike(column, value) {
++    return this._not(true)._whereLike('whereILike', column, value);
++  }
++
++  // Adds a `or where not ilike` clause to the query.
++  orWhereNotILike(column, value) {
++    return this._bool('or')._not(true)._whereLike('whereILike', column, value);
++  }
++
+   // Adds a `group by` clause to the query.
+   groupBy(item) {
+     if (item && item.isRawInstance) {
+diff --git a/test/db-less-test-suite.js b/test/db-less-test-suite.js
+index 25cd261..72fc053 100644
+--- a/test/db-less-test-suite.js
++++ b/test/db-less-test-suite.js
+@@ -17,6 +17,7 @@ describe('Query Building Tests', function () {
+   this.timeout(process.env.KNEX_TEST_TIMEOUT || 5000);
+ 
+   require('./unit/query/builder');
++  require('./unit/query/where-not-like');
+   require('./unit/query/formatter');
+   require('./unit/query/string');
+   require('./unit/schema-builder/mysql')('mysql');
+diff --git a/test/unit/query/where-not-like.js b/test/unit/query/where-not-like.js
+new file mode 100644
+index 0000000..41191ed
+--- /dev/null
++++ b/test/unit/query/where-not-like.js
+@@ -0,0 +1,37 @@
++'use strict';
++
++const { expect } = require('chai');
++const PG_Client = require('../../../lib/dialects/postgres');
++
++const client = new PG_Client({ client: 'pg' });
++const qb = () => client.queryBuilder();
++
++describe('whereNotLike, whereNotILike', () => {
++  it('whereNotLike negates whereLike', () => {
++    const q = qb().select('*').from('users').whereNotLike('name', 'luk%');
++    expect(q.toSQL().sql).to.equal('select * from "users" where "name" not like ?');
++    expect(q.toSQL().bindings).to.eql(['luk%']);
++  });
++
++  it('whereNotILike negates whereILike', () => {
++    const q = qb().select('*').from('users').whereNotILike('name', 'luk%');
++    expect(q.toSQL().sql).to.equal('select * from "users" where "name" not ilike ?');
++  });
++
++  it('orWhereNotLike and orWhereNotILike keep the or', () => {
++    const q = qb()
++      .select('*')
++      .from('users')
++      .where('id', 1)
++      .orWhereNotLike('name', 'a%')
++      .orWhereNotILike('name', 'b%');
++    expect(q.toSQL().sql).to.equal(
++      'select * from "users" where "id" = ? or "name" not like ? or "name" not ilike ?'
++    );
++  });
++
++  it('a later where is not negated', () => {
++    const q = qb().from('users').whereNotLike('name', 'a%').whereLike('name', 'b%');
++    expect(q.toSQL().sql).to.equal('select * from "users" where "name" not like ? and "name" like ?');
++  });
++});
+diff --git a/types/index.d.ts b/types/index.d.ts
+index d191bd4..37def0c 100644
+--- a/types/index.d.ts
++++ b/types/index.d.ts
+@@ -665,6 +665,10 @@ declare namespace Knex {
+     whereILike: Where<TRecord, TResult>;
+     andWhereILike: Where<TRecord, TResult>;
+     orWhereILike: Where<TRecord, TResult>;
++    whereNotLike: Where<TRecord, TResult>;
++    orWhereNotLike: Where<TRecord, TResult>;
++    whereNotILike: Where<TRecord, TResult>;
++    orWhereNotILike: Where<TRecord, TResult>;
+     whereNull: WhereNull<TRecord, TResult>;
+     orWhereNull: WhereNull<TRecord, TResult>;
+     whereNotNull: WhereNull<TRecord, TResult>;

@@ -1,0 +1,106 @@
+diff --git a/lib/dialects/sqlite3/index.js b/lib/dialects/sqlite3/index.js
+index 7524c1c..68445ac 100644
+--- a/lib/dialects/sqlite3/index.js
++++ b/lib/dialects/sqlite3/index.js
+@@ -109,6 +109,26 @@ class Client_SQLite3 extends Client {
+     });
+   }
+ 
++  // An upsert (insert with onConflict) of no rows resolves to [] without a connection or a query.
++  runner(builder) {
++    const runner = super.runner(builder);
++    const run = runner.run.bind(runner);
++    runner.run = async () => {
++      const { _method, _single } = builder;
++      if (
++        _method === 'insert' &&
++        _single &&
++        _single.onConflict &&
++        Array.isArray(_single.insert) &&
++        _single.insert.length === 0
++      ) {
++        return [];
++      }
++      return run();
++    };
++    return runner;
++  }
++
+   // Used to explicitly close a connection, called internally by the pool when
+   // a connection times out or the pool is shutdown.
+   async destroyRawConnection(connection) {
+diff --git a/test/db-less-test-suite.js b/test/db-less-test-suite.js
+index 25cd261..8469447 100644
+--- a/test/db-less-test-suite.js
++++ b/test/db-less-test-suite.js
+@@ -31,6 +31,7 @@ describe('Query Building Tests', function () {
+   require('./unit/schema-builder/oracledb');
+   // require('./unit/interface'); ToDo Uncomment after fixed
+   require('./unit/knex');
++  require('./unit/query/empty-upsert');
+ });
+ 
+ const config = require('./knexfile');
+diff --git a/test/unit/query/empty-upsert.js b/test/unit/query/empty-upsert.js
+new file mode 100644
+index 0000000..8e98010
+--- /dev/null
++++ b/test/unit/query/empty-upsert.js
+@@ -0,0 +1,57 @@
++'use strict';
++
++const { expect } = require('chai');
++const knex = require('../../../knex');
++
++describe('empty upsert', () => {
++  for (const client of ['sqlite3']) {
++    describe(client, () => {
++      let db;
++      let queries;
++      beforeEach(() => {
++        db = knex({ client, useNullAsDefault: true });
++        queries = [];
++        db.client.acquireConnection = () => {
++          throw new Error('no connection expected');
++        };
++        db.on('query', (q) => queries.push(q));
++      });
++      afterEach(() => db.destroy());
++
++      it('resolves to [] and runs no query on ignore', async () => {
++        const res = await db('t').insert([]).onConflict('id').ignore();
++        expect(res).to.deep.equal([]);
++        expect(queries).to.have.length(0);
++      });
++
++      it('resolves to [] and runs no query on merge', async () => {
++        const res = await db('t').insert([]).onConflict('id').merge();
++        expect(res).to.deep.equal([]);
++        expect(queries).to.have.length(0);
++      });
++    });
++  }
++
++  it('still rejects a plain empty insert', async () => {
++    const db = knex({
++      client: 'sqlite3',
++      connection: { filename: ':memory:' },
++      useNullAsDefault: true,
++    });
++    try {
++      await db('t').insert([]);
++      expect.fail('should have rejected');
++    } catch (e) {
++      expect(e.message).to.contain('The query is empty');
++    } finally {
++      await db.destroy();
++    }
++  });
++
++  it('keeps the old compiled SQL for an array of empty objects', () => {
++    const db = knex({ client: 'sqlite3', useNullAsDefault: true });
++    const sql = db('t').insert([{}]).onConflict('id').ignore().toSQL();
++    expect(sql.sql).to.contain('insert into');
++    return db.destroy();
++  });
++});
