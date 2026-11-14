@@ -1,0 +1,97 @@
+diff --git a/lib/execution/runner.js b/lib/execution/runner.js
+index ed01652..ccdfcdc 100644
+--- a/lib/execution/runner.js
++++ b/lib/execution/runner.js
+@@ -26,6 +26,17 @@ class Runner {
+   // a single connection.
+   async run() {
+     const runner = this;
++    // An upsert (insert with onConflict) of no rows has nothing to write: resolve to [] without a connection or a query.
++    const { _method, _single } = runner.builder;
++    if (
++      _method === 'insert' &&
++      _single &&
++      _single.onConflict &&
++      Array.isArray(_single.insert) &&
++      _single.insert.length === 0
++    ) {
++      return [];
++    }
+     try {
+       const res = await this.ensureConnection(ensureConnectionCallback);
+ 
+diff --git a/test/db-less-test-suite.js b/test/db-less-test-suite.js
+index 25cd261..c230cd5 100644
+--- a/test/db-less-test-suite.js
++++ b/test/db-less-test-suite.js
+@@ -18,6 +18,7 @@ describe('Query Building Tests', function () {
+ 
+   require('./unit/query/builder');
+   require('./unit/query/formatter');
++  require('./unit/query/empty-upsert');
+   require('./unit/query/string');
+   require('./unit/schema-builder/mysql')('mysql');
+   require('./unit/schema-builder/mysql')('mysql2');
+diff --git a/test/unit/query/empty-upsert.js b/test/unit/query/empty-upsert.js
+new file mode 100644
+index 0000000..360a82e
+--- /dev/null
++++ b/test/unit/query/empty-upsert.js
+@@ -0,0 +1,57 @@
++'use strict';
++
++const { expect } = require('chai');
++const knex = require('../../../knex');
++
++describe('empty upsert', () => {
++  for (const client of ['pg', 'mysql', 'sqlite3']) {
++    describe(client, () => {
++      let db;
++      let queries;
++      beforeEach(() => {
++        db = knex({ client, useNullAsDefault: true });
++        queries = [];
++        db.client.acquireConnection = () => {
++          throw new Error('no connection expected');
++        };
++        db.on('query', (q) => queries.push(q));
++      });
++      afterEach(() => db.destroy());
++
++      it('resolves to [] and runs no query on ignore', async () => {
++        const res = await db('t').insert([]).onConflict('id').ignore();
++        expect(res).to.deep.equal([]);
++        expect(queries).to.have.length(0);
++      });
++
++      it('resolves to [] and runs no query on merge', async () => {
++        const res = await db('t').insert([]).onConflict('id').merge();
++        expect(res).to.deep.equal([]);
++        expect(queries).to.have.length(0);
++      });
++    });
++  }
++
++  it('still rejects a plain empty insert', async () => {
++    const db = knex({
++      client: 'sqlite3',
++      connection: { filename: ':memory:' },
++      useNullAsDefault: true,
++    });
++    try {
++      await db('t').insert([]);
++      expect.fail('should have rejected');
++    } catch (e) {
++      expect(e.message).to.contain('The query is empty');
++    } finally {
++      await db.destroy();
++    }
++  });
++
++  it('keeps the old compiled SQL for an array of empty objects', () => {
++    const db = knex({ client: 'sqlite3', useNullAsDefault: true });
++    const sql = db('t').insert([{}]).onConflict('id').ignore().toSQL();
++    expect(sql.sql).to.contain('insert into');
++    return db.destroy();
++  });
++});

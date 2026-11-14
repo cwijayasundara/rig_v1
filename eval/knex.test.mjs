@@ -130,6 +130,7 @@ netTest('a types-only slip (no d.ts entries) passes npm test and fails only type
 // --- end T1 ---------------------------------------------------------------------------------------------------------------------------
 
 // === T2 emptyUpsert (traps rule, dialect) ===
+import { score } from './variants/knex.mjs'
 const bounded = async (cmd, args, { cwd, timeoutMs, env }) => { const r = spawnSync(cmd, args, { cwd, env, encoding: 'utf8', timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024 }); return { status: r.status, stdout: r.stdout, stderr: r.stderr } }
 const t2 = async kind => {
   const sb = createSandbox({ name: `kx-t2-${kind}`, out: tmp(`t2-${kind}`) })
