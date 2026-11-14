@@ -120,7 +120,7 @@ function guidesFor(rel: string, session: string): string | undefined {
   return fresh.map(g => g.body).join('\n\n')
 }
 
-const ROUTING_LINE = `sdlc routes all work in this repo: start with ${skillRef('start')}; use superpowers skills only when an sdlc skill names one.`
+const ROUTING_LINE = `rig is on in this repo: work from the request as usual, and its checks and guides run on every turn; ${skillRef('start')} is the full workflow (spec, plan, approval), used only when the person asks for it. Use superpowers skills only when an sdlc skill names one.`
 
 
 function hookSessionStart(input: HookInput): void {
@@ -140,7 +140,7 @@ function hookSessionStart(input: HookInput): void {
     ROUTING_LINE,
     `rig policy: ${mode} checks for ${model ?? 'an unknown model'} (build on ${registry.models.build}, evaluate on ${registry.models.evaluate}).`,
     declaresRegistry() ? syncFindings(registry, [], 'warn').slice(0, 5).map(f => `rig sync: ${f.message}`).join('\n') : '',
-    active && st ? `Active change: ${active} (${changeType(active)}, ${st}). Next: ${nextStep(active, st)}` : q && 'slug' in q ? `Queue: start ${q.slug} now with ${skillRef('start')} ${q.path} (rung ${readAutonomy().rung})` : `No active change. Start one with ${skillRef('start')} "<request>".`,
+    active && st ? `Active change: ${active} (${changeType(active)}, ${st}). Next: ${nextStep(active, st)}` : q && 'slug' in q ? `Queue: start ${q.slug} now with ${skillRef('start')} ${q.path} (rung ${readAutonomy().rung})` : 'No active change.',
     'Rules: plans hold interfaces and acceptance tests, never code; only the person writes .rig/changes/<slug>/approval.json; run subagents in the foreground and never end a turn while one is running; never sleep-poll; read files with Read, Grep and Glob and change them with Edit or Write; run each command as its own Bash call (no `cd`, pipes, redirects, `&&`, `;` or heredocs): unattended runs deny compound commands; at ~150k context run /compact.',
     sessionNote(),
     guides.length ? `Guides (injected when you first touch matching files): ${guides.join(', ')}` : '',

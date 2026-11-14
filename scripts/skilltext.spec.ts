@@ -178,6 +178,10 @@ test('init registers every test script the baseline names as uncovered, at caden
 })
 
 // The 2026-11-14 brownfield dry run: commander's typed `eslint .` failed on all of the vendored .rig/bin/*.ts (167 errors).
+test('init writes the rig-on routing line as CLAUDE.md first line', () => {
+  assert.ok(text('skills/init/SKILL.md').includes('rig is on in this repo: work from the request as usual, and its checks and guides run on every turn; /rig:start is the full workflow (spec, plan, approval), used only when the person asks for it. Use superpowers skills only when an sdlc skill names one.'))
+})
+
 test("init keeps rig's own files out of a repo-wide linter, formatter or type checker", () => {
   assert.match(text('skills/init/SKILL.md'), /add `\.rig\/` and `\.claude\/` to its ignore list/)
 })

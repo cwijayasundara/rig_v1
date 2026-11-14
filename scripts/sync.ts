@@ -80,10 +80,13 @@ export function writeSync(registry: Registry): string {
 }
 
 // A standalone copy answers to /rig-start; a model may write CLAUDE.md after vendoring (2026-10-31 e2e), so sync repairs the routing line.
+const OLD_ROUTING = /sdlc routes all work in this repo: start with \/rig[:-]start; use superpowers skills only when an sdlc skill names one\./
+const NEW_ROUTING = 'rig is on in this repo: work from the request as usual, and its checks and guides run on every turn; /rig:start is the full workflow (spec, plan, approval), used only when the person asks for it. Use superpowers skills only when an sdlc skill names one.' // plugin-only: the spelling the plugin writes
+const NEW_ROUTING_VENDORED = NEW_ROUTING.replace('/rig:start', '/rig-start') // plugin-only: the spelling the plugin writes
 function standaloneRouting(): string {
   const file = path.join(ROOT, CLAUDE_MD)
   const before = exists(path.join(ROOT, '.claude/skills/rig-start/SKILL.md')) ? read(file) : ''
-  const after = before.replace('start with /rig:start;', 'start with /rig-start;') // plugin-only: the spelling the plugin's init writes
+  const after = before.replace(OLD_ROUTING, NEW_ROUTING_VENDORED).replace(NEW_ROUTING, NEW_ROUTING_VENDORED) // plugin-only spelling /rig:start, and the pre-0.12 line, become the rig-on line in /rig-start
   if (after === before) return ''
   sanctionWrites([CLAUDE_MD]); fs.writeFileSync(file, after); return '\nCLAUDE.md routing line names /rig-start (standalone copy)'
 }
