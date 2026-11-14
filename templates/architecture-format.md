@@ -41,7 +41,10 @@ design: <path or none>
 
 ## Integrations
 
-<!-- Each interface and the contract file that fixes it. -->
+<!-- Each interface and the contract file that fixes it, one table row per dependency: Kind is `external` (an LLM API, payments, mail, any third-party network service) or `internal`. Each external row names a deterministic Stand-in (scripted, recorded or local fake), where it lives, the env var that switches to live, and the ADR that decides it (ADR-NNNN, under adr/). Tests and journeys run on the stand-in by default; a live test is marked and skips without credentials. -->
+
+| Dependency | Kind | Contract | Stand-in | Live switch | ADR |
+|---|---|---|---|---|---|
 
 ## Access
 

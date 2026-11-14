@@ -23,4 +23,5 @@ allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_R
 6. For a large plan, run at most one `general-purpose` agent on the `build` model per independent group of files, in the foreground, each with a brief of at most 60 lines: the behaviours, the files and the test command.
 7. Hidden acceptance cases run in `/rig:test`; a failure names a case id and its requirement: fix the code against that requirement. The hook that hides them is a guardrail; CI, which runs every case from the base branch, is the check.
 8. An agent that ends `status: BLOCKED`, or a launch denied for the launch budget, gives `S pr <slug> --draft "<why>" --message "<type(scope): summary>"` and no retry.
-9. When every behaviour has a passing test, continue with `/rig:test <slug>` in this turn.
+9. Tests use the stand-in the architecture's `## Integrations` row names; a test that needs a live service is marked and skips without its credentials.
+10. When every behaviour has a passing test, continue with `/rig:test <slug>` in this turn.
