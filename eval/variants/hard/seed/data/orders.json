@@ -1,0 +1,6 @@
+[
+  { "id": "ORD-0001", "customer": "ada", "status": "paid", "version": 1, "lines": [{ "sku": "TEA-001", "qty": 2 }], "payableCents": 1500, "placedAt": "2025-12-30T10:00:00Z" },
+  { "id": "ORD-0002", "customer": "grace", "status": "paid", "version": 1, "lines": [{ "sku": "MUG-002", "qty": 1 }], "payableCents": 1899, "placedAt": "2026-01-02T09:30:00Z" },
+  { "id": "ORD-0003", "customer": "ada", "status": "cancelled", "version": 2, "lines": [{ "sku": "TEA-001", "qty": 1 }], "payableCents": 1049, "placedAt": "2026-01-15T14:00:00Z" },
+  { "id": "ORD-0004", "customer": "linus", "status": "placed", "version": 1, "lines": [{ "sku": "MUG-002", "qty": 2 }], "payableCents": 2500, "placedAt": "2026-02-01T08:00:00Z" }
+]

@@ -82,8 +82,10 @@ export function layerViolations(dir) {
 
 export async function scoreRun(sb, base, { timeoutMs = 300_000, sdlc = SDLC, variant = null, judgeFrom = base } = {}) {
   if (variant === 'brownfield') return (await import('./variants/brownfield.mjs')).score(sb, { timeoutMs, runBounded, tamper: () => tamperOf(sb, judgeFrom, sdlc) }) // upstream's suite and four hidden checks; no shop acceptance
+  const hard = variant === 'hard' // hard is scored as traps (same B1–B14 base) with its own module and trap names
+  if (hard) variant = 'traps'
   // The sandbox's env: the runner's own (a test context, a CI event path) must not leak into the model's suite.
-  const t =await runBounded('npm', ['test', '--silent'], { cwd: sb.dir, timeoutMs, env: sb.env })
+  const t = await runBounded('npm', ['test', '--silent'], { cwd: sb.dir, timeoutMs, env: sb.env })
   const npmTest = t.status === 0
   const a = await runBounded('node', [ACCEPTANCE, sb.dir, 'remove', ...(['rules', 'pricing', 'contract', 'traps'].includes(variant) ? ['rules'] : [])], { cwd: sb.dir, timeoutMs, env: sb.env })
   const last = a.out.trim().split('\n').at(-1) ?? ''
@@ -117,8 +119,8 @@ export async function scoreRun(sb, base, { timeoutMs = 300_000, sdlc = SDLC, var
   let escaped = null
   let missing = []
   if (variant === 'traps') {
-    const m = await import('./variants/traps.mjs')
-    ;({ traps, failures: trapFailures } = await m.trapChecks(sb.dir))
+    const m = await import(hard ? './variants/hard.mjs' : './variants/traps.mjs')
+    ;({ traps, failures: trapFailures } = await (m.checks ?? m.trapChecks)(sb.dir))
     // A trap escaped only if its behaviour's test file exists and npm test passed; no test file means the behaviour was never built.
     const failed = Object.keys(traps).filter(n => !traps[n])
     missing = failed.filter(n => !fs.existsSync(path.join(sb.dir, m.TRAP_TEST[n])))
