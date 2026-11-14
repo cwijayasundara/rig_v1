@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import { spawn } from 'node:child_process'
 import { makeRepo, sdlc, hook, write } from './testkit.ts'
 import { parseReport, responseText, LAUNCH_BUDGET } from './agents.ts'
 
@@ -60,4 +61,34 @@ test('with no active change nothing is recorded and no launch is denied', () => 
   for (let i = 1; i <= LAUNCH_BUDGET + 1; i++) assert.doesNotMatch(launch(repo, `t${i}`).stdout, /deny/)
   hook(repo, 'agent-done', { session_id: 's1', tool_use_id: 't1', tool_response: { content: 'status: DONE' } })
   assert.equal(fs.existsSync(path.join(repo, '.rig/changes')), false)
+})
+
+const launchD = (repo: string, id: string, description: string) => hook(repo, 'agent-launch', { session_id: 's1', tool_use_id: id, tool_input: { subagent_type: 'rig:builder', model: 'haiku', description } })
+
+test('the mandatory security review and confirm launches pass past the budget, are recorded, and are not counted', () => {
+  const repo = active()
+  for (let i = 1; i <= LAUNCH_BUDGET; i++) launch(repo, `t${i}`)
+  assert.match(launch(repo, 'x').stdout, /deny/)
+  for (const [i, d] of ['rig security review cart-add', 'rig confirm cart-add', 'rig security review cart-add'].entries()) assert.doesNotMatch(launchD(repo, `e${i}`, d).stdout, /deny/, d)
+  assert.equal(rows(repo).length, LAUNCH_BUDGET + 3)
+  assert.match(launchD(repo, 'y', 'a normal launch').stdout, /deny/, 'exempt rows do not count, and the budget still holds')
+  const four = active()
+  for (let i = 1; i < LAUNCH_BUDGET; i++) launch(four, `t${i}`)
+  for (let i = 0; i < 3; i++) launchD(four, `e${i}`, 'rig confirm cart-add')
+  assert.doesNotMatch(launch(four, 'fifth').stdout, /deny/, 'exempt launches did not use the budget')
+})
+
+test('parallel launches at four rows: exactly one passes (the check and the record are under one lock)', async () => {
+  const repo = active()
+  for (let i = 1; i < LAUNCH_BUDGET; i++) launch(repo, `t${i}`)
+  const script = path.resolve(import.meta.dirname, 'sdlc.ts')
+  const run = (id: string) => new Promise<string>(resolve => {
+    const { NODE_TEST_CONTEXT: _n, ...env } = process.env
+    const c = spawn('node', ['--disable-warning=ExperimentalWarning', script, 'hook', 'agent-launch'], { cwd: repo, env: { ...env, CLAUDE_PROJECT_DIR: repo, SDLC_HUMAN: '' } })
+    let o = ''; c.stdout.on('data', d => { o += d }); c.on('close', () => resolve(o))
+    c.stdin.end(JSON.stringify({ session_id: 's1', tool_use_id: id, tool_input: { subagent_type: 'rig:builder', model: 'haiku' } }))
+  })
+  const outs = await Promise.all(['p1', 'p2', 'p3', 'p4'].map(run))
+  assert.equal(outs.filter(o => !/deny/.test(o)).length, 1, outs.join('|'))
+  assert.equal(rows(repo).length, LAUNCH_BUDGET)
 })

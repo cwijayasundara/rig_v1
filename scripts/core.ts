@@ -29,7 +29,7 @@ export type HookInput = {
     replace_all?: boolean
     edits?: { old_string?: string; new_string?: string; replace_all?: boolean }[]
     skill?: string
-    args?: string; subagent_type?: string; model?: string
+    args?: string; subagent_type?: string; description?: string; model?: string
   }
 }
 

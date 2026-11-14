@@ -2,11 +2,11 @@
 // evidence/agents.jsonl, and the launch hook refuses the sixth launch. Nothing here calls a model; a missing field is recorded as null.
 import fs from 'node:fs'
 import path from 'node:path'
-import { CHANGES, readJsonl } from './core.ts'
+import { CHANGES, readJsonl, withLock } from './core.ts'
 
 export const LAUNCH_BUDGET = 5
 export type AgentRow = { id: string; agent: string; model: string | null; at: string; status: 'DONE' | 'DONE_WITH_CONCERNS' | 'BLOCKED' | null; note: string; tokens: number | null; toolUses: number | null; ms: number | null }
-type Rec = { kind: 'launch'; id: string; agent: string; model: string | null; at: string } | { kind: 'done'; id: string; status: AgentRow['status']; note: string; tokens: number | null; toolUses: number | null; ms: number | null }
+type Rec = { kind: 'launch'; id: string; agent: string; model: string | null; at: string; counted?: false } | { kind: 'done'; id: string; status: AgentRow['status']; note: string; tokens: number | null; toolUses: number | null; ms: number | null }
 const file = (slug: string, root?: string): string => path.join(root ?? '', root ? '.rig/changes' : CHANGES, slug, 'evidence', 'agents.jsonl')
 const append = (slug: string, r: Rec): void => { fs.mkdirSync(path.dirname(file(slug)), { recursive: true }); fs.appendFileSync(file(slug), JSON.stringify(r) + '\n') }
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
@@ -23,7 +23,13 @@ export function responseText(resp: unknown): string {
   return Array.isArray(c) ? c.flatMap(b => (typeof b === 'object' && b !== null && (b as { type?: unknown }).type === 'text' && typeof (b as { text?: unknown }).text === 'string' ? [(b as { text: string }).text] : [])).join('\n') : ''
 }
 
-export const recordLaunch = (slug: string, l: { id: string; agent: string; model: string | null; at: string }): void => append(slug, { kind: 'launch', ...l })
+export const recordLaunch = (slug: string, l: { id: string; agent: string; model: string | null; at: string }, exempt = false): void => append(slug, { kind: 'launch', ...l, ...(exempt ? { counted: false as const } : {}) })
+// The mandatory passes (the security review, the confirm) are recorded but never counted or denied. The check and the record happen under one lock so parallel launches cannot all pass at the limit.
+export const EXEMPT = /^rig (security review|confirm)/
+export function admitLaunch(slug: string, l: { id: string; agent: string; model: string | null; at: string }, exempt: boolean): string | null {
+  fs.mkdirSync(path.dirname(file(slug)), { recursive: true })
+  return withLock(file(slug), () => { const refusal = exempt ? null : budgetRefusal(slug); if (!refusal) recordLaunch(slug, l, exempt); return refusal })
+}
 export function recordDone(slug: string, id: string, resp: unknown): void {
   const r = (typeof resp === 'object' && resp !== null ? resp : {}) as Record<string, unknown>
   append(slug, { kind: 'done', id, ...parseReport(responseText(resp)), tokens: num(r.totalTokens), toolUses: num(r.totalToolUseCount), ms: num(r.totalDurationMs) })
@@ -41,6 +47,6 @@ export function agentRows(slug: string, root?: string): AgentRow[] {
 }
 
 export function budgetRefusal(slug: string): string | null {
-  if (readJsonl<Rec>(file(slug)).filter(r => r.kind === 'launch').length < LAUNCH_BUDGET) return null
+  if (readJsonl<Rec>(file(slug)).filter(r => r.kind === 'launch' && r.counted !== false).length < LAUNCH_BUDGET) return null
   return `launch budget: ${slug} has had ${LAUNCH_BUDGET} agent launches (the limit per change). Do not retry: open a draft PR with \`S pr ${slug} --draft --message "<type(scope): summary>"\` and say in it what is left`
 }
