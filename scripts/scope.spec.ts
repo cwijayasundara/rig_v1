@@ -7,6 +7,7 @@ import { defaultRegistry } from './registry.ts'
 import { type FileDiff } from './model.ts'
 import fs from 'node:fs'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { makeRepo, sdlc, hook, write, gitIn } from './testkit.ts'
 
 const fd = (file: string): FileDiff => ({ file, status: 'M', added: [{ n: 1, text: 'x' }], removed: [] })
@@ -126,4 +127,12 @@ test('scope: at ship the scope is read from the base branch, so a PR cannot wide
 test('scope: `sdlc sensors` says whether the active change is checked', () => {
   assert.match(sdlc(scoped('[src/cart/**]'), ['sensors']).stdout, /scope: cart-add is checked against src\/cart\/\*\*/)
   assert.match(sdlc(scoped('[]'), ['sensors']).stdout, /scope: not checked \(the active change has no scope: in its product intent\)/)
+})
+
+test('at CI the scope comes from the base only: a head-only intent scopes nothing', async () => {
+  const repo = makeRepo(); sdlc(repo, ['init']); gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'rig'); gitIn(repo, 'checkout', '-qb', 'pr')
+  write(repo, '.rig/product/sprints/sprint-0/intents/cart-add.md', INTENT('[src/cart/**]')); gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'intent')
+  const at = (point: string) => JSON.parse(spawnSync('node', ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', `const m = await import(${JSON.stringify(path.resolve(import.meta.dirname, 'scope.ts'))}); console.log(JSON.stringify(m.scopeAt('cart-add', 'main', ${JSON.stringify(point)})))`], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo } }).stdout)
+  assert.equal(at('ci'), null, 'not on the base: no scope from the working tree at CI')
+  assert.deepEqual(at('ship').scope, ['src/cart/**'], 'ship keeps the working-tree fallback')
 })

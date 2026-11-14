@@ -264,7 +264,7 @@ export const WAIVERS = path.join(SDLC, 'waivers.jsonl')
 // A waiver covers only until it expires; an unreadable expiry counts as expired, and a row with none (from before expiry existed) never lapses.
 export const waiverLive = (w: { expires?: string }): boolean => !w.expires || Date.parse(w.expires) > Date.now()
 // Guards an agent's waiver request can never lift (a person runs /rig:waive): the request is refused, and a requested row is ignored wherever waivers are read.
-export const UNREQUESTABLE = ['plan-gate', 'harness-tamper', 'contracts', 'secrets']
+export const UNREQUESTABLE = ['plan-gate', 'plan-check', 'harness-tamper', 'contracts', 'secrets']
 export type Waiver = { slug: string; sensor: string; file: string; reason: string; by: string; at: string; expires?: string; requested?: boolean }
 
 // ---------- the turn gate (.rig/.gate) ----------

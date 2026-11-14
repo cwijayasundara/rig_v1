@@ -11,9 +11,9 @@ import { readBaseline, snapshot, turnDiff, fileDiff, branchDiff, showAt, fileLin
 import { runCommand, recordRun, normCmd } from './runs.ts'
 import { withBaseTree } from './basetree.ts'
 import { activeSlug, approvalState, changeType, unapprovedBuild } from './lifecycle.ts'
-import { approvedLayers } from './arch.ts'
+import { approvedLayers } from './arch.ts'; import { planCheck, untrackedFindings } from './plancheck.ts'; import { proofFindings } from './proof.ts'
 import { journeyFindings, draftApps } from './app.ts'
-import { scopeFindings, intentScope } from './scope.ts'
+import { scopeFindings, intentScope, scopeAt } from './scope.ts'
 import { RATCHET_FILE, lastNumber, loadRatchets, judge, tighten, type RatchetWrite } from './counts.ts'
 import { isRegistryShape, parseRegistry, defaultRegistry, updateKnownRed, activeSensors, commandFor, builtinOptions, type Changed, inertSensors, type Registry, type RegistrySensor, type Cadence, type Inert } from './registry.ts'
 import { frozenFindings, runContracts } from './contracts.ts'
@@ -163,7 +163,7 @@ function applyWaivers(findings: Finding[], slugs: string[], ci?: { base: string 
   const waivers = readJsonl<Waiver>(WAIVERS).filter(w => slugs.includes(w.slug) && scopes.get(w.slug) !== null && waiverLive(w) && !(w.requested && UNREQUESTABLE.includes(w.sensor)))
   // A file-less size finding (the diff total, the hard cap) has no file for the CI scope to test, so a `size *` waiver of a change this PR adds covers it (its row still needs an independent approval).
   // Never waivable: plan-gate (only a person's approval clears it); at CI also contracts and harness-tamper on harness files.
-  const never = (f: Finding): boolean => f.sensor === 'plan-gate' || f.sensor === 'draft' || (Boolean(ci) && ((f.sensor === 'harness-tamper' && (!f.file || isProtected(f.file))) || f.sensor === 'contracts'))
+  const never = (f: Finding): boolean => f.sensor === 'plan-gate' || f.sensor === 'plan-check' || f.sensor === 'draft' || (Boolean(ci) && ((f.sensor === 'harness-tamper' && (!f.file || isProtected(f.file))) || f.sensor === 'contracts'))
   const waived = (f: Finding): boolean => waivers.some(w => w.sensor === f.sensor && (w.file === '*' || w.file === f.file) && !never(f) && ((f.sensor === 'size' && !f.file) || (scopes.get(w.slug) as (file: string | undefined) => boolean)(f.file)))
   const kept = findings.filter(f => !waived(f))
   return { findings: kept, blocks: kept.filter(f => f.severity === 'block'), warns: kept.filter(f => f.severity === 'warn'), waived: findings.length - kept.length }
@@ -233,7 +233,7 @@ const onDisk = (f: string): string => read(path.join(ROOT, f))
 // The built-in diff sensors every point runs, edit time included; harness-tamper is added by the callers that judge a turn or more.
 function builtinFindings(diffs: FileDiff[], config: Registry, rules: Rule[], lineCounts: Record<string, number>, point: Parameters<typeof size>[3], slugs: string[], touched: string[], after: (f: string) => string, base: string | null, planGate = true): Finding[] {
   // At ship and CI the scope comes from the base branch (the PR cannot edit it); a slug with no intent there falls back to the working tree.
-  const scopeOf = (slug: string): ReturnType<typeof intentScope> => ((point === 'ship' || point === 'ci') && base ? intentScope(slug, rel => showAt(base, rel) ?? '', (git(['ls-tree', '-r', '--name-only', base, '--', '.rig/product/sprints']) ?? '').split('\n')) : null) ?? intentScope(slug)
+  const scopeOf = (slug: string): ReturnType<typeof intentScope> => scopeAt(slug, base, point)
   const pattern = withoutFixtures(diffs, config)
   return [
     ...testTamper(pattern, config), ...suppressions(pattern, config), ...layering(pattern, config), ...size(diffs, config, lineCounts, point),
@@ -248,13 +248,13 @@ export function runChecks(i: CheckInput): CheckResult {
   const after = i.after ?? onDisk
   const findings: Finding[] = [
     ...builtinFindings(diffs, config, i.rules, fileLines(diffs.filter(d => d.status !== 'D').map(d => d.file), after), point, i.slugs, diffs.flatMap(d => d.from ? [d.file, d.from] : [d.file]), after, i.base, i.gates?.plan ?? true),
-    ...harnessTamper(diffs, { point, toolEdited: i.toolEdited, before: i.before, after }),
+    ...harnessTamper(diffs, { point, toolEdited: i.toolEdited, before: i.before, after }), ...(i.point === 'ci' && i.gates?.plan === false ? untrackedFindings(diffs, config.paths) : []),
   ]
   // A diff whose plan the person approved is big by design: the diff-size limit warns instead of blocking.
   if (i.slugs.length && i.slugs.every(s => approvalState(s) === 'approved')) {
     for (const f of findings) if (f.sensor === 'size' && !f.file) f.severity = 'warn'
   }
-  for (const slug of i.slugs) findings.push(...freezeFindings(slug, point, i.base, config))
+  for (const slug of i.slugs) findings.push(...freezeFindings(slug, point, i.base, config), ...(i.point === 'ci' && i.gates?.plan === false ? planCheck(slug, { base: i.base ?? null, ci: true }) : []), ...(i.point === 'ship' || i.point === 'ci' ? proofFindings(slug, config, i.point === 'ci' ? i.base : null) : []))
   if (point !== 'stop') for (const slug of i.slugs) findings.push(...shipVerdicts(slug, config, diffs, i.base, i.budgetMs, i.gates?.plan ?? true))
   // Contracts (spec §6): ship and CI always, commit always, a turn only when it reaches a contract. Validate gates run.
   const c = config.contracts

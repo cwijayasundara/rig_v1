@@ -21,7 +21,7 @@ import { cmdUpgrade } from './upgrade.ts'
 import { cmdBaseline } from './initbaseline.ts'
 import { cmdVerify, cmdHoldout } from './verify.ts'; import { cmdMutscore } from './mutscore.ts'
 import { cmdHooks, cmdCheckPush } from './githooks.ts'
-import { cmdPr } from './pr.ts'
+import { cmdPr } from './pr.ts'; import { cmdPlanCheck } from './plancheck.ts'
 import { cmdCarry } from './carry.ts'
 import { treeStamp } from './stamp.ts'
 import { declareStack } from './stackinit.ts'
@@ -453,7 +453,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   ready: cmdReady,
   'start-brief': () => cmdStartBrief(),
   superpowers: () => out(superpowersWarning() || 'superpowers: ok'),
-  pr: cmdPr, carry: cmdCarry,
+  pr: cmdPr, carry: cmdCarry, 'plan-check': cmdPlanCheck,
   run: () => cmdRun(),
   verify: cmdVerify, holdout: cmdHoldout, mutscore: cmdMutscore,
   hook: cmdHook,

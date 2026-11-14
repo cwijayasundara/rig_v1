@@ -3,10 +3,11 @@
 // the intent; at edit and Stop it is read from the working tree, for quick feedback. A change whose slug has no product intent, or whose
 // intent has no `scope:`, is simply not checked (`sdlc sensors` says so).
 import path from 'node:path'
-import { ROOT, read, fmList } from './core.ts'
+import { ROOT, read, fmList, git } from './core.ts'
 import { matchesAny, isTest, type FileDiff, type Finding } from './model.ts'
 import type { Paths } from './registry.ts'
 import { intentRelOf } from './product.ts'
+import { showAt } from './diffs.ts'
 
 // readIntent: how to get the intent's text (the working tree, or the base ref); files: the repo's files at that ref, to find the intent's sprint folder (default: the working tree).
 export function intentScope(slug: string, readIntent: (rel: string) => string = rel => read(path.join(ROOT, rel)), files?: string[]): { scope: string[]; touches: string[] } | null {
@@ -17,8 +18,14 @@ export function intentScope(slug: string, readIntent: (rel: string) => string = 
   return scope.length ? { scope, touches: fmList(text, 'touches') } : null
 }
 
+// At ship the scope is the base's, with the working tree as the fallback; at CI it is the base's alone, so a PR cannot chart its own scope (plan-check blocks a head-only intent).
+export function scopeAt(slug: string, base: string | null, point: string): ReturnType<typeof intentScope> {
+  const onBase = (point === 'ship' || point === 'ci') && base ? intentScope(slug, rel => showAt(base, rel) ?? '', (git(['ls-tree', '-r', '--name-only', base, '--', '.rig/product/sprints']) ?? '').split('\n')) : null
+  return onBase ?? (point === 'ci' && base ? null : intentScope(slug))
+}
+
 // A plain path (no wildcard) names the file or the directory under it.
-const expand = (globs: string[]): string[] => globs.flatMap(g => (g.includes('*') ? [g] : [g, `${g}/**`]))
+export const expand = (globs: string[]): string[] => globs.flatMap(g => (g.includes('*') ? [g] : [g, `${g}/**`]))
 // Repo-root configuration (manifests, lockfiles, settings) and CI files are not product code; a pack's ignore globs name its docs and lockfiles.
 const ROOT_CONFIG = /^[^/]+\.(json|toml|ya?ml|cfg|ini|txt|lock)$|^\.github\//
 

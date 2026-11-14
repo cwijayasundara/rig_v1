@@ -1104,3 +1104,31 @@ test('an answered marker in an intent is a person\'s answer, not a retired marke
   write(repo, `${P}/sprints/sprint-1/intents/alpha.md`, intent(1).replace('- B1 (FR-1): works', '- B1 (FR-1, AC-1.1, AC-1.2, DR-1): Python 3.11 (answered at chart)'))
   assert.deepEqual((call('return C.chartFindings(1, false)') as { rule: string }[]).filter(f => f.rule === 'marker-legacy'), [])
 })
+
+// W2 N3: every external dependency names a deterministic stand-in, its live switch and an ADR that exists.
+const INT_HEAD = '| Dependency | Kind | Contract | Stand-in | Live switch | ADR |\n|---|---|---|---|---|---|\n'
+const standin = async (rows: string, adrs: string[] = ['0001']): Promise<string[]> => {
+  const { architectureProblems } = await import('./chartcheck.ts')
+  const arch = ARCH_BODY.replace('## Concerns', `## Integrations\n\n${rows ? INT_HEAD + rows + '\n' : ''}\n## Concerns`)
+  return architectureProblems(arch, '', 1, adrs).filter(f => f.rule === 'arch-standin').map(f => f.message)
+}
+const EXT = '| payments | external | api/pay.yaml | recorded (tests/fakes/pay) | PAY_LIVE=1 | ADR-0001 |'
+
+test('external row without a stand-in blocks with arch-standin', async () => {
+  const m = await standin('| payments | external | api/pay.yaml |  | PAY_LIVE=1 | ADR-0001 |\n| mail | external | api/mail.yaml | scripted | - | ADR-0001 |')
+  assert.equal(m.length, 2)
+  assert.match(m[0]!, /payments.*Stand-in/); assert.match(m[1]!, /mail.*Live switch/)
+})
+
+test('external row citing a missing ADR blocks', async () => {
+  assert.match((await standin(EXT.replace('ADR-0001', 'ADR-0009')))[0] ?? '', /ADR-0009/)
+  assert.match((await standin(EXT.replace('ADR-0001', '-')))[0] ?? '', /ADR/)
+})
+
+test('complete external row passes; internal rows need no stand-in', async () => {
+  assert.deepEqual(await standin(`${EXT}\n| ledger | internal | api/ledger.yaml |  |  |  |`), [])
+})
+
+test('no Integrations table passes', async () => {
+  assert.deepEqual(await standin(''), [])
+})

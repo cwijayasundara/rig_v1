@@ -171,7 +171,7 @@ export function chartFindings(n: number, withCases: boolean): ChartFinding[] {
     for (const s of mine.filter(x => !listed.includes(x))) found.push({ rule: 'design-intent', severity: 'block', where: s, message: `${s} is an intent of sprint ${n} but the design doc's ## Intents does not list it` })
   }
   const arch = uncomment(read(archPath))
-  found.push(...architectureProblems(arch, read(prdPath(n)), n))
+  found.push(...architectureProblems(arch, read(prdPath(n)), n, walk(path.join(PRODUCT, 'adr')).flatMap(f => /^(\d+)-/.exec(path.basename(f))?.[1] ?? [])))
   found.push(...accessProblems(parseAccess(arch), allIntents().map(i => i.slug), cases, intentsOf(n).map(i => i.slug)))
   for (const q of openQuestions(arch)) found.push({ rule: 'open-question', severity: 'block', where: 'architecture', message: `architecture.md has an open question: ${q}` })
   for (const l of section(arch, 'Concerns').split('\n').map(x => x.replace(/^\s*[-*]\s*/, '').trim()).filter(x => x && !/^none\.?$/i.test(x) && !/^\[x\]/i.test(x) && !/\(resolved\)/i.test(x))) found.push({ rule: 'concern', severity: 'block', where: 'architecture', message: `unresolved concern: ${l}` })

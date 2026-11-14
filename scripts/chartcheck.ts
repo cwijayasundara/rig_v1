@@ -330,7 +330,7 @@ const asciiDiagram = (body: string): boolean =>
 
 // What architecture.md must hold to be an architecture document and not a summary: the stack by name, a diagram, the code structure,
 // a key flow, a tactic for every NFR the PRD defines, and this sprint's row in the history. Pure over text.
-export function architectureProblems(arch: string, prd: string, sprint: number): ChartFinding[] {
+export function architectureProblems(arch: string, prd: string, sprint: number, adrs: string[] | null = null): ChartFinding[] {
   // A `#` line inside a fence (a tree, a shell snippet) must not end its section.
   const text = fencedText(arch)
   const out: ChartFinding[] = []
@@ -347,6 +347,14 @@ export function architectureProblems(arch: string, prd: string, sprint: number):
   const tactics = section(text, 'Quality tactics')
   for (const id of prdIds(prd).filter(x => x.startsWith('NFR-'))) if (!new RegExp(`\\b${id}\\b`).test(tactics)) add('arch-nfr', `## Quality tactics has no row for ${id}, which the PRD defines`)
   if (!rows('Sprint history').some(r => Number(/^(?:sprint[\s-]*)?(\d+)\.?$/i.exec(r[0] ?? '')?.[1]) === sprint)) add('arch-history', `## Sprint history has no row for sprint ${sprint}`)
+  // `| Dependency | Kind | Contract | Stand-in | Live switch | ADR |`: an external dependency (no table: nothing to check) runs on a deterministic stand-in, says how to go live, and cites an ADR that exists.
+  const blank = (s: string | undefined): boolean => !s || /^[-–—]*$/.test(norm(s))
+  for (const r of rows('Integrations').filter(r => r[1]?.toLowerCase() === 'external')) {
+    const adr = /ADR-(\d+)/i.exec(r[5] ?? '')?.[1]
+    for (const [i, col] of [[3, 'Stand-in'], [4, 'Live switch']] as const) if (blank(r[i])) add('arch-standin', `## Integrations: external dependency ${r[0]} has no ${col}: name a scripted, recorded or local fake stand-in, where it lives and the env var that switches to live`)
+    if (adr === undefined) add('arch-standin', `## Integrations: external dependency ${r[0]} cites no ADR (ADR-NNNN) for its stand-in`)
+    else if (adrs && !adrs.some(a => Number(a) === Number(adr))) add('arch-standin', `## Integrations: external dependency ${r[0]} cites ADR-${adr}, which is not under adr/`)
+  }
   return out
 }
 
