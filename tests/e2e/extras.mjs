@@ -11,10 +11,12 @@ import { PHASE as S3, assertDelete, staleCheck, contractChecks } from './phases/
 import { runDeploy } from './phases/s4-deploy.mjs'
 import { runPolicy } from './phases/s5-policy.mjs'
 import { runChart } from './phases/s6-chart.mjs'
+import { runRigOn } from './phases/s7-rig-on.mjs'
+import { runBrownfield } from './phases/s8-brownfield.mjs'
 import { scriptedDriver } from './driver/scripted.mjs'
 
 // A group that ran fewer checks than this lost coverage silently (an assertion call deleted or skipped).
-const FLOOR = { 'S0 install': 14, 'S1 brief': 3, 'S2 ': 22, 'S3 ': 27, 'S4 deploy': 9, 'S5 policy': 7, 'S6 chart': 12 }
+const FLOOR = { 'S0 install': 14, 'S1 brief': 3, 'S2 ': 22, 'S3 ': 27, 'S4 deploy': 9, 'S5 policy': 7, 'S6 chart': 12, 'S7 ': 21, 'S8 brownfield cjs': 38, 'S8 brownfield py': 21 }
 
 export async function runExtras({ out }) {
   const sb = createSandbox({ name: 'extras', out })
@@ -26,7 +28,7 @@ export async function runExtras({ out }) {
   await assertDelete(s3.checks, sb, s3.slug)
   results.push(s3.checks)
   mergeToMain(sb, s3.slug)
-  results.push(...await runDeploy(sb), await runPolicy(sb), await runChart(sb))
+  results.push(...await runDeploy(sb), await runPolicy(sb), await runChart(sb), await runRigOn(sb), ...await runBrownfield(out))
   const lost = Object.entries(FLOOR).filter(([k, n]) => (results.find(c => c.title.startsWith(k))?.results.length ?? 0) < n).map(([k, n]) => `${k}: fewer than ${n} checks ran`)
   return { results, lost }
 }
