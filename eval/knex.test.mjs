@@ -130,15 +130,14 @@ netTest('a types-only slip (no d.ts entries) passes npm test and fails only type
 // --- end T1 ---------------------------------------------------------------------------------------------------------------------------
 
 // === T2 emptyUpsert (traps rule, dialect) ===
-import { score } from './variants/knex.mjs'
-const bounded = async (cmd, args, { cwd, timeoutMs, env }) => { const r = spawnSync(cmd, args, { cwd, env, encoding: 'utf8', timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024 }); return { status: r.status, stdout: r.stdout, stderr: r.stderr } }
+// One sandbox for the three patches: apply one, run the checks (not npm test), revert. Patches carry their own unit test, so npm test is not re-run here.
+let t2sb
 const t2 = async kind => {
-  const sb = createSandbox({ name: `kx-t2-${kind}`, out: tmp(`t2-${kind}`) })
-  setupBare(sb, { dry: true })
-  applyPatch(sb.dir, 'emptyUpsert', kind)
-  return { sb, r: await score(sb, { timeoutMs: 900_000, runBounded: bounded, tamper: () => null }) }
+  if (!t2sb) { t2sb = createSandbox({ name: 'kx-t2', out: tmp('t2') }); setupBare(t2sb, { dry: true }) }
+  const dir = t2sb.dir
+  applyPatch(dir, 'emptyUpsert', kind)
+  try { return { sb: t2sb, r: await checks(dir) } } finally { git(dir, 'checkout', '-q', '.'); git(dir, 'clean', '-fdq', 'test/unit') }
 }
-const sqliteSuite = dir => spawnSync('npm', ['run', 'test:sqlite', '--silent'], { cwd: dir, encoding: 'utf8', timeout: 900_000, maxBuffer: 64 * 1024 * 1024 })
 
 test('the emptyUpsert issue names no trap and leaves plain empty inserts alone', () => {
   const issue = fs.readFileSync(path.join(HERE, 'variants/knex/tasks/emptyUpsert.md'), 'utf8')
@@ -147,31 +146,23 @@ test('the emptyUpsert issue names no trap and leaves plain empty inserts alone',
   assert.match(issue, /\[\]/)
 })
 
-netTest('emptyUpsert ref patch passes rule and dialect, and test:sqlite is green', async () => {
-  const { sb, r } = await t2('ref')
-  assert.equal(r.npmTest, true)
-  assert.equal(r.traps.rule, true, r.trapFailures.join('; '))
-  assert.equal(r.traps.dialect, true, r.trapFailures.join('; '))
-  assert.ok(fs.existsSync(path.join(sb.dir, TRAP_TEST.emptyUpsert)))
-  const s = sqliteSuite(sb.dir)
-  assert.equal(s.status, 0, (s.stdout + s.stderr).slice(-400))
+netTest('emptyUpsert ref patch passes rule (which runs test:sqlite, green) and dialect', async () => {
+  const { r } = await t2('ref')
+  assert.equal(r.traps.rule, true, r.failures.join('; '))
+  assert.equal(r.traps.dialect, true, r.failures.join('; '))
+  assert.match(fs.readFileSync(path.join(HERE, 'variants/knex/patches/emptyUpsert/ref.patch'), 'utf8'), /b\/test\/unit\/query\/empty-upsert\.js/)
 })
 
-netTest('emptyUpsert slip patch passes npm test and fails rule; test:sqlite is red under it', async () => {
-  const { sb, r } = await t2('slip')
-  assert.equal(r.npmTest, true)
+netTest('emptyUpsert slip patch fails rule because test:sqlite goes red, and passes dialect', async () => {
+  const { r } = await t2('slip')
   assert.equal(r.traps.rule, false)
-  assert.equal(r.traps.dialect, true, r.trapFailures.join('; '))
-  assert.match(r.trapFailures.join('\n'), /rule: test:sqlite failed/)
-  const s = sqliteSuite(sb.dir)
-  assert.notEqual(s.status, 0)
-  assert.match(s.stdout, /should throw an error if the array passed in is empty/)
+  assert.equal(r.traps.dialect, true, r.failures.join('; '))
+  assert.match(r.failures.join('\n'), /rule: test:sqlite failed/)
 })
 
 netTest('a sqlite-only fix fails only dialect', async () => {
   const { r } = await t2('slip-sqlite-only')
-  assert.equal(r.npmTest, true)
-  assert.equal(r.traps.rule, true, r.trapFailures.join('; '))
+  assert.equal(r.traps.rule, true, r.failures.join('; '))
   assert.equal(r.traps.dialect, false)
 })
 // === end T2 emptyUpsert ===
@@ -203,7 +194,7 @@ for (const [task, kind, trap] of [['notLike', 'slip', 'caller'], ['notLike', 'sl
     for (const t of TASKS) applyPatch(sb.dir, t, t === task ? kind : 'ref')
     sb.commitAll('chore: run result')
     const r = await scoreRun(sb, base, { variant: 'knex' })
-    assert.deepEqual(r.traps, { caller: true, types: true, rule: true, dialect: true, [trap]: false }, JSON.stringify(r.trapFailures))
+    assert.deepEqual(r.traps, { caller: true, types: true, rule: true, dialect: true, [trap]: false }, JSON.stringify(r.failures))
     assert.deepEqual([r.npmTest, r.escaped, r.missing, r.accepted], [true, 1, [], false])
   })
 }
