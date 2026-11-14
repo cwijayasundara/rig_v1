@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { uncoveredTestScripts, testScriptFindings } from './testscripts.ts'
+import { uncoveredTestScripts, testScriptFindings, scriptSensor } from './testscripts.ts'
 import { defaultRegistry, type Registry } from './registry.ts'
 
 const repo = (scripts: Record<string, string> | null): string => {
@@ -56,4 +56,14 @@ test('check --at ship blocks on the uncovered script and passes once a sensor ru
   gitIn(repo, 'commit', '-qam', 'sensor')
   const ok = sdlc(repo, ['check', '--at', 'ship'])
   assert.doesNotMatch(ok.stdout + ok.stderr, /test-scripts/)
+})
+
+test('scriptSensor: turn when the one run finished within 15 000 ms and did not time out, pass or fail; else ci', () => {
+  assert.equal(scriptSensor('test:all', { exit: 0, ms: 14_999, timedOut: false }).cadence, 'turn')
+  assert.equal(scriptSensor('test:all', { exit: 0, ms: 15_001, timedOut: false }).cadence, 'ci')
+  assert.equal(scriptSensor('test:all', { exit: 1, ms: 100, timedOut: false }).cadence, 'turn')
+  assert.equal(scriptSensor('test:all', { exit: 1, ms: 15_001, timedOut: false }).cadence, 'ci')
+  assert.equal(scriptSensor('test:all', { exit: 0, ms: 10, timedOut: true }).cadence, 'ci')
+  assert.equal(scriptSensor('test:all', { exit: null, ms: 10, timedOut: true }).cadence, 'ci')
+  assert.deepEqual({ ...scriptSensor('test:all', { exit: 0, ms: 1, timedOut: false }), guide: '' }, { id: 'script-test-all', cmd: 'npm run test:all', cadence: 'turn', blocks: true, count: 'exit', guide: '' })
 })

@@ -173,8 +173,8 @@ test("start keeps an existing test's rule: a contradiction is an open question a
   assert.match(text('skills/plan/SKILL.md'), /Grep every test directory, also those only a separate script runs/)
 })
 
-test('init registers every test script the baseline names as uncovered, at cadence ci', () => {
-  assert.match(text('skills/init/SKILL.md'), /For each `WARNING test script` line it prints, add a command sensor that runs that script at cadence `ci`/)
+test('init leaves every test script no sensor runs to the baseline, which registers it', () => {
+  assert.match(text('skills/init/SKILL.md'), /registers each test script no sensor runs as a command sensor itself \(cadence `turn` when the script passes fast, `ci` otherwise/)
 })
 
 // The 2026-11-14 brownfield dry run: commander's typed `eslint .` failed on all of the vendored .rig/bin/*.ts (167 errors).

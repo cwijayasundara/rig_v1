@@ -123,3 +123,14 @@ is nothing to fix and no way to tell which new item earns its cost.
     path) and stopped at the conversation step to ask 5 questions, in an unattended session. Sessions:
     `haiku-rig-on-{2,3}/sessions/00-rig-on.jsonl`.
   - The rig-start `race` escape is a workflow bug. It is fixed only if rig-on shows the same escape, since rig-start is frozen.
+- **2026-11-14, two rig-on fixes after W4, Haiku on `hard`, 3 runs each** (`eval/results/2026-11-14-{routing,rule,nudge}-haiku-on.jsonl`).
+
+  | Fix | Accepted | `rule` escaped | $ a run |
+  |---|---|---|---|
+  | Routing: SessionStart and init's CLAUDE.md no longer send every prompt to `/rig:start` (`549b027`) | 2 of 3, 3 of 3 built | 1 of 3 | 0.19 |
+  | Baseline registers unsensed test scripts, but a red one at ci (`6688eed`) | 0 of 3 | 3 of 3 | 0.16 |
+  | A fast red suite runs every turn as known red, and the Stop gate shows it to the model once a session (`aaedb77`) | 3 of 3 | 0 of 3 | 0.19 |
+
+  - The rule's suite was red at baseline (the task builds the endpoint it tests), so it registered at ci and never ran in a rig-on
+    session. With the fix, the once-a-session Stop block fired in all 3 runs, and each run made the suite pass.
+

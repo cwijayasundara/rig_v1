@@ -275,6 +275,14 @@ function hookStop(input: HookInput = {}): { halt: boolean; warn?: string } {
   gate.last = summarize(findings)
   // Write back only what this hook owns: edits recorded while the checks ran must survive.
   const save = (): void => updateGate(g => { g.last = gate.last; if (gate.passed.main) g.passed.main = gate.passed.main; if (gate.blocks.main) g.blocks.main = gate.blocks.main; g.trees = gate.trees })
+  const session = input.session_id ?? 'default'
+  const red = findings.filter(f => f.knownRed)
+  // A suite red before the change and still red only warns, and a warning never reaches the model: say it once per session.
+  if (!blocks.length && mode === 'continuous' && red.length && !gate.nudged.includes(session)) {
+    updateGate(g => { g.last = gate.last; g.nudged = [...g.nudged, session] })
+    out(JSON.stringify({ decision: 'block', reason: `sdlc quality gate: these suites were red before this change and still fail. If your change touches what they test, make them pass; never edit or skip the tests. If it does not, finish and say so in one line.\n${formatFindings(red.map(f => ({ ...f, severity: 'block' as const })))}` }))
+    return { halt: true }
+  }
   if (!blocks.length) {
     gate.passed.main = hash
     if (stamp && !treePassed && mode === 'continuous') gate.trees = [...gate.trees, stamp].slice(-PASSED_TREES)
