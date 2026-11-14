@@ -44,3 +44,12 @@
   - D1: keep `gates.plan: true` as an opt-in;
   - D2: any independent approver grants a waiver;
   - D3: fix the queue at rung 2.
+
+## Results
+
+- **2026-11-14, W0 exit gate:** failed, so the kill rule applies (`eval/results/2026-11-14-traps-bare.jsonl`, seed 172907).
+  - Bare Sonnet and bare Haiku each ran 3 times on `traps`. All 6 runs scored 47/47 with 0 of 5 traps escaped, for $1.43 in total
+    (Sonnet $0.42 a run, Haiku $0.05 a run).
+  - The traps were caught because their rules sit in short repo docs that the brief points to, inside a repo small enough to read
+    whole.
+  - W3's rig arms are not run until a harder set lets at least 2 traps through.
