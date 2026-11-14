@@ -41,7 +41,7 @@ import { registerContracts } from './contracts.ts'
 import { cmdMaintain } from './maintain.ts'
 import { cmdReadiness } from './readiness.ts'
 import { cmdAutonomy, initAutonomy } from './autonomy.ts'
-import { cmdRisk, cmdWeight, cmdRouteCheck } from './risk.ts'
+import { cmdRisk, cmdWeight, cmdRouteCheck, cmdModels } from './risk.ts'
 import { cmdClaims } from './claims.ts'
 import { protect } from './protect.ts'; import { cmdAudit } from './audit.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'
@@ -478,7 +478,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   readiness: cmdReadiness, autonomy: cmdAutonomy, audit: cmdAudit,
   risk: cmdRisk,
   claims: cmdClaims,
-  weight: cmdWeight, 'route-check': cmdRouteCheck, 'intent-record': cmdIntentRecord, 'intent-adjudicate': cmdIntentAdjudicate, off: cmdOff, on: cmdOn,
+  weight: cmdWeight, models: cmdModels, 'route-check': cmdRouteCheck, 'intent-record': cmdIntentRecord, 'intent-adjudicate': cmdIntentAdjudicate, off: cmdOff, on: cmdOn,
   'intent-recheck': cmdIntentRecheck, 'tests-freeze': cmdTestsFreeze, 'intent-project': cmdIntentProject,
 }
 

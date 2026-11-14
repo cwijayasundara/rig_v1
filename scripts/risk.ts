@@ -124,13 +124,32 @@ export function predictWeight(i: { slug: string; radius: string[]; access: Acces
   return { weight: reasons.length ? 'full' : 'light', reasons: reasons.length ? reasons : ['no always-human path or access action in the blast radius'] }
 }
 
+export function weightOf(slug: string): Weight {
+  const radius = blastRadius(read(path.join(CHANGES, slug, 'spec.md'))) ?? []
+  const asked = frontmatter(read(path.join(CHANGES, slug, 'intent.md'))).data.weight === 'full'
+  return predictWeight({ slug, radius, access: parseAccess(read(archPath)), risk: parseRegistry(read(path.join(ROOT, SENSORS_JSON))).registry.risk, asked })
+}
 export function cmdWeight(args: Args): void {
   const slug = args.pos[0] ? checkSlug(args.pos[0]) : activeSlug()
   if (!slug) return fail('usage: weight [<slug>] [--json] (no slug and no active change)')
-  const radius = blastRadius(read(path.join(CHANGES, slug, 'spec.md'))) ?? []
-  const asked = frontmatter(read(path.join(CHANGES, slug, 'intent.md'))).data.weight === 'full'
-  const w = predictWeight({ slug, radius, access: parseAccess(read(archPath)), risk: parseRegistry(read(path.join(ROOT, SENSORS_JSON))).registry.risk, asked })
+  const w = weightOf(slug)
   out(args.opt.json ? JSON.stringify(w) : [`weight: ${w.weight}`, ...w.reasons.map(x => `- ${x}`)].join('\n'))
+}
+
+// The model pair for a change (proposal 2026-11-14 D1): scripts decide, models only report. A light change that outgrew its plan (tier >= 1 after the diff) is evaluated on the full evaluator; the security pass is always on it.
+export type Pair = { weight: 'light' | 'full'; build: string; evaluate: string; security: string; fallback: string | null; reasons: string[] }
+export function modelPair(weight: 'light' | 'full', tier: 0 | 1 | 2 | null, models: Registry['models']): Pair {
+  const p = models[weight]
+  const grew = weight === 'light' && tier !== null && tier >= 1
+  return { weight, build: p.build, evaluate: grew ? models.full.evaluate : p.evaluate, security: models.full.evaluate, fallback: weight === 'light' ? models.full.build : null, reasons: grew ? [`tier ${tier} after the diff: the change outgrew its light plan`] : [] }
+}
+export function cmdModels(args: Args): void {
+  const slug = args.pos[0] ? checkSlug(args.pos[0]) : activeSlug()
+  if (!slug) return fail('usage: models [<slug>] [--after-diff] [--json] (no slug and no active change)')
+  const registry = parseRegistry(read(path.join(ROOT, SENSORS_JSON))).registry
+  const tier = args.opt['after-diff'] ? riskOf(branchDiff(defaultBase() ?? 'HEAD').filter(d => ships(slug)(d.file)), [slug], registry, parseAccess(read(archPath)), false, true).tier : null
+  const m = modelPair(weightOf(slug).weight, tier, registry.models)
+  out(args.opt.json ? JSON.stringify(m) : [`weight: ${m.weight}`, `build: ${m.build}`, `evaluate: ${m.evaluate}`, `security: ${m.security}`, ...(m.fallback ? [`fallback: ${m.fallback}`] : []), ...m.reasons.map(x => `- ${x}`)].join('\n'))
 }
 
 // The start path (quick or full) for a free-text request: see route.ts. Flags go after the request, as parseArgs reads them.
