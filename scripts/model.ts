@@ -8,7 +8,7 @@ export type Severity = 'block' | 'warn'
 // Every built-in and harness finding name; /rig:waive accepts these plus the registry's command sensor ids (a test keeps this in step with the sources).
 export const SENSOR_NAMES = [
   'test-tamper', 'suppression', 'layering', 'size', 'secrets', 'rules', 'harness-tamper',
-  'traceability', 'red-proof', 'unscanned', 'config', 'contracts', 'model-role', 'journeys', 'scope', 'proof',
+  'traceability', 'red-proof', 'unscanned', 'config', 'contracts', 'model-role', 'journeys', 'scope', 'proof', 'test-scripts',
 ]
 
 // The environment for an inner `claude`: none of the outer Claude Code session (its id, port, effort, entrypoint, messaging) or the test

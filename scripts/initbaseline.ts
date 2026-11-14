@@ -7,6 +7,7 @@ import { ROOT, SENSORS_JSON, BUDGET_MS, read, out, fail, sanctionWrites, skillRe
 import { runCommand } from './runs.ts'
 import { loadConfig } from './check.ts'
 import { updateKnownRed, activeSensors, commandFor } from './registry.ts'
+import { uncoveredTestScripts } from './testscripts.ts'
 
 
 export function cmdBaseline(): void {
@@ -32,5 +33,7 @@ export function cmdBaseline(): void {
     fs.writeFileSync(file, updateKnownRed(read(file), added, []))
     sanctionWrites([SENSORS_JSON])
   }
-  out([...rows, '', `known red: ${[...known, ...added].join(', ') || 'none'}${added.length ? ' (written to .rig/sensors.json)' : ''}`].join('\n'))
+  // A test script no sensor runs is a rule nothing checks: init registers it now (cadence ci, so ship runs it), or ship blocks later.
+  const loose = uncoveredTestScripts(registry, ROOT).map(n => `WARNING test script "${n}" is run by no sensor: add a command sensor for it (cadence ci) to ${SENSORS_JSON}; ship blocks until one runs it`)
+  out([...rows, '', `known red: ${[...known, ...added].join(', ') || 'none'}${added.length ? ' (written to .rig/sensors.json)' : ''}`, ...loose].join('\n'))
 }

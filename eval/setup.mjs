@@ -13,6 +13,7 @@ import { briefFor as trapsBrief, dryOverlay as trapsOverlay, SEED as TRAPS_SEED,
 import { briefFor as hardBrief, dryOverlay as hardOverlay, SEED as HARD_SEED } from './variants/hard.mjs'
 import { applyAblation } from './ablation.mjs'
 import * as brownfield from './variants/brownfield.mjs'
+import { withScriptSensors } from './lib/scriptsensors.mjs'
 export { BARE_PROMPT as BARE_PROMPT_BROWNFIELD } from './variants/brownfield.mjs'
 
 const BRIEF = path.resolve(import.meta.dirname, '../tests/e2e/prd/shop-brief.md')
@@ -103,7 +104,7 @@ export async function setupRig(sb, arm, { dry = false, variant = null, plugin = 
   if (b.failed.length) throw new Error(`brief failed: ${b.failed.map(f => f.name).join('; ')}`)
   // Rig is onboarded on the empty scaffold; the built shop lands after, in a commit of its own that tamper does not judge (run.mjs settles after setup).
   if (['delta', 'pricing', 'contract', 'traps'].includes(variant)) { seedBase(sb, variant); sb.commitAll(`chore: ${{ pricing: 'B1–B9', contract: 'B1–B12', traps: 'B1–B14' }[variant] ?? 'B1–B7'} baseline`) }
-  if (variant === 'hard') { seedBase(sb, variant); sb.commitAll('chore: B1–B14 baseline') }
+  if (variant === 'hard') { seedBase(sb, variant); sb.write('.rig/sensors.json', withScriptSensors(sb.read('.rig/sensors.json'), ['test:all'])); sb.commitAll('chore: B1–B14 baseline') }
   if (arm.arch) {
     // The person declares the layers and approves them once, before the sessions start: this arm differs only in that.
     sb.write('.rig/product/architecture.md', LAYERS)
