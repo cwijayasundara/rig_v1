@@ -160,7 +160,7 @@ All of it is committed: the repo is the record. CI (`rig-check`) re-judges it wi
 
 ## Status
 
-As of 2026-11-12. The current release is **v0.10.0** (tag `v0.10.0`, fixes on `release/0.10`); 0.9.x fixes go on `release/0.9`, 0.8.x on `release/0.8`, and 0.7.0 was never tagged. Work after it is on `main` under *Unreleased* in [CHANGELOG.md](CHANGELOG.md). Operations (switching rig off, outages, upgrades, support) are in [docs/runbook.md](docs/runbook.md). The measured progress against the goal is in [docs/GOAL.md](docs/GOAL.md).
+As of 2026-11-14. The current release is **v0.11.0** (tag `v0.11.0`, fixes on `release/0.11`); 0.10.x fixes go on `release/0.10`, 0.9.x on `release/0.9`, 0.8.x on `release/0.8`, and 0.7.0 was never tagged. Work after it is on `main` under *Unreleased* in [CHANGELOG.md](CHANGELOG.md). Operations (switching rig off, outages, upgrades, support) are in [docs/runbook.md](docs/runbook.md). The measured progress against the goal is in [docs/GOAL.md](docs/GOAL.md).
 
 | Area | State | Evidence |
 |---|---|---|
