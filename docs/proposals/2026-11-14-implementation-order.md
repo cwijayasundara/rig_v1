@@ -26,8 +26,9 @@
 | W2 | G1 `plan-check` and its CI recompute, N1 proof per behaviour, N3 deterministic stand-ins | Merged `08e8a95` |
 | W3, W3b, W3c | Eval arms; `hard` and `brownfield` variants; `rig-on` and `rig-start` arms | rig-on 0 escapes at 1/7 to 1/10 of rig-start's cost (Results) |
 | W3d | `check --at ship` blocks on an unsensed `test*` script; `/rig:start` keeps an existing test's rule; stand-in answers 2 rounds | Merged `40b4873` |
+| W4 | Arm settled: rig-on is the default and `rig-start` is frozen; Sonnet is the rig-on model; v0.11.0 | See Results |
 
-Not done from the old W3: the Haiku-light against Sonnet-light comparison (the D1 check). Not done from W0: the U0 UI task.
+The D1 check ran in W4 (rig-on, Haiku against Sonnet). Not done from W0: the U0 UI task.
 
 ## Why the order changed
 
@@ -107,3 +108,18 @@ is nothing to fix and no way to tell which new item earns its cost.
     - **Run 1 stopped at approve:** the plan review raised a sixth question after the five answered ones. Fix (W3d): the eval's
       stand-in answers up to 2 rounds (`tests/e2e/lib/flow.mjs`).
     - **One brownfield run was invalid (`sleep`):** it was retried once and then passed.
+- **2026-11-14, W4 on `hard`** (plugin `d535e70`; `eval/results/2026-11-14-w4-hard-{on,start}.jsonl`, seeds 963793 and 961788;
+  $8.15 in total).
+
+  | Arm | Accepted | Traps escaped | $ a run | Minutes a run |
+  |---|---|---|---|---|
+  | sonnet-rig-on | 3 of 3 | 0 of 15 | 0.70 | 3.9 |
+  | haiku-rig-on | 1 of 3 | 0 of 5 in the run that built; runs 2 and 3 built nothing | 0.08 | 2.3 |
+  | sonnet-rig (rig-start) | 0 of 1 | 1 of 5 (`race`); `rule` caught after W3d | 5.82 | 38.6 |
+
+  - W3d works: the `rule` trap that escaped twice in W3c was caught.
+  - Sonnet is the rig-on default (`docs/GOAL.md`).
+  - Harness bug, next fix with its own spec: on a plain prompt, Haiku rig-on routed the work to the full workflow (`feature`, full
+    path) and stopped at the conversation step to ask 5 questions, in an unattended session. Sessions:
+    `haiku-rig-on-{2,3}/sessions/00-rig-on.jsonl`.
+  - The rig-start `race` escape is a workflow bug. It is fixed only if rig-on shows the same escape, since rig-start is frozen.

@@ -7,6 +7,9 @@ what a measurement or a missing native feature says is needed to make the work c
 **Rig mode is on once rig is installed** (decided 2026-11-14). Like poteto mode, the guidelines and sensors fire on every turn in a
 rig repo, whether the person types `/rig-start` or just prompts. The full change workflow (spec, plan, frozen tests, review, the two
 human gates) is what a person opts into on top of that.
+**rig-on is the product default, and `rig-start` is frozen** (decided 2026-11-14, after rig-on caught every trap on `hard` and
+`brownfield` at 1/7 to 1/10 of rig-start's cost). No new gate, review or stage is added to the workflow until an eval shows rig-on
+letting through a defect that the workflow catches. Bug fixes to the workflow are still made. The rig-on default model is Sonnet (W4: Haiku rig-on accepted 1 of 3 runs on `hard`).
 "Production ready" means the evals below show that rig ships few escaped defects per dollar, with rig on: hidden checks on traps
 that unit tests pass and a running app fails (`eval/variants/hard.mjs`, `eval/variants/brownfield.mjs`). Every escape is a harness
 bug to fix. The arms are `rig-on` (rig installed, plain prompts) and `rig-start` (the full workflow), compared across rig versions,
