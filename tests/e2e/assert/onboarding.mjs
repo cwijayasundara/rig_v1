@@ -14,7 +14,7 @@ export async function assertOnboarding(c, sb, { lane, modules = [], testCmd = ['
   await c.check('CLAUDE.md exists, at most 120 lines', () => (claudeMd !== '' && claudeMd.split('\n').length <= 120) || `${claudeMd.split('\n').length} lines`)
   // init --full rewrites the line to the vendored command, /rig-start, the one the session-start hook and status name.
   await c.check('CLAUDE.md routes work to /rig-start', () =>
-    /sdlc routes all work in this repo: start with \/rig-start;/.test(claudeMd) || 'routing line missing or names another start command')
+    /rig is on in this repo: .*\/rig-start is the full workflow/.test(claudeMd) || 'routing line missing or names another start command')
 
   const reg = (() => { try { return JSON.parse(sb.read('.rig/sensors.json')) } catch { return {} } })()
   await c.check('sensors.json is a registry with a unit sensor', () => (Array.isArray(reg.sensors) && reg.sensors.some(s => s.id === 'unit' && /test/.test(s.cmd ?? ''))) || JSON.stringify(reg))

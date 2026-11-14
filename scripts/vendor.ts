@@ -147,10 +147,14 @@ const vendoredCommands = (text: string): string => text.replace(/\/rig:([a-z]+)\
 // CLAUDE.md's routing line and guides block are written while the plugin's /rig:x names are live; a standalone copy answers to /rig-x
 // (the folder name), so what a model reads agrees with the session-start hook and `status`. Only the routing line and the guides block
 // are touched; the block is re-hashed so the vendored `sync` finds it current, unless it was edited by hand (then `sync` reports it).
+// The pre-0.12 routing line (either spelling) migrates to the rig-on line, in the installed spelling.
+const OLD_ROUTING = /sdlc routes all work in this repo: start with \/rig[:-]start; use superpowers skills only when an sdlc skill names one\./
+const NEW_ROUTING = 'rig is on in this repo: work from the request as usual, and its checks and guides run on every turn; /rig:start is the full workflow (spec, plan, approval), used only when the person asks for it. Use superpowers skills only when an sdlc skill names one.'
+const NEW_ROUTING_VENDORED = NEW_ROUTING.replace('/rig:start', '/rig-start')
 function routeClaudeMd(written: string[]): void {
   const file = 'CLAUDE.md'
   const text = read(path.join(ROOT, file))
-  let routed = text.replace('start with /rig:start;', 'start with /rig-start;')
+  let routed = text.replace(OLD_ROUTING, NEW_ROUTING_VENDORED).replace(NEW_ROUTING, NEW_ROUTING_VENDORED)
   const block = findBlock(routed)
   if (block && sha(block.lines.join('\n')) === block.hash) routed = withBlock(routed, block.lines.map(vendoredCommands))
   if (routed !== text) writeFile(file, routed, written)

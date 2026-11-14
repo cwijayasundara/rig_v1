@@ -30,7 +30,7 @@ The fast lane for a person at the keyboard, so the "skip in unattended or cloud 
    - (c) conventions, gotchas, environment setup and things that must never be done.
 2. Verify the fast test command by running it once with quiet output.
 3. Write `CLAUDE.md` in **at most 120 lines**. Sections:
-   - a first line under the title, verbatim: `sdlc routes all work in this repo: start with /rig:start; use superpowers skills only when an sdlc skill names one.` Copy the start command exactly as printed here: `init --full` adapts it to a standalone install (a vendored skill answers to its folder name), so never change it by hand.
+   - a first line under the title, verbatim: `rig is on in this repo: work from the request as usual, and its checks and guides run on every turn; /rig:start is the full workflow (spec, plan, approval), used only when the person asks for it. Use superpowers skills only when an sdlc skill names one.` Copy the start command exactly as printed here: `init --full` adapts it to a standalone install (a vendored skill answers to its folder name), so never change it by hand.
    - What this is (3 lines)
    - Map (directories, one line each)
    - Commands

@@ -46,7 +46,7 @@ test('post-edit blocks secrets with exit 2', () => {
 test('session-start tells the model that sdlc routes work, not superpowers', () => {
   run(['init'])
   const ctx = JSON.parse(hook('session-start', {}).stdout).hookSpecificOutput.additionalContext
-  assert.match(ctx, /use superpowers skills only when an sdlc skill names one/)
+  assert.match(ctx, /Use superpowers skills only when an sdlc skill names one/)
 })
 
 test('session-start injects the active change and next command', () => {
@@ -238,6 +238,13 @@ test('SessionStart names the queue pick at rung 1 with no active change, and say
   write('.rig/autonomy.json', JSON.stringify({ rung: 1, since: '', deferred: [], history: [] }))
   assert.match(ctx(), /Queue: start add-item now with \/rig:start \.rig\/product\/sprints\/sprint-0\/intents\/add-item\.md \(rung 1\)/)
   assert.doesNotMatch(ctx(), /No active change/)
+})
+
+test('SessionStart at rung 0 with no active change says rig is on and /rig:start is opt-in, not that sdlc routes all work', () => {
+  write('.rig/sensors.json', JSON.stringify({ stack: 'x', paths: { tests: ['**/*.test.ts'] }, sensors: [] }))
+  const out = JSON.parse(hook('session-start', { session_id: 's9', source: 'startup' }).stdout).hookSpecificOutput.additionalContext
+  assert.doesNotMatch(out, /routes all work|Start one with/)
+  assert.match(out, /used only when the person asks for it/)
 })
 
 test('waive --request lets an agent ask for a waiver; the row is marked requested, and a plain agent waive still fails', () => {
