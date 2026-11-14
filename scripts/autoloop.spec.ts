@@ -31,7 +31,8 @@ test('pr fixes every review finding without asking, re-verifies with the script 
   assert.match(pr, /never a second review/i)
   assert.match(pr, /`S activate <slug>` so the hooks guard the fixes/)
   assert.match(pr, /After a stop in step 4 for an unplanned file[^.]*still ship review\.md/)
-  assert.match(pr, /same (check|finding) fails twice[^.]*stop/i)
+  assert.match(pr, /same check fails twice after the fix wave, request a waiver with `S waive --request <sensor> <file> <reason>`[^.]*continue to step 5 and `S pr`/i)
+  assert.match(pr, /plan-gate, harness-tamper, contracts and secrets there is no request: stop and show the check to the person/)
   assert.match(pr, /stop and tell the person[^.]*plan\.md does not list/i)
 })
 

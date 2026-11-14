@@ -159,5 +159,7 @@ test('build, pr and test carry the model pair, status line, draft-PR and waiver-
   assert.match(pr, /S pr <slug> --draft "<why>" --message/)
   for (const f of ['skills/build/SKILL.md', 'skills/pr/SKILL.md', 'templates/review-brief.md', 'templates/confirm-brief.md']) assert.ok(text(f).includes(status), f)
   assert.match(test_, /request a waiver with S waive --request <sensor> <file> <reason>[^\n]*the PR's approval grants it/)
+  assert.doesNotMatch(test_, /stop and show it to the person with that sentence/)
+  assert.match(test_, /plan-gate, harness-tamper, contracts and secrets there is no request: stop and show the finding to the person, who runs `\/rig:waive`/)
   for (const f of ['templates/readme-rig.md', 'templates/readme-rig-core.md']) assert.match(text(f), /S waive --request[\s\S]*rig-approved\.yml/, f)
 })
