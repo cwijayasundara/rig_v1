@@ -82,6 +82,7 @@ export function layerViolations(dir) {
 
 export async function scoreRun(sb, base, { timeoutMs = 300_000, sdlc = SDLC, variant = null, judgeFrom = base } = {}) {
   if (variant === 'brownfield') return (await import('./variants/brownfield.mjs')).score(sb, { timeoutMs, runBounded, tamper: () => tamperOf(sb, judgeFrom, sdlc) }) // upstream's suite and four hidden checks; no shop acceptance
+  if (variant === 'knex') return (await import('./variants/knex.mjs')).score(sb, { timeoutMs, runBounded, tamper: () => tamperOf(sb, judgeFrom, sdlc) }) // upstream's unit suite and four hidden checks; no shop acceptance
   const hard = variant === 'hard' // hard is scored as traps (same B1–B14 base) with its own module and trap names
   if (hard) variant = 'traps'
   // The sandbox's env: the runner's own (a test context, a CI event path) must not leak into the model's suite.
