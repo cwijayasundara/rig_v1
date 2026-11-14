@@ -67,6 +67,7 @@ test('hard: both arms get the same brief and the same base; the numbers are stat
   assert.deepEqual(files(rig.dir), files(bare.dir), 'both arms start from the same seed files')
   const scripts = JSON.parse(rig.read('package.json')).scripts
   assert.ok(scripts['test-fast'] && scripts.lint, 'the rig onboarding scripts survive the seed')
+  assert.equal(scripts['test-fast'], scripts.test, "rig's fast loop runs what npm test runs, not the integration test")
   assert.match(scripts.test, /test\/\*\.test\.js/)
   assert.equal(scripts['test:all'], 'node --test')
   assert.equal(JSON.parse(bare.read('package.json')).scripts['test:all'], 'node --test')

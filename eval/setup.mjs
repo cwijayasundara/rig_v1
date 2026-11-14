@@ -59,11 +59,12 @@ function hardBase(sb) {
   pricingOverlay(sb)
   fs.cpSync(CONTRACT_SEED, sb.dir, { recursive: true })
   contractOverlay(sb)
-  // The seed's scripts are merged into the package.json already there (rig's onboarding scripts, test-fast and lint, stay); the seed's win on a clash.
+  // The seed's scripts are merged into the package.json already there (rig's onboarding scripts, test-fast and lint, stay); the seed's win on a clash, and test-fast runs
+  // what npm test runs, so rig's fast loop does not run the integration test the bare arm's npm test skips.
   const seed = JSON.parse(fs.readFileSync(path.join(HARD_SEED, 'package.json'), 'utf8'))
   const had = fs.existsSync(sb.file('package.json')) ? JSON.parse(fs.readFileSync(sb.file('package.json'), 'utf8')) : {}
   fs.cpSync(HARD_SEED, sb.dir, { recursive: true })
-  fs.writeFileSync(sb.file('package.json'), JSON.stringify({ ...had, ...seed, scripts: { ...had.scripts, ...seed.scripts } }, null, 2) + '\n')
+  fs.writeFileSync(sb.file('package.json'), JSON.stringify({ ...had, ...seed, scripts: { ...had.scripts, ...seed.scripts, ...(had.scripts?.['test-fast'] && { 'test-fast': seed.scripts.test }) } }, null, 2) + '\n')
 }
 
 export function setupBare(sb, { dry = false, variant = null } = {}) {
