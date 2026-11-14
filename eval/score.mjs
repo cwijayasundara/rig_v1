@@ -81,8 +81,9 @@ export function layerViolations(dir) {
 }
 
 export async function scoreRun(sb, base, { timeoutMs = 300_000, sdlc = SDLC, variant = null, judgeFrom = base } = {}) {
+  if (variant === 'brownfield') return (await import('./variants/brownfield.mjs')).score(sb, { timeoutMs, runBounded, tamper: () => tamperOf(sb, judgeFrom, sdlc) }) // upstream's suite and four hidden checks; no shop acceptance
   // The sandbox's env: the runner's own (a test context, a CI event path) must not leak into the model's suite.
-  const t = await runBounded('npm', ['test', '--silent'], { cwd: sb.dir, timeoutMs, env: sb.env })
+  const t =await runBounded('npm', ['test', '--silent'], { cwd: sb.dir, timeoutMs, env: sb.env })
   const npmTest = t.status === 0
   const a = await runBounded('node', [ACCEPTANCE, sb.dir, 'remove', ...(['rules', 'pricing', 'contract', 'traps'].includes(variant) ? ['rules'] : [])], { cwd: sb.dir, timeoutMs, env: sb.env })
   const last = a.out.trim().split('\n').at(-1) ?? ''

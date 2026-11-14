@@ -11,6 +11,8 @@ import { briefFor as pricingBrief, dryOverlay as pricingOverlay } from './varian
 import { briefFor as contractBrief, dryOverlay as contractOverlay, SEED as CONTRACT_SEED } from './variants/contract.mjs'
 import { briefFor as trapsBrief, dryOverlay as trapsOverlay, SEED as TRAPS_SEED, POINTERS } from './variants/traps.mjs'
 import { applyAblation } from './ablation.mjs'
+import * as brownfield from './variants/brownfield.mjs'
+export { BARE_PROMPT as BARE_PROMPT_BROWNFIELD } from './variants/brownfield.mjs'
 
 const BRIEF = path.resolve(import.meta.dirname, '../tests/e2e/prd/shop-brief.md')
 const FX = path.resolve(import.meta.dirname, '../tests/e2e/fixtures')
@@ -44,6 +46,7 @@ function seedBase(sb, variant) {
 }
 
 export function setupBare(sb, { dry = false, variant = null } = {}) {
+  if (variant === 'brownfield') return brownfield.setupBare(sb, { dry }) // the base is the pinned upstream repo, not the shop
   sb.isolate(dry ? [] : installedPlugins())
   sb.write('package.json', JSON.stringify({ name: 'shop-app', version: '0.1.0', type: 'module', scripts: { start: 'node src/server.js', test: 'node --test' } }, null, 2) + '\n')
   sb.write('src/index.js', 'export {}\n')
@@ -68,6 +71,7 @@ export const modelsSupported = (plugin = PLUGIN) => { try { return /\blight\s*:/
 export async function setupRig(sb, arm, { dry = false, variant = null, plugin = PLUGIN } = {}) {
   const registry = { ...REGISTRY, policy: { haiku: arm.policy, sonnet: 'continuous', opus: 'final', default: 'continuous' } }
   if (arm.models && modelsSupported(plugin)) registry.models = { ...REGISTRY.models, ...arm.models }
+  if (variant === 'brownfield') return brownfield.setupRig(sb, { dry, registry }) // existing repo: onboarding on the upstream tree, no brief
   const c = await install(sb, { registry, plugins: dry ? [] : installedPlugins() })
   if (c.failed.length) throw new Error(`install failed: ${c.failed.map(f => f.name).join('; ')}`)
   const base = sb.git('rev-list', '--max-parents=0', 'HEAD')
@@ -89,6 +93,7 @@ export async function setupRig(sb, arm, { dry = false, variant = null, plugin = 
 
 // Dry bare: what a perfect bare session leaves behind.
 export function dryBare(sb, { variant = null } = {}) {
+  if (variant === 'brownfield') return brownfield.dryBare(sb)
   fs.cpSync(path.join(FX, 'shop'), sb.dir, { recursive: true })
   fs.cpSync(path.join(FX, 'remove'), sb.dir, { recursive: true })
   if (['links', 'rules', 'delta', 'pricing', 'contract', 'traps'].includes(variant)) dryOverlay(sb)
