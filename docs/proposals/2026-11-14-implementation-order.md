@@ -59,7 +59,7 @@
   - W3 now measures with rig on: the arms `rig-on` (plain prompts) and `rig-start` (the workflow), on `hard` and `brownfield`. An
     escape is a harness bug.
 - **2026-11-14, rig-on vs rig-start, Sonnet, 3 runs each** (plugin `5134bd7`; `eval/results/2026-11-14-{hard,brownfield}-rig.jsonl`,
-  seeds 788294 and 296724; $36.80 in total).
+  seeds 788294 and 296724; $28.80 in total, the invalid run included).
 
   | Variant | Arm | Accepted | Traps escaped | $ a run | Minutes a run |
   |---|---|---|---|---|---|
@@ -68,7 +68,7 @@
   | brownfield | rig-on | 3 of 3 | 0 of 12 | 0.30 | 2.1 |
   | brownfield | rig-start | 3 of 3, after 1 invalid run retried | 0 of 12 | 2.87 | 24.4 |
 
-  - rig-on is the better arm: it caught every trap, at about 1/7 of the cost and 1/9 of the time of rig-start.
+  - rig-on is the better arm: it caught every trap, at 1/7 to 1/10 of the cost and 1/7 to 1/12 of the time of rig-start.
   - Each rig-start gap is a harness bug:
     - **The refund-policy escape (`rule`):** the rule lives only in an integration test that `npm test` skips. No rig sensor runs
       that test, and the spec and plan phases did not look for existing tests that constrain the code they change.
