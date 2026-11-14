@@ -30,6 +30,24 @@
 
 The D1 check ran in W4 (rig-on, Haiku against Sonnet). Not done from W0: the U0 UI task.
 
+## Status check, 2026-11-14 (against `main` at 834362b)
+
+Marked from the code and git log; no spec was run for this check.
+
+| Item | State | Evidence |
+|---|---|---|
+| W0–W3d, W4 | Implemented | The Done table; v0.11.0 tagged |
+| N1, N3, N5, N6, D1 model pairs, D2 launch budget | Implemented | `7816fce`, `59b23c5`, `fc21787`, `b8ab08a`, `d24f0d9` |
+| G0 waiver requests | Implemented | `772c7f1`, `98853b7`; `rig-check.yml` still has no `pull_request_review` trigger (re-run is done by `rig-approved`, `8f4a24c`) |
+| G1 `plan-check` | Implemented | `e1da14b`, `c43ee69` |
+| Fixes after v0.11.0: rig-on routing, knownRed at turn cadence, `test:changed` | Implemented, **not released** | `0ea67ba`, `aaedb77`, `12bd494`; CHANGELOG "Unreleased" is empty |
+| W5 knex variant (tasks, patches, checks, specs) | Implemented, **not run live**, no result recorded | `6d480e6` to `834362b`; `eval/knex.test.mjs` is deleted in the working tree, uncommitted |
+| W5 U0 UI variant | **Not implemented**; design only | `docs/superpowers/specs/2026-11-14-u0-ui-task-design.md` (untracked); no plan |
+| W5 exit (2 traps escape rig-on) | **Not measured** | No knex or ui results in `eval/results/` |
+| W6, W7, W8 | Not started | Gated on W5 |
+| G2, G3, G4; N2, N4, R1, R2; U1–U3; prod Phase 4 | Not started (deferred by design) | |
+| Open decisions (all three docs) | Unanswered; defaults apply | |
+
 ## Why the order changed
 
 The old W4 to W7 were written before the rig-on result. W4 (chart PR, plan-review veto) and W5 (a review on every change, G4) add

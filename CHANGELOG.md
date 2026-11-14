@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 0.11.1
+
+Fixes after 0.11.0 for rig-on sessions, plus the W5 knex eval variant. Measured on Haiku rig-on, `hard`, 3 runs each
+(`docs/proposals/2026-11-14-implementation-order.md`, Results).
+
+- **rig-on routing** (`0ea67ba`, `549b027`). SessionStart and init's CLAUDE.md no longer send every prompt to `/rig:start`; a session
+  works from the request, and `/rig:start` runs only when the person asks. Before, Haiku routed a plain prompt to the full workflow and
+  stopped to ask 5 questions in an unattended session.
+- **Unsensed test scripts** (`6688eed`, `aaedb77`). Baseline registers each unsensed test script, at turn cadence when it is fast. A
+  fast red suite runs every turn as known red, and the Stop gate shows a failing knownRed sensor to the model once per session. Haiku
+  rig-on on `hard`: 3 of 3 accepted, the `rule` trap caught (before: escaped 1 of 3).
+- **Harness repo tooling.** `npm run test:changed` runs typecheck, size, neutrality and only the unit specs of the changed code; e2e
+  and evals are run by a person.
+- **Eval:** W5 `knex` brownfield variant (`notLike` and `emptyUpsert` tasks, patches, checks, dry runs). Not yet run live.
+
 ## 0.11.0
 
 The 2026-11-14 waves W1 to W4 (`docs/proposals/2026-11-14-implementation-order.md`), plus the three-gates work listed below them.
