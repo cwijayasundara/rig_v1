@@ -58,3 +58,19 @@
   - The maintainer decided that rig mode is on once rig is installed, so bare Claude Code is no longer a gate (`docs/GOAL.md`).
   - W3 now measures with rig on: the arms `rig-on` (plain prompts) and `rig-start` (the workflow), on `hard` and `brownfield`. An
     escape is a harness bug.
+- **2026-11-14, rig-on vs rig-start, Sonnet, 3 runs each** (plugin `5134bd7`; `eval/results/2026-11-14-{hard,brownfield}-rig.jsonl`,
+  seeds 788294 and 296724; $36.80 in total).
+
+  | Variant | Arm | Accepted | Traps escaped | $ a run | Minutes a run |
+  |---|---|---|---|---|---|
+  | hard | rig-on | 3 of 3 | 0 of 15 | 0.73 | 3.7 |
+  | hard | rig-start | 0 of 3 | 2 of 10 (rule, twice); 1 run stopped at approve | 4.89 | 26.9 |
+  | brownfield | rig-on | 3 of 3 | 0 of 12 | 0.30 | 2.1 |
+  | brownfield | rig-start | 3 of 3, after 1 invalid run retried | 0 of 12 | 2.87 | 24.4 |
+
+  - rig-on is the better arm: it caught every trap, at about 1/7 of the cost and 1/9 of the time of rig-start.
+  - Each rig-start gap is a harness bug:
+    - **The refund-policy escape (`rule`):** the rule lives only in an integration test that `npm test` skips. No rig sensor runs
+      that test, and the spec and plan phases did not look for existing tests that constrain the code they change.
+    - **Run 1 stopped at approve:** the approve gate refused because open questions were left in the spec.
+    - **One brownfield run was invalid (`sleep`):** it was retried once and then passed.
