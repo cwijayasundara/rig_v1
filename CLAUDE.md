@@ -24,8 +24,8 @@ re-fires every Stop hook); launch agents in the foreground and let the tool resu
 
 This repo builds the harness; it is not built with rig's process. Plain Claude Code plus superpowers: implement the plan
 inline (`superpowers:executing-plans`) or with at most one Sonnet implementer per independent group of files, run the
-suite once, and stop. The specs that fail without each change are the check. Run a review of `git diff main...HEAD`
-only when the person asks for one. Target per Spec-2-sized change: at most 3 subagent launches, under 30 minutes.
+suite once, and stop. The specs that fail without each change are the check. Run a review only when the person asks for one,
+and then of the changed lines only (`git diff main...HEAD`, with the hunks' own functions for context), never across the codebase. Target per Spec-2-sized change: at most 3 subagent launches, under 30 minutes.
 
 ## Briefs, not transcripts
 
