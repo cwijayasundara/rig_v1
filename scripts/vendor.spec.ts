@@ -471,3 +471,24 @@ test('a plain vendor after vendor --standalone keeps the standalone manifest ent
   assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
   assert.equal(fs.readFileSync(file, 'utf8'), first)
 })
+
+// Brownfield eval 2026-11-14 (commander.js): a repo whose package.json is commonjs loaded the vendored checker as commonjs and failed,
+// and jest collected the vendored slice's test file, so the repo's own suite went red after onboarding.
+test('the vendored checker runs in a commonjs repo: .rig/bin marks itself as ES modules', () => {
+  const repo = makeRepo()
+  write(repo, 'package.json', JSON.stringify({ name: 'cjs', version: '1.0.0', type: 'commonjs' }) + '\n')
+  assert.equal(sdlc(repo, ['vendor']).code, 0)
+  assert.equal(JSON.parse(fs.readFileSync(path.join(repo, '.rig/bin/package.json'), 'utf8')).type, 'module')
+  const r = vendored(repo, [])
+  assert.match(r.stderr + r.stdout, /usage: sdlc\.ts/, r.stderr) // it loaded; as commonjs it dies on the first import
+})
+
+test('no vendored template is a file a test runner collects: slice files end in .tmpl', () => {
+  const repo = makeRepo()
+  assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
+  const tpl = walk(path.join(repo, '.rig/templates')).map(f => path.relative(repo, f))
+  assert.ok(tpl.some(f => f.includes('/slices/')), 'slices are vendored')
+  const collected = tpl.filter(f => /(\.test|\.spec)\.[cm]?[jt]sx?$|(^|\/)test_[^/]*\.py$|_test\.(go|py)$/.test(f))
+  assert.deepEqual(collected, [])
+  assert.ok(tpl.filter(f => f.includes('/slices/') && f.includes('/files/')).every(f => f.endsWith('.tmpl')))
+})

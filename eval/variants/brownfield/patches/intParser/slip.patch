@@ -1,0 +1,111 @@
+diff --git a/index.js b/index.js
+index c30bb21..635c9d0 100644
+--- a/index.js
++++ b/index.js
+@@ -3,6 +3,7 @@ const { Command } = require('./lib/command.js');
+ const { CommanderError, InvalidArgumentError } = require('./lib/error.js');
+ const { Help } = require('./lib/help.js');
+ const { Option } = require('./lib/option.js');
++const { intParser } = require('./lib/intParser.js');
+ 
+ exports.program = new Command();
+ 
+@@ -19,6 +20,8 @@ exports.Option = Option;
+ exports.Argument = Argument;
+ exports.Help = Help;
+ 
++exports.intParser = intParser;
++
+ exports.CommanderError = CommanderError;
+ exports.InvalidArgumentError = InvalidArgumentError;
+ exports.InvalidOptionArgumentError = InvalidArgumentError; // Deprecated
+diff --git a/lib/intParser.js b/lib/intParser.js
+new file mode 100644
+index 0000000..0fa7fa7
+--- /dev/null
++++ b/lib/intParser.js
+@@ -0,0 +1,25 @@
++const { InvalidArgumentError } = require('./error.js');
++
++/**
++ * Make a custom-processing function for an option or argument that takes an
++ * integer from `min` to `max`, both included.
++ *
++ * @example
++ * program.option('-p, --port <number>', 'port number', intParser(1, 65535));
++ *
++ * @param {number} min
++ * @param {number} max
++ * @return {(value: string) => number}
++ */
++
++function intParser(min, max) {
++  return (value) => {
++    const parsed = /^-?\d+$/.test(value) ? parseInt(value, 10) : NaN;
++    if (Number.isNaN(parsed) || parsed < min || parsed > max) {
++      throw new InvalidArgumentError(`Not an integer from ${min} to ${max}.`);
++    }
++    return parsed;
++  };
++}
++
++exports.intParser = intParser;
+diff --git a/tests/intParser.test.js b/tests/intParser.test.js
+new file mode 100644
+index 0000000..2f455d2
+--- /dev/null
++++ b/tests/intParser.test.js
+@@ -0,0 +1,36 @@
++const commander = require('../');
++
++describe('intParser', () => {
++  function makeProgram() {
++    const program = new commander.Command();
++    program
++      .exitOverride()
++      .configureOutput({ writeErr: () => {}, writeOut: () => {} })
++      .option('-p, --port <number>', 'port', commander.intParser(1, 65535));
++    return program;
++  }
++
++  test('when value is in range then number', () => {
++    const program = makeProgram();
++    program.parse(['node', 'test', '--port', '8080']);
++    expect(program.opts().port).toBe(8080);
++  });
++
++  test('when value is the lowest or highest allowed then number', () => {
++    const parse = commander.intParser(1, 65535);
++    expect([parse('1'), parse('65535')]).toEqual([1, 65535]);
++  });
++
++  test('when value is out of range then error', () => {
++    const program = makeProgram();
++    expect(() => program.parse(['node', 'test', '--port', '99999'])).toThrow(
++      "error: option '-p, --port <number>' argument '99999' is invalid. Not an integer from 1 to 65535.",
++    );
++  });
++
++  test('when value is not an integer then error', () => {
++    const parse = commander.intParser(1, 65535);
++    expect(() => parse('abc')).toThrow(commander.InvalidArgumentError);
++    expect(() => parse('80.5')).toThrow(commander.InvalidArgumentError);
++  });
++});
+diff --git a/typings/index.d.ts b/typings/index.d.ts
+index bf94eb0..5a92532 100644
+--- a/typings/index.d.ts
++++ b/typings/index.d.ts
+@@ -39,6 +39,12 @@ export class InvalidArgumentError extends CommanderError {
+ }
+ export { InvalidArgumentError as InvalidOptionArgumentError }; // deprecated old name
+ 
++/**
++ * Make a custom-processing function for an option or argument that takes an
++ * integer from `min` to `max`, both included.
++ */
++export function intParser(min: number, max: number): (value: string) => number;
++
+ export interface ErrorOptions {
+   // optional parameter for error()
+   /** an id string representing the error */

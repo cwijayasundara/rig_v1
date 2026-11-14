@@ -1,0 +1,109 @@
+diff --git a/lib/command.js b/lib/command.js
+index 20ced4b..405eee9 100644
+--- a/lib/command.js
++++ b/lib/command.js
+@@ -1610,6 +1610,30 @@ Expecting one of '${allowedValues.join("', '")}'`);
+         this._conflictingOption(option, conflictingAndDefined);
+       }
+     });
++
++    const given = this.options.filter(
++      (o) => this.getOptionValue(o.attributeName()) !== undefined,
++    );
++    given.forEach((option) => {
++      option.requiresOptions.forEach((name) => {
++        if (!given.some((o) => o.attributeName() === name)) {
++          const wanted = this.options.find((o) => o.attributeName() === name);
++          this._missingRequiredOption(option, wanted ? wanted.flags : name);
++        }
++      });
++    });
++  }
++
++  /**
++   * Display an error message: `option` was given without the option it requires.
++   *
++   * @param {Option} option
++   * @param {string} requiredFlags
++   * @private
++   */
++  _missingRequiredOption(option, requiredFlags) {
++    const message = `error: option '${option.flags}' requires option '${requiredFlags}'`;
++    this.error(message, { code: 'commander.missingRequiredOption' });
+   }
+ 
+   /**
+diff --git a/lib/option.js b/lib/option.js
+index bded840..f434527 100644
+--- a/lib/option.js
++++ b/lib/option.js
+@@ -32,6 +32,7 @@ class Option {
+     this.hidden = false;
+     this.argChoices = undefined;
+     this.conflictsWith = [];
++    this.requiresOptions = [];
+     this.implied = undefined;
+   }
+ 
+@@ -83,6 +84,23 @@ class Option {
+     return this;
+   }
+ 
++  /**
++   * Add option name(s) that must also be given when this option is given.
++   * An error will be displayed if a required option is missing during parsing.
++   * An option that only has its default value does not count as given.
++   *
++   * @example
++   * new Option('--cert <file>').requires('key');
++   *
++   * @param {(string | string[])} names
++   * @return {Option}
++   */
++
++  requires(names) {
++    this.requiresOptions = this.requiresOptions.concat(names);
++    return this;
++  }
++
+   /**
+    * Specify implied option values for when this option is set and the implied options are not.
+    *
+diff --git a/tests/option.requires.test.js b/tests/option.requires.test.js
+new file mode 100644
+index 0000000..121f0f7
+--- /dev/null
++++ b/tests/option.requires.test.js
+@@ -0,0 +1,32 @@
++const commander = require('../');
++
++describe('option.requires()', () => {
++  function makeProgram() {
++    const program = new commander.Command();
++    program
++      .exitOverride()
++      .configureOutput({ writeErr: () => {}, writeOut: () => {} })
++      .addOption(new commander.Option('--cert <file>').requires('key'))
++      .addOption(new commander.Option('--key <file>'));
++    return program;
++  }
++
++  test('when the required option is given then no error', () => {
++    const program = makeProgram();
++    program.parse(['node', 'test', '--cert', 'a.pem', '--key', 'a.key']);
++    expect(program.opts()).toEqual({ cert: 'a.pem', key: 'a.key' });
++  });
++
++  test('when the required option is missing then error', () => {
++    const program = makeProgram();
++    expect(() => program.parse(['node', 'test', '--cert', 'a.pem'])).toThrow(
++      "error: option '--cert <file>' requires option '--key <file>'",
++    );
++  });
++
++  test('when the requiring option is not given then no error', () => {
++    const program = makeProgram();
++    program.parse(['node', 'test', '--key', 'a.key']);
++    expect(program.opts()).toEqual({ key: 'a.key' });
++  });
++});

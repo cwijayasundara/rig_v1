@@ -1,0 +1,66 @@
+diff --git a/lib/command.js b/lib/command.js
+index 20ced4b..f0436d8 100644
+--- a/lib/command.js
++++ b/lib/command.js
+@@ -2208,6 +2208,26 @@ Expecting one of '${allowedValues.join("', '")}'`);
+     return this;
+   }
+ 
++  /**
++   * The names and aliases of all the subcommands, at any depth, sorted, each
++   * name once even when it is used in several places.
++   *
++   * @return {string[]}
++   */
++
++  commandNames() {
++    const names = new Set();
++    const collect = (cmd) => {
++      cmd.commands.forEach((sub) => {
++        names.add(sub.name());
++        sub.aliases().forEach((alias) => names.add(alias));
++        collect(sub);
++      });
++    };
++    collect(this);
++    return [...names].sort();
++  }
++
+   /**
+    * Set the name of the command from script filename, such as process.argv[1],
+    * or require.main.filename, or __filename.
+diff --git a/tests/command.commandNames.test.js b/tests/command.commandNames.test.js
+new file mode 100644
+index 0000000..7450c7e
+--- /dev/null
++++ b/tests/command.commandNames.test.js
+@@ -0,0 +1,29 @@
++const commander = require('../');
++
++describe('.commandNames()', () => {
++  test('when no subcommands then empty array', () => {
++    expect(new commander.Command().commandNames()).toEqual([]);
++  });
++
++  test('when subcommands and aliases then sorted names and aliases', () => {
++    const program = new commander.Command();
++    program.command('remove').alias('rm');
++    program.command('add');
++    expect(program.commandNames()).toEqual(['add', 'remove', 'rm']);
++  });
++
++  test('when nested subcommands then names at every depth', () => {
++    const program = new commander.Command();
++    const remote = program.command('remote');
++    remote.command('add');
++    remote.command('prune');
++    expect(program.commandNames()).toEqual(['add', 'prune', 'remote']);
++  });
++
++  test('when a name is used twice then listed once', () => {
++    const program = new commander.Command();
++    program.command('add');
++    program.command('remote').command('add');
++    expect(program.commandNames()).toEqual(['add', 'remote']);
++  });
++});

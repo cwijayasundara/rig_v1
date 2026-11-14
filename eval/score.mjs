@@ -81,6 +81,9 @@ export function layerViolations(dir) {
 }
 
 export async function scoreRun(sb, base, { timeoutMs = 300_000, sdlc = SDLC, variant = null, judgeFrom = base } = {}) {
+  if (variant === 'brownfield') return (await import('./variants/brownfield.mjs')).score(sb, { timeoutMs, runBounded, tamper: () => tamperOf(sb, judgeFrom, sdlc) }) // upstream's suite and four hidden checks; no shop acceptance
+  const hard = variant === 'hard' // hard is scored as traps (same B1–B14 base) with its own module and trap names
+  if (hard) variant = 'traps'
   // The sandbox's env: the runner's own (a test context, a CI event path) must not leak into the model's suite.
   const t = await runBounded('npm', ['test', '--silent'], { cwd: sb.dir, timeoutMs, env: sb.env })
   const npmTest = t.status === 0
@@ -115,15 +118,16 @@ export async function scoreRun(sb, base, { timeoutMs = 300_000, sdlc = SDLC, var
   let trapFailures = []
   let escaped = null
   let missing = []
+  let basic
   if (variant === 'traps') {
-    const m = await import('./variants/traps.mjs')
-    ;({ traps, failures: trapFailures } = await m.trapChecks(sb.dir))
+    const m = await import(hard ? './variants/hard.mjs' : './variants/traps.mjs')
+    ;({ traps, failures: trapFailures, basic } = await (m.checks ?? m.trapChecks)(sb.dir))
     // A trap escaped only if its behaviour's test file exists and npm test passed; no test file means the behaviour was never built.
     const failed = Object.keys(traps).filter(n => !traps[n])
-    missing = failed.filter(n => !fs.existsSync(path.join(sb.dir, m.TRAP_TEST[n])))
+    missing = failed.filter(n => !fs.existsSync(path.join(sb.dir, m.TRAP_TEST[n])) || basic?.[n] === false) // a behaviour that does not work was not built, so its trap did not escape
     escaped = npmTest ? failed.length - missing.length : null
   }
   const all = [npmTest, acceptance === true, http === true, ...(withLinks ? [links === true] : []), ...(rules ? [...Array.from({ length: 6 }, (_, i) => i < rules.b8), rules.b9] : []), ...(pricing ? [...Array.from({ length: 5 }, (_, i) => i < pricing.b10), ...Array.from({ length: 5 }, (_, i) => i < pricing.b11), ...Array.from({ length: 4 }, (_, i) => i < pricing.b12)] : []), ...(contract ? [...Array.from({ length: 8 }, (_, i) => i < contract.b13), ...Array.from({ length: 7 }, (_, i) => i < contract.b14), ...Array.from({ length: 2 }, (_, i) => i < contract.files)] : []), ...(traps ? Object.values(traps) : [])]
   const checks = all.filter(Boolean).length
-  return { checks, of: all.length, accepted: checks === all.length, npmTest, acceptance, http, ...(withLinks ? { links } : {}), ...(rules ? { rules } : {}), ...(pricing ? { pricing } : {}), ...(contract ? { contract } : {}), ...(traps ? { traps, trapFailures, escaped, missing } : {}), layerViolations: withLinks && links !== true ? null : layerViolations(sb.dir), tamper: tamperOf(sb, judgeFrom, sdlc) }
+  return { checks, of: all.length, accepted: checks === all.length, npmTest, acceptance, http, ...(withLinks ? { links } : {}), ...(rules ? { rules } : {}), ...(pricing ? { pricing } : {}), ...(contract ? { contract } : {}), ...(traps ? { traps, ...(basic ? { basic } : {}), trapFailures, escaped, missing } : {}), layerViolations: withLinks && links !== true ? null : layerViolations(sb.dir), tamper: tamperOf(sb, judgeFrom, sdlc) }
 }
