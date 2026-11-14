@@ -36,7 +36,10 @@ Give the exact line ranges to edit (`scripts/check.ts:285-300`), not only file n
 
 Implementers never run the full `npm test`. They run only the spec files they touch or that pin wording they changed
 (`node --disable-warning=ExperimentalWarning --test <files>`), plus `scripts/size.spec.ts`, `scripts/neutrality.spec.ts` and
-`npm run typecheck`. The coordinator runs `npm test` once per change, before the review. The full suite includes the e2e unit
+`npm run typecheck`. The coordinator runs the suite once per change, before the review, and picks the steps from `git diff --name-only main...HEAD`:
+`scripts/`, `hooks/`, `skills/`, `agents/`, `templates/` or `package.json` changed → full `npm test`; only `eval/` or `tests/` changed →
+skip `scripts/*.spec.ts` and run `npm run test:e2e:unit && npm run e2e:scripted && npm run test:e2e:parallel` (drop the last two
+when `tests/e2e/` is untouched); only docs → nothing. The full suite includes the e2e unit
 tests, the scripted journey and the parallel-instances journey, and it takes several minutes.
 
 ## Verification

@@ -59,7 +59,7 @@ export function setupBare(sb, { dry = false, variant = null } = {}) {
 // The short sha of the plugin checkout under test (null when it is not a git checkout), recorded in every row so the report can pair runs of two refs.
 export function pluginSha(plugin = PLUGIN) {
   const git = (...a) => execFileSync('git', ['-C', plugin, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
-  try { const sha = git('rev-parse', '--short=7', 'HEAD'); return sha ? (git('status', '--porcelain') ? `${sha}-dirty` : sha) : null } catch { return null }
+  try { const sha = git('rev-parse', '--short=7', 'HEAD'); return sha ? (git('status', '--porcelain', '--untracked-files=no') ? `${sha}-dirty` : sha) : null } catch { return null }
 }
 // An old plugin ref rejects registry keys added since (7324485 has models but its parser refuses models.light): the pair goes in only when that plugin's registry.ts knows `light`.
 export const modelsSupported = (plugin = PLUGIN) => { try { return /\blight\s*:/.test(fs.readFileSync(path.join(plugin, 'scripts/registry.ts'), 'utf8')) } catch { return false } }

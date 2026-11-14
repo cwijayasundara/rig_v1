@@ -316,7 +316,7 @@ test('RIG_EVAL_PLUGIN points PLUGIN elsewhere and the row records its sha', asyn
   assert.deepEqual([dir, sha], [fs.realpathSync(other) === other ? other : path.resolve(other), null], 'a directory that is not a git checkout has no sha')
   const [def, defSha] = JSON.parse(probe({ RIG_EVAL_PLUGIN: '' }).stdout)
   assert.equal(def, path.resolve(import.meta.dirname, '..'))
-  const dirty = spawnSync('git', ['status', '--porcelain'], { cwd: def, encoding: 'utf8' }).stdout.trim() ? '-dirty' : ''
+  const dirty = spawnSync('git', ['status', '--porcelain', '--untracked-files=no'], { cwd: def, encoding: 'utf8' }).stdout.trim() ? '-dirty' : ''
   assert.equal(defSha, spawnSync('git', ['rev-parse', '--short=7', 'HEAD'], { cwd: def, encoding: 'utf8' }).stdout.trim() + dirty, 'a checkout with uncommitted changes is marked -dirty')
   const row = await runOne(ARMS.find(a => a.id === 'sonnet-rig'), 1, { dry: true, out: fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-run-')), capRunUsd: 6 })
   assert.equal(row.plugin, defSha)
