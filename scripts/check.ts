@@ -11,7 +11,7 @@ import { readBaseline, snapshot, turnDiff, fileDiff, branchDiff, showAt, fileLin
 import { runCommand, recordRun, normCmd } from './runs.ts'
 import { withBaseTree } from './basetree.ts'
 import { activeSlug, approvalState, changeType, unapprovedBuild } from './lifecycle.ts'
-import { approvedLayers } from './arch.ts'
+import { approvedLayers } from './arch.ts'; import { planCheck } from './plancheck.ts'
 import { journeyFindings, draftApps } from './app.ts'
 import { scopeFindings, intentScope } from './scope.ts'
 import { RATCHET_FILE, lastNumber, loadRatchets, judge, tighten, type RatchetWrite } from './counts.ts'
@@ -163,7 +163,7 @@ function applyWaivers(findings: Finding[], slugs: string[], ci?: { base: string 
   const waivers = readJsonl<Waiver>(WAIVERS).filter(w => slugs.includes(w.slug) && scopes.get(w.slug) !== null && waiverLive(w) && !(w.requested && UNREQUESTABLE.includes(w.sensor)))
   // A file-less size finding (the diff total, the hard cap) has no file for the CI scope to test, so a `size *` waiver of a change this PR adds covers it (its row still needs an independent approval).
   // Never waivable: plan-gate (only a person's approval clears it); at CI also contracts and harness-tamper on harness files.
-  const never = (f: Finding): boolean => f.sensor === 'plan-gate' || f.sensor === 'draft' || (Boolean(ci) && ((f.sensor === 'harness-tamper' && (!f.file || isProtected(f.file))) || f.sensor === 'contracts'))
+  const never = (f: Finding): boolean => f.sensor === 'plan-gate' || f.sensor === 'plan-check' || f.sensor === 'draft' || (Boolean(ci) && ((f.sensor === 'harness-tamper' && (!f.file || isProtected(f.file))) || f.sensor === 'contracts'))
   const waived = (f: Finding): boolean => waivers.some(w => w.sensor === f.sensor && (w.file === '*' || w.file === f.file) && !never(f) && ((f.sensor === 'size' && !f.file) || (scopes.get(w.slug) as (file: string | undefined) => boolean)(f.file)))
   const kept = findings.filter(f => !waived(f))
   return { findings: kept, blocks: kept.filter(f => f.severity === 'block'), warns: kept.filter(f => f.severity === 'warn'), waived: findings.length - kept.length }
@@ -254,7 +254,7 @@ export function runChecks(i: CheckInput): CheckResult {
   if (i.slugs.length && i.slugs.every(s => approvalState(s) === 'approved')) {
     for (const f of findings) if (f.sensor === 'size' && !f.file) f.severity = 'warn'
   }
-  for (const slug of i.slugs) findings.push(...freezeFindings(slug, point, i.base, config))
+  for (const slug of i.slugs) findings.push(...freezeFindings(slug, point, i.base, config), ...(i.point === 'ci' && i.gates?.plan === false ? planCheck(slug, { base: i.base ?? null, ci: true }) : []))
   if (point !== 'stop') for (const slug of i.slugs) findings.push(...shipVerdicts(slug, config, diffs, i.base, i.budgetMs, i.gates?.plan ?? true))
   // Contracts (spec §6): ship and CI always, commit always, a turn only when it reaches a contract. Validate gates run.
   const c = config.contracts

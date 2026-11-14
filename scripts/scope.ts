@@ -18,7 +18,7 @@ export function intentScope(slug: string, readIntent: (rel: string) => string = 
 }
 
 // A plain path (no wildcard) names the file or the directory under it.
-const expand = (globs: string[]): string[] => globs.flatMap(g => (g.includes('*') ? [g] : [g, `${g}/**`]))
+export const expand = (globs: string[]): string[] => globs.flatMap(g => (g.includes('*') ? [g] : [g, `${g}/**`]))
 // Repo-root configuration (manifests, lockfiles, settings) and CI files are not product code; a pack's ignore globs name its docs and lockfiles.
 const ROOT_CONFIG = /^[^/]+\.(json|toml|ya?ml|cfg|ini|txt|lock)$|^\.github\//
 
