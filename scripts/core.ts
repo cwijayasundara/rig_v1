@@ -18,7 +18,7 @@ export type HookInput = {
   agent_id?: string
   agent_type?: string
   source?: string
-  prompt?: string; transcript_path?: string; model?: string; to_model?: string; from_model?: string; tool_use_id?: string; tool_response?: { resolvedModel?: string; model?: string; answers?: unknown }
+  prompt?: string; transcript_path?: string; model?: string; to_model?: string; from_model?: string; tool_use_id?: string; tool_response?: { resolvedModel?: string; model?: string; answers?: unknown; content?: unknown; totalTokens?: unknown; totalToolUseCount?: unknown; totalDurationMs?: unknown }
   tool_input?: { questions?: unknown[];
     command?: string
     file_path?: string
