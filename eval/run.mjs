@@ -40,6 +40,7 @@ PHASES.hard = [H15, H16, H17, H18, H19]
 export const phasesFor = variant => PHASES[variant] ?? [S2, S3]
 // delta is the rules task from a built B1–B7 shop: it is briefed, prompted and scored as rules.
 export const taskOf = variant => (variant === 'delta' ? 'rules' : variant)
+const barePrompt = variant => ({ links: BARE_PROMPT_LINKS, rules: BARE_PROMPT_RULES, delta: BARE_PROMPT_DELTA, pricing: BARE_PROMPT_PRICING, contract: BARE_PROMPT_CONTRACT, traps: BARE_PROMPT_TRAPS, brownfield: BARE_PROMPT_BROWNFIELD, hard: BARE_PROMPT_HARD }[variant] ?? BARE_PROMPT)
 const failing = (driver, failAt) => (failAt ? { ...driver, [failAt]: async () => { throw new Error(`injected failure at ${failAt}`) } } : driver)
 
 // Where a run's sessions, dollars and denials went, kept in the row because the sandboxes are deleted after scoring.
@@ -51,13 +52,13 @@ export const sessionTrace = sessions => sessions.map(s => ({
   models: s.models && Object.entries(s.models).reduce((o, [m, v]) => { const k = m.replace(/^claude-/, '').replace(/-\d.*$/, ''); o[k] = Number(((o[k] ?? 0) + v.costUsd).toFixed(4)); return o }, {}),
 }))
 
-export async function runOne(arm, n, { dry, out, capRunUsd, failAt, seed = null, position = null, variant = null }) {
+export async function runOne(arm, n, { dry, out, capRunUsd, failAt, seed = null, position = null, variant = null, sessionsFactory = createSessions }) {
   const t0 = Date.now()
   const sb = createSandbox({ name: `${arm.id}-${n}`, out })
   // Subagents run on the arm's own model (the template pins them to Sonnet), so an arm measures its model; rig's evaluator agent keeps
   // its own pin (spec §3.5) and shows in the per-model usage.
-  const sessions = dry ? null : createSessions({ sb, out: sb.root, capUsd: capRunUsd, model: arm.model, effort: arm.effort, allow: EVAL_ALLOW, env: { CLAUDE_CODE_SUBAGENT_MODEL: arm.model } })
-  const row = { arm: arm.id, run: n, model: arm.model, rig: arm.rig, policy: arm.policy ?? null, variant, seed, position, ...(arm.rig && { plugin: pluginSha() }), ...(arm.models && !modelsSupported() && { modelsIgnored: true }), at: new Date().toISOString() }
+  const sessions = dry ? null : sessionsFactory({ sb, out: sb.root, capUsd: capRunUsd, model: arm.model, effort: arm.effort, allow: EVAL_ALLOW, env: { CLAUDE_CODE_SUBAGENT_MODEL: arm.model } })
+  const row = { arm: arm.id, run: n, model: arm.model, rig: arm.rig, ...(arm.rig && { mode: arm.on ? 'on' : 'start' }), policy: arm.policy ?? null, variant, seed, position, ...(arm.rig && { plugin: pluginSha() }), ...(arm.models && !modelsSupported() && { modelsIgnored: true }), at: new Date().toISOString() }
   let base = null
   let settled = null // HEAD once rig's own setup commits are down: tamper judges the builder's commits, not the harness's
   try {
@@ -65,7 +66,13 @@ export async function runOne(arm, n, { dry, out, capRunUsd, failAt, seed = null,
       base = await setupRig(sb, arm, { dry, variant })
       settled = sb.git('rev-parse', 'HEAD')
       row.phasesDone = 0
-      for (const phase of phasesFor(variant)) {
+      // rig-on: rig is installed and onboarded exactly as for rig-start, but the session gets the bare prompt with the plugin loaded: no phases, no /rig-start.
+      if (arm.on) {
+        if (dry) dryBare(sb, { variant, base: false })
+        if (failAt) throw new Error(`injected failure at ${failAt}`)
+        if (!dry) sessions.run('rig-on', barePrompt(variant), { withPlugin: true })
+      }
+      else for (const phase of phasesFor(variant)) {
         const driver = failing(dry ? scriptedDriver(sb, phase) : liveDriver(sb, arm.full ? { ...phase, prompt: `${phase.prompt} --full` } : phase, { sessions }), failAt)
         const { slug, answered } = await runChange(sb, phase, driver)
         row.reapproved = (row.reapproved ?? 0) + (driver.reapproved ?? 0)
@@ -78,7 +85,7 @@ export async function runOne(arm, n, { dry, out, capRunUsd, failAt, seed = null,
       base = setupBare(sb, { dry, variant })
       if (dry) dryBare(sb, { variant })
       if (failAt) throw new Error(`injected failure at ${failAt}`)
-      if (!dry) sessions.run('bare', { links: BARE_PROMPT_LINKS, rules: BARE_PROMPT_RULES, delta: BARE_PROMPT_DELTA, pricing: BARE_PROMPT_PRICING, contract: BARE_PROMPT_CONTRACT, traps: BARE_PROMPT_TRAPS, brownfield: BARE_PROMPT_BROWNFIELD, hard: BARE_PROMPT_HARD }[variant] ?? BARE_PROMPT)
+      if (!dry) sessions.run('bare', barePrompt(variant))
     }
   } catch (err) {
     row.error = String(err?.message ?? err).split('\n')[0]
