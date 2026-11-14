@@ -929,3 +929,17 @@ test('CI lists a requested waiver row as "waiver request <slug>: ..." for a pers
   const json = JSON.parse(sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main', '--json']).stdout)
   assert.ok(json.humanRows.includes('waiver request tiny: size * "big" by agent (request)'), JSON.stringify(json.humanRows))
 })
+
+test('waive --request refuses plan-gate, harness-tamper, contracts and secrets (exit 3); a hand-written requested row never clears them', () => {
+  sdlc(repo, ['new', 'xx', '--type', 'chore'])
+  for (const sensor of ['plan-gate', 'harness-tamper', 'contracts', 'secrets']) {
+    const r = sdlc(repo, ['waive', '--request', sensor, '*', 'because'])
+    assert.equal(r.code, 3, sensor)
+    assert.match(r.stderr, new RegExp(`${sensor} is never an agent's to waive`))
+  }
+  hook(repo, 'prompt-submit', {})
+  write(repo, '.rig/sensors.json', fromOld({ limits: { diffLines: 9000 } }))
+  assert.match(check('--at', 'stop').stdout, /harness-tamper 1/)
+  write(repo, '.rig/waivers.jsonl', JSON.stringify({ slug: 'xx', sensor: 'harness-tamper', file: '*', reason: 'r', by: 'agent (request)', requested: true, at: new Date().toISOString(), expires: new Date(Date.now() + 86_400_000).toISOString() }) + '\n')
+  assert.match(check('--at', 'stop').stdout, /harness-tamper 1/)
+})

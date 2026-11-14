@@ -2,7 +2,7 @@
 // this tree is committed on sdlc/<slug>, pushed, and gets a PR, or stays local-only without a remote.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, CHANGES, WAIVERS, waiverLive, exists, isTrunk, trunkName, read, readJsonl, out, fail, git, checkSlug, optString, ensureGitignore, dirtyFiles, skillRef, defaultBase, type Args, type Waiver } from './core.ts'
+import { ROOT, CHANGES, WAIVERS, UNREQUESTABLE, waiverLive, exists, isTrunk, trunkName, read, readJsonl, out, fail, git, checkSlug, optString, ensureGitignore, dirtyFiles, skillRef, defaultBase, type Args, type Waiver } from './core.ts'
 import { frozenFindings, frozenFor } from './contracts.ts'
 import { loadConfig } from './check.ts'
 import { gh as ghRun, section, isTest } from './model.ts'
@@ -61,7 +61,7 @@ export function cmdPr(args: Args): void {
   if (gates.plan && approvalState(slug) !== 'approved') fail(`not shipping: ${slug}'s plan is not approved (a person runs ${skillRef('approve')} ${slug})`)
   if (!draft && !verifyFresh(slug, treeStamp())) fail(`not shipping: verify.json is missing, failing or from another tree; run ${skillRef('test')} ${slug}`)
   // Contract files can sit under .rig/, which the tree stamp leaves out: judge the freeze here, with the person's waivers.
-  const waived = readJsonl<Waiver>(WAIVERS).filter(w => w.slug === slug && w.sensor === 'harness-tamper' && waiverLive(w))
+  const waived = readJsonl<Waiver>(WAIVERS).filter(w => w.slug === slug && w.sensor === 'harness-tamper' && waiverLive(w) && !(w.requested && UNREQUESTABLE.includes(w.sensor)))
   const frozen = frozenFindings([slug], Object.keys(frozenFor(slug)), f => read(path.join(ROOT, f))).filter(f => !waived.some(w => w.file === '*' || w.file === f.file))
   if (frozen.length) fail(`not shipping: ${frozen.map(f => f.message).join('; ')}. Revert it, or a person re-approves or waives it`)
   // A review fix wave that changed behaviour amends the spec, but spec.md is hashed into the approval: the amendment goes in amendments.md (or "none").

@@ -1,7 +1,7 @@
 // Orchestrates sensors at a firing point (stop, ship, ci): one set of checks everywhere, so local == CI.
 import fs from 'node:fs'
 import path from 'node:path'
-import { waiverLive,
+import { waiverLive, UNREQUESTABLE,
   ROOT, SDLC, CHANGES, WAIVERS, SENSORS_JSON, BUDGET_MS, readJson, exists, read, out, fail, git, toPosix, optString, readJsonl, defaultBase, checkSlug, skillRef, clean,
   type Args, type Waiver,
 } from './core.ts'
@@ -160,7 +160,7 @@ function ciScope(slug: string, base: string | null | undefined): ((file: string 
 function applyWaivers(findings: Finding[], slugs: string[], ci?: { base: string | null | undefined }): CheckResult {
   const scopes = new Map(slugs.map(s => [s, ci ? ciScope(s, ci.base) : () => true] as const))
   // An exception ends: past its expiry a waiver no longer covers anything, so the finding it hid comes back.
-  const waivers = readJsonl<Waiver>(WAIVERS).filter(w => slugs.includes(w.slug) && scopes.get(w.slug) !== null && waiverLive(w))
+  const waivers = readJsonl<Waiver>(WAIVERS).filter(w => slugs.includes(w.slug) && scopes.get(w.slug) !== null && waiverLive(w) && !(w.requested && UNREQUESTABLE.includes(w.sensor)))
   // A file-less size finding (the diff total, the hard cap) has no file for the CI scope to test, so a `size *` waiver of a change this PR adds covers it (its row still needs an independent approval).
   // Never waivable: plan-gate (only a person's approval clears it); at CI also contracts and harness-tamper on harness files.
   const never = (f: Finding): boolean => f.sensor === 'plan-gate' || (Boolean(ci) && ((f.sensor === 'harness-tamper' && (!f.file || isProtected(f.file))) || f.sensor === 'contracts'))

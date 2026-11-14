@@ -6,7 +6,7 @@
 // scope drift, sensors and hook decisions. This file is the CLI.
 import fs from 'node:fs'
 import path from 'node:path'
-import { waiverLive, whoami, ownerOrFail,
+import { waiverLive, UNREQUESTABLE, whoami, ownerOrFail,
   ROOT, SDLC, CHANGES, SLUG_RE, SOFT_HOOK_FAILURE, exists, read, now, defaultBase, isTrunk, trunkName, toPosix, out, fail, git, parseArgs, optString, listChanges, ageDays, dirtyFiles, readUnresolved, checkSlug,
   WAIVERS, readJsonl, type Waiver, ensureGitignore, PLUGIN_ROOT, IS_VENDORED, skillRef, sanctionWrites, readGate, type Args,
 } from './core.ts'
@@ -374,7 +374,7 @@ function cmdWaive(args: Args): void {
   if (chart) return request ? fail(`chart waivers are a person's: ${skillRef('waive')} chart-<n> <finding number> <reason>`, 3) : waiveChart(Number(chart), args)
   const [sensor, file, ...reason] = words(args)
   const slug = ((g: string | undefined) => (g ? checkSlug(g) : activeSlug()))(optString(args, 'slug'))
-  if (!sensor || !file || !reason.length || !slug) fail('usage: waive <sensor> <file|*> <reason...>  (needs an active change)')
+  if (!sensor || !file || !reason.length || !slug) fail('usage: waive <sensor> <file|*> <reason...>  (needs an active change)'); if (request && UNREQUESTABLE.includes(sensor)) fail(`${sensor} is never an agent's to waive: a person runs ${skillRef('waive')}`, 3)
   const commandIds = loadConfig().registry.sensors.filter(s => s.cmd).map(s => s.id)
   if (!SENSOR_NAMES.includes(sensor) && !commandIds.includes(sensor)) fail(`unknown sensor "${sensor}"; known: ${[...SENSOR_NAMES, ...commandIds].join(', ')}`)
   const by = request && process.env.SDLC_HUMAN !== '1' ? 'agent (request)' : ownerOrFail(args, 'waivers')

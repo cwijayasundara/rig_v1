@@ -290,3 +290,16 @@ test('a BLOCKED agent row drafts the PR on its own, and --draft still keeps the 
   assert.match(fs.readFileSync(log, 'utf8'), /pr create --draft/)
   assert.match(fs.readFileSync(path.join(repo, '.rig/changes/demo/pr-body.md'), 'utf8'), /^> Draft: blocked\. no API key/)
 })
+
+test('a requested harness-tamper waiver row does not clear the frozen-contract refusal', () => {
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], contracts: { files: ['.rig/contracts/**'] } }))
+  write(repo, '.rig/contracts/api.yaml', 'openapi: 3.1.0\n')
+  gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'cfg')
+  shipReady()
+  write(repo, '.rig/contracts/api.yaml', 'openapi: 3.1.0\npaths: {}\n')
+  const row = { slug: 'demo', sensor: 'harness-tamper', file: '*', reason: 'x', at: new Date().toISOString(), expires: new Date(Date.now() + 86_400_000).toISOString() }
+  write(repo, '.rig/waivers.jsonl', JSON.stringify({ ...row, by: 'agent (request)', requested: true }) + '\n')
+  assert.match(pr().stderr, /frozen/)
+  write(repo, '.rig/waivers.jsonl', JSON.stringify({ ...row, by: 'a person' }) + '\n')
+  assert.doesNotMatch(pr().stderr, /frozen/)
+})
