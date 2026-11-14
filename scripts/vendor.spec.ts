@@ -52,10 +52,10 @@ test('vendor --standalone writes project skills, agents and hooks with no plugin
 test('vendor --standalone rewrites the CLAUDE.md routing line to the vendored command and leaves the rest alone', () => {
   const repo = makeRepo()
   sdlc(repo, ['init'])
-  const claude = '# App\n\nsdlc routes all work in this repo: start with /rig:start; use superpowers skills only when an sdlc skill names one.\n\nSee /rig:plan notes.\n'
+  const claude = '# App\n\nrig is on in this repo: work from the request as usual, and its checks and guides run on every turn; /rig:start is the full workflow (spec, plan, approval), used only when the person asks for it. Use superpowers skills only when an sdlc skill names one.\n\nSee /rig:plan notes.\n'
   write(repo, 'CLAUDE.md', claude)
   assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
-  assert.equal(fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8'), claude.replace('start with /rig:start;', 'start with /rig-start;'))
+  assert.equal(fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8'), claude.replace('/rig:start is', '/rig-start is'))
 })
 
 test('a CLAUDE.md written after vendoring still gets the /rig-start routing line when sync runs (2026-10-31 e2e: Haiku wrote CLAUDE.md after init --full)', () => {
@@ -63,21 +63,29 @@ test('a CLAUDE.md written after vendoring still gets the /rig-start routing line
   sdlc(repo, ['init'])
   write(repo, '.rig/sensors.json', JSON.stringify({ stack: 'x', paths: { tests: ['**/*.test.ts'] }, sensors: [] }))
   assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
-  const claude = '# App\n\nsdlc routes all work in this repo: start with /rig:start; use superpowers skills only when an sdlc skill names one.\n\nSee /rig:plan notes.\n'
+  const claude = '# App\n\nrig is on in this repo: work from the request as usual, and its checks and guides run on every turn; /rig:start is the full workflow (spec, plan, approval), used only when the person asks for it. Use superpowers skills only when an sdlc skill names one.\n\nSee /rig:plan notes.\n'
   write(repo, 'CLAUDE.md', claude)
   assert.equal(vendored(repo, ['sync']).code, 0)
   const after = fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8')
-  assert.match(after, /start with \/rig-start;/)
+  assert.match(after, /\/rig-start is the full workflow/)
   assert.match(after, /See \/rig:plan notes\./, 'only the routing line is rewritten')
+})
+
+test('vendor --standalone migrates the old routing line (/rig:start spelling) to the rig-on line in the /rig-start spelling', () => {
+  const repo = makeRepo()
+  sdlc(repo, ['init'])
+  write(repo, 'CLAUDE.md', '# App\n\nsdlc routes all work in this repo: start with /rig:start; use superpowers skills only when an sdlc skill names one.\n\nSee /rig:plan notes.\n')
+  assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
+  assert.equal(fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8'), '# App\n\nrig is on in this repo: work from the request as usual, and its checks and guides run on every turn; /rig-start is the full workflow (spec, plan, approval), used only when the person asks for it. Use superpowers skills only when an sdlc skill names one.\n\nSee /rig:plan notes.\n')
 })
 
 test('a plugin install keeps the /rig:start routing line when sync runs', () => {
   const repo = makeRepo()
   sdlc(repo, ['init'])
   write(repo, '.rig/sensors.json', JSON.stringify({ stack: 'x', paths: { tests: ['**/*.test.ts'] }, sensors: [] }))
-  write(repo, 'CLAUDE.md', '# App\n\nsdlc routes all work in this repo: start with /rig:start; use superpowers skills only when an sdlc skill names one.\n')
+  write(repo, 'CLAUDE.md', '# App\n\nrig is on in this repo: work from the request as usual, and its checks and guides run on every turn; /rig:start is the full workflow (spec, plan, approval), used only when the person asks for it. Use superpowers skills only when an sdlc skill names one.\n')
   assert.equal(sdlc(repo, ['sync']).code, 0)
-  assert.match(fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8'), /start with \/rig:start;/)
+  assert.match(fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8'), /\/rig:start is the full workflow/)
 })
 
 test('vendor --standalone names the vendored /rig-x commands in the README rig block and its template, and leaves the rest alone', () => {

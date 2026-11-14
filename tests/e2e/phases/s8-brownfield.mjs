@@ -14,7 +14,7 @@ import { scriptedDriver } from '../driver/scripted.mjs'
 import { archStandinChecks } from './arch-standin.mjs'
 
 const fx = rel => path.join(import.meta.dirname, '../fixtures', rel)
-const ROUTING = 'sdlc routes all work in this repo: start with /rig:start; use superpowers skills only when an sdlc skill names one.'
+const ROUTING = 'rig is on in this repo: work from the request as usual, and its checks and guides run on every turn; /rig:start is the full workflow (spec, plan, approval), used only when the person asks for it. Use superpowers skills only when an sdlc skill names one.'
 const SESSION = 's8-brownfield'
 const hook = (sb, name, payload = {}) => sb.sdlc(['hook', name], { input: JSON.stringify({ session_id: SESSION, ...payload }) })
 // Files a test runner collects by name: nothing rig vendors may look like one.
