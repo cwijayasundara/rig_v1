@@ -108,6 +108,7 @@ export function harnessFiles(standalone: boolean, profile: Profile = 'full'): Ma
   for (const name of VENDORED) files.set(`.rig/bin/${name}.ts`, read(path.join(PLUGIN_ROOT, 'scripts', `${name}.ts`)))
   for (const [rel, text] of HOOK_SCRIPTS()) files.set(rel, text)
   files.set('.rig/bin/VERSION', `${pluginVersion()}\n`)
+  files.set('.rig/bin/package.json', '{ "type": "module" }\n') // the checker is ES-module TypeScript, also in a commonjs repo
   if (!standalone) return files
   // The human-only skills (approve, waive, autonomy) come through here too: disable-model-invocation keeps them the person's, and
   // CI refuses approval rows a PR adds unless an independent reviewer approves.

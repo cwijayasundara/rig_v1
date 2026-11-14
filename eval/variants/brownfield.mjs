@@ -88,14 +88,6 @@ export async function setupRig(sb, { dry = false, registry = {} } = {}) {
   sb.write('.rig/sensors.json', JSON.stringify(reg, null, 2) + '\n')
   sb.write('CLAUDE.md', CLAUDE_MD)
   must(sb.sdlc(['init', '--full']), 'init --full')
-  // GAP in rig (scripts/vendor.ts, not edited here): the vendored checker is ES-module TypeScript, and in a repo whose package.json says commonjs (commander's does)
-  // Node loads it as commonjs and fails. This marks the vendored folder as modules, so the rest of the onboarding can run; vendor.ts should write it.
-  if (!sb.exists('.rig/bin/package.json')) sb.write('.rig/bin/package.json', '{ "type": "module" }\n')
-  // GAP in rig (the vendored .rig/templates holds test-file-shaped templates): jest collects them and `npm test` goes red. A person onboarding would exclude
-  // .rig/ in the repo's own jest config; so does this.
-  const jest = sb.read('jest.config.js')
-  if (!jest.includes("'/node_modules/']")) throw new Error('jest.config.js has changed upstream: the onboarding patch to its ignore list no longer applies')
-  sb.write('jest.config.js', jest.replace("'/node_modules/']", "'/node_modules/', '/\\\\.rig/']"))
   must(sb.sdlc(['sync']), 'sync')
   must(sb.sdlc(['baseline']), 'baseline')
   sb.commitAll('chore: onboard rig')

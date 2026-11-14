@@ -23,7 +23,7 @@ function loadSlice(stack: string): { slice: Slice; rules: string; files: { rel: 
   return {
     slice: JSON.parse(read(path.join(dir, 'slice.json'))) as Slice,
     rules: read(path.join(dir, 'RULES.md')),
-    files: walk(path.join(dir, 'files')).map(f => ({ rel: path.relative(path.join(dir, 'files'), f).split(path.sep).join('/'), text: fs.readFileSync(f, 'utf8') })),
+    files: walk(path.join(dir, 'files')).map(f => ({ rel: path.relative(path.join(dir, 'files'), f).split(path.sep).join('/').replace(/\.tmpl$/, ''), text: fs.readFileSync(f, 'utf8') })),
   }
 }
 
