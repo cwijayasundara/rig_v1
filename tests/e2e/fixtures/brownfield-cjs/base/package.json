@@ -1,0 +1,11 @@
+{
+  "name": "ledger-lib",
+  "version": "1.0.0",
+  "description": "A tiny existing CommonJS package: money amounts and a ledger of entries.",
+  "type": "commonjs",
+  "main": "lib/ledger.js",
+  "scripts": {
+    "test": "node --test",
+    "test-fast": "node --test"
+  }
+}

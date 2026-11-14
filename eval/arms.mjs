@@ -15,6 +15,9 @@ export const ARMS = [
   // W3: Sonnet building under rig, and the two model pairs of rig's light mode (registry models.light): the D1 default, and Sonnet building with Opus evaluating.
   { id: 'sonnet-rig', model: MODELS.sonnet, rig: true, policy: 'continuous' },
   { id: 'sonnet-rig-light-haiku', model: MODELS.sonnet, rig: true, policy: 'continuous', models: { light: { build: 'haiku', evaluate: 'sonnet' } } },
+  // W3c: rig installed, plain prompts, no /rig-start (arm.on). The other rig arms are rig-start (row.mode 'start').
+  { id: 'sonnet-rig-on', model: MODELS.sonnet, rig: true, policy: 'continuous', on: true },
+  { id: 'haiku-rig-on', model: MODELS.haiku, rig: true, policy: 'continuous', on: true },
   { id: 'sonnet-rig-light-sonnet', model: MODELS.sonnet, rig: true, policy: 'continuous', models: { light: { build: 'sonnet', evaluate: 'opus' } } },
 ]
 

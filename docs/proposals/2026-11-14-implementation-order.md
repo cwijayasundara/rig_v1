@@ -53,3 +53,8 @@
   - The traps were caught because their rules sit in short repo docs that the brief points to, inside a repo small enough to read
     whole.
   - W3's rig arms are not run until a harder set lets at least 2 traps through.
+- **2026-11-14, the re-gate on `hard` and `brownfield` was stopped after 4 bare runs on `hard`** ($1.25, `eval/results/2026-11-14-hard-bare.jsonl`).
+  The refund-policy trap escaped 2 of the 4 runs; every other trap was caught.
+  - The maintainer decided that rig mode is on once rig is installed, so bare Claude Code is no longer a gate (`docs/GOAL.md`).
+  - W3 now measures with rig on: the arms `rig-on` (plain prompts) and `rig-start` (the workflow), on `hard` and `brownfield`. An
+    escape is a harness bug.
