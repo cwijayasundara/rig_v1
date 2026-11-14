@@ -50,7 +50,11 @@ function stage() {
   const work = path.join(root, 'work')
   fs.mkdirSync(work)
   for (const task of TASKS) {
-    for (const f of filesOf(task)) if (!fs.existsSync(path.join(work, f)) && fs.existsSync(path.join(base, f))) { fs.mkdirSync(path.dirname(path.join(work, f)), { recursive: true }); fs.copyFileSync(path.join(base, f), path.join(work, f)) }
+    for (const f of filesOf(task)) if (!fs.existsSync(path.join(work, f)) && fs.existsSync(path.join(base, f))) {
+      fs.mkdirSync(path.dirname(path.join(work, f)), { recursive: true }); fs.copyFileSync(path.join(base, f), path.join(work, f))
+      // The sandbox's base carries base.patch, so a staged file that patch touches starts from its patched form.
+      if (fs.readFileSync(BASE_PATCH, 'utf8').includes(`diff --git a/${f} `)) execFileSync('git', ['apply', '--whitespace=nowarn', `--include=${f}`, BASE_PATCH], { cwd: work, stdio: 'pipe' })
+    }
     applyPatch(work, task, 'ref')
     for (const f of filesOf(task)) { fs.mkdirSync(path.dirname(path.join(root, task, f)), { recursive: true }); fs.copyFileSync(path.join(work, f), path.join(root, task, f)) }
   }
