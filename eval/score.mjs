@@ -6,14 +6,14 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { Checks } from '../tests/e2e/lib/checks.mjs'
-import { PLUGIN } from '../tests/e2e/lib/sandbox.mjs'
 import { assertShopHttp } from '../tests/e2e/acceptance/shop-http.mjs'
 import { linksHttp } from './variants/links.mjs'
 
 const RULES = path.resolve(import.meta.dirname, 'variants/rules.mjs')
 const PRICING = path.resolve(import.meta.dirname, 'variants/pricing.mjs')
 
-const SDLC = path.join(PLUGIN, 'scripts/sdlc.ts')
+// This repo's own tamper checker, whatever RIG_EVAL_PLUGIN points the sandboxes at: both plugin refs are judged by one yardstick.
+export const SDLC = path.resolve(import.meta.dirname, '../scripts/sdlc.ts')
 const ACCEPTANCE = path.resolve(import.meta.dirname, '../tests/e2e/acceptance/shop.mjs')
 
 // Its own process group with output to a file (no pipe a grandchild can hold open), killed as a group at the limit.
@@ -84,33 +84,46 @@ export async function scoreRun(sb, base, { timeoutMs = 300_000, sdlc = SDLC, var
   // The sandbox's env: the runner's own (a test context, a CI event path) must not leak into the model's suite.
   const t = await runBounded('npm', ['test', '--silent'], { cwd: sb.dir, timeoutMs, env: sb.env })
   const npmTest = t.status === 0
-  const a = await runBounded('node', [ACCEPTANCE, sb.dir, 'remove', ...(['rules', 'pricing', 'contract'].includes(variant) ? ['rules'] : [])], { cwd: sb.dir, timeoutMs, env: sb.env })
+  const a = await runBounded('node', [ACCEPTANCE, sb.dir, 'remove', ...(['rules', 'pricing', 'contract', 'traps'].includes(variant) ? ['rules'] : [])], { cwd: sb.dir, timeoutMs, env: sb.env })
   const last = a.out.trim().split('\n').at(-1) ?? ''
   const acceptance = a.timedOut ? `timed out after ${timeoutMs} ms` : (() => { try { return JSON.parse(last) } catch { return `acceptance exited ${a.status}: ${last.slice(0, 200)}` } })()
   const c = new Checks('score')
   await assertShopHttp(c, sb.dir, 'remove')
   const http = c.results[0].status === 'PASS' ? true : c.results[0].why
-  const withLinks = ['links', 'rules', 'pricing', 'contract'].includes(variant)
+  const withLinks = ['links', 'rules', 'pricing', 'contract', 'traps'].includes(variant)
   const links = withLinks ? await linksHttp(sb.dir).catch(e => `links acceptance crashed: ${e.message}`) : null
   // B8's six edge cases and B9 each count, so a near miss scores above a total miss.
   let rules = null
-  if (['rules', 'pricing', 'contract'].includes(variant)) {
+  if (['rules', 'pricing', 'contract', 'traps'].includes(variant)) {
     const r = await runBounded('node', [RULES, sb.dir], { cwd: sb.dir, timeoutMs, env: sb.env })
     try { rules = JSON.parse(r.out.trim().split('\n').at(-1)) } catch { rules = { b8: 0, b9: false, failures: [r.timedOut ? `rules acceptance timed out after ${timeoutMs} ms` : `rules acceptance exited ${r.status}`] } }
   }
   // B10–B12: each exact rule counts, so a near miss scores above a total miss.
   let pricing = null
-  if (variant === 'pricing' || variant === 'contract') { // contract keeps B10–B12 in the score: a regression there is a real failure
+  if (['pricing', 'contract', 'traps'].includes(variant)) { // contract and traps keep B10–B12 in the score: a regression there is a real failure
     const r = await runBounded('node', [PRICING, sb.dir], { cwd: sb.dir, timeoutMs, env: sb.env })
     try { pricing = JSON.parse(r.out.trim().split('\n').at(-1)) } catch { pricing = { b10: 0, b11: 0, b12: 0, failures: [r.timedOut ? `pricing acceptance timed out after ${timeoutMs} ms` : `pricing acceptance exited ${r.status}`] } }
   }
   // B13–B14: each exact wire rule counts. The checks run in their own child processes (contract.mjs), one per check.
   let contract = null
-  if (variant === 'contract') {
+  if (variant === 'contract' || variant === 'traps') {
     const { contractChecks } = await import('./variants/contract.mjs')
     contract = contractChecks(sb.dir)
   }
-  const all = [npmTest, acceptance === true, http === true, ...(withLinks ? [links === true] : []), ...(rules ? [...Array.from({ length: 6 }, (_, i) => i < rules.b8), rules.b9] : []), ...(pricing ? [...Array.from({ length: 5 }, (_, i) => i < pricing.b10), ...Array.from({ length: 5 }, (_, i) => i < pricing.b11), ...Array.from({ length: 4 }, (_, i) => i < pricing.b12)] : []), ...(contract ? [...Array.from({ length: 8 }, (_, i) => i < contract.b13), ...Array.from({ length: 7 }, (_, i) => i < contract.b14), ...Array.from({ length: 2 }, (_, i) => i < contract.files)] : [])]
+  // B15–B18: five traps, each a defect that unit tests pass and the running app fails (traps.mjs). Escaped: a trap that got past a passing npm test.
+  let traps = null
+  let trapFailures = []
+  let escaped = null
+  let missing = []
+  if (variant === 'traps') {
+    const m = await import('./variants/traps.mjs')
+    ;({ traps, failures: trapFailures } = await m.trapChecks(sb.dir))
+    // A trap escaped only if its behaviour's test file exists and npm test passed; no test file means the behaviour was never built.
+    const failed = Object.keys(traps).filter(n => !traps[n])
+    missing = failed.filter(n => !fs.existsSync(path.join(sb.dir, m.TRAP_TEST[n])))
+    escaped = npmTest ? failed.length - missing.length : null
+  }
+  const all = [npmTest, acceptance === true, http === true, ...(withLinks ? [links === true] : []), ...(rules ? [...Array.from({ length: 6 }, (_, i) => i < rules.b8), rules.b9] : []), ...(pricing ? [...Array.from({ length: 5 }, (_, i) => i < pricing.b10), ...Array.from({ length: 5 }, (_, i) => i < pricing.b11), ...Array.from({ length: 4 }, (_, i) => i < pricing.b12)] : []), ...(contract ? [...Array.from({ length: 8 }, (_, i) => i < contract.b13), ...Array.from({ length: 7 }, (_, i) => i < contract.b14), ...Array.from({ length: 2 }, (_, i) => i < contract.files)] : []), ...(traps ? Object.values(traps) : [])]
   const checks = all.filter(Boolean).length
-  return { checks, of: all.length, accepted: checks === all.length, npmTest, acceptance, http, ...(withLinks ? { links } : {}), ...(rules ? { rules } : {}), ...(pricing ? { pricing } : {}), ...(contract ? { contract } : {}), layerViolations: withLinks && links !== true ? null : layerViolations(sb.dir), tamper: tamperOf(sb, judgeFrom, sdlc) }
+  return { checks, of: all.length, accepted: checks === all.length, npmTest, acceptance, http, ...(withLinks ? { links } : {}), ...(rules ? { rules } : {}), ...(pricing ? { pricing } : {}), ...(contract ? { contract } : {}), ...(traps ? { traps, trapFailures, escaped, missing } : {}), layerViolations: withLinks && links !== true ? null : layerViolations(sb.dir), tamper: tamperOf(sb, judgeFrom, sdlc) }
 }

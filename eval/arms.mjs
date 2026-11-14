@@ -12,6 +12,10 @@ export const ARMS = [
   { id: 'haiku-low-bare', model: MODELS.haiku, rig: false, effort: 'low' },
   { id: 'haiku-low-rig', model: MODELS.haiku, rig: true, policy: 'continuous', effort: 'low' },
   { id: 'haiku-rig-final', model: MODELS.haiku, rig: true, policy: 'final' },
+  // W3: Sonnet building under rig, and the two model pairs of rig's light mode (registry models.light): the D1 default, and Sonnet building with Opus evaluating.
+  { id: 'sonnet-rig', model: MODELS.sonnet, rig: true, policy: 'continuous' },
+  { id: 'sonnet-rig-light-haiku', model: MODELS.sonnet, rig: true, policy: 'continuous', models: { light: { build: 'haiku', evaluate: 'sonnet' } } },
+  { id: 'sonnet-rig-light-sonnet', model: MODELS.sonnet, rig: true, policy: 'continuous', models: { light: { build: 'sonnet', evaluate: 'opus' } } },
 ]
 
 export function armsFrom(arg) {

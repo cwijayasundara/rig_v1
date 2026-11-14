@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { createSandbox } from '../tests/e2e/lib/sandbox.mjs'
 import { ARMS, armsFrom } from './arms.mjs'
 import { scoreRun } from './score.mjs'
@@ -22,11 +23,11 @@ function shopRepo(name) {
 }
 
 test('the arms of spec §9 and the arch arm, in order, and --arms picks them', () => {
-  assert.deepEqual(ARMS.map(a => a.id), ['haiku-rig', 'haiku-bare', 'sonnet-bare', 'opus-bare', 'haiku-rig-arch', 'haiku-rig-full', 'haiku-low-bare', 'haiku-low-rig', 'haiku-rig-final'])
-  assert.deepEqual(ARMS.filter(a => a.rig).map(a => a.policy), ['continuous', 'continuous', 'continuous', 'continuous', 'final'])
+  assert.deepEqual(ARMS.map(a => a.id), ['haiku-rig', 'haiku-bare', 'sonnet-bare', 'opus-bare', 'haiku-rig-arch', 'haiku-rig-full', 'haiku-low-bare', 'haiku-low-rig', 'haiku-rig-final', 'sonnet-rig', 'sonnet-rig-light-haiku', 'sonnet-rig-light-sonnet'])
+  assert.deepEqual(ARMS.filter(a => a.rig).map(a => a.policy), ['continuous', 'continuous', 'continuous', 'continuous', 'final', 'continuous', 'continuous', 'continuous'])
   assert.deepEqual(ARMS.filter(a => a.arch).map(a => a.id), ['haiku-rig-arch'], 'only one arm has approved layers')
   assert.deepEqual(ARMS.filter(a => a.full).map(a => a.id), ['haiku-rig-full'], 'only one arm asks for the full path')
-  assert.deepEqual(armsFrom('all').length, 9)
+  assert.deepEqual(armsFrom('all').length, 12)
   assert.deepEqual(armsFrom('opus-bare,haiku-rig').map(a => a.id), ['opus-bare', 'haiku-rig'])
   assert.throws(() => armsFrom('gpt-bare'), /unknown arm: gpt-bare/)
 })
@@ -139,4 +140,10 @@ test('rules variant: a perfect repo scores every check, and a repo with no B8 or
   assert.deepEqual([s.rules.b8, s.rules.b9, s.accepted], [0, false, false], JSON.stringify(s))
   assert.equal(s.rules.failures.length, 7)
   assert.notEqual(s.acceptance, true, 'the old sum-on-re-add subtotal fails the rules-variant regression')
+})
+
+test('the scorer judges tamper with this repo\'s own sdlc.ts, whatever RIG_EVAL_PLUGIN says', () => {
+  const root = path.resolve(import.meta.dirname, '..')
+  const r = spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', "const s = await import('./eval/score.mjs'); console.log(s.SDLC)"], { cwd: root, encoding: 'utf8', env: { ...process.env, RIG_EVAL_PLUGIN: os.tmpdir() } })
+  assert.equal(r.stdout.trim(), path.join(root, 'scripts/sdlc.ts'), r.stderr)
 })

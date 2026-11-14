@@ -1,0 +1,9 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/orders/view"
+  },
+  "response": {
+    "status": 200
+  }
+}

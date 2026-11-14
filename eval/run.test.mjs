@@ -4,10 +4,13 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { orderArms, runOne, sessionTrace, phasesFor, taskOf } from './run.mjs'
-import { setupBare, BARE_PROMPT_DELTA, BARE_PROMPT_PRICING, BARE_PROMPT_CONTRACT } from './setup.mjs'
+import { spawnSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
+import { setupBare, setupRig, modelsSupported, dryBare, BARE_PROMPT_DELTA, BARE_PROMPT_PRICING, BARE_PROMPT_CONTRACT, BARE_PROMPT_TRAPS } from './setup.mjs'
 import { createSandbox } from '../tests/e2e/lib/sandbox.mjs'
 import { EVAL_ALLOW, nextRunAllowed, resultsAllowed } from './lib/cli.mjs'
 import { ARMS } from './arms.mjs'
+import { scoreRun } from './score.mjs'
 
 test('nextRunAllowed refuses a run that could cross the total cap', () => {
   assert.equal(nextRunAllowed(0, 6, 300), true)
@@ -206,4 +209,200 @@ test('contract checks: the reference passes all 17, and each plausible slip is c
 test('the low-effort arms are the haiku arms with effort low, bare and rig', () => {
   const low = ARMS.filter(a => a.effort === 'low')
   assert.deepEqual(low.map(a => [a.id, a.rig, a.model]), [['haiku-low-bare', false, 'claude-haiku-5-5'], ['haiku-low-rig', true, 'claude-haiku-5-5']])
+})
+
+// The traps variant (W0): B15-B18 on a built B1-B14 shop. Each trap is a defect that unit tests pass and the running app fails.
+const TRAP_WORDS = ['routes.js', '--flag=value', '100000', 'role="alert"', 'openapi']
+
+test('traps: rig builds B15–B18 as four changes from a base with the seed documents and no B15–B18 code', () => {
+  assert.deepEqual(phasesFor('traps').map(p => p.id), ['S15', 'S16', 'S17', 'S18'])
+  const sb = createSandbox({ name: 'traps-seed', out: fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-seed-')) })
+  setupBare(sb, { dry: true, variant: 'traps' })
+  for (const f of ['docs/api-conventions.md', 'docs/cli-conventions.md', 'docs/ui-conventions.md', 'src/http/routes.js', 'bin/shop.mjs', 'data/orders.json', 'test/cancel-api.test.js', 'src/http/handler.js']) assert.ok(fs.existsSync(path.join(sb.dir, f)), f)
+  for (const f of ['src/http/receipt.js', 'src/http/reports.js', 'src/http/orders-page.js', 'test/receipt.test.js', 'test/cli.test.js', 'test/top-customers.test.js', 'test/orders-page.test.js']) assert.ok(!fs.existsSync(path.join(sb.dir, f)), `${f} must not be in the base`)
+  assert.match(fs.readFileSync(path.join(sb.dir, 'src/http/routes.js'), 'utf8'), /export const routes = \[\]/)
+  assert.doesNotMatch(fs.readFileSync(path.join(sb.dir, 'bin/shop.mjs'), 'utf8').match(/function parseArgs[\s\S]*?\n}\n/)[0], /indexOf\('='\)|unknown flag/, 'the seed parseArgs takes only --flag value')
+  assert.doesNotMatch(fs.readFileSync(path.join(sb.dir, 'api/openapi.yaml'), 'utf8'), /statusLabel/)
+  assert.match(fs.readFileSync(path.join(sb.dir, 'docs/ui-conventions.md'), 'utf8'), /role="alert"[^]*openapi\.yaml/)
+  assert.match(BARE_PROMPT_TRAPS, /already[^.]*B1–B14[^]*B15[^]*B16[^]*B17[^]*B18/)
+  assert.match(fs.readFileSync(path.join(sb.dir, 'BRIEF.md'), 'utf8'), /B18: GET \/orders\/view/)
+})
+
+test('no traps prompt names the trap', async () => {
+  const { PHASE_S15, PHASE_S16, PHASE_S17, PHASE_S18, briefFor } = await import('./variants/traps.mjs')
+  const { briefFor: contractBrief } = await import('./variants/contract.mjs')
+  const shop = fs.readFileSync(path.resolve(import.meta.dirname, '../tests/e2e/prd/shop-brief.md'), 'utf8')
+  const old = new Set(contractBrief(shop).split('\n'))
+  const added = briefFor(shop).split('\n').filter(l => !old.has(l)).join('\n')
+  assert.match(added, /B15[^]*B16[^]*B17[^]*B18/)
+  for (const [name, text] of [['the bare prompt', BARE_PROMPT_TRAPS], ['the brief lines', added], ...[PHASE_S15, PHASE_S16, PHASE_S17, PHASE_S18].map(p => [p.id, p.prompt])]) {
+    for (const w of TRAP_WORDS) assert.ok(!text.includes(w), `${name} names the trap: ${w}`)
+  }
+})
+
+test('a dry traps run is accepted with full marks and escaped 0 for a rig arm and a bare arm at $0', async () => {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-run-'))
+  for (const id of ['haiku-rig', 'sonnet-bare']) {
+    const row = await runOne(ARMS.find(a => a.id === id), 1, { dry: true, out, capRunUsd: 6, variant: 'traps' })
+    assert.deepEqual([row.accepted, row.checks, row.of, row.escaped, row.usd, row.error], [true, 47, 47, 0, 0, undefined], JSON.stringify(row))
+    assert.deepEqual(row.traps, { route: true, flag: true, scale: true, uiError: true, uiField: true })
+  }
+})
+
+test('trap checks: the reference passes all five; each slip fails only its own trap', async () => {
+  const { trapChecks } = await import('./variants/traps.mjs')
+  const root = path.resolve(import.meta.dirname, '..')
+  const build = mutate => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-traps-'))
+    for (const d of ['tests/e2e/fixtures/shop', 'tests/e2e/fixtures/remove', 'eval/variants/links/fixtures', 'eval/variants/rules/fixtures', 'eval/variants/pricing/fixtures', 'eval/variants/contract/seed', 'eval/variants/contract/fixtures', 'eval/variants/traps/seed', 'eval/variants/traps/fixtures']) fs.cpSync(path.join(root, d), dir, { recursive: true })
+    fs.mkdirSync(path.join(dir, 'scripts'), { recursive: true })
+    fs.copyFileSync(path.join(root, 'tests/e2e/fixtures/tooling/scripts/contract.mjs'), path.join(dir, 'scripts/contract.mjs'))
+    fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'shop-app', type: 'module', scripts: { test: 'node --test', start: 'node src/server.js' } }))
+    mutate?.(dir)
+    return dir
+  }
+  const edit = (rel, from, to) => dir => { const f = path.join(dir, rel); const s = fs.readFileSync(f, 'utf8'); assert.ok(s.includes(from), `${rel} lacks ${from}`); fs.writeFileSync(f, s.replace(from, to)) }
+  const ALL = ['route', 'flag', 'scale', 'uiError', 'uiField']
+  const ref = await trapChecks(build())
+  assert.deepEqual([ref.traps, ref.failures], [Object.fromEntries(ALL.map(k => [k, true])), []])
+  const seedParse = fs.readFileSync(path.join(root, 'eval/variants/traps/seed/bin/shop.mjs'), 'utf8').match(/function parseArgs[\s\S]*?\n}\n/)[0]
+  const NAIVE = `import { listOrders } from '../orders/orders.js'
+export function topCustomers({ url, json }) {
+  const orders = listOrders()
+  const customers = []
+  for (const o of orders) if (!customers.includes(o.customer)) customers.push(o.customer)
+  const rows = customers.map(c => ({ customer: c, spendCents: orders.filter(o => o.customer === c && o.status !== 'cancelled').reduce((n, o) => n + o.payableCents, 0), orders: orders.filter(o => o.customer === c && o.status !== 'cancelled').length }))
+  const raw = url.searchParams.get('limit')
+  return json(200, { items: rows.sort((a, b) => b.spendCents - a.spendCents || (a.customer < b.customer ? -1 : 1)).slice(0, raw === null ? 10 : Number(raw)) })
+}
+`
+  const slips = {
+    'the route left out of routes.js': [edit('src/http/routes.js', "  { method: 'GET', path: /^\\/orders\\/([^/]+)\\/receipt$/, handle: receipt },\n", ''), 'route'],
+    'parseArgs left unchanged': [dir => { const f = path.join(dir, 'bin/shop.mjs'); fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/function parseArgs[\s\S]*?\n}\n/, seedParse)) }, 'flag'],
+    'a nested-loop top-customers': [dir => fs.writeFileSync(path.join(dir, 'src/http/reports.js'), NAIVE), 'scale'],
+    'no error branch on the page': [edit('src/http/orders-page.js', "try { orders = listOrders() } catch { return page(503, '<p role=\"alert\">Orders are unavailable right now. Please try again shortly.</p>') }", 'orders = listOrders()'), 'uiError'],
+    'the status label rendered without the contract change': [dir => { const f = path.join(dir, 'api/openapi.yaml'); const s = JSON.parse(fs.readFileSync(f, 'utf8')); delete s.components.schemas.Order.properties.statusLabel; fs.writeFileSync(f, JSON.stringify(s, null, 2)) }, 'uiField'],
+  }
+  for (const [name, [mutate, only]] of Object.entries(slips)) {
+    const r = await trapChecks(build(mutate))
+    assert.deepEqual(r.traps, Object.fromEntries(ALL.map(k => [k, k !== only])), `${name}: ${JSON.stringify(r)}`)
+    if (only === 'scale') assert.ok(Number(/took (\d+) ms/.exec(r.failures[0])?.[1]) > 10_000, `the naive top-customers must be clearly slow: ${r.failures[0]}`)
+  }
+})
+
+test('escaped is null when npm test fails, and counts the failed traps when it passes', async () => {
+  const sb = createSandbox({ name: 'traps-escaped', out: fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-esc-')) })
+  const base = setupBare(sb, { dry: true, variant: 'traps' })
+  dryBare(sb, { variant: 'traps' })
+  fs.writeFileSync(path.join(sb.dir, 'src/http/routes.js'), 'export const routes = []\n')
+  sb.commitAll('run: nothing is registered')
+  const red = await scoreRun(sb, base, { variant: 'traps' })
+  assert.deepEqual([red.npmTest, red.traps.route, red.escaped], [false, false, null], 'the reference tests go red without the registrations, so npm test fails here')
+  for (const t of ['receipt', 'orders-page', 'top-customers']) fs.writeFileSync(path.join(sb.dir, `test/${t}.test.js`), `import { test } from 'node:test'\ntest('${t}: unit only', () => {})\n`)
+  sb.commitAll('run: the unit tests no longer go through the table')
+  const escaped = await scoreRun(sb, base, { variant: 'traps' })
+  assert.deepEqual([escaped.npmTest, escaped.traps.route, escaped.escaped, escaped.missing], [true, false, 4, []], 'unit tests pass, and the four traps that need a registration or a page escaped')
+  fs.rmSync(path.join(sb.dir, 'test/top-customers.test.js'))
+  sb.commitAll('run: no B17 test at all')
+  const gone = await scoreRun(sb, base, { variant: 'traps' })
+  assert.deepEqual([gone.escaped, gone.missing], [3, ['scale']], 'a behaviour with no test file is missing, not escaped')
+})
+
+// W3: the arms that compare two rig refs and two model pairs.
+test('RIG_EVAL_PLUGIN points PLUGIN elsewhere and the row records its sha', async () => {
+  const other = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-plugin-'))
+  const probe = env => spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', "const s = await import('./tests/e2e/lib/sandbox.mjs'); const u = await import('./eval/setup.mjs'); console.log(JSON.stringify([s.PLUGIN, u.pluginSha()]))"], { cwd: path.resolve(import.meta.dirname, '..'), encoding: 'utf8', env: { ...process.env, ...env } })
+  const [dir, sha] = JSON.parse(probe({ RIG_EVAL_PLUGIN: other }).stdout)
+  assert.deepEqual([dir, sha], [fs.realpathSync(other) === other ? other : path.resolve(other), null], 'a directory that is not a git checkout has no sha')
+  const [def, defSha] = JSON.parse(probe({ RIG_EVAL_PLUGIN: '' }).stdout)
+  assert.equal(def, path.resolve(import.meta.dirname, '..'))
+  const dirty = spawnSync('git', ['status', '--porcelain', '--untracked-files=no'], { cwd: def, encoding: 'utf8' }).stdout.trim() ? '-dirty' : ''
+  assert.equal(defSha, spawnSync('git', ['rev-parse', '--short=7', 'HEAD'], { cwd: def, encoding: 'utf8' }).stdout.trim() + dirty, 'a checkout with uncommitted changes is marked -dirty')
+  const row = await runOne(ARMS.find(a => a.id === 'sonnet-rig'), 1, { dry: true, out: fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-run-')), capRunUsd: 6 })
+  assert.equal(row.plugin, defSha)
+})
+
+test("an arm's models.light reaches the sandbox registry", async () => {
+  const sb = createSandbox({ name: 'models-light', out: fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-models-')) })
+  await setupRig(sb, ARMS.find(a => a.id === 'sonnet-rig-light-sonnet'), { dry: true })
+  assert.deepEqual(JSON.parse(sb.read('.rig/sensors.json')).models.light, { build: 'sonnet', evaluate: 'opus' })
+  const plain = createSandbox({ name: 'models-none', out: fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-models-')) })
+  await setupRig(plain, ARMS.find(a => a.id === 'sonnet-rig'), { dry: true })
+  assert.equal(JSON.parse(plain.read('.rig/sensors.json')).models, undefined, 'an arm without models leaves the registry default')
+  assert.deepEqual(ARMS.filter(a => a.id.startsWith('sonnet-rig')).map(a => [a.id, a.model, a.rig, a.policy]), [['sonnet-rig', 'claude-sonnet-5-5', true, 'continuous'], ['sonnet-rig-light-haiku', 'claude-sonnet-5-5', true, 'continuous'], ['sonnet-rig-light-sonnet', 'claude-sonnet-5-5', true, 'continuous']])
+})
+
+test("a plugin whose registry.ts has models but no light pair (ref 7324485) gets no models key and modelsIgnored", async () => {
+  const old = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-old-plugin-'))
+  fs.mkdirSync(path.join(old, 'scripts'))
+  fs.writeFileSync(path.join(old, 'scripts/registry.ts'), execFileSync('git', ['show', '7324485:scripts/registry.ts'], { cwd: path.resolve(import.meta.dirname, '..'), encoding: 'utf8' }))
+  assert.deepEqual([modelsSupported(old), modelsSupported()], [false, true])
+  const sb = createSandbox({ name: 'models-old', out: fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-models-')) })
+  await setupRig(sb, ARMS.find(a => a.id === 'sonnet-rig-light-haiku'), { dry: true, plugin: old })
+  assert.equal(JSON.parse(sb.read('.rig/sensors.json')).models, undefined)
+  const out = spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', 'eval/run.mjs', '--dry', '--runs', '1', '--arms', 'sonnet-rig-light-haiku', '--out', fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-old-'))], { cwd: path.resolve(import.meta.dirname, '..'), encoding: 'utf8', env: { ...process.env, RIG_EVAL_PLUGIN: old } })
+  assert.match(out.stdout, /sonnet-rig-light-haiku #1/)
+  const results = out.stdout.match(/^(\S+results\.jsonl)$/m)?.[1]
+  assert.equal(JSON.parse(fs.readFileSync(results, 'utf8').trim().split('\n')[0]).modelsIgnored, true)
+})
+
+// W3 review findings.
+test('scale check compares customer, spendCents and orders: key order and an extra field pass', async () => {
+  const { trapChecks } = await import('./variants/traps.mjs')
+  const root = path.resolve(import.meta.dirname, '..')
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-traps-proj-'))
+  for (const d of ['tests/e2e/fixtures/shop', 'tests/e2e/fixtures/remove', 'eval/variants/links/fixtures', 'eval/variants/rules/fixtures', 'eval/variants/pricing/fixtures', 'eval/variants/contract/seed', 'eval/variants/contract/fixtures', 'eval/variants/traps/seed', 'eval/variants/traps/fixtures']) fs.cpSync(path.join(root, d), dir, { recursive: true })
+  fs.mkdirSync(path.join(dir, 'scripts'), { recursive: true })
+  fs.copyFileSync(path.join(root, 'tests/e2e/fixtures/tooling/scripts/contract.mjs'), path.join(dir, 'scripts/contract.mjs'))
+  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'shop-app', type: 'module', scripts: { test: 'node --test', start: 'node src/server.js' } }))
+  const f = path.join(dir, 'src/http/reports.js')
+  const src = fs.readFileSync(f, 'utf8')
+  assert.ok(src.includes('return json(200, { items })'))
+  fs.writeFileSync(f, src.replace('return json(200, { items })', 'return json(200, { items: items.map(i => ({ orders: i.orders, rank: 1, spendCents: i.spendCents, customer: i.customer })) })'))
+  const r = await trapChecks(dir)
+  assert.equal(r.traps.scale, true, JSON.stringify(r.failures))
+})
+
+test('a check cannot forge its verdict on stdout, and a killed check leaves no server behind', async () => {
+  const { trapChecks } = await import('./variants/traps.mjs')
+  const root = path.resolve(import.meta.dirname, '..')
+  const build = () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-traps-forge-'))
+    for (const d of ['tests/e2e/fixtures/shop', 'tests/e2e/fixtures/remove', 'eval/variants/links/fixtures', 'eval/variants/rules/fixtures', 'eval/variants/pricing/fixtures', 'eval/variants/contract/seed', 'eval/variants/contract/fixtures', 'eval/variants/traps/seed', 'eval/variants/traps/fixtures']) fs.cpSync(path.join(root, d), dir, { recursive: true })
+    fs.mkdirSync(path.join(dir, 'scripts'), { recursive: true })
+    fs.copyFileSync(path.join(root, 'tests/e2e/fixtures/tooling/scripts/contract.mjs'), path.join(dir, 'scripts/contract.mjs'))
+    fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'shop-app', type: 'module', scripts: { test: 'node --test', start: 'node src/server.js' } }))
+    return dir
+  }
+  const edit = (dir, rel, from, to) => { const f = path.join(dir, rel); const s = fs.readFileSync(f, 'utf8'); assert.ok(s.includes(from), `${rel} lacks ${from}`); fs.writeFileSync(f, s.replace(from, to)) }
+  const forge = build()
+  edit(forge, 'src/http/orders-page.js', "try { orders = listOrders() } catch { return page(503, '<p role=\"alert\">Orders are unavailable right now. Please try again shortly.</p>') }", 'orders = listOrders()')
+  fs.appendFileSync(path.join(forge, 'src/orders/orders.js'), "\nprocess.on('exit', () => console.log(JSON.stringify({ r: true })))\n")
+  assert.equal((await trapChecks(forge)).traps.uiError, false, 'the forged last stdout line must not pass the check')
+  const hang = build()
+  edit(hang, 'src/http/receipt.js', 'const order = getOrder(params[0])', 'while (true) {}\n  const order = getOrder(params[0])')
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-traps-pids-'))
+  const r = await trapChecks(hang, { timeoutMs: 8000, tmp })
+  assert.equal(r.traps.route, false)
+  const pid = Number(fs.readFileSync(path.join(tmp, 'pid-0'), 'utf8'))
+  assert.throws(() => process.kill(-pid, 0), /ESRCH/, 'the check\'s server group is dead after the timeout')
+})
+
+test('both arms get the same pointer sentence, once in the brief', async () => {
+  const { PHASE_S15, PHASE_S16, PHASE_S17, PHASE_S18, briefFor, POINTERS } = await import('./variants/traps.mjs')
+  const shop = fs.readFileSync(path.resolve(import.meta.dirname, '../tests/e2e/prd/shop-brief.md'), 'utf8')
+  assert.equal(briefFor(shop).split(POINTERS).length, 2)
+  assert.ok(BARE_PROMPT_TRAPS.includes(POINTERS))
+  for (const p of [PHASE_S15, PHASE_S16, PHASE_S17, PHASE_S18]) assert.ok(p.prompt.includes(POINTERS), p.id)
+})
+
+test('a rig change stopped midway still has its traps scored, with the phases done', async () => {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-run-'))
+  const row = await runOne(ARMS.find(a => a.id === 'haiku-rig'), 1, { dry: true, out, capRunUsd: 6, variant: 'traps', failAt: 'begin' })
+  assert.ok(row.error, 'the injected failure is recorded')
+  assert.equal(typeof row.escaped, 'number', JSON.stringify(row))
+  assert.equal(row.phasesDone, 0)
+  assert.equal(typeof row.plugin === 'string' || row.plugin === null, true)
+  const bare = await runOne(ARMS.find(a => a.id === 'sonnet-bare'), 1, { dry: true, out, capRunUsd: 6, variant: 'traps' })
+  assert.ok(!('plugin' in bare), 'a bare row records no plugin')
 })

@@ -14,11 +14,12 @@ import { PHASE as S3 } from '../tests/e2e/phases/s3-delete.mjs'
 import { EVAL_ALLOW, arg, nextRunAllowed, resultsAllowed } from './lib/cli.mjs'
 import { armsFrom } from './arms.mjs'
 import { scoreRun } from './score.mjs'
-import { setupBare, setupRig, dryBare, BARE_PROMPT, BARE_PROMPT_LINKS, BARE_PROMPT_RULES, BARE_PROMPT_DELTA, BARE_PROMPT_PRICING, BARE_PROMPT_CONTRACT } from './setup.mjs'
+import { setupBare, setupRig, dryBare, pluginSha, modelsSupported, BARE_PROMPT, BARE_PROMPT_LINKS, BARE_PROMPT_RULES, BARE_PROMPT_DELTA, BARE_PROMPT_PRICING, BARE_PROMPT_CONTRACT, BARE_PROMPT_TRAPS } from './setup.mjs'
 import { PHASE as S7 } from './variants/links.mjs'
 import { PHASE_S8 as S8, PHASE_S9 as S9 } from './variants/rules.mjs'
 import { PHASE_S10 as S10, PHASE_S11 as S11, PHASE_S12 as S12 } from './variants/pricing.mjs'
 import { PHASE_S13 as S13, PHASE_S14 as S14 } from './variants/contract.mjs'
+import { PHASE_S15 as S15, PHASE_S16 as S16, PHASE_S17 as S17, PHASE_S18 as S18 } from './variants/traps.mjs'
 
 const RESULTS = path.resolve(import.meta.dirname, 'results')
 
@@ -30,7 +31,7 @@ export function orderArms(arms, seed, n) {
   return arms.map(a => [rand(), a]).sort((a, b) => a[0] - b[0]).map(([, a]) => a)
 }
 
-const PHASES = { links: [S2, S3, S7], rules: [S2, S3, S7, S8, S9], delta: [S8, S9], pricing: [S10, S11, S12], contract: [S13, S14] }
+const PHASES = { links: [S2, S3, S7], rules: [S2, S3, S7, S8, S9], delta: [S8, S9], pricing: [S10, S11, S12], contract: [S13, S14], traps: [S15, S16, S17, S18] }
 export const phasesFor = variant => PHASES[variant] ?? [S2, S3]
 // delta is the rules task from a built B1–B7 shop: it is briefed, prompted and scored as rules.
 export const taskOf = variant => (variant === 'delta' ? 'rules' : variant)
@@ -51,13 +52,14 @@ export async function runOne(arm, n, { dry, out, capRunUsd, failAt, seed = null,
   // Subagents run on the arm's own model (the template pins them to Sonnet), so an arm measures its model; rig's evaluator agent keeps
   // its own pin (spec §3.5) and shows in the per-model usage.
   const sessions = dry ? null : createSessions({ sb, out: sb.root, capUsd: capRunUsd, model: arm.model, effort: arm.effort, allow: EVAL_ALLOW, env: { CLAUDE_CODE_SUBAGENT_MODEL: arm.model } })
-  const row = { arm: arm.id, run: n, model: arm.model, rig: arm.rig, policy: arm.policy ?? null, variant, seed, position, at: new Date().toISOString() }
+  const row = { arm: arm.id, run: n, model: arm.model, rig: arm.rig, policy: arm.policy ?? null, variant, seed, position, ...(arm.rig && { plugin: pluginSha() }), ...(arm.models && !modelsSupported() && { modelsIgnored: true }), at: new Date().toISOString() }
   let base = null
   let settled = null // HEAD once rig's own setup commits are down: tamper judges the builder's commits, not the harness's
   try {
     if (arm.rig) {
       base = await setupRig(sb, arm, { dry, variant })
       settled = sb.git('rev-parse', 'HEAD')
+      row.phasesDone = 0
       for (const phase of phasesFor(variant)) {
         const driver = failing(dry ? scriptedDriver(sb, phase) : liveDriver(sb, arm.full ? { ...phase, prompt: `${phase.prompt} --full` } : phase, { sessions }), failAt)
         const { slug, answered } = await runChange(sb, phase, driver)
@@ -65,12 +67,13 @@ export async function runOne(arm, n, { dry, out, capRunUsd, failAt, seed = null,
         if (driver.reapprovalNotes?.length) row.reapprovalNotes = [...(row.reapprovalNotes ?? []), ...driver.reapprovalNotes]
         row.answered = (row.answered ?? 0) + (answered ? 1 : 0) // changes whose open questions the driver answered: they cost an extra session
         mergeToMain(sb, slug)
+        row.phasesDone++
       }
     } else {
       base = setupBare(sb, { dry, variant })
       if (dry) dryBare(sb, { variant })
       if (failAt) throw new Error(`injected failure at ${failAt}`)
-      if (!dry) sessions.run('bare', { links: BARE_PROMPT_LINKS, rules: BARE_PROMPT_RULES, delta: BARE_PROMPT_DELTA, pricing: BARE_PROMPT_PRICING, contract: BARE_PROMPT_CONTRACT }[variant] ?? BARE_PROMPT)
+      if (!dry) sessions.run('bare', { links: BARE_PROMPT_LINKS, rules: BARE_PROMPT_RULES, delta: BARE_PROMPT_DELTA, pricing: BARE_PROMPT_PRICING, contract: BARE_PROMPT_CONTRACT, traps: BARE_PROMPT_TRAPS }[variant] ?? BARE_PROMPT)
     }
   } catch (err) {
     row.error = String(err?.message ?? err).split('\n')[0]
@@ -85,7 +88,7 @@ export async function runOne(arm, n, { dry, out, capRunUsd, failAt, seed = null,
   const infra = sessions?.sessions.some(x => x.slept) ? 'sleep' : null
   const estimated = sessions?.sessions.some(x => x.estimated) ?? false
   return {
-    ...row, ...score, accepted: !infra && !row.error && score.accepted, error: row.error ?? score.error, ...(infra && { infra }), ...(estimated && { estimated }),
+    ...row, ...score, ...(variant === 'traps' && (score.error || score.escaped === undefined) && { escaped: null }), accepted: !infra && !row.error && score.accepted, error: row.error ?? score.error, ...(infra && { infra }), ...(estimated && { estimated }),
     inputTokens: t.inputTokens, outputTokens: t.outputTokens, usd: Number(t.costUsd.toFixed(4)),
     minutes: Number(((Date.now() - t0) / 60_000).toFixed(2)), sessions: sessions?.sessions.length ?? 0,
     denials: t.denials.length, models: t.models, commits, ...(sessions && { trace: sessionTrace(sessions.sessions) }),
@@ -104,7 +107,7 @@ if (process.argv[1] === import.meta.filename) {
   const retries = Number(arg('retries', 1)) // reruns of a run the machine slept through
   fs.mkdirSync(path.dirname(results), { recursive: true })
   const variant = arg('variant', null)
-  if (variant && !['links', 'rules', 'delta', 'pricing', 'contract'].includes(variant)) { console.error('--variant must be: links, rules, delta, pricing or contract'); process.exit(2) }
+  if (variant && !['links', 'rules', 'delta', 'pricing', 'contract', 'traps'].includes(variant)) { console.error('--variant must be: links, rules, delta, pricing, contract or traps'); process.exit(2) }
   const seed = Number(arg('seed', Date.now() % 1_000_000))
   if (!Number.isInteger(seed) || seed < 0) { console.error('--seed must be a non-negative integer'); process.exit(2) }
   console.log(`arm order seed ${seed} (pass --seed ${seed} to repeat it)`)
