@@ -2,7 +2,7 @@
 // this tree is committed on sdlc/<slug>, pushed, and gets a PR, or stays local-only without a remote.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, CHANGES, WAIVERS, UNREQUESTABLE, waiverLive, exists, isTrunk, trunkName, read, readJsonl, out, fail, git, checkSlug, optString, ensureGitignore, dirtyFiles, skillRef, defaultBase, type Args, type Waiver } from './core.ts'
+import { ROOT, CHANGES, WAIVERS, UNREQUESTABLE, waiverLive, readJson, exists, isTrunk, trunkName, read, readJsonl, out, fail, git, checkSlug, optString, ensureGitignore, dirtyFiles, skillRef, defaultBase, type Args, type Waiver } from './core.ts'
 import { frozenFindings, frozenFor } from './contracts.ts'
 import { loadConfig } from './check.ts'
 import { gh as ghRun, section, isTest } from './model.ts'
@@ -22,6 +22,7 @@ import { isHarnessPath } from './vendor.ts'
 import { untestedAcs } from './actrace.ts'
 import { routeReview, recordAdditions } from './carry.ts'
 import { readFreeze } from './testfreeze.ts'
+import { setDraft, draftLine, draftSecrets } from './draft.ts'
 
 const ghLast = (text: string): string => text.trim().split('\n').at(-1) ?? ''
 const URL_RE = /^https?:\/\//
@@ -57,7 +58,11 @@ export function cmdPr(args: Args): void {
   }
   const gates = loadConfig().registry.gates
   // A draft PR (D2: the launch budget's way out, or an agent BLOCKED) opens without a fresh verify or AC-named tests; every other refusal stays.
-  const draft = args.opt.draft !== undefined || agentRows(slug).some(a => a.status === 'BLOCKED')
+  // Only an explicit --draft skips them: a BLOCKED agent row alone makes `S pr` fail, unless a passing verify.json is newer than the row.
+  const draft = args.opt.draft !== undefined, reason = optString(args, 'draft') || 'no reason given'
+  const verified = readJson<{ at?: string; pass?: boolean } | null>(path.join(CHANGES, slug, 'verify.json'), null)
+  const blocked = agentRows(slug).find(a => a.status === 'BLOCKED' && !(verified?.pass && verified.at && a.at < verified.at))
+  if (blocked && !draft) fail(`not shipping: ${blocked.agent} reported BLOCKED: ${blocked.note}. Open a draft with S pr ${slug} --draft "<why>" --message ..., or fix it and verify`)
   if (gates.plan && approvalState(slug) !== 'approved') fail(`not shipping: ${slug}'s plan is not approved (a person runs ${skillRef('approve')} ${slug})`)
   if (!draft && !verifyFresh(slug, treeStamp())) fail(`not shipping: verify.json is missing, failing or from another tree; run ${skillRef('test')} ${slug}`)
   // Contract files can sit under .rig/, which the tree stamp leaves out: judge the freeze here, with the person's waivers.
@@ -75,7 +80,7 @@ export function cmdPr(args: Args): void {
   const remote = git(['remote', 'get-url', 'origin']) !== null
   const title = (message.split('\n')[0] ?? slug).slice(0, 200)
   if (!followUp) {
-    fs.writeFileSync(path.join(CHANGES, slug, 'pr.md'), `---\nstate: ${remote ? 'open' : 'local-only'}\nbranch: ${branch}\n---\n${title}\n`)
+    fs.writeFileSync(path.join(CHANGES, slug, 'pr.md'), `---\nstate: ${remote ? 'open' : 'local-only'}\nbranch: ${branch}\n${draft ? draftLine(reason) : ''}---\n${title}\n`)
     ensureGitignore()
     const c = (name: string): string => read(path.join(CHANGES, slug, name))
     let verify: (Parameters<typeof prBody>[0]['verify'] & { base?: string }) | null = null
@@ -85,8 +90,11 @@ export function cmdPr(args: Args): void {
     // Suggestions only: a failure here must never stop a ship.
     let claims: ClaimRow[] | undefined
     try { claims = claimRows(slug); fs.writeFileSync(path.join(CHANGES, slug, 'claims.json'), JSON.stringify(claims, null, 2) + '\n') } catch { claims = undefined }
-    fs.writeFileSync(path.join(CHANGES, slug, 'pr-body.md'), prBody({ agents: agentRows(slug), draft: args.opt.draft === undefined ? undefined : optString(args, 'draft') || 'no reason given', claims, requirements: c('requirements.md'), intent: c('intent.md'), spec: c('spec.md'), plan: c('plan.md'), verify, outline: c('pr-outline.md'), review: c('review.md'), amendments: c('amendments.md'), runs: readJsonl<RunRow>(path.join(CHANGES, slug, 'evidence', 'runs.jsonl')), tests, intentMap: intentReceipt(slug), freeze: readFreeze(slug), changes: diff, risk: riskOf(diff.filter(d => ships(slug)(d.file)), [slug], registry, parseAccess(read(archPath)), false) }))
+    fs.writeFileSync(path.join(CHANGES, slug, 'pr-body.md'), prBody({ agents: agentRows(slug), draft: draft ? reason : undefined, claims, requirements: c('requirements.md'), intent: c('intent.md'), spec: c('spec.md'), plan: c('plan.md'), verify, outline: c('pr-outline.md'), review: c('review.md'), amendments: c('amendments.md'), runs: readJsonl<RunRow>(path.join(CHANGES, slug, 'evidence', 'runs.jsonl')), tests, intentMap: intentReceipt(slug), freeze: readFreeze(slug), changes: diff, risk: riskOf(diff.filter(d => ships(slug)(d.file)), [slug], registry, parseAccess(read(archPath)), false) }))
   }
+  // A follow-up without --draft ends the draft (it ran the normal refusals above); with --draft it records the reason again.
+  const prMd = path.join(CHANGES, slug, 'pr.md'), prMdBefore = followUp ? read(prMd) : ''
+  if (followUp) setDraft(slug, draft ? reason : null)
   // The merge ships this change: write the sprint plan as it will read then, so nothing regenerates dirty afterwards.
   // Another change of the sprint in flight would find the plan changed under it, so the plan waits for the last one.
   // A change whose PR is open (a local pr.md) counts as shipped too, so the last PR of a sprint still writes the plan.
@@ -101,6 +109,8 @@ export function cmdPr(args: Args): void {
   if (!files.length) return out(followUp ? `${slug} already has a PR (.rig/changes/${slug}/pr.md); nothing new to commit` : 'not shipping: nothing to commit')
   // A first run that fails before the PR is open must leave no pr.md (and no commit), or a rerun reads it as a follow-up and never opens the PR.
   const undo = (committed: boolean): void => { if (followUp) return; if (committed) git(['reset', '-q', 'HEAD~1']); fs.rmSync(path.join(CHANGES, slug, 'pr.md'), { force: true }); fs.rmSync(path.join(CHANGES, slug, 'pr-body.md'), { force: true }) }
+  const leaked = draft ? draftSecrets(files) : null
+  if (leaked) { if (followUp) fs.writeFileSync(prMd, prMdBefore); undo(false); fail(`not shipping a draft: secrets in ${leaked}`) }
   if (git(['add', '--', ...files]) === null) { undo(false); fail('git add failed') }
   // verify judged this tree with waivers applied: the git hooks would only run the same checks again.
   if (git(['commit', '-q', '--no-verify', '-m', message]) === null) { undo(false); fail('git commit failed') }

@@ -943,3 +943,14 @@ test('waive --request refuses plan-gate, harness-tamper, contracts and secrets (
   write(repo, '.rig/waivers.jsonl', JSON.stringify({ slug: 'xx', sensor: 'harness-tamper', file: '*', reason: 'r', by: 'agent (request)', requested: true, at: new Date().toISOString(), expires: new Date(Date.now() + 86_400_000).toISOString() }) + '\n')
   assert.match(check('--at', 'stop').stdout, /harness-tamper 1/)
 })
+
+test('CI fails while a change the PR carries is a draft PR, and a waiver does not clear it', () => {
+  gitIn(repo, 'checkout', '-qb', 'pr')
+  sdlc(repo, ['new', 'tiny', '--type', 'chore'])
+  write(repo, '.rig/changes/tiny/pr.md', '---\nstate: open\nbranch: sdlc/tiny\ndraft: budget spent\n---\nt\n')
+  write(repo, '.rig/waivers.jsonl', JSON.stringify({ slug: 'tiny', sensor: 'draft', file: '*', reason: 'r', by: 'a person', at: new Date().toISOString(), expires: new Date(Date.now() + 86_400_000).toISOString() }) + '\n')
+  gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'pr')
+  const r = sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main'])
+  assert.equal(r.code, 1, r.stdout)
+  assert.match(r.stdout, /tiny is a draft PR: fix it, then run S pr tiny without --draft/)
+})

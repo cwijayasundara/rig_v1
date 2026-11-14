@@ -277,18 +277,50 @@ test('pr --draft with a stale verify.json runs gh pr create --draft; without it 
   assert.match(fs.readFileSync(path.join(repo, '.rig/changes/demo/pr-body.md'), 'utf8'), /^> Draft: blocked\. budget spent/)
 })
 
-test('a BLOCKED agent row drafts the PR on its own, and --draft still keeps the plan-approval refusal', () => {
+const blockedRow = (at: string): string => [{ kind: 'launch', id: 'a', agent: 'x', model: 'haiku', at }, { kind: 'done', id: 'a', status: 'BLOCKED', note: 'no API key', tokens: null, toolUses: null, ms: null }].map(r => JSON.stringify(r)).join('\n') + '\n'
+
+test('a BLOCKED agent row makes pr fail until --draft; --draft still keeps the plan-approval refusal', () => {
   sdlc(repo, ['new', 'demo'])
   assert.match(sdlc(repo, ['pr', 'demo', '--draft', '--message', 'feat: demo']).stderr, /plan is not approved/)
   repo = makeRepo(); sdlc(repo, ['init']); write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [] }))
   approvedChange(repo, 'demo')
   write(repo, 'test/a.test.js', '// B1\n')
-  write(repo, '.rig/changes/demo/evidence/agents.jsonl', [{ kind: 'launch', id: 'a', agent: 'x', model: 'haiku', at: 'n' }, { kind: 'done', id: 'a', status: 'BLOCKED', note: 'no API key', tokens: null, toolUses: null, ms: null }].map(r => JSON.stringify(r)).join('\n') + '\n')
+  write(repo, '.rig/changes/demo/evidence/agents.jsonl', blockedRow('n'))
   const { env, log } = fakeGh()
-  const r = sdlc(repo, ['pr', 'demo', '--message', 'feat: demo'], { env })
+  const refused = sdlc(repo, ['pr', 'demo', '--message', 'feat: demo'], { env })
+  assert.notEqual(refused.code, 0)
+  assert.match(refused.stderr, /x reported BLOCKED: no API key\. Open a draft with S pr demo --draft "<why>" --message \.\.\., or fix it and verify/)
+  const r = sdlc(repo, ['pr', 'demo', '--draft', 'no key', '--message', 'feat: demo'], { env })
   assert.equal(r.code, 0, r.stderr); assert.match(r.stdout, /\(draft\)\s*$/)
   assert.match(fs.readFileSync(log, 'utf8'), /pr create --draft/)
   assert.match(fs.readFileSync(path.join(repo, '.rig/changes/demo/pr-body.md'), 'utf8'), /^> Draft: blocked\. no API key/)
+  assert.match(fs.readFileSync(path.join(repo, '.rig/changes/demo/pr.md'), 'utf8'), /^draft: no key$/m)
+})
+
+test('a BLOCKED row older than the latest passing verify is ignored', () => {
+  shipReady()
+  write(repo, '.rig/changes/demo/evidence/agents.jsonl', blockedRow('2020-01-01T00:00:00Z'))
+  const r = pr()
+  assert.equal(r.code, 0, r.stderr)
+})
+
+test('a draft scans what it commits for secrets and commits nothing on a hit; a follow-up without --draft drops the draft line', () => {
+  approvedChange(repo, 'demo')
+  write(repo, 'test/a.test.js', '// B1\n')
+  write(repo, 'src/leak.js', 'export const k = "AKIAIOSFODNN7EXAMPLE"\n')
+  const { env } = fakeGh(), head = gitIn(repo, 'rev-parse', 'HEAD')
+  const bad = sdlc(repo, ['pr', 'demo', '--draft', 'wip', '--message', 'feat: demo'], { env })
+  assert.notEqual(bad.code, 0)
+  assert.match(bad.stderr, /not shipping a draft: secrets in src\/leak\.js/)
+  assert.equal(gitIn(repo, 'rev-parse', 'HEAD'), head)
+  assert.equal(fs.existsSync(path.join(repo, '.rig/changes/demo/pr.md')), false)
+  fs.rmSync(path.join(repo, 'src/leak.js'))
+  assert.equal(sdlc(repo, ['pr', 'demo', '--draft', 'wip', '--message', 'feat: demo'], { env }).code, 0)
+  assert.match(fs.readFileSync(path.join(repo, '.rig/changes/demo/pr.md'), 'utf8'), /^draft: wip$/m)
+  verified(repo, 'demo')
+  const done = sdlc(repo, ['pr', 'demo', '--message', 'feat: demo'], { env })
+  assert.equal(done.code, 0, done.stderr)
+  assert.doesNotMatch(fs.readFileSync(path.join(repo, '.rig/changes/demo/pr.md'), 'utf8'), /^draft:/m)
 })
 
 test('a requested harness-tamper waiver row does not clear the frozen-contract refusal', () => {

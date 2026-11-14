@@ -122,7 +122,7 @@ export function prBody(i: PrBodyInput): string {
     `## Blast radius\n\n${radius.length ? radius.join('\n') : 'none recorded'}\n\nDoor: ${door(i.plan)}`,
     `## Risk\n\n${i.risk.reasons.length ? `Tier ${i.risk.tier}\n\n${i.risk.reasons.map(r => `- ${r}`).join('\n')}` : 'Tier 0: none of the signals'}`,
     `## How to revert\n\n${revert(i.plan)}`,
-    `## What the checks would miss\n\n${!i.review.trim() ? 'no review.md' : /^reviewer:\s*none\b/.test(i.review) ? `No agent reviewed this change (tier ${i.risk.tier}): the sensors and the tests are the evidence.` : [...missed, ...concerns.map(a => `- ${a.agent} (${a.model ?? 'unknown model'}): ${a.note}`)].join('\n') || 'nothing the reviewer named'}`,
+    `## What the checks would miss\n\n${[...(!i.review.trim() ? ['no review.md'] : /^reviewer:\s*none\b/.test(i.review) ? [`No agent reviewed this change (tier ${i.risk.tier}): the sensors and the tests are the evidence.`] : missed), ...concerns.map(a => `- ${a.agent} (${a.model ?? 'unknown model'}): ${a.note}`)].join('\n') || 'nothing the reviewer named'}`,
     `## Evidence\n\n${[evidence, baseProof(runs), headChecks(runs), mutationNote(runs), behaviourTests(i.spec, i.tests), frozenNote(i.freeze), claimsNote(i.review, i.claims), proposedNote(i.spec, i.requirements)].filter(Boolean).join('\n\n')}`,
     `## Check before approving\n\nAnswer these in your approving review, one line each (\`Q1: <answer>\`, 10+ characters; CI checks they are there; a sample of merged changes is audited):\n\n${checkQuestions(i.changes ?? [], i.spec).join('\n')}`,
     agentsNote(i.agents),

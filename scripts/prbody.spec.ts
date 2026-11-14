@@ -231,6 +231,12 @@ test('a DONE_WITH_CONCERNS agent lists its note under what the checks would miss
   assert.match(b, /Total: 2 launches, 1200 tokens, 3\.0 min \(some unknown\)/)
 })
 
+test('DONE_WITH_CONCERNS lines show under what the checks would miss with no review.md and with reviewer: none too', () => {
+  const agents = [row({ status: 'DONE_WITH_CONCERNS', note: 'no test for empty input' })]
+  assert.match(prBody({ intent, spec, plan, verify, outline: '', review: '', risk, agents }), /## What the checks would miss\n\nno review\.md\n- rig:builder \(haiku\): no test for empty input/)
+  assert.match(prBody({ intent, spec, plan, verify, outline: '', review: 'reviewer: none\n', risk, agents }), /## What the checks would miss\n\nNo agent reviewed[^\n]*\n- rig:builder \(haiku\): no test for empty input/)
+})
+
 test('a BLOCKED agent or a draft reason starts the body with the draft banner', () => {
   assert.match(prBody({ intent, spec, plan, verify, outline: '', review: '', risk, agents: [row({ status: 'BLOCKED', note: 'no API key' })] }), /^> Draft: blocked\. no API key\n/)
   assert.match(prBody({ intent, spec, plan, verify, outline: '', review: '', risk, draft: 'budget spent' }), /^> Draft: blocked\. budget spent\n/)
