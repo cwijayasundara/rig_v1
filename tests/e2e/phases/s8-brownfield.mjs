@@ -145,7 +145,6 @@ async function py(out) {
   must(sb.sdlc(['init', '--stack']), 'init --stack')
   const picked = json(sb.read('.rig/sensors.json'))
   await c.check('S8 py: onboarding detects the stack python from pyproject.toml', () => picked?.stack === 'python' || `stack ${picked?.stack}`)
-  const skipped = []
   const registry = { ...picked, sensors: PY_SENSORS }
   let baseline
   try { baseline = onboardPy(sb, registry, pytest) } catch (err) {
@@ -153,7 +152,7 @@ async function py(out) {
     return c
   }
   await assertOnboarding(c, sb, { lane: 'brownfield', modules: ['src/shopsvc/', 'tests/', 'dashboard/'], testCmd: pytest ? ['python3', '-m', 'pytest', '-q', '--deselect', 'tests/test_integration_db.py'] : ['npm', '--prefix', 'dashboard', 'test', '--silent'] })
-  const skip = (name, why) => { skipped.push(name); c.skip(`S8 py: ${name}`, why) }
+  const skip = (name, why) => c.skip(`S8 py: ${name}`, why)
   await c.check('S8 py: the registry keeps a single stack; the Node subproject is a custom sensor that runs', () => {
     const reg = json(sb.read('.rig/sensors.json'))
     const dash = reg.sensors.find(s => s.id === 'dashboard')
@@ -175,7 +174,6 @@ async function py(out) {
   restore(sb, ['src/shopsvc/pricing.py', 'dashboard/src/format.js'])
   sb.write('.rig/product/sprints/sprint-1/prd.md', '---\nsprint: 1\nengineers: 1\n---\n# Sprint 1\n\n### FR-1: summaries\n\n## Open questions\nnone\n')
   await archStandinChecks(c, sb, 'S8 py', '---\nsprint: 1\nupdated: 2026-11-14\n---\n# Architecture\n\n## Context\n\nshopsvc writes order summaries through an LLM provider, behind src/shopsvc/llm_adapter.py.\n', 'llm-provider')
-  c.skipped = skipped
   return c
 }
 function onboardPy(sb, registry, pytest) {
