@@ -7,6 +7,9 @@
 - the semantic_layers_v2.0 repo and its run log, `.superpowers/sdd/2026-11-06-e2e-knowledge-graph/` (`progress.md`, `process.md`,
   briefs, reports, review diffs).
 
+Status: see `2026-11-14-implementation-order.md` (N1, N3, N5, N6, D1 and D2 are implemented; N2, N4, R1 and R2 are deferred).
+§3's gap table describes `main` at 7324485, before those landed; its last column is marked with what landed since.
+
 Applies with `2026-11-14-two-human-gates.md`. An independent Fable 5.2 evaluator reviewed the first draft and returned
 `changes-needed`: 2 critical, 7 high and 6 medium findings, plus 5 missing items. It found the draft had misread what made the
 build reliable. This version is rebuilt on the run log (§9).
@@ -72,13 +75,13 @@ describe later work. There are 89 Playwright snapshots, not about 30.
 
 | | Semantic_layers practice | rig today | Gap |
 |---|---|---|---|
-| Cause 1: independent review of every unit | A review after every task, from a fresh context | Local: a clean-context Opus reviewer on tier ≥ 1, and none at tier 0 (`skills/pr/SKILL.md:12`). CI: `ai-review` runs a clean-context code review and a security review on **every** PR, briefed from the base branch (`templates/rig-check.yml:5-6`) | Covered at the PR, but a tier-0 change meets its first review only in CI, after the PR is open, so the fix round runs after the PR |
-| Cause 2: verification at a scale the author never ran | The controller's full-scale runs | Holdout cases written at chart and hidden from the builder (`scripts/holdout.ts:1-2`), run at `/rig:test` and in CI | Holdouts use the test plan's small data. Nothing runs at production-like scale or with realistic data the builder never saw |
-| Live behaviour | 89 Playwright snapshots; full-scale CLI runs | Approved `/rig:app` journeys run at verify, ship and CI, and drivers write `evidence.json` (`skills/app/SKILL.md:16`, `scripts/check.ts:265-266`) | No rule ties each behaviour to a journey step or holdout case. A behaviour can ship covered only by unit tests |
-| Cross-unit interfaces | An interface table across tasks | Intents carry `## Interfaces` and contracts | No sprint-level table of which intent produces and which consumes each interface |
-| Live dependencies | A scripted stand-in (R7); live tests marked and skipped | Nothing named | No rule that an external dependency has a deterministic stand-in |
-| Reports | `DONE_WITH_CONCERNS` and `BLOCKED` | The agents return free text | Concerns can be lost |
-| Cost per launch | Tokens, tools and minutes logged | Models recorded per launch by the agent hooks | No tokens or minutes, so "defects per dollar" cannot be computed |
+| Cause 1: independent review of every unit | A review after every task, from a fresh context | Local: a clean-context Opus reviewer on tier ≥ 1, and none at tier 0 (`skills/pr/SKILL.md:12`). CI: `ai-review` runs a clean-context code review and a security review on **every** PR, briefed from the base branch (`templates/rig-check.yml:5-6`) | Covered at the PR, but a tier-0 change meets its first review only in CI, after the PR is open, so the fix round runs after the PR. **Still open (R1, deferred)** |
+| Cause 2: verification at a scale the author never ran | The controller's full-scale runs | Holdout cases written at chart and hidden from the builder (`scripts/holdout.ts:1-2`), run at `/rig:test` and in CI | Holdouts use the test plan's small data. Nothing runs at production-like scale or with realistic data the builder never saw. **Still open (N2, deferred)** |
+| Live behaviour | 89 Playwright snapshots; full-scale CLI runs | Approved `/rig:app` journeys run at verify, ship and CI, and drivers write `evidence.json` (`skills/app/SKILL.md:16`, `scripts/check.ts:265-266`) | No rule ties each behaviour to a journey step or holdout case. A behaviour can ship covered only by unit tests. **Closed by N1** |
+| Cross-unit interfaces | An interface table across tasks | Intents carry `## Interfaces` and contracts | No sprint-level table of which intent produces and which consumes each interface. **Still open (N4, deferred)** |
+| Live dependencies | A scripted stand-in (R7); live tests marked and skipped | Nothing named | No rule that an external dependency has a deterministic stand-in. **Closed by N3** |
+| Reports | `DONE_WITH_CONCERNS` and `BLOCKED` | The agents return free text | Concerns can be lost. **Closed by N5** |
+| Cost per launch | Tokens, tools and minutes logged | Models recorded per launch by the agent hooks | No tokens or minutes, so "defects per dollar" cannot be computed. **Closed by N6** |
 
 ## 4. What to borrow, in order
 
@@ -161,6 +164,9 @@ agree on would lower recall.
 | Local security reviewer | `evaluate` | tier 2 (as today) |
 | CI `ai-review`, code and security, two families | `evaluate` + a second family | always (R2 adds one family) |
 
+This is the budget with R1 and R2 on. Today (R1 and R2 deferred) the tier-0 local review and the second CI family are absent, and D2
+caps local launches at 5.
+
 That is 3–5 local launches and 2–3 in CI. The only new launches are the tier-0 local review and the second CI family. N1–N6 are
 scripts. CLAUDE.md's 4-launch budget governs work on rig's own repo, not rig's loop in a target repo, so the target budget needs its own
 line (D2).
@@ -180,10 +186,10 @@ defects per dollar. That is how GOAL.md's rule 4 is honoured here: no eval has y
 
 | Step | Items | Gate |
 |---|---|---|
-| P0 | The trap tasks (§6), bare and rig-today arms | Do the traps escape? If not, the tasks are too easy |
-| P1 | N1, N3, N5, N6 | Scripts and skill text; spec per item |
-| P2 | N2 scale cases (needs the holdout launcher), N4 interface table | Re-run P0's traps |
-| P3 | R1, R2 | Re-run, with the cost numbers from N6 |
+| P0 | The trap tasks (§6), bare and rig-today arms | **Done (W0, W3 to W4).** Bare caught 5 of 5 traps; rig-on caught every trap on `hard` and `brownfield`, so the tasks were too easy. W5 (knex, U0 UI) is the harder set |
+| P1 | N1, N3, N5, N6 (and D1, D2) | **Implemented** (W1, W2) |
+| P2 | N2 scale cases (needs the holdout launcher), N4 interface table | **Deferred** until a W5 trap escapes rig-on and the item would catch it |
+| P3 | R1, R2 | **Deferred**, same condition. N6's cost numbers are available for the re-run |
 
 Each step follows CLAUDE.md: one implementer per group of files, `npm test` once, one review, and a spec that fails without the fix.
 
