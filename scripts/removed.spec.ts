@@ -33,7 +33,8 @@ test('4a: the old mod UI is gone; only the journey dashboard module is registere
   const hooks = JSON.parse(read('hooks/hooks.json')) as { modules?: unknown; hooks: Record<string, unknown> }
   assert.deepEqual(hooks.modules, ['./dashboard.tsx'])
   assert.deepEqual(Object.keys(hooks.hooks).sort(), ['PostModelSwitch', 'PostToolUse', 'PreToolUse', 'SessionStart', 'Stop', 'UserPromptSubmit'])
-  assert.doesNotMatch(read('package.json'), /typecheck:mod|claude plugin test/)
+  assert.doesNotMatch(read('package.json'), /typecheck:mod/)
+  // The dashboard has its own tests (hooks/dashboard.test.ts); `claude plugin test` runs them, so test:mod is allowed and CI runs it.
   assert.equal((JSON.parse(read('.claude-plugin/plugin.json')) as { types?: string }).types, './types/index.d.ts')
 })
 

@@ -5,6 +5,8 @@
 //   - a changed spec runs itself;
 //   - a changed source file runs every scripts/*.spec.ts whose text names it (`foo.ts` for scripts/foo.ts, the path for a skill
 //     or template), so the specs of its direct importers and the specs that read it run;
+//   - a changed eval/ or tests/e2e/ .mjs file runs its sibling unit test (eval/foo.mjs -> eval/foo.test.mjs), and a changed .test.mjs runs
+//     itself: those are the fake-model unit tests behind `test:e2e:unit`, never the scripted journey or an eval;
 //   - always: typecheck, size and neutrality. Docs only: nothing.
 // --dry prints the plan without running it.
 import fs from 'node:fs'
@@ -29,10 +31,14 @@ const picked = new Set(changed.filter(isTest))
 for (const [t, body] of text) if (needles.some(n => body.includes(n))) picked.add(t)
 
 const specs = [...picked]
+const isUnit = f => /^(eval|tests\/e2e)\/.*\.test\.mjs$/.test(f)
+const units = new Set(changed.filter(isUnit))
+for (const f of changed) if (/^(eval|tests\/e2e)\/.*\.mjs$/.test(f) && !isUnit(f)) { const u = f.replace(/\.mjs$/, '.test.mjs'); if (fs.existsSync(path.join(ROOT, u))) units.add(u) }
 const plan = [
   ['npm', ['run', 'typecheck']],
   ['node', ['--disable-warning=ExperimentalWarning', '--test', ...new Set([...specs, 'scripts/size.spec.ts', 'scripts/neutrality.spec.ts'])]],
 ]
+if (units.size) plan.push(['node', ['--test', ...units]])
 const docsOnly = changed.every(f => /\.md$/.test(f) && !/^(skills|templates|agents|guides)\//.test(f))
 console.log(`changed: ${changed.length} file(s) since ${base.slice(0, 7)}${docsOnly ? ' (docs only: nothing to run)' : ''}`)
 if (docsOnly) process.exit(0)

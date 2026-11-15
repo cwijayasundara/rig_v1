@@ -8,7 +8,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { waiverLive, UNREQUESTABLE, whoami, ownerOrFail,
   ROOT, SDLC, CHANGES, SLUG_RE, SOFT_HOOK_FAILURE, exists, read, now, defaultBase, isTrunk, trunkName, toPosix, out, fail, git, parseArgs, optString, listChanges, ageDays, dirtyFiles, readUnresolved, checkSlug,
-  WAIVERS, readJsonl, type Waiver, ensureGitignore, PLUGIN_ROOT, IS_VENDORED, skillRef, sanctionWrites, readGate, type Args,
+  WAIVERS, readJsonl, writeAtomic, type Waiver, ensureGitignore, PLUGIN_ROOT, IS_VENDORED, skillRef, sanctionWrites, readGate, type Args,
 } from './core.ts'
 import { formatFindings, SENSOR_NAMES } from './model.ts'
 import { readBaseline, branchDiff, turnDiff, type Snapshot } from './diffs.ts'
@@ -85,7 +85,7 @@ function cmdInit(args: Args): void {
     // Only a registry: a bare {"risk":…} would be overwritten by a later init --stack, silently dropping enforce.
     if (!isRegistryShape(read(file))) fail('.rig/sensors.json is not a sensor registry yet: run init --stack first, then init --enforce')
     j.risk = { ...(typeof j.risk === 'object' && j.risk ? j.risk : {}), enforce: true }
-    fs.writeFileSync(file, JSON.stringify(j, null, 2) + '\n')
+    writeAtomic(file, JSON.stringify(j, null, 2) + '\n')
     sanctionWrites(['.rig/sensors.json'])
     out('risk.enforce is on: rig-check now wants an approval of the head commit from someone other than the author on every PR')
   }

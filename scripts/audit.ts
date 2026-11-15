@@ -7,7 +7,7 @@ import fs from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
-import { ROOT, read, readJsonl, out, fail, git, whoami, optString, type Args } from './core.ts'
+import { ROOT, read, readJsonl, out, fail, git, whoami, optString, writeAtomic, type Args} from './core.ts'
 import { gh } from './model.ts'
 import { parseReport } from './mutscore.ts'
 import { isSrc, HOLD } from './prcheck.ts'
@@ -15,7 +15,7 @@ import { isSrc, HOLD } from './prcheck.ts'
 export type Audit = { pr: number; id: string; sha?: string; login?: string; file: string; line: number; at: string; by: string; caught?: boolean; reviewers?: string[]; catchers?: string[]; revealedAt?: string }
 const auditPath = (): string => path.resolve(ROOT, git(['rev-parse', '--git-path', 'rig-audits.jsonl']) ?? '.git/rig-audits.jsonl')
 export const readAudits = (): Audit[] => (fs.existsSync(auditPath()) ? readJsonl<Audit>(auditPath()) : [])
-const writeAudits = (rows: Audit[]): void => fs.writeFileSync(auditPath(), rows.map(r => JSON.stringify(r)).join('\n') + '\n')
+const writeAudits = (rows: Audit[]): void => writeAtomic(auditPath(), rows.map(r => JSON.stringify(r)).join('\n') + '\n')
 
 const FLIPS: [string, string][] = [[' && ', ' || '], [' || ', ' && '], [' === ', ' !== '], [' !== ', ' === '], [' == ', ' != '], [' != ', ' == '], [' <= ', ' > '], [' >= ', ' < '], [' < ', ' >= '], [' > ', ' <= '], [' + ', ' - '], [' - ', ' + ']]
 type Added = { file: string; n: number; text: string }

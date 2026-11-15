@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import {
   ROOT, SDLC, SENSORS_JSON, SENSORS_PATH, BUDGET_MS, IS_VENDORED, skillRef, now, exists, read, out, fail, frontmatter,
-  managedSettings, scanSecrets, UNRESOLVED, readUnresolved, relPosix, sha, readGate, updateGate, type Args, type HookInput, type GateSummary,
+  managedSettings, scanSecrets, UNRESOLVED, readUnresolved, relPosix, sha, readGate, updateGate, writeAtomic, type Args, type HookInput, type GateSummary,
 } from './core.ts'
 import { admitLaunch, recordDone, EXEMPT } from './agents.ts'
 import { activeSlug, status, nextStep, changeType } from './lifecycle.ts'
@@ -293,7 +293,7 @@ function hookStop(input: HookInput = {}): { halt: boolean; warn?: string } {
   }
   const attempt = (gate.blocks.main ?? 0) + 1
   const survived = attempt > 1 ? survivors(blocks) : []
-  fs.writeFileSync(UNRESOLVED, JSON.stringify({ at: now(), slug, findings: blocks }, null, 2) + '\n')
+  writeAtomic(UNRESOLVED, JSON.stringify({ at: now(), slug, findings: blocks }, null, 2) + '\n')
   if (attempt > MAX_BLOCKS) {
     save()
     out(JSON.stringify({ systemMessage: `sdlc quality gate: ${blocks.length} problem(s) unresolved after ${MAX_BLOCKS} attempts (.rig/unresolved.json). Ship and CI will refuse until they are fixed or the person waives them.` }))

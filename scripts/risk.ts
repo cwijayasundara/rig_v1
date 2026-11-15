@@ -1,7 +1,7 @@
 // The risk tier (proposal 2026-10-27 B1, B2): which changes a person must read. The tier is the max over signals from the change's
 // own files and the config; nothing lowers it. Tier 2 suggests a second reviewer, which branch protection enforces, never rig.
 import path from 'node:path'
-import { CHANGES, ROOT, SENSORS_JSON, read, readJson, out, fail, optString, checkSlug, defaultBase, frontmatter, type Args } from './core.ts'
+import { CHANGES, ROOT, SENSORS_JSON, read, readJson, out, fail, optString, checkSlug, defaultBase, frontmatter, isHarnessPath, type Args } from './core.ts'
 import { section, bullets, matchesAny, blastRadius, type FileDiff } from './model.ts'
 import { parseRegistry, type Registry } from './registry.ts'
 import { isProtected, PROTECTED, sizeCounted } from './sensors.ts'
@@ -10,7 +10,6 @@ import { branchDiff } from './diffs.ts'
 import { activeSlug } from './lifecycle.ts'
 import { routeCheck } from './route.ts'
 import { archPath } from './product.ts'
-import { isHarnessPath } from './vendor.ts'
 import { touchesHoldout } from './holdout.ts'
 
 const SHARED = ['.rig/waivers.jsonl', '.rig/autonomy.json', '.rig/.gitignore', '.rig/sensors.json', '.rig/rules.json', '.rig/product/brief.md', '.rig/wiki.json']

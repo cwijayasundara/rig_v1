@@ -3,10 +3,10 @@
 import { check, freezeFor, behavioursFrom } from './intentmap.ts'
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SENSORS_PATH, SDLC, CHANGES, read, readJson, exists, isTrunk, trunkName, sha, now, git, defaultBase, frontmatter, skillRef as k } from './core.ts'
+import { ROOT, SENSORS_PATH, SDLC, CHANGES, read, readJson, exists, isTrunk, trunkName, sha, now, git, defaultBase, frontmatter, skillRef as k, writeAtomic } from './core.ts'
 import { openQuestions, normPath, globToRegex, planFiles, blastRadius, section, bullets, type Finding } from './model.ts'
 import { parseRegistry, contractGlobs } from './registry.ts'
-import { carriedIds } from './carry.ts'
+import { carriedIds } from './product.ts'
 
 export const TYPES = ['feature', 'bugfix', 'refactor', 'chore'] as const
 type ChangeType = typeof TYPES[number]
@@ -103,14 +103,14 @@ export function unapprovedBuild(slugs: string[], touched: string[], planGate: bo
 
 export function writeApproval(slug: string, by: string): Approval {
   // The scenario hashes are written before the files are hashed, so freeze.json is approved with the map it came from.
-  if (exists(file(slug, 'intent-map.md'))) fs.writeFileSync(file(slug, 'freeze.json'), JSON.stringify(freezeFor(read(file(slug, 'intent-map.md'))), null, 2) + '\n')
+  if (exists(file(slug, 'intent-map.md'))) writeAtomic(file(slug, 'freeze.json'), JSON.stringify(freezeFor(read(file(slug, 'intent-map.md'))), null, 2) + '\n')
   const a: Approval = { by, at: now(), hashes: hashes(slug), contracts: freezeRecord() }
-  fs.writeFileSync(file(slug, 'approval.json'), JSON.stringify(a, null, 2) + '\n')
+  writeAtomic(file(slug, 'approval.json'), JSON.stringify(a, null, 2) + '\n')
   return a
 }
 
 const readVerify = (slug: string): Verify | null => readJson<Verify | null>(file(slug, 'verify.json'), null)
-export const writeVerify = (slug: string, v: Verify): void => fs.writeFileSync(file(slug, 'verify.json'), JSON.stringify(v, null, 2) + '\n')
+export const writeVerify = (slug: string, v: Verify): void => writeAtomic(file(slug, 'verify.json'), JSON.stringify(v, null, 2) + '\n')
 export const verifyFresh = (slug: string, tree: string | null): boolean => { const v = readVerify(slug); return Boolean(v?.pass && tree && v.tree === tree) }
 
 // Shipped: its pr.md is on the trunk (HEAD itself when the trunk is checked out, where defaultBase has nothing to compare).

@@ -3,7 +3,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import { ROOT, read, exists, fail, toPosix, skillRef, type HookInput } from './core.ts'
+import { ROOT, read, exists, fail, toPosix, skillRef, writeAtomic, type HookInput} from './core.ts'
 import { section, openQuestions } from './model.ts'
 import { approvalMdPath, sprintDir, sprintRel, sprintsOnDisk, holdoutDir, ledgerPath, coveragePath, prdPath, writeProductIgnore } from './product.ts'
 import { intentsOf, chartReview, chartWaivers, chartOpenFindings, chartState, conversionMapOf, adrFilesOf, type ApprovalAnswer } from './chart.ts'
@@ -135,7 +135,7 @@ export function recordAnswers(input: HookInput): void {
       const sha = pageSha(approvalPage(n)), qs = checkQuestions(n)
       if (asked.length !== qs.length || !qs.every((q, i) => asked[i]!.includes(q) && asked[i]!.includes(`page sha ${sha.slice(0, 12)}`))) continue
       const given = (i: number): unknown => (Array.isArray(resp) ? resp[i] : resp && typeof resp === 'object' ? (resp as Record<string, unknown>)[asked[i]!] : undefined)
-      fs.writeFileSync(pendingPath(n), JSON.stringify({ page_sha: sha, at: new Date().toISOString(), answers: qs.map((question, i) => ({ question, answer: text(given(i)).trim() })) }, null, 2) + '\n')
+      writeAtomic(pendingPath(n), JSON.stringify({ page_sha: sha, at: new Date().toISOString(), answers: qs.map((question, i) => ({ question, answer: text(given(i)).trim() })) }, null, 2) + '\n')
     }
   } catch { /* nothing recorded: the approval then refuses */ }
 }

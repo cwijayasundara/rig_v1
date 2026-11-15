@@ -166,11 +166,11 @@ test('reviewItems: the file is the token with a slash, else one that exists; pla
 
 test('recording an addition keeps the intent hash when the file has no trailing newline or ends with a blank line', () => {
   shipStore(REVIEW, B9)
-  const f = `${SP}/intents/store.md`, lib = path.resolve(import.meta.dirname, 'carry.ts'), pristine = rd(f)
+  const f = `${SP}/intents/store.md`, lib = path.resolve(import.meta.dirname, 'carry.ts'), prod = path.resolve(import.meta.dirname, 'product.ts'), pristine = rd(f)
   for (const end of ['', '\n\n']) {
     const base = pristine.replace(/\s*$/, end)
     write(repo, f, base)
-    const strip = spawnSyncNode(`import fs from 'node:fs'; import { recordAdditions, stripGenerated } from ${JSON.stringify(pathToFileURL(lib).href)}; recordAdditions('store'); process.stdout.write(stripGenerated(fs.readFileSync(${JSON.stringify(path.join(repo, f))}, 'utf8')))`)
+    const strip = spawnSyncNode(`import fs from 'node:fs'; import { recordAdditions } from ${JSON.stringify(pathToFileURL(lib).href)}; import { stripGenerated } from ${JSON.stringify(pathToFileURL(prod).href)}; recordAdditions('store'); process.stdout.write(stripGenerated(fs.readFileSync(${JSON.stringify(path.join(repo, f))}, 'utf8')))`)
     assert.match(rd(f), /## Added during the change[\s\S]*B9/)
     assert.equal(strip, base, `ending ${JSON.stringify(end)}`)
   }

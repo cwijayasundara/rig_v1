@@ -318,3 +318,11 @@ export function ownerOrFail(args: Args, what: string): string {
 // PR-controlled text: one line, no backticks or angle brackets (it cannot close the summary fence or start a
 // `::` workflow command, since every row is printed after "  - "), and capped.
 export const clean = (v: unknown): string => String(v).replace(/[\u0000-\u001f\u007f\u2028\u2029]/g, ' ').replace(/`/g, "'").replace(/[<>]/g, '_').replace(/"/g, "'").slice(0, 200)
+
+// Where the harness may write or delete: a manifest key outside this namespace (or outside the repo) is never trusted.
+const HARNESS_PREFIXES = ['.rig/bin/', '.rig/githooks/', '.rig/templates/', '.rig/mod/', '.claude/skills/rig-', '.claude/agents/rig-']
+export function isHarnessPath(rel: string): boolean {
+  if (!rel || path.isAbsolute(rel) || rel.split(/[\\/]/).includes('..')) return false
+  const abs = path.resolve(ROOT, rel)
+  return abs.startsWith(ROOT + path.sep) && HARNESS_PREFIXES.some(p => rel.startsWith(p))
+}

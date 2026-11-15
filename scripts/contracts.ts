@@ -2,7 +2,7 @@
 // approval.json), validated before they run.
 import fs from 'node:fs'
 import path from 'node:path'
-import { skillRef, SENSORS_PATH, SENSORS_JSON, exists, sanctionWrites } from './core.ts'
+import { skillRef, SENSORS_PATH, SENSORS_JSON, exists, sanctionWrites, writeAtomic } from './core.ts'
 import { readApproval, digest } from './lifecycle.ts'
 import { contractGlobs, isRegistryShape, type Contracts } from './registry.ts'
 import { matchesAny, type Finding } from './model.ts'
@@ -23,7 +23,7 @@ export function registerContracts(declared: string[]): { added: string[]; warnin
   const added = files.filter(f => !matchesAny(f, have))
   if (!added.length) return { added: [] }
   json.contracts = { covers: [], validate: '', run: '', ...(typeof json.contracts === 'object' && !Array.isArray(json.contracts) ? json.contracts : {}), files: [...have, ...added] }
-  fs.writeFileSync(SENSORS_PATH, JSON.stringify(json, null, 2) + '\n')
+  writeAtomic(SENSORS_PATH, JSON.stringify(json, null, 2) + '\n')
   sanctionWrites([SENSORS_JSON])
   return { added }
 }

@@ -3,7 +3,7 @@
 // branch switches nothing off. The file is protected (harness-tamper, CODEOWNERS, deny rules), so turning rig off takes a code owner.
 import fs from 'node:fs'
 import path from 'node:path'
-import { SDLC, git, out, fail, optString, sanctionWrites, type Args } from './core.ts'
+import { SDLC, git, out, fail, optString, sanctionWrites, writeAtomic, type Args} from './core.ts'
 import { trunk } from './protect.ts'
 import { isProtected } from './sensors.ts'
 
@@ -43,7 +43,7 @@ export function cmdOff(args: Args): void {
   const file = path.join(SDLC, 'off.json')
   if (fs.existsSync(file)) return out(`${MARKER} already exists; ${viaPr('off')}`)
   const by = git(['config', 'user.name'])?.trim() || 'unknown'
-  fs.writeFileSync(file, JSON.stringify({ by, why, at: new Date().toISOString().slice(0, 10) }, null, 2) + '\n')
+  writeAtomic(file, JSON.stringify({ by, why, at: new Date().toISOString().slice(0, 10) }, null, 2) + '\n')
   sanctionWrites([MARKER])
   out(`wrote ${MARKER}: ${viaPr('off')}`)
 }

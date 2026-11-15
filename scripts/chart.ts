@@ -3,14 +3,13 @@
 // contract files those name, all under sprints/sprint-N/; the architecture and ADRs are shared and every sprint edits them.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, exists, read, sha, now, toPosix, frontmatter, skillRef } from './core.ts'
+import { ROOT, exists, read, sha, now, toPosix, frontmatter, skillRef, writeAtomic } from './core.ts'
 import { openQuestions, section } from './model.ts'
 import { changeDir, isShipped } from './lifecycle.ts'
-import { stripGenerated, carriedIds } from './carry.ts'
 import { planText, type PlanRow } from './plan.ts'
 import { prdFormatProblems, prdLedger, conversionProblems } from './prdformat.ts'
 import { coverageProblems } from './prdcoverage.ts'
-import { PRODUCT, ARCH_REL, archPath, prdPath, intentsDir, testplanDir, holdoutDir, approvalPath, approvalMdPath, sprintDir, sprintsOnDisk, intentRel, planPath, implPlanPath, sprintRel, ledgerPath, coveragePath, waiversPath, reviewPath, sourcePath, conversionPath, conversionReviewPath, writeProductIgnore } from './product.ts'
+import { PRODUCT, stripGenerated, carriedIds, ARCH_REL, archPath, prdPath, intentsDir, testplanDir, holdoutDir, approvalPath, approvalMdPath, sprintDir, sprintsOnDisk, intentRel, planPath, implPlanPath, sprintRel, ledgerPath, coveragePath, waiversPath, reviewPath, sourcePath, conversionPath, conversionReviewPath, writeProductIgnore } from './product.ts'
 import { designIntents, sharedScopeProblems, architectureProblems, implementationPlanProblems, accessProblems, parseAccess, parseIntent, parseCases, parkedDecisions, prdIds, traceReport, ledgerProblems, parseLedger, parentOf, parseReview, openFindings, type ReviewFinding, type ChartWaiver, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
 
 const SHARED_DIRS = ['adr'].map(d => `${toPosix(path.relative(ROOT, path.join(PRODUCT, d)))}/`)
@@ -110,7 +109,7 @@ export function writeChartApproval(n: number, by: string, answers: ApprovalAnswe
   fs.rmSync(approvalPath(n), { force: true }); fs.rmSync(path.join(sprintDir(n), 'answers.pending.json'), { force: true }) // the page is hashed in every new row; the answers are spent
   const row: Row = { by, at: now(), digest: chartDigest(n), files: manifest(chartFiles(n)), answers }
   fs.mkdirSync(sprintDir(n), { recursive: true }); writeProductIgnore()
-  fs.writeFileSync(approvalPath(n), JSON.stringify(row, null, 2) + '\n')
+  writeAtomic(approvalPath(n), JSON.stringify(row, null, 2) + '\n')
 }
 const approvedSprints = (): number[] => sprintsOnDisk().filter(n => exists(approvalPath(n)))
 
@@ -192,7 +191,7 @@ export function chartOpenFindings(n: number): ReviewFinding[] | null {
 // A person's waiver of finding `k`: kept with the text it covered, so editing the finding re-opens it.
 export function waiveChartFinding(n: number, f: ReviewFinding, by: string, reason: string): void {
   const row: ChartWaiver = { finding: f.n, text_sha: f.sha, by, at: now(), reason }
-  fs.writeFileSync(waiversPath(n), JSON.stringify([...chartWaivers(n).filter(w => w.finding !== f.n), row], null, 2) + '\n')
+  writeAtomic(waiversPath(n), JSON.stringify([...chartWaivers(n).filter(w => w.finding !== f.n), row], null, 2) + '\n')
 }
 
 // The ledger rows an intent cites, as the lines of a change's requirements.md: a `prd:` id brings every rule and answer row under

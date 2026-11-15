@@ -3,7 +3,7 @@
 // A person sets it; the repo's own record of shipped changes only proposes a move. Zero dependencies.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SDLC, SLUG_RE, exists, read, readJson, now, out, fail, ownerOrFail, skillRef, type Args } from './core.ts'
+import { ROOT, SDLC, SLUG_RE, exists, read, readJson, now, out, fail, ownerOrFail, skillRef, writeAtomic, type Args} from './core.ts'
 import { shippedChanges, mineCandidates, waiversOf, findingsSection } from './learnmine.ts'
 import { parseRegistry } from './registry.ts'
 
@@ -36,7 +36,7 @@ export const readAutonomy = (root = ROOT): Autonomy => load(root).a
 
 export function writeAutonomy(a: Autonomy, root = ROOT): void {
   fs.mkdirSync(path.join(root, '.rig'), { recursive: true })
-  fs.writeFileSync(fileOf(root), `${JSON.stringify(a, null, 2)}\n`)
+  writeAtomic(fileOf(root), `${JSON.stringify(a, null, 2)}\n`)
 }
 
 // A new repo starts at rung 1; an existing file (any rung) is never touched.

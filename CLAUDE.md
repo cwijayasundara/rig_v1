@@ -35,7 +35,8 @@ Never paste the plan or the conversation into it.
 Give the exact line ranges to edit (`scripts/check.ts:285-300`), not only file names, so the subagent does not spend its run reading.
 
 Only the unit specs of the changed code run, never the whole suite: `npm run test:changed` (`tests/changed.mjs`) runs typecheck,
-size, neutrality and each `scripts/*.spec.ts` that is changed or names a changed file; docs only runs nothing. Implementers run it
+size, neutrality, each `scripts/*.spec.ts` that is changed or names a changed file, and the sibling unit test of a changed `eval/` or
+`tests/e2e/` file (`eval/foo.mjs` runs `eval/foo.test.mjs`; fake-model unit tests, not the scripted journey); docs only runs nothing. Implementers run it
 or the spec files they touch (`node --disable-warning=ExperimentalWarning --test <files>`); the coordinator runs it once per change.
 **Never start `npm test`, the e2e tests (`e2e:scripted`, `test:e2e:*`, `e2e`) or any eval (`eval*`) yourself**: a person runs them by
 hand. When a change likely needs one (a hook, skill or journey change, or an eval variant), say which, in one line, and stop.

@@ -2,7 +2,7 @@
 // also writes the skills, agents and hooks into .claude/, so the repo needs no plugin, cloud sessions included.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SDLC, PLUGIN_ROOT, IS_VENDORED, read, out, fail, sanctionWrites, sha, type Args } from './core.ts'
+import { ROOT, SDLC, PLUGIN_ROOT, IS_VENDORED, read, out, fail, sanctionWrites, sha, isHarnessPath, type Args } from './core.ts'
 import { findBlock, withBlock } from './sync.ts'
 import { HOOK_SCRIPTS, installHooks } from './githooks.ts'
 import { parseProfile, skillIn, agentIn, type Profile } from './profile.ts'
@@ -93,14 +93,6 @@ export type Manifest = { version: string; profile?: Profile; files: Record<strin
 export const manifestProfile = (m: Manifest | null): Profile => m?.profile ?? 'full'
 export function readManifest(): Manifest | null {
   try { return JSON.parse(read(path.join(ROOT, MANIFEST))) as Manifest } catch { return null }
-}
-
-// Where the harness may write or delete: a manifest key outside this namespace (or outside the repo) is never trusted.
-const HARNESS_PREFIXES = ['.rig/bin/', '.rig/githooks/', '.rig/templates/', '.rig/mod/', '.claude/skills/rig-', '.claude/agents/rig-']
-export function isHarnessPath(rel: string): boolean {
-  if (!rel || path.isAbsolute(rel) || rel.split(/[\\/]/).includes('..')) return false
-  const abs = path.resolve(ROOT, rel)
-  return abs.startsWith(ROOT + path.sep) && HARNESS_PREFIXES.some(p => rel.startsWith(p))
 }
 
 export function harnessFiles(standalone: boolean, profile: Profile = 'full'): Map<string, string> {

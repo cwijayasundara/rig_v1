@@ -2,7 +2,7 @@
 // Results the script records live in intent-results.json, outside the approved (hashed) map.
 import fs from 'node:fs'
 import path from 'node:path'
-import { CHANGES, ROOT, exists, git, out, fail, checkSlug, sanctionWrites } from './core.ts'
+import { CHANGES, ROOT, exists, git, out, fail, checkSlug, sanctionWrites, writeAtomic } from './core.ts'
 import { runCommand, recordRun } from './runs.ts'
 import { isTest, isSource, type Finding, type FileDiff } from './model.ts'
 import { formalTargets } from './intenttargets.ts'
@@ -32,7 +32,7 @@ export function adjudicate(slug: string, mutant: string, clause: string, verdict
   if (!by.trim() || !because.trim()) throw new Error('an adjudication needs --by <approver> and a reason after --')
   const all = readAdjudications(slug)
   all[mutant] = { verdict: verdict as 'non-bug' | 'clause-vacuous', because: because.trim(), by: by.trim(), clause }
-  fs.writeFileSync(adjPath(slug), JSON.stringify(all, null, 2) + '\n')
+  writeAtomic(adjPath(slug), JSON.stringify(all, null, 2) + '\n')
   sanctionWrites([path.relative(ROOT, adjPath(slug))])
 }
 
@@ -47,7 +47,7 @@ export function recordResult(slug: string, scenario: string, cmd: string): { sta
   const status = row.exit === 0 ? 'pass' : 'fail'
   const results = readResults(slug)
   results[scenario] = { status, command: row.cmd, commit, run }
-  fs.writeFileSync(path.join(dir(slug), 'intent-results.json'), JSON.stringify(results, null, 2) + '\n')
+  writeAtomic(path.join(dir(slug), 'intent-results.json'), JSON.stringify(results, null, 2) + '\n')
   return { status, exit: row.exit }
 }
 

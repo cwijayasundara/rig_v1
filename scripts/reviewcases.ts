@@ -3,7 +3,7 @@
 // capped) scores the PR reviewer against the confirmed cases, so a change to its brief or model is kept only when the score holds or rises.
 import fs from 'node:fs'
 import path from 'node:path'
-import { gitIn, sha, PLUGIN_ROOT } from './core.ts'
+import { gitIn, sha, PLUGIN_ROOT, writeAtomic } from './core.ts'
 import { changeHistory } from './reverts.ts'
 import { claudeRunner, type Runner } from './wikigen.ts'
 
@@ -35,7 +35,7 @@ export function writeCandidates(root: string, revertPrs: number[] = []): { added
     const files = (gitIn(root, ['diff', '--name-only', base, row.sha, '--', '.', ':!.rig']) ?? '').split('\n').filter(Boolean)
     const c: ReviewCase = { slug: row.slug, sha: row.sha, base, files, confirmed: false, defect: { file: '', pattern: '' }, note: NOTE }
     fs.mkdirSync(dir, { recursive: true })
-    fs.writeFileSync(path.join(dir, name), JSON.stringify(c, null, 2) + '\n')
+    writeAtomic(path.join(dir, name), JSON.stringify(c, null, 2) + '\n')
     added.push(name)
   }
   const { cases } = readCases(root)

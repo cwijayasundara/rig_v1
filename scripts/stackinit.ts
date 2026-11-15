@@ -2,7 +2,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { ROOT, SENSORS_PATH, SENSORS_JSON, SDLC, PLUGIN_ROOT, exists, read, git, listChanges, sanctionWrites } from './core.ts'
+import { ROOT, SENSORS_PATH, SENSORS_JSON, SDLC, PLUGIN_ROOT, exists, read, git, listChanges, sanctionWrites, writeAtomic } from './core.ts'
 import { loadPacks, detectStacks, packFile, packRegistry, PACKS_DIR } from './stackpacks.ts'
 import { writeSync, BRIEF } from './sync.ts'
 import { isRegistryShape, type Contracts } from './registry.ts'
@@ -49,7 +49,7 @@ export function declareStack(opt: string | true): string {
   if (!pack) return `no stack pack for ${found[0] ?? 'this directory'} (known: ${packs.map(p => p.stack).join(', ')}); write .rig/sensors.json yourself`
   fs.mkdirSync(SDLC, { recursive: true })
   const pc = packContracts(pack.contracts, javaOk())
-  fs.writeFileSync(file, JSON.stringify({ ...packFile(pack), contracts: pc.contracts }, null, 2) + '\n')
+  writeAtomic(file, JSON.stringify({ ...packFile(pack), contracts: pc.contracts }, null, 2) + '\n')
   sanctionWrites([SENSORS_JSON])
   const brief = path.join(ROOT, BRIEF)
   if (!exists(brief)) { fs.mkdirSync(path.dirname(brief), { recursive: true }); fs.copyFileSync(path.join(PLUGIN_ROOT, 'templates', 'brief.md'), brief) }

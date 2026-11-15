@@ -3,11 +3,11 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { ROOT, SDLC, SENSORS_PATH, IS_VENDORED, PLUGIN_ROOT, skillRef, exists, read, out, fail, sha, git, sanctionWrites, ensureGitignore, gitignoreMissing, type Args } from './core.ts'
+import { ROOT, SDLC, SENSORS_PATH, IS_VENDORED, PLUGIN_ROOT, skillRef, exists, read, out, fail, sha, git, sanctionWrites, ensureGitignore, gitignoreMissing, isHarnessPath, writeAtomic, type Args} from './core.ts'
 import { isObject } from './model.ts'
 import { isRegistryShape } from './registry.ts'
 import { loadPacks, PACKS_DIR } from './stackpacks.ts'
-import { harnessFiles, readManifest, isHarnessPath, mergeProjectFiles, manifestProfile, MANIFEST, pluginVersion, versionGuards, type Manifest } from './vendor.ts'
+import { harnessFiles, readManifest, mergeProjectFiles, manifestProfile, MANIFEST, pluginVersion, versionGuards, type Manifest } from './vendor.ts'
 import { pendingMigrations, runMigrations, type Migration } from './migrations.ts'
 import { cmdSync } from './sync.ts'
 import { cmdBaseline } from './initbaseline.ts'
@@ -183,7 +183,7 @@ function applyUpgrade(args: Args): void {
   if (wanted.length) {
     const reg = JSON.parse(read(SENSORS_PATH)) as { sensors: unknown[] }
     for (const id of wanted) reg.sensors.push(structuredClone(plan.proposals?.sensors.find(s => s.id === id)))
-    fs.writeFileSync(SENSORS_PATH, JSON.stringify(reg, null, 2) + '\n')
+    writeAtomic(SENSORS_PATH, JSON.stringify(reg, null, 2) + '\n')
     written.push('.rig/sensors.json')
   }
   if (plan.standalone) {

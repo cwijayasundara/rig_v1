@@ -2,7 +2,7 @@
 // this tree is committed on sdlc/<slug>, pushed, and gets a PR, or stays local-only without a remote.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, CHANGES, WAIVERS, UNREQUESTABLE, waiverLive, readJson, exists, isTrunk, trunkName, read, readJsonl, out, fail, git, checkSlug, optString, ensureGitignore, dirtyFiles, skillRef, defaultBase, type Args, type Waiver } from './core.ts'
+import { ROOT, CHANGES, WAIVERS, UNREQUESTABLE, waiverLive, readJson, exists, isTrunk, trunkName, read, readJsonl, out, fail, git, checkSlug, optString, ensureGitignore, dirtyFiles, isHarnessPath, skillRef, defaultBase, writeAtomic, type Args, type Waiver} from './core.ts'
 import { frozenFindings, frozenFor } from './contracts.ts'
 import { loadConfig } from './check.ts'
 import { planCheck, planChangesAfterBuild } from './plancheck.ts'; import { unproved } from './proof.ts'
@@ -19,7 +19,6 @@ import { parseAccess } from './chartcheck.ts'
 import { branchDiff } from './diffs.ts'
 import { archPath } from './product.ts'
 import { intentOf, intentsOf, writePlan, readyAfter } from './chart.ts'
-import { isHarnessPath } from './vendor.ts'
 import { untestedAcs } from './actrace.ts'
 import { routeReview, recordAdditions } from './carry.ts'
 import { readFreeze } from './testfreeze.ts'
@@ -92,7 +91,7 @@ export function cmdPr(args: Args): void {
     const tests = diff.filter(d => d.status !== 'D' && !d.binary && isTest(d.file, registry.paths)).map(d => read(path.join(ROOT, d.file))).join('\n')
     // Suggestions only: a failure here must never stop a ship.
     let claims: ClaimRow[] | undefined
-    try { claims = claimRows(slug); fs.writeFileSync(path.join(CHANGES, slug, 'claims.json'), JSON.stringify(claims, null, 2) + '\n') } catch { claims = undefined }
+    try { claims = claimRows(slug); writeAtomic(path.join(CHANGES, slug, 'claims.json'), JSON.stringify(claims, null, 2) + '\n') } catch { claims = undefined }
     fs.writeFileSync(path.join(CHANGES, slug, 'pr-body.md'), prBody({ proof: unproved(slug), agents: agentRows(slug), draft: draft ? reason : undefined, claims, planChanges: gates.plan ? undefined : planChangesAfterBuild(slug, verify?.base ?? defaultBase() ?? 'HEAD'), requirements: c('requirements.md'), intent: c('intent.md'), spec: c('spec.md'), plan: c('plan.md'), verify, outline: c('pr-outline.md'), review: c('review.md'), amendments: c('amendments.md'), runs: readJsonl<RunRow>(path.join(CHANGES, slug, 'evidence', 'runs.jsonl')), tests, intentMap: intentReceipt(slug), freeze: readFreeze(slug), changes: diff, risk: riskOf(diff.filter(d => ships(slug)(d.file)), [slug], registry, parseAccess(read(archPath)), false) }))
   }
   // A follow-up without --draft ends the draft (it ran the normal refusals above); with --draft it records the reason again.
