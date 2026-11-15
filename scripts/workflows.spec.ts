@@ -108,3 +108,9 @@ test('the holdout step runs every base case with --base and notes that project s
   assert.match(t, /holdout --ci --base "origin\/\$\{BASE#refs\/heads\/\}"/)
   assert.match(t, /project's setup steps must precede/)
 })
+
+test('CI runs the dashboard mod tests: hooks/dashboard.test.ts has a test:mod script and a ci.yml step that calls it', () => {
+  const pkg = JSON.parse(read('package.json')) as { scripts: Record<string, string> }
+  assert.equal(pkg.scripts['test:mod'], 'claude plugin test .')
+  assert.match(read('.github/workflows/ci.yml'), /run: npm run test:mod/)
+})

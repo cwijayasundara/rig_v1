@@ -42,3 +42,22 @@ test('the harness is at most 15000 lines (tests and docs excluded)', () => {
   const total = CAPPED.reduce((n, f) => n + count(f), 0)
   assert.ok(total <= 15000, `harness is ${total} lines`)
 })
+
+// Line counts alone let code pack long lines and skills pack long paragraphs, and skill bytes are what a session pays on every load.
+// These ceilings are today's maxima (2026-11-14, rounded up): they stop growth, they do not yet shrink anything. Lower them as files are split; raise them only by asking.
+const bytes = (f: string): number => fs.statSync(f).size
+const longest = (f: string): number => Math.max(...fs.readFileSync(f, 'utf8').split('\n').map(l => l.length))
+const SCRIPTS = LIMITS[0]![1]
+const SKILLS = LIMITS[2]![1]
+
+test('every script is at most 45000 bytes and has no line over 1600 characters', () => {
+  const over = SCRIPTS.filter(f => bytes(f) > 45000 || longest(f) > 1600).map(f => `${path.relative(ROOT, f)} (${bytes(f)} bytes, longest line ${longest(f)})`)
+  assert.deepEqual(over, [], 'scripts over the byte or line-length cap')
+})
+
+test('every skill is at most 22000 bytes with no line over 3800 characters, and the skills total at most 102000 bytes', () => {
+  const over = SKILLS.filter(f => bytes(f) > 22000 || longest(f) > 3800).map(f => `${path.relative(ROOT, f)} (${bytes(f)} bytes, longest line ${longest(f)})`)
+  assert.deepEqual(over, [], 'skills over the byte or line-length cap')
+  const total = SKILLS.reduce((n, f) => n + bytes(f), 0)
+  assert.ok(total <= 102000, `skills total ${total} bytes`)
+})
