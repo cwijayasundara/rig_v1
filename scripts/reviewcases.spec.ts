@@ -139,3 +139,12 @@ test('the prompt leaves binary files out and truncates a huge file, so one case 
   assert.match(p, /\(truncated at 20000 characters\)/)
   assert.ok(p.length < 120_000, `prompt is ${p.length} characters`)
 })
+
+test('a case whose defect pattern is not a valid regex is a bad case, not a silent miss', () => {
+  const s = shop()
+  const sha = s.ship('cart-total'); s.git('revert', '--no-edit', sha)
+  const [name] = writeCandidates(s.dir).added
+  const file = path.join(caseDir(s.dir), name!)
+  fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), confirmed: true, defect: { file: 'src/cart.js', pattern: 'sign(' } }))
+  assert.deepEqual(readCases(s.dir), { cases: [], bad: [name] })
+})

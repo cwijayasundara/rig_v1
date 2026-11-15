@@ -6,6 +6,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { makeRepo, sdlc, write } from './testkit.ts'
+import { VENDORED } from './vendor.ts'
 
 const walk = (dir: string): string[] =>
   fs.existsSync(dir)
@@ -411,7 +412,8 @@ test('vendor --standalone over an old install adds the template permissions, kee
 
 test('every module a script imports is vendored', () => {
   const scripts = path.join(import.meta.dirname)
-  const vendoredNames = new Set((fs.readFileSync(path.join(scripts, 'vendor.ts'), 'utf8').match(/export const VENDORED = \[([^\]]*)\]/)?.[1] ?? '').split(',').map(s => s.trim().replace(/'/g, '')))
+  const vendoredNames = new Set(VENDORED)
+  assert.ok(VENDORED.length > 50 && !VENDORED.includes('testkit') && VENDORED.every(n => !n.endsWith('.spec')), 'the list is the plugin scripts, specs and testkit left out')
   const NOT_VENDORED: string[] = [] // none: the checker copy must be self-contained
   const missing: string[] = []
   for (const f of fs.readdirSync(scripts).filter(n => n.endsWith('.ts') && !n.endsWith('.spec.ts') && n !== 'testkit.ts')) {

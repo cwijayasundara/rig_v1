@@ -2,7 +2,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { waiverLive, UNREQUESTABLE,
-  ROOT, SDLC, CHANGES, WAIVERS, SENSORS_JSON, BUDGET_MS, readJson, exists, read, out, fail, git, toPosix, optString, readJsonl, defaultBase, checkSlug, skillRef, clean,
+  ROOT, SDLC, CHANGES, WAIVERS, SENSORS_JSON, AUTONOMY_JSON, BUDGET_MS, readJson, exists, read, out, fail, git, toPosix, optString, readJsonl, defaultBase, checkSlug, skillRef, clean,
   type Args, type Waiver,
 } from './core.ts'
 import { parseRules, formatFindings, warnLines, matchesAny, isTest, isSource, ghPages, revertLabelledPrs, planFiles, type FileDiff, type Finding, type Rule } from './model.ts'
@@ -312,9 +312,9 @@ function humanRowsAdded(base: string): string[] {
     for (const w of added.length ? added : [{}]) rows.push(Object.keys(w).length ? `chart waiver chart-${n} finding ${clean(w.finding ?? '?')}: "${clean(w.reason ?? '?')}" by ${clean(w.by ?? '?')}` : `chart waiver chart-${n} (removed or unreadable)`)
   }
   // autonomy.json: the rung is a person's decision; every PR that adds or edits it is a row, naming the newest history row's author.
-  if ((git(['diff', '--name-only', base, 'HEAD', '--', '.rig/autonomy.json']) ?? '').trim()) {
+  if ((git(['diff', '--name-only', base, 'HEAD', '--', AUTONOMY_JSON]) ?? '').trim()) {
     let by = '?'
-    try { by = String((JSON.parse(read(path.join(ROOT, '.rig/autonomy.json'))) as { history?: { by?: unknown }[] }).history?.at(-1)?.by ?? 'rig init') } catch { /* deleted or unreadable: still a row */ }
+    try { by = String((JSON.parse(read(path.join(ROOT, AUTONOMY_JSON))) as { history?: { by?: unknown }[] }).history?.at(-1)?.by ?? 'rig init') } catch { /* deleted or unreadable: still a row */ }
     rows.push(`autonomy by ${clean(by)}`)
   }
   return rows
@@ -352,7 +352,7 @@ function approvedBySomeoneElse(reviews: { user?: { login?: string }; state?: str
 function tierZeroRefusal(ref: string, config: Registry, who: Who | null): string {
   if (config.humanApproval.everyTier) return 'humanApproval.everyTier: every tier needs a person'
   let rung: unknown = 0
-  try { rung = (JSON.parse(showAt(ref, '.rig/autonomy.json') ?? '{}') as { rung?: unknown }).rung ?? 0 } catch { /* unreadable: rung 0 */ }
+  try { rung = (JSON.parse(showAt(ref, AUTONOMY_JSON) ?? '{}') as { rung?: unknown }).rung ?? 0 } catch { /* unreadable: rung 0 */ }
   if (rung !== 3) return `rung ${String(rung)}, not 3`
   if (!who) return 'could not read the pull request from GitHub'
   if (!who.sameRepo) return 'a fork PR never merges without a person'

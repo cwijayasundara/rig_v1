@@ -3,7 +3,7 @@
 // A person sets it; the repo's own record of shipped changes only proposes a move. Zero dependencies.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SDLC, SLUG_RE, exists, read, readJson, now, out, fail, ownerOrFail, skillRef, writeAtomic, type Args} from './core.ts'
+import { ROOT, SDLC, AUTONOMY_JSON, SLUG_RE, exists, read, readJson, now, out, fail, ownerOrFail, skillRef, writeAtomic, type Args} from './core.ts'
 import { shippedChanges, mineCandidates, waiversOf, findingsSection } from './learnmine.ts'
 import { parseRegistry } from './registry.ts'
 
@@ -13,7 +13,7 @@ const EMPTY = (): Autonomy => ({ rung: 0, since: '', deferred: [], history: [] }
 const CLEAN_SHIPS = 3
 const BLOCKING = /\[category: (?:security|contract|design|unmapped)\]/
 
-const fileOf = (root: string): string => path.join(root, '.rig', 'autonomy.json')
+const fileOf = (root: string): string => path.join(root, AUTONOMY_JSON)
 
 function load(root: string): { a: Autonomy; malformed: boolean } {
   const file = fileOf(root)

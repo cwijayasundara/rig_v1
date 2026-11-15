@@ -29,7 +29,7 @@ export function cmdTestsFreeze(args: Args): void {
   const prior = readFreeze(slug)
   const why = optString(args, 'why')?.trim() || (prior.length ? '' : 'hand-off')
   if (!why) return fail(`${slug} is already frozen: a later freeze needs --why "<reason the test writer changed a frozen test>"`)
-  const drops = process.argv.flatMap((a, i, v) => a === '--drop' && v[i + 1] ? [v[i + 1] as string] : [])
+  const drops = args.all?.drop ?? []
   const held = new Set(prior.flatMap(r => r.files.map(f => f.path)))
   const gone = [...held].filter(f => !drops.includes(f) && digest(f) === null)
   if (gone.length) return fail(`frozen test(s) missing: ${gone.join(', ')}; restore them, or let the test writer drop them on purpose: tests-freeze ${slug} --why "<reason>" ${gone.map(f => `--drop ${f}`).join(' ')}`)

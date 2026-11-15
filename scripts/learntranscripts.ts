@@ -4,6 +4,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { parseJsonl } from './core.ts'
 
 type Correction = { text: string; session: string; date: string }
 
@@ -45,9 +46,7 @@ function typedText(l: Line): string | null {
 }
 
 export function typedTurns(jsonl: string): Correction[] {
-  return jsonl.split('\n').flatMap((s): Correction[] => {
-    let l: Line
-    try { l = JSON.parse(s) as Line } catch { return [] }
+  return parseJsonl<Line>(jsonl).flatMap((l): Correction[] => {
     const text = l && typeof l === 'object' ? typedText(l) : null
     return text ? [{ text, session: (l.sessionId ?? '').slice(0, 8), date: (l.timestamp ?? '').slice(0, 10) }] : []
   })

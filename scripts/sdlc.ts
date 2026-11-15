@@ -337,12 +337,9 @@ function cmdStartBrief(): void {
 // ---------- main ----------
 
 // `run` takes its command after `--`, as one quoted argument: sdlc.ts run [--slug s] [--expect-fail] -- "<test command>"
-function cmdRun(): void {
-  const argv = process.argv.slice(3)
-  const dash = argv.indexOf('--')
-  if (dash < 0 || dash === argv.length - 1) fail('usage: run [--slug s] [--expect-fail] -- "<command>"')
-  const head = parseArgs(argv.slice(0, dash))
-  const cmd = argv.slice(dash + 1).join(' ')
+function cmdRun(head: Args): void {
+  if (!head.rest?.length) fail('usage: run [--slug s] [--expect-fail] -- "<command>"')
+  const cmd = head.rest.join(' ')
   const given = optString(head, 'slug')
   const slug = given ? checkSlug(given) : activeSlug()
   if (!slug || !exists(path.join(CHANGES, slug))) fail(`no such change: run ${skillRef('start')} first, or pass an existing --slug`)
@@ -454,7 +451,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   'start-brief': () => cmdStartBrief(),
   superpowers: () => out(superpowersWarning() || 'superpowers: ok'),
   pr: cmdPr, carry: cmdCarry, 'plan-check': cmdPlanCheck,
-  run: () => cmdRun(),
+  run: cmdRun,
   verify: cmdVerify, holdout: cmdHoldout, mutscore: cmdMutscore,
   hook: cmdHook,
   diff: cmdDiff,

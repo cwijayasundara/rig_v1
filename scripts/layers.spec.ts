@@ -49,3 +49,9 @@ test('no script writes JSON with fs.writeFileSync: core.writeAtomic does', () =>
   const bad = names.filter(n => n !== 'core').filter(n => /fs\.writeFileSync\([^\n]*JSON\.stringify/.test(fs.readFileSync(path.join(DIR, `${n}.ts`), 'utf8')))
   assert.deepEqual(bad, [])
 })
+
+// The path of a state file is named once, in core.ts, so a rename or a relocation cannot leave a stale literal behind.
+test('no script spells the autonomy file path: core.AUTONOMY_JSON does', () => {
+  const bad = names.filter(n => n !== 'core').filter(n => fs.readFileSync(path.join(DIR, `${n}.ts`), 'utf8').includes("'.rig/autonomy.json'"))
+  assert.deepEqual(bad, [])
+})

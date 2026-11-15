@@ -6,6 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { revertLabelledPrs, isHuman, shQuote } from './model.ts'
+import { parseJsonl } from './core.ts'
 
 const posix = process.platform !== 'win32'
 
@@ -45,4 +46,8 @@ test('shQuote makes one shell word of any text, embedded quotes included', { ski
     const r = spawnSync('sh', ['-c', `printf %s ${shQuote(s)}`], { encoding: 'utf8' })
     assert.equal(r.stdout, s)
   }
+})
+
+test('parseJsonl keeps each valid row in order and skips a blank, torn or non-JSON row', () => {
+  assert.deepEqual(parseJsonl<{ n: number }>('{"n":1}\n\nnot json\n{"n":2}\n{"n":'), [{ n: 1 }, { n: 2 }])
 })

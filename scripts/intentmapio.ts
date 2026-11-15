@@ -2,7 +2,7 @@
 // Results the script records live in intent-results.json, outside the approved (hashed) map.
 import fs from 'node:fs'
 import path from 'node:path'
-import { CHANGES, ROOT, exists, git, out, fail, checkSlug, sanctionWrites, writeAtomic } from './core.ts'
+import { CHANGES, ROOT, exists, readJson, readJsonl, git, out, fail, checkSlug, sanctionWrites, writeAtomic, optString, type Args } from './core.ts'
 import { runCommand, recordRun } from './runs.ts'
 import { isTest, isSource, type Finding, type FileDiff } from './model.ts'
 import { formalTargets } from './intenttargets.ts'
@@ -10,14 +10,12 @@ import type { Registry } from './registry.ts'
 import { PROPERTY_LABEL, shipCheck, parse, receipt, applyResults, behavioursFrom, type Results, type Adjudications, type Mutant, type LedgerRun } from './intentmap.ts'
 
 const dir = (slug: string): string => path.join(CHANGES, slug)
-const readJson = <T>(file: string, fallback: T): T => { try { return JSON.parse(fs.readFileSync(file, 'utf8')) as T } catch { return fallback } }
 
 export const readResults = (slug: string): Results => readJson<Results>(path.join(dir(slug), 'intent-results.json'), {})
 
 // The change's run ledger (evidence/runs.jsonl), one parsed line per run; unreadable lines are skipped.
 function readRuns(slug: string): (LedgerRun & { tail: string })[] {
-  const f = path.join(dir(slug), 'evidence', 'runs.jsonl')
-  return (exists(f) ? fs.readFileSync(f, 'utf8') : '').split('\n').filter(Boolean).flatMap(l => { try { return [JSON.parse(l) as LedgerRun & { tail: string }] } catch { return [] } })
+  return readJsonl<LedgerRun & { tail: string }>(path.join(dir(slug), 'evidence', 'runs.jsonl'))
 }
 
 const adjPath = (slug: string): string => path.join(dir(slug), 'adjudications.json')
@@ -85,37 +83,30 @@ const FIX: Record<string, string> = {
 const fixFor = (rule: string): string => FIX[rule] ?? 'fix intent-map.md; a person re-approves the plan'
 
 // `intent-record <slug> <E-id> -- "<command>"`: runs the scenario's command and records pass or fail with the commit.
-export function cmdIntentRecord(): void {
-  const argv = process.argv.slice(3)
-  const dash = argv.indexOf('--')
-  const [given, scenario] = argv.slice(0, dash < 0 ? 0 : dash)
-  if (dash < 0 || dash === argv.length - 1 || !given || !scenario) fail('usage: intent-record <slug> <E-id> -- "<command>"')
+export function cmdIntentRecord(args: Args): void {
+  const [given, scenario] = args.pos
+  if (!args.rest?.length || !given || !scenario) fail('usage: intent-record <slug> <E-id> -- "<command>"')
   const slug = checkSlug(given)
   if (!exists(dir(slug))) fail(`no such change: ${slug}`)
   try {
-    const r = recordResult(slug, scenario, argv.slice(dash + 1).join(' '))
+    const r = recordResult(slug, scenario, (args.rest ?? []).join(' '))
     out(`${scenario}: ${r.status} (exit ${r.exit}), recorded in .rig/changes/${slug}/intent-results.json`)
     process.exitCode = r.exit === 0 ? 0 : 1
   } catch (e) { fail((e as Error).message) }
 }
 
 // `intent-adjudicate <slug> <mutant-id> <non-bug|clause-vacuous> --clause <C-id> --by <name> -- "<reason>"`.
-export function cmdIntentAdjudicate(): void {
-  const argv = process.argv.slice(3)
-  const dash = argv.indexOf('--')
-  const head = dash < 0 ? argv : argv.slice(0, dash)
-  const byAt = head.indexOf('--by')
-  const [given, mutant, verdict] = head
-  const by = byAt < 0 ? '' : head[byAt + 1] ?? ''
-  const clauseAt = head.indexOf('--clause')
-  const clause = clauseAt < 0 ? '' : head[clauseAt + 1] ?? ''
+export function cmdIntentAdjudicate(args: Args): void {
+  const [given, mutant, verdict] = args.pos
+  const by = optString(args, 'by') ?? ''
+  const clause = optString(args, 'clause') ?? ''
   const usage = 'usage: intent-adjudicate <slug> <mutant-id> <non-bug|clause-vacuous> --clause <C-id> --by <name> -- "<reason>"'
-  if (!given || !mutant || !verdict || dash < 0 || dash === argv.length - 1) fail(usage)
+  if (!given || !mutant || !verdict || !args.rest?.length) fail(usage)
   const slug = checkSlug(given)
   if (!exists(path.join(dir(slug), 'intent-map.md'))) fail(`${slug} has no intent-map.md`)
   if (!clause) fail(usage)
   if (!parse(fs.readFileSync(path.join(dir(slug), 'intent-map.md'), 'utf8')).clauses.some(c => c.id === clause)) fail(`${clause} is not a clause of ${slug}`)
-  try { adjudicate(slug, mutant, clause, verdict, argv.slice(dash + 1).join(' '), by); out(`${mutant}: ${verdict}, recorded in .rig/changes/${slug}/adjudications.json`) } catch (e) { fail((e as Error).message) }
+  try { adjudicate(slug, mutant, clause, verdict, args.rest.join(' '), by); out(`${mutant}: ${verdict}, recorded in .rig/changes/${slug}/adjudications.json`) } catch (e) { fail((e as Error).message) }
 }
 
 // The receipt block for the PR body, from the map, the recorded results and the last recorded run of the formal command (no new run).
@@ -136,8 +127,8 @@ export function intentReceipt(slug: string): string {
 }
 
 // `intent-project <slug>`: prints the ## Behaviours section the map generates, for plan to write into spec.md.
-export function cmdIntentProject(): void {
-  const given = process.argv[3]
+export function cmdIntentProject(args: Args): void {
+  const given = args.pos[0]
   if (!given) fail('usage: intent-project <slug>')
   const slug = checkSlug(given)
   const mapPath = path.join(dir(slug), 'intent-map.md')

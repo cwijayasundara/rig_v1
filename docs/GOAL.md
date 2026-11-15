@@ -30,7 +30,7 @@ Five behaviours. Each one is a thing Claude Code does not reliably do alone.
 
 ## The rules that keep it thin
 
-These come from the research (`docs/research/`) and from the one week this repo cost $1k.
+These come from the research (removed 2026-10-30; digest in `docs/HISTORY.md`) and from the one week this repo cost $1k.
 
 1. **Native first.** Before writing anything, check whether Claude Code does it: plan mode, skills, subagents, hooks, plugins,
    `.claude/rules` with `paths:`, auto memory, `/code-review`, `/security-review`, `/goal`, `/loop`, routines, `claude-code-action`,
@@ -140,18 +140,17 @@ small PR); a **drift report** (stale wiki pages and `design` review findings fil
 
 - `docs/GOAL.md` this file; `CLAUDE.md` working rules; `DESIGN.md` and `ROADMAP.md` for the shipped design.
 - Removed 2026-10-30: all designs (`docs/superpowers/`), proposals, research (`docs/research/`) and `docs/ai-sdlc-checklist.md`. Originals are in git at
-  `81aa700`; `docs/HISTORY.md` is the readable digest (problem, evidence, decision, outcome per document) with the restore commands.
+  `81aa700`; `docs/superpowers/` and `docs/proposals/` were started again after 2026-11-03 for current work (dated plans, specs and proposals); `docs/HISTORY.md` is the readable digest (problem, evidence, decision, outcome per document) with the restore commands.
   Paths cited in README, CHANGELOG and CLAUDE.md are the headings in `HISTORY.md`.
 - `docs/stuff.eml.gz` (gitignored; scaffold metrics digest, Sept 2026) stays local.
-- Removed 2026-10-17, in git history before this commit: the implementation plans of that date, `reports/` and the pre-rebuild audits (the useful parts are in `docs/research/`), the specs for the superseded chart workflow, e2e design and lite harness, the release-integration proposal
+- Removed 2026-10-17, in git history before this commit: the implementation plans of that date, `reports/` (the scaling report is tracked again since 2026-11-12) and the pre-rebuild audits (the useful parts were in `docs/research/`, now in git at `81aa700`), the specs for the superseded chart workflow, e2e design and lite harness, the release-integration proposal
   (replaced by the scripted and live e2e in `tests/e2e/`), and `ai-sdlc-map.html` (a rendering of the checklist).
 
 ## Sources
 
 Anthropic AI-native SDLC playbook (16 plays); Fowler: *Harness engineering*, *Sensors for coding agents*, Jain *Are harnesses worth
-the cost?*; Devin: DeepWiki, Memory, index-repo; Claude Code docs (`https://code.claude.com/docs/en/overview`). Raw notes:
-`docs/research/raw/`. Findings: `docs/research/2026-10-17-findings.md`. Gap analysis:
-`docs/research/2026-10-17-playbook-gap-analysis.md`. Sensor catalogue and Jain anatomy: `docs/research/sensor-catalogue.md`.
+the cost?*; Devin: DeepWiki, Memory, index-repo; Claude Code docs (`https://code.claude.com/docs/en/overview`). Raw notes, findings, the gap analysis and the sensor catalogue lived under
+`docs/research/` (removed 2026-10-30; in git at `81aa700`, summarised in `docs/HISTORY.md`).
 
 ## Open
 

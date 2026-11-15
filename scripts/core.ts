@@ -10,7 +10,8 @@ import { isObject, SECRET_PATTERNS, type Finding } from './model.ts'
 
 type Fields = Record<string, string>
 
-export type Args = { pos: string[]; opt: Record<string, string | true> }
+// pos: the words; opt: each --flag (the last value wins); all: every value of a --flag given more than once; rest: what follows a bare `--`, undefined when there is none.
+export type Args = { pos: string[]; opt: Record<string, string | true>; all?: Record<string, string[]>; rest?: string[] }
 export type HookInput = {
   session_id?: string
   cwd?: string
@@ -40,6 +41,7 @@ export const SDLC = path.join(ROOT, '.rig')
 export const CHANGES = path.join(SDLC, 'changes')
 // sensors.json: repo-relative posix form (messages, diff paths, joined to ROOT) and absolute.
 export const SENSORS_JSON = '.rig/sensors.json'
+export const AUTONOMY_JSON = '.rig/autonomy.json'
 export const SENSORS_PATH = path.join(SDLC, 'sensors.json')
 // Time budget in ms per check cadence.
 export const BUDGET_MS = { edit: 60_000, stop: 60_000, commit: 600_000, ship: 1_800_000, ci: 1_800_000 } as const
@@ -116,8 +118,9 @@ export function readJson<T>(p: string, fallback: T): T {
 export const UNRESOLVED = path.join(SDLC, 'unresolved.json')
 export const readUnresolved = (): Finding[] => readJson<{ findings?: Finding[] }>(UNRESOLVED, {}).findings ?? []
 
-export function readJsonl<T>(p: string): T[] {
-  return read(p)
+// The parsed rows of a JSON Lines text; a row that is not valid JSON is skipped.
+export function parseJsonl<T>(text: string): T[] {
+  return text
     .split('\n')
     .filter(Boolean)
     .flatMap(row => {
@@ -128,22 +131,26 @@ export function readJsonl<T>(p: string): T[] {
       }
     })
 }
+export const readJsonl = <T>(p: string): T[] => parseJsonl<T>(read(p))
 
 export function parseArgs(argv: string[]): Args {
   const pos: string[] = []
   const opt: Record<string, string | true> = {}
+  const all: Record<string, string[]> = {}
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i] ?? ''
+    if (a === '--') return { pos, opt, all, rest: argv.slice(i + 1) }
     if (a.startsWith('--')) {
       const next = argv[i + 1]
       if (next === undefined || next.startsWith('--')) opt[a.slice(2)] = true
       else {
         opt[a.slice(2)] = next
+        ;(all[a.slice(2)] ??= []).push(next)
         i++
       }
     } else pos.push(a)
   }
-  return { pos, opt }
+  return { pos, opt, all }
 }
 
 export const optString = (args: Args, key: string): string | undefined => {

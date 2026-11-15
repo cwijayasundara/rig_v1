@@ -7,8 +7,10 @@ import { findBlock, withBlock } from './sync.ts'
 import { HOOK_SCRIPTS, installHooks } from './githooks.ts'
 import { parseProfile, skillIn, agentIn, type Profile } from './profile.ts'
 
-// Every script the checker imports; testkit and specs stay behind. CI runs this copy, so it never needs the plugin.
-export const VENDORED = ['agents', 'core', 'model', 'sensors', 'diffs', 'runs', 'check', 'stamp', 'basetree', 'verify', 'hooks', 'pr', 'carry', 'plancheck', 'proof', 'prbody', 'sdlc', 'githooks', 'vendor', 'initbaseline', 'registry', 'stackpacks', 'modelstate', 'stackinit', 'contracts', 'sync', 'lifecycle', 'chart', 'superpowers', 'chartcheck', 'prdformat', 'prdcoverage', 'prdcmd', 'plan', 'product', 'journey', 'wiki', 'wikicite', 'wikigen', 'wikistate', 'wikivalidate', 'learn', 'learnfile', 'learnmine', 'learnreplay', 'learntranscripts', 'report', 'arch', 'counts', 'queue', 'app', 'scope', 'slice', 'maintain', 'readiness', 'autonomy', 'upgrade', 'migrations', 'risk', 'route', 'reverts', 'reviewcases', 'protect', 'actrace', 'claims', 'intentmap', 'intentmapio', 'intenttargets', 'intentrecheck', 'profile', 'readyclient', 'off', 'weaken', 'humanload', 'testfreeze', 'holdout', 'mutscore', 'approvalsummary', 'prcheck', 'audit', 'draft', 'testscripts']
+// Every script of the plugin except the specs and testkit, which stay behind. CI runs this copy, so it never needs the plugin; a new script ships without a list to update
+// (vendor.spec.ts checks that every module a script imports is in it).
+// A vendored copy has no plugin scripts directory beside it (and never vendors: `vendor` refuses there), so its list is empty.
+export const VENDORED = (fs.existsSync(path.join(PLUGIN_ROOT, 'scripts')) ? fs.readdirSync(path.join(PLUGIN_ROOT, 'scripts')) : []).filter(n => n.endsWith('.ts') && !n.endsWith('.spec.ts') && n !== 'testkit.ts').map(n => n.slice(0, -3)).sort()
 const SDLC_HOOK = '.rig/bin/sdlc.ts'
 type HookGroup = { matcher?: string; hooks: { type: string; command: string; timeout?: number; async?: boolean }[] }
 

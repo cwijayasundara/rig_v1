@@ -18,6 +18,7 @@ export function readCases(root: string): { cases: ReviewCase[]; bad: string[] } 
     try {
       const c = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')) as ReviewCase
       if (typeof c.slug !== 'string' || typeof c.sha !== 'string' || typeof c.base !== 'string' || typeof c.defect?.file !== 'string' || typeof c.defect?.pattern !== 'string') throw new Error('shape')
+      new RegExp(c.defect.pattern, 'i') // a pattern that does not compile is a bad case here, not a silent miss when scored
       cases.push(c)
     } catch { bad.push(f) }
   }
