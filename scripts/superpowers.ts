@@ -6,7 +6,7 @@ import path from 'node:path'
 import { ROOT, read } from './core.ts'
 
 export const SUPERPOWERS = 'superpowers@claude-plugins-official'
-export const SUPERPOWERS_INSTALL = `/plugin install ${SUPERPOWERS}`
+const SUPERPOWERS_INSTALL = `/plugin install ${SUPERPOWERS}`
 
 type Entry = { scope?: string; projectPath?: string }
 const json = (file: string): Record<string, unknown> => { try { return JSON.parse(read(file) || '{}') as Record<string, unknown> } catch { return {} } }

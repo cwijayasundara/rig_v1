@@ -102,12 +102,12 @@ export function cmdRisk(args: Args): void {
 }
 
 // The planning weight (proposal 2026-10-27 P3): light unless a tier-2 signal shows in the spec's blast radius or the person asked; nothing lowers a stored `weight: full`.
-export type Weight = { weight: 'light' | 'full'; reasons: string[] }
+type Weight = { weight: 'light' | 'full'; reasons: string[] }
 const GLOB = /[*?[{]/
 const literal = (g: string): string => g.slice(0, GLOB.test(g) ? g.search(GLOB) : g.length)
 // A file entry is judged by its path; a directory, a glob or the whole repo ('') by overlap with each glob's literal part, so
 // `src/` holds `src/billing/**` and `**/migrations/**`. Case is folded: over-flagging only plans more carefully.
-export function predictWeight(i: { slug: string; radius: string[]; access: AccessRule[]; risk: Registry['risk']; asked: boolean }): Weight {
+function predictWeight(i: { slug: string; radius: string[]; access: AccessRule[]; risk: Registry['risk']; asked: boolean }): Weight {
   const globs = [...PROTECTED, ...i.risk.alwaysHuman, '.github/workflows/**'].map(g => g.toLowerCase())
   const hits = (raw: string): boolean => {
     const e = raw.toLowerCase().replace(/^(\.\/|\/)+/, '').replace(/^\.$/, '')
@@ -123,7 +123,7 @@ export function predictWeight(i: { slug: string; radius: string[]; access: Acces
   return { weight: reasons.length ? 'full' : 'light', reasons: reasons.length ? reasons : ['no always-human path or access action in the blast radius'] }
 }
 
-export function weightOf(slug: string): Weight {
+function weightOf(slug: string): Weight {
   const radius = blastRadius(read(path.join(CHANGES, slug, 'spec.md'))) ?? []
   const asked = frontmatter(read(path.join(CHANGES, slug, 'intent.md'))).data.weight === 'full'
   return predictWeight({ slug, radius, access: parseAccess(read(archPath)), risk: parseRegistry(read(path.join(ROOT, SENSORS_JSON))).registry.risk, asked })

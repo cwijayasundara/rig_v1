@@ -7,7 +7,7 @@ import { SDLC, git, out, fail, optString, sanctionWrites, writeAtomic, type Args
 import { trunk } from './protect.ts'
 import { isProtected } from './sensors.ts'
 
-export type Off = { by: string; why: string; at: string; parsed: boolean }
+type Off = { by: string; why: string; at: string; parsed: boolean }
 const MARKER = '.rig/off.json'
 
 export const trunkRef = (): string => (git(['rev-parse', '--verify', '--quiet', `origin/${trunk()}`]) ? `origin/${trunk()}` : trunk())

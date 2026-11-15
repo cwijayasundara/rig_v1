@@ -249,7 +249,7 @@ export function sprintsKnown(): number[] {
 
 // What /rig:chart works on when given no argument: the PRDs of sprints with no intents yet, from the sprint folder or docs/prd
 // (sprint-<N>/prd.md, sprint-<N>-<title>/prd.md, sprint-<N>.md, sprint-<N>-<title>.md). One candidate is the answer; several are a question.
-export type NextChart = { sprint: number | null; prd: string | null; candidates: { sprint: number; prd: string }[]; why: string }
+type NextChart = { sprint: number | null; prd: string | null; candidates: { sprint: number; prd: string }[]; why: string }
 export function nextChart(): NextChart {
   const found = new Map<number, string>()
   for (const n of sprintsOnDisk()) if (exists(prdPath(n))) found.set(n, `${sprintRel(n)}/prd.md`)

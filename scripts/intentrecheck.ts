@@ -17,7 +17,7 @@ const RECHECK_TIMEOUT_MS = 180_000
 const run = (cmd: string): { exit: number; tail: string } => { const r = runCommand(cmd, { timeoutMs: RECHECK_TIMEOUT_MS }); return { exit: r.exit, tail: r.tail } }
 
 // One finding per drifting check, keyed by it: E1 proposed last week does not come back when E2 drifts too.
-export function recheckFindings(slug: string): Finding[] {
+function recheckFindings(slug: string): Finding[] {
   const mapPath = path.join(CHANGES, slug, 'intent-map.md')
   const results = readResults(slug)
   const text = applyResults(fs.readFileSync(mapPath, 'utf8'), results)

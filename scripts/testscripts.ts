@@ -41,7 +41,7 @@ export function uncoveredTestScripts(r: Registry, root: string): string[] {
 export const scriptCommand = (name: string): string => `npm run ${name}` // package-script runner (neutrality.spec skips this marker)
 
 // A quarter of the stop budget: the unit sensor shares the turn's budget, so a script slower than this runs at ci instead.
-export const TURN_SCRIPT_MS = 15_000
+const TURN_SCRIPT_MS = 15_000
 
 // The command sensor baseline registers for an uncovered test script, given its one measured run: it judges a rig-on turn
 // (cadence turn) whenever its one run finished fast enough to share the turn budget, pass or fail (a failing one is known red,

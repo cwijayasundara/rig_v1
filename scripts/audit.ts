@@ -8,9 +8,11 @@ import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
 import { ROOT, read, readJsonl, out, fail, git, whoami, optString, writeAtomic, type Args} from './core.ts'
-import { gh } from './model.ts'
+import { gh, isHuman } from './model.ts'
 import { parseReport } from './mutscore.ts'
 import { isSrc, HOLD } from './prcheck.ts'
+import { loadConfig } from './check.ts'
+import type { Paths } from './registry.ts'
 
 export type Audit = { pr: number; id: string; sha?: string; login?: string; file: string; line: number; at: string; by: string; caught?: boolean; reviewers?: string[]; catchers?: string[]; revealedAt?: string }
 const auditPath = (): string => path.resolve(ROOT, git(['rev-parse', '--git-path', 'rig-audits.jsonl']) ?? '.git/rig-audits.jsonl')
@@ -30,7 +32,7 @@ const esc = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 // A text that names file:line (or file#L<n>, file line <n>) within 2 lines of the seed.
 export const mentions = (text: string, file: string, line: number): boolean => [...text.matchAll(new RegExp(`${esc(file)}(?::|#L|\\s+line\\s+|\\s+L)(\\d+)`, 'g'))].some(m => Math.abs(Number(m[1]) - line) <= 2)
 
-function addedLines(base: string): Added[] {
+function addedLines(base: string, paths: Paths): Added[] {
   const out: Added[] = []
   let file = '', n = 0
   for (const l of (git(['diff', '-U0', '--no-color', base, 'HEAD']) ?? '').split('\n')) {
@@ -38,7 +40,7 @@ function addedLines(base: string): Added[] {
     else if (/^@@/.test(l)) n = Number(/\+(\d+)/.exec(l)?.[1] ?? 0)
     else if (l.startsWith('+') && file) { out.push({ file, n, text: l.slice(1) }); n++ }
   }
-  return out.filter(a => isSrc(a.file))
+  return out.filter(a => isSrc(a.file, paths))
 }
 
 type PrInfo = { headRefName: string; baseRefName: string; author?: { login?: string } }
@@ -64,7 +66,7 @@ function seed(pr: number, args: Args): void {
   if (!base) fail(`no merge-base with ${info.baseRefName} (fetch it first)`)
   const from = optString(args, 'from')
   const hot = from ? (() => { const ms = parseReport(optString(args, 'tool') ?? 'stryker', read(path.resolve(ROOT, from))); return (ms.some(m => !m.killed) ? ms.filter(m => !m.killed) : ms).map(m => ({ file: m.file, line: m.line })) })() : []
-  const pick = seedPick(addedLines(base), pr, hot)
+  const pick = seedPick(addedLines(base, loadConfig().registry.paths), pr, hot)
   if (!pick) fail('no changed source line holds an operator to flip: seed by hand')
   let login = ''
   try { login = gh(['api', 'user', '--jq', '.login'], ROOT).trim(); gh(['api', '-X', 'POST', holdRoute(pr), '-f', `labels[]=${HOLD}`], ROOT) } catch { fail(`could not label PR ${pr} ${HOLD} (gh needs pull-request write access): nothing was changed`) }
@@ -118,7 +120,6 @@ export function cmdAudit(args: Args): void {
 export type Health = { approver: string; prs: number; approvalRate: number; commentsPerPr: number; medianHoursToFirst: number | null; seeded: { caught: number; of: number } | null }
 type P = { number: number; merged_at: string | null; created_at: string; user: { login?: string } | null }
 type R = { user: { login?: string; type?: string } | null; state: string; submitted_at?: string }
-const human = (u: { login?: string; type?: string } | null): u is { login: string; type?: string } => Boolean(u?.login) && u?.type !== 'Bot' && !u?.login?.endsWith('[bot]')
 const med = (xs: number[]): number | null => { const s = [...xs].sort((a, b) => a - b), m = s.length >> 1; return s.length ? (s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2) : null }
 const r1 = (x: number): number => Math.round(x * 10) / 10
 
@@ -128,8 +129,8 @@ export function reviewHealth(fetch: (endpoint: string) => unknown[], since: stri
   const pulls = (fetch('repos/{owner}/{repo}/pulls?state=closed&sort=updated&direction=desc&per_page=100') as P[]).filter(p => p.merged_at && (!since || p.merged_at.slice(0, 10) >= since)).sort((a, b) => Date.parse(b.merged_at!) - Date.parse(a.merged_at!)).slice(0, limit)
   const by = new Map<string, { prs: number; approved: number; comments: number; waits: number[]; seeded: number; caught: number }>()
   for (const p of pulls) {
-    const reviews = (fetch(`repos/{owner}/{repo}/pulls/${p.number}/reviews?per_page=100`) as R[]).filter(r => human(r.user) && r.user.login !== p.user?.login)
-    const comments = (fetch(`repos/{owner}/{repo}/pulls/${p.number}/comments?per_page=100`) as R[]).filter(c => human(c.user) && c.user.login !== p.user?.login)
+    const reviews = (fetch(`repos/{owner}/{repo}/pulls/${p.number}/reviews?per_page=100`) as R[]).filter(r => isHuman(r.user) && r.user.login !== p.user?.login)
+    const comments = (fetch(`repos/{owner}/{repo}/pulls/${p.number}/comments?per_page=100`) as R[]).filter(c => isHuman(c.user) && c.user.login !== p.user?.login)
     for (const login of new Set(reviews.map(r => r.user!.login!))) {
       const mine = reviews.filter(r => r.user!.login === login), s = by.get(login) ?? { prs: 0, approved: 0, comments: 0, waits: [], seeded: 0, caught: 0 }
       s.prs++; s.comments += comments.filter(c => c.user!.login === login).length

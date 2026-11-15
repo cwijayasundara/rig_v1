@@ -22,7 +22,7 @@ export const TOPICS: Topic[] = [
   { id: 'audit', label: 'Audit trail', agent: true, question: 'What must be recorded about each decision (inputs, output, who approved) and for how long?' },
 ]
 
-export type CoverageRow = { id: string; state: 'covered' | 'answered' | 'open' | 'n/a'; line?: number; quote?: string; ids?: string[]; by?: string; reason?: string }
+type CoverageRow = { id: string; state: 'covered' | 'answered' | 'open' | 'n/a'; line?: number; quote?: string; ids?: string[]; by?: string; reason?: string }
 const ROW = /^\s*[-*]\s+(\S+)\s+(covered|answered|open|n\/a)\b(.*)$/
 // Straight or curly quotes, and an optional note after the closing one.
 const COVERED = /^\s+source\.md:(\d+)\s+["\u201c](.*)["\u201d](?:\s+[—–]+\s*[^"\u201d]*)?\s*$/

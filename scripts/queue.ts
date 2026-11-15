@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { ROOT, SLUG_RE, exists, read, out, fail, git, skillRef, type Args } from './core.ts'
-import { planFiles, normPath } from './model.ts'
+import { planFiles, normPath, shQuote } from './model.ts'
 import { activeSlug, status } from './lifecycle.ts'
 import { loadConfig } from './check.ts'
 import { treeStamp } from './stamp.ts'
@@ -60,11 +60,10 @@ function buildQueue(): Queue {
 }
 
 // A command meant to be pasted into a shell: every path is single-quoted. The worktree's own vendored checker when it has one, else the script that ran this.
-const quote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`
 const command = (r: QueueRow): string => {
   if (r.status !== 'approve') return `review the PR for ${r.slug} (branch sdlc/${r.slug}), then merge it`
-  const script = fs.existsSync(path.join(r.worktree, '.rig/bin/sdlc.ts')) ? '.rig/bin/sdlc.ts' : quote(process.argv[1] ?? 'sdlc.ts')
-  return `cd ${quote(r.worktree)} && SDLC_HUMAN=1 CLAUDE_PROJECT_DIR=${quote(r.worktree)} node --disable-warning=ExperimentalWarning ${script} approve ${r.slug}`
+  const script = fs.existsSync(path.join(r.worktree, '.rig/bin/sdlc.ts')) ? '.rig/bin/sdlc.ts' : shQuote(process.argv[1] ?? 'sdlc.ts')
+  return `cd ${shQuote(r.worktree)} && SDLC_HUMAN=1 CLAUDE_PROJECT_DIR=${shQuote(r.worktree)} node --disable-warning=ExperimentalWarning ${script} approve ${r.slug}`
 }
 
 export function queueText(q: Queue): string {

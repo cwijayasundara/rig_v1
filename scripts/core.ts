@@ -271,7 +271,7 @@ export type Waiver = { slug: string; sensor: string; file: string; reason: strin
 
 export type GateSummary = { at: string; blocks: number; warns: number; bySensor: Record<string, number>; warnRows?: string[]; shown?: boolean }
 // trees: stamps of working trees on which the fast commands passed, kept across turns (the per-turn fields reset at each prompt).
-export type Gate = { turn: string; blocks: Record<string, number>; passed: Record<string, string>; tool: string[]; guides: Record<string, string[]>; trees: string[]; nudged: string[]; last?: GateSummary }
+type Gate = { turn: string; blocks: Record<string, number>; passed: Record<string, string>; tool: string[]; guides: Record<string, string[]>; trees: string[]; nudged: string[]; last?: GateSummary }
 export const GATE = path.join(SDLC, '.gate')
 const emptyGate = (): Gate => ({ turn: '', blocks: {}, passed: {}, tool: [], guides: {}, trees: [], nudged: [] })
 

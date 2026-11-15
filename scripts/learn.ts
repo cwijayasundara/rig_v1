@@ -7,8 +7,7 @@ import { parseLessons, checkLessons, type Lesson } from './learnfile.ts'
 import { mineCandidates, shippedChanges, lessonStatus, unheldLessons, findingLinesFor } from './learnmine.ts'
 import { replayRule, replayLayers } from './learnreplay.ts'
 import { mineTranscripts, projectDirs, repeated } from './learntranscripts.ts'
-import { parseRules, ghBin, type Rule } from './model.ts'
-import { execFileSync } from 'node:child_process'
+import { parseRules, revertLabelledPrs, type Rule } from './model.ts'
 import { writeCandidates, readCases, reviewEval, briefPath, EVAL_LOG } from './reviewcases.ts'
 
 const LESSONS = path.join(SDLC, 'lessons.md')
@@ -134,7 +133,7 @@ function status(): void {
 
 // Merged PRs labelled `revert` in this repo, or null when gh cannot say (no gh, no remote, no auth).
 function revertLabelled(): number[] | null {
-  try { return (JSON.parse(execFileSync(ghBin(), ['api', '--paginate', '--slurp', 'search/issues?q=repo:{owner}/{repo}+is:pr+is:merged+label:revert&per_page=100'], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 })) as { items?: { number?: number }[] }[]).flatMap(p => p.items ?? []).map(i => Number(i.number)).filter(Number.isFinite) } catch { return null }
+  try { return revertLabelledPrs(undefined, ROOT) } catch { return null }
 }
 
 export function cmdLearn(args: Args): void {

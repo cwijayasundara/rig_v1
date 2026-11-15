@@ -302,4 +302,11 @@ export const bullets = (text: string): string[] => text.split('\n').map(l => l.t
 export const normPath = (p: string): string => p.trim().replace(/\\/g, '/').replace(/^(\.\/)+/, '').replace(/:$/, '')
 export const ghBin = (): string => process.env.RIG_GH || 'gh'
 export const gh = (argv: string[], cwd?: string): string => execFileSync(ghBin(), argv, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 })
-export const ghPages = (route: string): unknown[] => (JSON.parse(gh(['api', '--paginate', '--slurp', route])) as unknown[]).flat()
+export const ghPages = (route: string, cwd?: string): unknown[] => (JSON.parse(gh(['api', '--paginate', '--slurp', route], cwd)) as unknown[]).flat()
+// Merged PRs labelled `revert`. `repo` is owner/name; the default is the {owner}/{repo} placeholders gh fills in from the checkout at `cwd`. Throws when gh cannot say.
+export const revertLabelledPrs = (repo = '{owner}/{repo}', cwd?: string): number[] =>
+  ghPages(`search/issues?q=repo:${repo}+is:pr+is:merged+label:revert&per_page=100`, cwd).flatMap(p => (p as { items?: { number?: number }[] }).items ?? []).map(i => Number(i.number)).filter(Number.isFinite)
+// A GitHub user that is a person: not a Bot account, not a `[bot]` login.
+export const isHuman = (u: { login?: string; type?: string } | null | undefined): u is { login: string; type?: string } => Boolean(u?.login) && u?.type !== 'Bot' && !u?.login?.endsWith('[bot]')
+// One word for a POSIX shell: single-quoted, with each embedded quote closed, escaped and reopened.
+export const shQuote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`

@@ -18,7 +18,7 @@ const gh = (args: string[]): { ok: boolean; out: string } => {
 // The remote's default branch when git knows it (origin/HEAD), else main or master, else main.
 export const trunk = (): string => git(['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'])?.trim().replace(/^origin\//, '') || (['main', 'master'].find(b => git(['rev-parse', '--verify', '--quiet', b]) || git(['rev-parse', '--verify', '--quiet', `origin/${b}`])) ?? 'main')
 
-export const PROTECTION_BODY = JSON.stringify({ required_status_checks: { strict: true, contexts: CHECKS }, enforce_admins: true, required_pull_request_reviews: { required_approving_review_count: 1, dismiss_stale_reviews: true, require_code_owner_reviews: true }, restrictions: null })
+const PROTECTION_BODY = JSON.stringify({ required_status_checks: { strict: true, contexts: CHECKS }, enforce_admins: true, required_pull_request_reviews: { required_approving_review_count: 1, dismiss_stale_reviews: true, require_code_owner_reviews: true }, restrictions: null })
 
 export function protect(dry: boolean, branch = trunk(), create = false): string[] {
   const route = `repos/{owner}/{repo}/branches/${branch}/protection`

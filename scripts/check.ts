@@ -5,7 +5,7 @@ import { waiverLive, UNREQUESTABLE,
   ROOT, SDLC, CHANGES, WAIVERS, SENSORS_JSON, BUDGET_MS, readJson, exists, read, out, fail, git, toPosix, optString, readJsonl, defaultBase, checkSlug, skillRef, clean,
   type Args, type Waiver,
 } from './core.ts'
-import { parseRules, formatFindings, warnLines, matchesAny, isTest, isSource, ghPages, planFiles, type FileDiff, type Finding, type Rule } from './model.ts'
+import { parseRules, formatFindings, warnLines, matchesAny, isTest, isSource, ghPages, revertLabelledPrs, planFiles, type FileDiff, type Finding, type Rule } from './model.ts'
 import { withoutFixtures, testTamper, suppressions, layering, size, secretsInDiff, rulesSensor, harnessTamper, isProtected, behaviourIds, behaviourText, missingBehaviours, ranNothing } from './sensors.ts'
 import { readBaseline, snapshot, turnDiff, fileDiff, branchDiff, showAt, fileLines, stagedDiff, showStaged } from './diffs.ts'
 import { runCommand, recordRun, normCmd } from './runs.ts'
@@ -362,7 +362,7 @@ function tierZeroRefusal(ref: string, config: Registry, who: Who | null): string
   try { runs = ghPages(`repos/${who.repo}/commits/${who.headSha}/check-runs?check_name=ai-review&per_page=100`).flatMap(p => (p as { check_runs?: typeof runs }).check_runs ?? []) } catch { return 'could not confirm ai-review (the job needs checks: read and GH_TOKEN)' }
   if (!runs.some(r => r.name === 'ai-review' && r.conclusion === 'success' && r.head_sha === who.headSha)) return `ai-review has not passed on ${who.headSha.slice(0, 7)}`
   let labelled: number[]
-  try { labelled = ghPages(`search/issues?q=repo:${who.repo}+is:pr+is:merged+label:revert&per_page=100`).flatMap(p => (p as { items?: { number?: number }[] }).items ?? []).map(i => Number(i.number)).filter(Number.isFinite) } catch { return 'could not list revert-labelled PRs' }
+  try { labelled = revertLabelledPrs(who.repo) } catch { return 'could not list revert-labelled PRs' }
   return breaker(changeHistory(ROOT, labelled, ref, true), config.risk.window, config.risk.maxRevertRate) ?? ''
 }
 

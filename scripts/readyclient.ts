@@ -8,9 +8,9 @@ import { gh } from './model.ts'
 import { parseRegistry } from './registry.ts'
 import { CHECKS, SECRETS, trunk } from './protect.ts'
 
-export type Protection = { branch: string; read: boolean; error: string; contexts: string[]; codeOwners: boolean }
+type Protection = { branch: string; read: boolean; error: string; contexts: string[]; codeOwners: boolean }
 export type ClientInput = { owners: string; ownersPath: string; managedPath: string; managed: string | null; protection: Protection; secret: boolean; secretError?: string; everyTier: boolean; hardCap: boolean }
-export type ClientCriterion = { id: string; what: string; fix: string; ok: boolean }
+type ClientCriterion = { id: string; what: string; fix: string; ok: boolean }
 
 const rules = (owners: string): string[][] => owners.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#')).map(l => l.split(/\s+/))
 
@@ -116,7 +116,7 @@ function secret(): { secret: boolean; secretError?: string } {
 // GitHub reads only the first CODEOWNERS it finds, in this order.
 const OWNERS = ['.github/CODEOWNERS', 'CODEOWNERS', 'docs/CODEOWNERS']
 
-export function gatherClient(opts: { managed?: string }): ClientInput {
+function gatherClient(opts: { managed?: string }): ClientInput {
   const managedPath = opts.managed ?? MANAGED[process.platform] ?? MANAGED.linux as string
   const reg = parseRegistry(read(path.join(ROOT, '.rig', 'sensors.json'))).registry
   const ownersPath = OWNERS.find(f => fs.existsSync(path.join(ROOT, f))) ?? ''

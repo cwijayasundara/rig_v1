@@ -8,7 +8,7 @@ export type WikiPage = { title: string; purpose: string; parent?: string; notes?
 export type WikiConfig = { pages: WikiPage[] }
 type PageState = { builtAt: string; hashes: Record<string, string> }
 export type WikiState = { pages: Record<string, PageState> }
-export type Stale = { page: string; cite: string; why: 'changed' | 'missing' | 'unresolved' }
+type Stale = { page: string; cite: string; why: 'changed' | 'missing' | 'unresolved' }
 
 const MAX_PAGES = 30
 

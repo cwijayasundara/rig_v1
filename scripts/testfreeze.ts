@@ -11,13 +11,13 @@ import { behaviourIds, CONFIG_FILE, SNAPSHOT } from './sensors.ts'
 import { parse as parseMap } from './intentmap.ts'
 
 export type FreezeRow = { at: string; commit: string; files: { path: string; sha256: string }[]; why: string; dropped?: string[] }
-export const freezePath = (slug: string): string => path.join(CHANGES, slug, 'tests.freeze.jsonl')
+const freezePath = (slug: string): string => path.join(CHANGES, slug, 'tests.freeze.jsonl')
 export const readFreeze = (slug: string): FreezeRow[] => readJsonl<FreezeRow>(freezePath(slug))
 const digest = (file: string): string | null => { try { return crypto.createHash('sha256').update(fs.readFileSync(path.join(ROOT, file))).digest('hex') } catch { return null } }
 // What the test writer hands off: the tests, their support files and fixtures (a stack pack lists its runner config there), snapshots
 // (binary too: raw bytes) and any config file named for tests. A runner key inside a shared manifest is not a file of its own.
 const TEST_CONFIG = /(?:^|\/)\.?[^/]*(?:test|spec)[^/]*$/i
-export const frozenKind = (f: string, paths: Registry['paths']): boolean => isTest(f, paths) || matchesAny(f, [...paths.testSupport, ...paths.fixtures]) || SNAPSHOT.test(f) || (CONFIG_FILE.test(f) && TEST_CONFIG.test(f))
+const frozenKind = (f: string, paths: Registry['paths']): boolean => isTest(f, paths) || matchesAny(f, [...paths.testSupport, ...paths.fixtures]) || SNAPSHOT.test(f) || (CONFIG_FILE.test(f) && TEST_CONFIG.test(f))
 const changeBase = (slug: string): string => readJson<{ base?: string } | null>(path.join(CHANGES, slug, 'verify.json'), null)?.base ?? defaultBase() ?? 'HEAD'
 const specHasBehaviours = (slug: string): boolean => behaviourIds(read(path.join(CHANGES, slug, 'spec.md')), 'Behaviours').length > 0
 

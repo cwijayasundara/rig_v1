@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-export type Correction = { text: string; session: string; date: string }
+type Correction = { text: string; session: string; date: string }
 
 const MAX_CHARS = 400
 const MIN_SESSIONS = 2

@@ -46,7 +46,7 @@ export function agentRows(slug: string, root?: string): AgentRow[] {
   })
 }
 
-export function budgetRefusal(slug: string): string | null {
+function budgetRefusal(slug: string): string | null {
   if (readJsonl<Rec>(file(slug)).filter(r => r.kind === 'launch' && r.counted !== false).length < LAUNCH_BUDGET) return null
   return `launch budget: ${slug} has had ${LAUNCH_BUDGET} agent launches (the limit per change). Do not retry: open a draft PR with \`S pr ${slug} --draft --message "<type(scope): summary>"\` and say in it what is left`
 }

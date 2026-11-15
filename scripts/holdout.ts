@@ -9,8 +9,9 @@ import { ROOT, skillRef, SENSORS_JSON, CHANGES, exists, read, out, fail, frontma
 import { holdoutDir, sprintRel } from './product.ts'
 import { parseRegistry } from './registry.ts'
 import { showAt } from './diffs.ts'
+import { shQuote } from './model.ts'
 
-export type HoldoutResult = { sprint: number | null; passed: number; total: number; failing: string[]; none: boolean; error?: string }
+type HoldoutResult = { sprint: number | null; passed: number; total: number; failing: string[]; none: boolean; error?: string }
 export const hidden = (): string => `holdout cases are hidden from the builder; run ${skillRef('test')}`
 const HOLDOUT_PATH = /\.rig\/product\/sprints\/sprint-[^/]+\/holdout(\/|$)/i
 
@@ -24,7 +25,6 @@ export function sprintOf(slug: string, read_: (f: string) => string = f => read(
   return n === undefined ? null : Number(n)
 }
 
-const quote = (f: string): string => `'${f.replace(/'/g, "'\\''")}'`
 const sha = (b: Buffer): string => crypto.createHash('sha256').update(b).digest('hex')
 const CI_VARS = ['GITHUB_STEP_SUMMARY', 'GITHUB_OUTPUT', 'GITHUB_ENV', 'GITHUB_PATH']
 type Case = { rel: string; data: Buffer }
@@ -40,7 +40,7 @@ export function runCases(cases: Case[], cmd: string, before?: (file: string) => 
       fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, c.data); fs.chmodSync(f, 0o444)
       before?.(f)
       const now = fs.existsSync(f) ? fs.readFileSync(f) : null
-      return !now || sha(now) !== sha(c.data) || spawnSync(cmd.replaceAll('{file}', quote(f)), { shell: true, cwd: ROOT, env, stdio: 'ignore', timeout: 300_000 }).status !== 0
+      return !now || sha(now) !== sha(c.data) || spawnSync(cmd.replaceAll('{file}', shQuote(f)), { shell: true, cwd: ROOT, env, stdio: 'ignore', timeout: 300_000 }).status !== 0
     } catch { return true } finally { fs.rmSync(dir, { recursive: true, force: true }) }
   }).map(c => caseId(c.rel))
   return { passed: cases.length - failing.length, failing }

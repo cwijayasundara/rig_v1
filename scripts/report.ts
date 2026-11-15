@@ -7,13 +7,13 @@ import { ROOT, SENSORS_JSON, read, ageDays, out, readJson, readJsonl, gitIn, typ
 import { mineCandidates, shippedChanges } from './learnmine.ts'
 import type { RunRow } from './runs.ts'
 import { changeHistory } from './reverts.ts'
-import { gh } from './model.ts'
+import { gh, isHuman } from './model.ts'
 import { summarise, type HumanRow } from './humanload.ts'
 import { reviewHealth, healthText, readAudits, type Health } from './audit.ts'
 import { parseRegistry } from './registry.ts'
 import { agentRows } from './agents.ts'
 
-export type Report = {
+type Report = {
   merged: number; shipped: number; since: string | null // merged: every change whose pr.md a merge added; shipped: those whose records are still in the tree (a revert removes them)
   prLines: { median: number; max: number } | null // lines changed outside .rig/ by the commit on the first-parent line that added each change's pr.md (a rebase merge counts only that commit)
   firstPass: { measured: number; clean: number } // changes whose recorded runs (runs.jsonl) all passed, expected failures aside
@@ -30,11 +30,11 @@ export type Report = {
   humanLoad: HumanLoad | null // from each shipped change's evidence/human.jsonl (the hooks write counts only); null: none has one
 }
 type Stat = { median: number; p95: number }
-export type HumanLoad = { measured: number; of: number; prompts: Stat; questions: Stat; approvals: Stat; attentionMin: Stat; overCeiling: number; maxQuestions: number }
+type HumanLoad = { measured: number; of: number; prompts: Stat; questions: Stat; approvals: Stat; attentionMin: Stat; overCeiling: number; maxQuestions: number }
 
 // Human time per merged PR (the Claude Code code-review article's measures), from GitHub. Bots and the PR's author never count: an agent's
 // approval is not a human's, and an author commenting on their own PR is not review.
-export type HumanTime = {
+type HumanTime = {
   prs: number // merged PRs read (the most recent `limit` in the window)
   approvals: { median: number; p95: number } // distinct humans whose latest review of the PR is an approval
   comments: { median: number; p95: number } // review comments, review bodies and conversation comments by humans other than the author
@@ -46,14 +46,13 @@ type GhUser = { login?: string; type?: string } | null
 type GhPull = { number: number; merged_at: string | null; created_at: string; user: GhUser }
 type GhReview = { user: GhUser; state: string; submitted_at?: string; body?: string | null }
 type GhComment = { user: GhUser }
-export type GhFetch = (endpoint: string) => unknown[]
+type GhFetch = (endpoint: string) => unknown[]
 
-const human = (u: GhUser): u is { login: string; type?: string } => Boolean(u?.login) && u?.type !== 'Bot' && !u?.login?.endsWith('[bot]')
 const pctile = (xs: number[], p: number): number => { const s = [...xs].sort((a, b) => a - b); return s.length ? (s[Math.max(0, Math.ceil(p * s.length) - 1)] ?? 0) : 0 }
 const stat = (xs: number[]): { median: number; p95: number } => ({ median: median(xs), p95: pctile(xs, 0.95) })
 
 // `gh api --paginate --slurp` answers a list of pages; the pages are joined.
-export const ghFetch = (root: string): GhFetch => endpoint => (JSON.parse(gh(['api', '--paginate', '--slurp', endpoint], root)) as unknown[][]).flat()
+const ghFetch = (root: string): GhFetch => endpoint => (JSON.parse(gh(['api', '--paginate', '--slurp', endpoint], root)) as unknown[][]).flat()
 
 export function humanTime(fetch: GhFetch, since: string | null, limit = 50): HumanTime | { unavailable: string } {
   try {
@@ -62,12 +61,12 @@ export function humanTime(fetch: GhFetch, since: string | null, limit = 50): Hum
     const approvals: number[] = [], comments: number[] = [], waits: number[] = []
     for (const pr of pulls) {
       const author = pr.user?.login
-      const reviews = (fetch(`repos/{owner}/{repo}/pulls/${pr.number}/reviews?per_page=100`) as GhReview[]).filter(r => human(r.user) && r.user.login !== author)
+      const reviews = (fetch(`repos/{owner}/{repo}/pulls/${pr.number}/reviews?per_page=100`) as GhReview[]).filter(r => isHuman(r.user) && r.user.login !== author)
       const latest = new Map<string, string>()
       for (const r of reviews) if (r.state !== 'COMMENTED') latest.set(r.user!.login!, r.state) // a plain comment does not replace an approval or a change request
       approvals.push([...latest.values()].filter(s => s === 'APPROVED').length)
-      const inline = (fetch(`repos/{owner}/{repo}/pulls/${pr.number}/comments?per_page=100`) as GhComment[]).filter(c => human(c.user) && c.user.login !== author).length
-      const talk = (fetch(`repos/{owner}/{repo}/issues/${pr.number}/comments?per_page=100`) as GhComment[]).filter(c => human(c.user) && c.user.login !== author).length
+      const inline = (fetch(`repos/{owner}/{repo}/pulls/${pr.number}/comments?per_page=100`) as GhComment[]).filter(c => isHuman(c.user) && c.user.login !== author).length
+      const talk = (fetch(`repos/{owner}/{repo}/issues/${pr.number}/comments?per_page=100`) as GhComment[]).filter(c => isHuman(c.user) && c.user.login !== author).length
       comments.push(inline + talk + reviews.filter(r => r.body?.trim()).length)
       const first = reviews.map(r => Date.parse(r.submitted_at ?? '')).filter(Number.isFinite).sort((a, b) => a - b)[0]
       if (first !== undefined && first >= Date.parse(pr.created_at)) waits.push((first - Date.parse(pr.created_at)) / 3_600_000)

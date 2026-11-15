@@ -21,7 +21,7 @@ export function parseFindings(review: string): ReviewFinding[] {
   })
 }
 
-export type FileEvidence = {
+type FileEvidence = {
   findings: ReviewFinding[]; exists: (rel: string) => boolean; lineCount: (rel: string) => number
   planFiles: string[]; changed: (rel: string) => boolean; amendments: string; behaviourIds: string[]
 }
@@ -66,14 +66,14 @@ const fixPaths = (text: string): string[] => [...new Set([...text.split('→').s
 const reviewOf = (slug: string): string => read(path.join(CHANGES, slug, 'review.md'))
 
 // Written right after review.md and before the fix wave: the fixes are uncommitted until `S pr`, so a commit sha cannot mark the review.
-export function stampReview(slug: string): void {
+function stampReview(slug: string): void {
   const stamp: Stamp = {}
   for (const f of parseFindings(reviewOf(slug))) for (const p of [f.file, ...fixPaths(f.text)]) if (p === f.file || repoFile(p)) stamp[p] = hashOf(p)
   writeAtomic(path.join(CHANGES, slug, STAMP), JSON.stringify(stamp, null, 2) + '\n')
 }
 
 // C2: a finding marked fixed whose cited file has the same hash as at the review. The fix may have landed elsewhere, so this only suggests.
-export function fixedRows(findings: ReviewFinding[], stamp: Stamp | null, hash: (rel: string) => string | null): ClaimRow[] {
+function fixedRows(findings: ReviewFinding[], stamp: Stamp | null, hash: (rel: string) => string | null): ClaimRow[] {
   return findings.filter(f => f.fixed).map((f): ClaimRow => {
     const cite = `${f.file}:${f.line}`, claim = `${cite} marked fixed`
     if (!stamp || !(f.file in stamp)) return { rule: 'C2', claim, status: 'skipped', detail: `no review stamp for ${f.file}` }

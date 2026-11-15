@@ -4,7 +4,7 @@ import { fail } from './core.ts'
 
 export type Profile = 'full' | 'core'
 export const CORE_SKILLS: readonly string[] = ['start', 'plan', 'approve', 'build', 'test', 'pr', 'waive', 'learn', 'rule']
-export const CORE_AGENTS: readonly string[] = ['evaluator'] // plan uses rig:evaluator; architect is chart-only
+const CORE_AGENTS: readonly string[] = ['evaluator'] // plan uses rig:evaluator; architect is chart-only
 export const OFF_COMMANDS: readonly string[] = ['chart', 'testplan', 'wiki', 'arch', 'app', 'autonomy', 'init']
 
 export function parseProfile(v: string | boolean | undefined): Profile {

@@ -74,7 +74,7 @@ export function upgradeGates(args: Args): void {
 // Reads disk and the plugin; writes nothing.
 const WORKFLOW = '.github/workflows/rig-check.yml'
 
-export function buildPlan(): Plan {
+function buildPlan(): Plan {
   const from = read(path.join(SDLC, 'bin', 'VERSION')).trim()
   const to = pluginVersion()
   const standalone = exists(path.join(ROOT, '.claude/skills/rig-start/SKILL.md'))

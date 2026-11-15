@@ -1,15 +1,17 @@
 // The comprehension check (three-gates C6). The PR body asks three questions generated from the change (no model); CI wants the approving review to answer them
 // (presence only: the quality of the answers is audited by `sdlc audit`). While the PR carries the label `rig-hold` (set by the auditor, read through gh) the merge is blocked.
 import { behaviourIds } from './sensors.ts'
-import { ghPages, type FileDiff, type Finding } from './model.ts'
+import { ghPages, isTest, type FileDiff, type Finding } from './model.ts'
+import { defaultRegistry, type Paths } from './registry.ts'
 
-export const TEST = /(^|\/)(tests?|__tests__|spec)\/|\.(spec|test)\.\w+$|_test\.\w+$|(^|\/)test_[^/]*$/
-export const isSrc = (f: string): boolean => /\.(?:ts|tsx|js|jsx|mjs|cjs|py|go|rs|java|cs|kt|rb|php|c|cpp)$/.test(f) && !TEST.test(f) && !f.startsWith('.rig/')
+// The generic test shapes stay as a floor; the repo's configured `paths.tests` (sensors.json) add to them, so a test directory with a custom name is never picked as the source file a question is about.
+const TEST = /(^|\/)(tests?|__tests__|spec)\/|\.(spec|test)\.\w+$|_test\.\w+$|(^|\/)test_[^/]*$/
+export const isSrc = (f: string, paths: Paths = defaultRegistry().paths): boolean => /\.(?:ts|tsx|js|jsx|mjs|cjs|py|go|rs|java|cs|kt|rb|php|c|cpp)$/.test(f) && !TEST.test(f) && !isTest(f, paths) && !f.startsWith('.rig/')
 const FN = /(?:function\*?\s+|def\s+|func\s+|fn\s+)([A-Za-z_]\w*)|(?:const|let)\s+([A-Za-z_]\w*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|\w+)\s*=>/
 
 // Q1 the largest changed function (else file) returning early, Q2 which behaviour/intent that file serves, Q3 which test fails if its first changed run of lines is reverted.
-export function checkQuestions(diffs: FileDiff[], spec: string): string[] {
-  const top = [...diffs.filter(d => d.status !== 'D' && !d.binary && isSrc(d.file) && d.added.length)].sort((a, b) => b.added.length - a.added.length || (a.file < b.file ? -1 : 1))[0]
+export function checkQuestions(diffs: FileDiff[], spec: string, paths?: Paths): string[] {
+  const top = [...diffs.filter(d => d.status !== 'D' && !d.binary && isSrc(d.file, paths) && d.added.length)].sort((a, b) => b.added.length - a.added.length || (a.file < b.file ? -1 : 1))[0]
   const ids = behaviourIds(spec, 'Behaviours')
   const serves = ids.length ? `behaviour (${ids.join(', ')})` : 'intent'
   if (!top) return ['Q1: What breaks if the change\'s main function returns early?', `Q2: Which ${serves} does the change serve?`, 'Q3: Which test fails if the changed lines are reverted?']

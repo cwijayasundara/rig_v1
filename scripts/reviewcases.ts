@@ -54,7 +54,7 @@ export function scoreFindings(text: string, d: ReviewCase['defect']): boolean {
 
 // The brief made tool-less (the reviewer gets everything inline, as in eval/review.mjs), then the change as it merged.
 // The brief with its tool instructions taken out; a brief reworded so they survive is refused, never scored with a reviewer told to use tools it lacks.
-export function toolless(brief: string, where = 'the review brief'): string {
+function toolless(brief: string, where = 'the review brief'): string {
   const t = brief.replace(/Inputs\. Read them yourself[\s\S]*?(?=\nReview for)/, 'Everything you may use is below; you have no tools.\n')
     .replace(/You may read files[^\n]*\n/, '').replace(/Before you report a finding, run `git blame[^\n]*\n\n?/, '')
   if (/Read them yourself|You may read files|git blame|your tools/i.test(t.replace('you have no tools', ''))) throw new Error(`${where} still tells the reviewer to use tools after the eval strips its "Inputs. Read them yourself", "You may read files" and "git blame" lines: keep that wording, or the eval would score a reviewer told to use tools it does not have`)

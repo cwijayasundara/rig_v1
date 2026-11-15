@@ -15,7 +15,7 @@ const readJson = <T>(file: string, fallback: T): T => { try { return JSON.parse(
 export const readResults = (slug: string): Results => readJson<Results>(path.join(dir(slug), 'intent-results.json'), {})
 
 // The change's run ledger (evidence/runs.jsonl), one parsed line per run; unreadable lines are skipped.
-export function readRuns(slug: string): (LedgerRun & { tail: string })[] {
+function readRuns(slug: string): (LedgerRun & { tail: string })[] {
   const f = path.join(dir(slug), 'evidence', 'runs.jsonl')
   return (exists(f) ? fs.readFileSync(f, 'utf8') : '').split('\n').filter(Boolean).flatMap(l => { try { return [JSON.parse(l) as LedgerRun & { tail: string }] } catch { return [] } })
 }
@@ -37,7 +37,7 @@ export function adjudicate(slug: string, mutant: string, clause: string, verdict
 }
 
 // Runs the command and records what the process did: pass on exit 0, else fail; the commit is HEAD. The agent never types these.
-export function recordResult(slug: string, scenario: string, cmd: string): { status: string; exit: number } {
+function recordResult(slug: string, scenario: string, cmd: string): { status: string; exit: number } {
   const map = path.join(dir(slug), 'intent-map.md')
   if (!exists(map)) throw new Error(`${slug} has no intent-map.md`)
   if (!parse(fs.readFileSync(map, 'utf8')).scenarios.some(s => s.id === scenario)) throw new Error(`${scenario} is not an Empirical scenario of ${slug}`)

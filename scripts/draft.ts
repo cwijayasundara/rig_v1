@@ -5,7 +5,7 @@ import { CHANGES, ROOT, read, frontmatter, scanSecrets } from './core.ts'
 import type { Finding } from './model.ts'
 
 const prFile = (slug: string): string => path.join(CHANGES, slug, 'pr.md')
-export const draftReason = (slug: string): string => String(frontmatter(read(prFile(slug))).data.draft ?? '')
+const draftReason = (slug: string): string => String(frontmatter(read(prFile(slug))).data.draft ?? '')
 export const draftLine = (reason: string | null): string => (reason === null ? '' : `draft: ${reason.replace(/\s+/g, ' ').trim() || 'no reason given'}\n`)
 
 // Sets, replaces or (null) removes the `draft:` line of an existing pr.md front matter; no write when nothing changes.

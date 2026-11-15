@@ -3,7 +3,7 @@ export type Journey = {
   agents: { agent: string; model: string; at: string }[]
   initialised: boolean; kind: 'greenfield' | 'brownfield'; show: ('outer' | 'inner')[]; sprint: number | null
   outer: JourneyStep[]; inner: { slug: string; type: string; steps: JourneyStep[] } | null
-  next: { command: string; by: 'model' | 'person'; why: string }; ready: string[]
+  next: { command: string; by: 'model' | 'person'; why: string }; ready: string[]; rung: number; queue: string | null
   sensors?: { blocks: number } | null
 }
 export type Spend = { contextTokens: number; contextWindow: number; usd: number; turnUsd?: number }

@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { checkQuestions, answersMissing, auditBlock, HOLD } from './prcheck.ts'
 import type { FileDiff } from './model.ts'
+import { defaultRegistry } from './registry.ts'
 
 const lines = (from: number, n: number) => Array.from({ length: n }, (_, i) => ({ n: from + i, text: i === 0 ? 'export function exportCsv(rows) {' : `  row ${i}` }))
 const diffs: FileDiff[] = [
@@ -67,4 +68,11 @@ test('auditBlock: the rig-hold label blocks without naming a seed; an unreadable
   assert.doesNotMatch(JSON.stringify(held), /seed|defect/i)
   assert.deepEqual(auditBlock(() => [{ name: 'bug' }]), [])
   assert.match(auditBlock(() => { throw new Error('no gh') })[0]!.message, /could not read the PR labels/)
+})
+
+test('the question is never about a file under a configured test path, whatever the directory is called', () => {
+  const custom: FileDiff[] = [{ file: 'checks/export.ts', status: 'A', added: lines(1, 30), removed: [] }, { file: 'src/small.ts', status: 'M', added: lines(1, 2), removed: [] }]
+  const paths = { ...defaultRegistry().paths, tests: ['**/checks/**'] }
+  assert.match(checkQuestions(custom, spec, paths)[0]!, /src\/small\.ts/)
+  assert.match(checkQuestions(custom, spec)[0]!, /checks\/export\.ts/, 'without the repo config the generic shapes do not know a `checks/` directory')
 })

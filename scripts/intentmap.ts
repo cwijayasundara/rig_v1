@@ -4,14 +4,14 @@ import crypto from 'node:crypto'
 
 export const RULES = ['unmapped-said', 'unknown-kind', 'missing-clause', 'orphan-clause', 'both-ways', 'missing-scenario', 'empirical-early', 'empirical-open', 'empirical-unrecorded', 'stale-scenario', 'missing-not-promised', 'formal-failed', 'unmutated', 'vacuous', 'prune', 'behaviours-drift', 'result-unbacked', 'formal-targets-diff', 'one-way-unjustified', 'trusted-unpinned', 'property-failed'] as const
 // behaviours-drift is the wiring's own rule (spec.md ## Behaviours against the map); the oracle has no spec.md, so it has no such rule.
-export type RuleId = typeof RULES[number]
-export type IntentFinding = { rule: RuleId; detail: string }
-export type Scenario = { id: string; title?: string; given?: string; when?: string; then?: string; status?: string; command?: string; commit?: string }
+type RuleId = typeof RULES[number]
+type IntentFinding = { rule: RuleId; detail: string }
+type Scenario = { id: string; title?: string; given?: string; when?: string; then?: string; status?: string; command?: string; commit?: string }
 export type Row = { id: string; said: string; decision: string; kind: string; clauses: string[]; scenarios: string[] }
-export type Clause = { id: string; direction: string; text: string }
+type Clause = { id: string; direction: string; text: string }
 export type Trusted = { name: string; contract: string; pin: string }
 // propertyCommand: the optional ## Property command line; propertySection is true when the section exists, even if its line is empty.
-export type IntentMap = { formalCommand: string; propertyCommand: string; propertySection: boolean; trusted: Trusted[]; said: { id: string; text: string }[]; decisions: { id: string; text: string }[]; rows: Row[]; clauses: Clause[]; scenarios: Scenario[]; notPromised: { id: string; text: string }[] }
+type IntentMap = { formalCommand: string; propertyCommand: string; propertySection: boolean; trusted: Trusted[]; said: { id: string; text: string }[]; decisions: { id: string; text: string }[]; rows: Row[]; clauses: Clause[]; scenarios: Scenario[]; notPromised: { id: string; text: string }[] }
 export type Mutant = { id: string; clause: string; holds: boolean }
 export type Results = Record<string, { status: string; command?: string; commit?: string; run?: string }>
 // One line of evidence/runs.jsonl: the ledger a recorded pass must be found in.
@@ -20,7 +20,7 @@ export type LedgerRun = { id?: string; cmd: string; exit: number; commit?: strin
 // only a non-bug with an approver and a reason clears the vacuous finding; clause-vacuous keeps it.
 export type Adjudication = { verdict: 'non-bug' | 'clause-vacuous'; because: string; by: string; clause: string }
 export type Adjudications = Record<string, Adjudication>
-export type CheckOpts = { phase: 'plan' | 'ship'; freeze?: Record<string, string>; clauses?: Record<string, boolean>; mutants?: Mutant[]; tests?: string[]; formalError?: string; adjudications?: Adjudications }
+type CheckOpts = { phase: 'plan' | 'ship'; freeze?: Record<string, string>; clauses?: Record<string, boolean>; mutants?: Mutant[]; tests?: string[]; formalError?: string; adjudications?: Adjudications }
 // Keyed by the mutant id AND its clause: the same id reused for another clause, or an old adjudication with no clause, clears nothing.
 const clears = (a: Adjudication | undefined, m: Mutant): a is Adjudication => a?.verdict === 'non-bug' && a.clause === m.clause && Boolean(a.by?.trim()) && Boolean(a.because?.trim())
 
@@ -232,7 +232,7 @@ export function applyResults(raw: string, results: Results): string {
 // The command (the line under `## Formal command`, frozen with the map) prints one last JSON line:
 // {"clauses": {"C2": true}, "mutants": [{"id": "...", "clause": "C2", "holds": false}]}. Any other outcome fails closed.
 // targets: the files the formal command checks and the changed source files of the diff; absent in the pure paths, which skips the rule.
-export type ShipInput = { text: string; results: Results; runs?: LedgerRun[]; targets?: { files: string[]; diffSource: string[] }; adjudications?: Adjudications; freeze?: Record<string, string>; tests: string[]; run: (cmd: string) => { exit: number; tail: string } }
+type ShipInput = { text: string; results: Results; runs?: LedgerRun[]; targets?: { files: string[]; diffSource: string[] }; adjudications?: Adjudications; freeze?: Record<string, string>; tests: string[]; run: (cmd: string) => { exit: number; tail: string } }
 // Every scenario that reads pass must be backed by a ledger line (same run id, command and commit, exit 0), so a hand-typed pass fails
 // closed. A caller that passes no ledger (the pure oracle path) is not checked; the real ship path always passes one, empty if nothing ran.
 function resultFindings(map: IntentMap, results: Results, runs: LedgerRun[] | undefined): IntentFinding[] {
