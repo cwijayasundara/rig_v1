@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { ROOT, SDLC, WAIVERS, ensureGitignore, out, fail, read, listChanges, readJsonl, writeAtomic, usdOpt, sha, type Args, type Waiver } from './core.ts'
 import { parseLessons, checkLessons, type Lesson } from './learnfile.ts'
+import { pruneReport } from './learnprune.ts'
 import { mineCandidates, shippedChanges, lessonStatus, unheldLessons, findingLinesFor } from './learnmine.ts'
 import { replayRule, replayLayers } from './learnreplay.ts'
 import { mineTranscripts, projectDirs, repeated } from './learntranscripts.ts'
@@ -144,6 +145,7 @@ export function cmdLearn(args: Args): void {
   if (sub === 'replay') return replay(args)
   if (sub === 'status') return status()
   if (sub === 'verify') return verify()
+  if (sub === 'prune') { const w = Number(args.opt.window ?? 20); if (!Number.isInteger(w) || w < 1) fail('--window must be a positive integer'); return out(pruneReport(ROOT, w).lines.join('\n')) }
   if (sub === 'review-eval') {
     const maxUsd = usdOpt(args, Number.MIN_VALUE) // any positive amount
     if (maxUsd === null || Number.isNaN(maxUsd)) fail('learn review-eval costs money: pass --max-usd <dollars> (a positive number), the most this run may spend')
@@ -156,5 +158,5 @@ export function cmdLearn(args: Args): void {
     return
   }
   if (sub === 'reverts') { const labelled = revertLabelled(); const r = writeCandidates(ROOT, labelled ?? []); const bad = readCases(ROOT).bad; out([`review cases: ${r.added.length} new, ${r.total} total, ${r.confirmed} confirmed (.rig/learn/review-cases/)`, ...r.added.map(n => `  + ${n}`), ...bad.map(n => `  ! ${n}: unreadable, skipped`), labelled ? '' : 'note: could not list merged PRs labelled revert (gh); only `This reverts commit` reverts were read', r.total > r.confirmed ? 'to confirm one: a person who knows the code sets defect.file, defect.pattern and confirmed: true in its file' : ''].filter(Boolean).join('\n')); return }
-  fail('usage: learn <mine [--transcripts]|replay <rule.json>|--layers <block.md> --earned a,b|proposal|check|status|verify|reverts|review-eval --max-usd <n> [--model <id>]>')
+  fail('usage: learn <prune [--window N]|mine [--transcripts]|replay <rule.json>|--layers <block.md> --earned a,b|proposal|check|status|verify|reverts|review-eval --max-usd <n> [--model <id>]>')
 }
