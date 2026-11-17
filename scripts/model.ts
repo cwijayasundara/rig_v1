@@ -19,7 +19,8 @@ export const cleanClaudeEnv = (env: NodeJS.ProcessEnv = process.env): NodeJS.Pro
 
 export type Finding = { sensor: string; severity: Severity; file?: string; line?: number; message: string; fix: string; labels?: string[]; outOfTime?: true; knownRed?: true }
 export type Layer = { from: string; mustNotImport: string[]; why: string; example?: string }
-export type Rule = { id: string; pattern: string; paths?: string[]; message: string; why: string; action: Severity }
+// A rule with a `check` is a checklist item, not a pattern: it applies when the diff touches `paths` (and an added or removed line matches `pattern`, when given) and the reviewer runs the check. It never blocks by itself.
+export type Rule = { id: string; pattern: string; paths?: string[]; message: string; why: string; action: Severity; check?: string }
 
 export const SECRET_PATTERNS: [string, RegExp][] = [
   ['AWS access key', /AKIA[0-9A-Z]{16}/],
@@ -236,17 +237,20 @@ export function parseRules(text: string): { rules: Rule[]; errors: string[] } {
   const errors: string[] = []
   value.forEach((r, i) => {
     const id = isObject(r) && typeof r.id === 'string' ? r.id : `#${i + 1}`
-    if (!isObject(r) || typeof r.id !== 'string' || typeof r.message !== 'string') return errors.push(`rule ${id}: needs id and message`)
+    if (!isObject(r) || typeof r.id !== 'string' || (typeof r.message !== 'string' && r.check === undefined)) return errors.push(`rule ${id}: needs id and message`)
     if (typeof r.why !== 'string' || !r.why.trim()) return errors.push(`rule ${id}: needs a why (earn every rule)`)
-    if (r.action !== 'warn' && r.action !== 'block') return errors.push(`rule ${id}: action must be warn or block`)
-    if (typeof r.pattern !== 'string') return errors.push(`rule ${id}: needs a pattern`)
+    const isCheck = r.check !== undefined
+    if (isCheck && (typeof r.check !== 'string' || !r.check.trim())) return errors.push(`rule ${id}: check must be a sentence saying what to verify`)
+    if (!isCheck && r.action !== 'warn' && r.action !== 'block') return errors.push(`rule ${id}: action must be warn or block`)
+    if (!isCheck && typeof r.pattern !== 'string') return errors.push(`rule ${id}: needs a pattern`)
+    if (isCheck && r.pattern !== undefined && typeof r.pattern !== 'string') return errors.push(`rule ${id}: pattern must be a string`)
     if (r.paths !== undefined && !isStringList(r.paths)) return errors.push(`rule ${id}: paths must be a list of globs`)
     try {
-      new RegExp(r.pattern)
+      new RegExp((r.pattern as string | undefined) ?? '')
     } catch {
       return errors.push(`rule ${id}: pattern is not a valid regular expression`)
     }
-    rules.push(r as unknown as Rule)
+    rules.push(isCheck ? ({ pattern: '', action: 'warn', message: '', ...r } as unknown as Rule) : (r as unknown as Rule))
   })
   return { rules, errors }
 }

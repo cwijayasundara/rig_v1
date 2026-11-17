@@ -195,9 +195,9 @@ export function secretsInDiff(diffs: FileDiff[]): Finding[] {
   return findings
 }
 
-export function rulesSensor(diffs: FileDiff[], rules: { id: string; pattern: string; paths?: string[]; message: string; why: string; action: 'warn' | 'block' }[]): Finding[] {
+export function rulesSensor(diffs: FileDiff[], rules: { id: string; pattern: string; paths?: string[]; message: string; why: string; action: 'warn' | 'block'; check?: string }[]): Finding[] {
   const findings: Finding[] = []
-  for (const rule of rules) {
+  for (const rule of rules.filter(r => !r.check)) { // a checklist item has no pattern to enforce
     const re = new RegExp(rule.pattern)
     for (const d of diffs.filter(f => !f.binary && !f.file.startsWith('.rig/') && (!rule.paths || matchesAny(f.file, rule.paths)))) {
       for (const l of d.added.filter(a => re.test(a.text))) {
