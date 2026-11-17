@@ -25,7 +25,7 @@ import { changeHistory, breaker } from './reverts.ts'
 import { parseAccess } from './chartcheck.ts'
 import { ARCH_REL } from './product.ts'
 import { approvalRow, INCOMPLETE } from './approvalsummary.ts'
-import { rigOff, trunkRef, offLine, frozenWhileOff } from './off.ts'
+import { gateCommit } from './gate.ts'; import { rigOff, trunkRef, offLine, frozenWhileOff } from './off.ts'
 import { answersMissing, heldFindings, ANSWER_FIX } from './prcheck.ts'; import { draftFindings } from './draft.ts'
 type Point = 'stop' | 'commit' | 'ship' | 'ci'
 type CheckInput = {
@@ -485,7 +485,7 @@ export function cmdCheck(args: Args): void {
   const answerFindings: Finding[] = humanRows.filter(r => r.includes(INCOMPLETE)).map(r => ({ sensor: 'human-approval', severity: 'block', message: r, fix: `approve the chart again through ${skillRef('approve')} and answer every check question` }))
   const syncBlocks = (at === 'commit' || at === 'ci') && declaresRegistry() ? syncFindings(config, [], 'block') : [] // config errors already block above
   const all = { ...result, findings: [...queueFindings, ...humanFindings, ...answerFindings, ...configFindings, ...syncBlocks, ...result.findings], blocks: [...queueFindings, ...humanFindings, ...answerFindings, ...configFindings, ...syncBlocks.filter(f => f.severity === 'block'), ...result.blocks] }
-  report(at, all, diffs.length, Boolean(args.opt.json), humanRows, inertSensors(config, rules.length, draftApps()), risk && refusal === '' ? { ...risk, reasons: ['tier 0: merges without a person (rung 3, trusted author)'] } : risk)
+  if (at === 'commit') gateCommit(all, replaying); report(at, all, diffs.length, Boolean(args.opt.json), humanRows, inertSensors(config, rules.length, draftApps()), risk && refusal === '' ? { ...risk, reasons: ['tier 0: merges without a person (rung 3, trusted author)'] } : risk)
   process.exitCode = all.blocks.length ? 1 : 0
 }
 

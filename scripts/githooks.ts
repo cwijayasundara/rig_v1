@@ -10,8 +10,9 @@ import { formatFindings, warnLines, type Finding } from './model.ts'
 import { rigOff } from './off.ts'
 
 const HOOKS_DIR = '.rig/githooks'
-const NAMES = ['pre-commit', 'pre-push'] as const
-const AT = { 'pre-commit': 'commit', 'pre-push': 'push' } as const
+const NAMES = ['pre-commit', 'commit-msg', 'pre-push'] as const
+// commit-msg stamps the commit (`Rig-Verified:` trailer); it runs the trailer command, not a check.
+const RUN = { 'pre-commit': 'check --at commit', 'commit-msg': 'trailer "$1"', 'pre-push': 'check --at push' } as const
 
 // A hook that cannot run warns and lets git go on: CI is the floor, and a broken hook must not wedge a repo.
 const script = (name: (typeof NAMES)[number]): string => [
@@ -22,7 +23,7 @@ const script = (name: (typeof NAMES)[number]): string => [
   `  echo "rig: Node >= 22.18 not found, skipping ${name} (CI still checks)" >&2; exit 0`,
   'fi',
   `[ -f .rig/bin/sdlc.ts ] || { echo "rig: .rig/bin/sdlc.ts is missing, skipping ${name} (run vendor, then hooks install)" >&2; exit 0; }`,
-  `exec node --disable-warning=ExperimentalWarning .rig/bin/sdlc.ts check --at ${AT[name]}`,
+  `exec node --disable-warning=ExperimentalWarning .rig/bin/sdlc.ts ${RUN[name]}`,
   '',
 ].join('\n')
 
@@ -78,7 +79,7 @@ function wireAtSessionStart(): string {
   if (state === 'installed') return ''
   if (state === 'other') return `Git hooks: core.hooksPath is ${current}, so the rig commit and push checks are not wired. Do not change it yourself: ask the person to run \`node .rig/bin/sdlc.ts hooks install --force\` if they want rig's hooks.`
   const r = installHooks()
-  return r.ok ? `Git hooks: installed the rig pre-commit and pre-push checks (core.hooksPath = ${HOOKS_DIR}). Opt out with: node .rig/bin/sdlc.ts hooks uninstall` : `Git hooks: ${r.message}`
+  return r.ok ? `Git hooks: installed the rig pre-commit, commit-msg and pre-push hooks (core.hooksPath = ${HOOKS_DIR}). Opt out with: node .rig/bin/sdlc.ts hooks uninstall` : `Git hooks: ${r.message}`
 }
 
 function uninstallHooks(): string {

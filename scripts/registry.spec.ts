@@ -215,8 +215,8 @@ test('humanApproval.selfApprovers parses, rejects other shapes, and adding a log
 
 test('risk parses, rejects other shapes, and loosening it is a weakening', () => {
   const reg = (r: unknown) => JSON.stringify({ sensors: [], risk: r })
-  assert.deepEqual(parseRegistry(reg({ enforce: true, alwaysHuman: ['src/billing/**'], maxLines: 200 })).registry.risk, { enforce: true, alwaysHuman: ['src/billing/**'], maxLines: 200, hardCap: false, window: 20, maxRevertRate: 0.1 })
-  assert.deepEqual(parseRegistry('{}').registry.risk, { enforce: false, alwaysHuman: [], maxLines: 400, hardCap: false, window: 20, maxRevertRate: 0.1 })
+  assert.deepEqual(parseRegistry(reg({ enforce: true, alwaysHuman: ['src/billing/**'], maxLines: 200 })).registry.risk, { enforce: true, gate: 'enforce', alwaysHuman: ['src/billing/**'], maxLines: 200, hardCap: false, window: 20, maxRevertRate: 0.1 })
+  assert.deepEqual(parseRegistry('{}').registry.risk, { enforce: false, gate: 'enforce', alwaysHuman: [], maxLines: 400, hardCap: false, window: 20, maxRevertRate: 0.1 })
   assert.match(parseRegistry(reg(5)).errors.join(), /risk must be/)
   assert.match(parseRegistry(reg({ maxLines: -1 })).errors.join(), /risk.maxLines must be/)
   assert.match(parseRegistry(reg({ alwaysHuman: 'x' })).errors.join(), /risk.alwaysHuman must be/)

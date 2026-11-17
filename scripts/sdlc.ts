@@ -21,6 +21,7 @@ import { cmdUpgrade } from './upgrade.ts'
 import { cmdBaseline } from './initbaseline.ts'
 import { cmdVerify, cmdHoldout } from './verify.ts'; import { cmdMutscore } from './mutscore.ts'
 import { cmdHooks, cmdCheckPush } from './githooks.ts'
+import { cmdTrailer } from './gate.ts'
 import { cmdPr } from './pr.ts'; import { cmdPlanCheck } from './plancheck.ts'
 import { cmdCarry } from './carry.ts'
 import { treeStamp } from './stamp.ts'
@@ -462,6 +463,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   vendor: cmdVendor,
   upgrade: cmdUpgrade,
   hooks: cmdHooks,
+  trailer: cmdTrailer,
   waive: cmdWaive,
   sensors: () => cmdSensors(),
   wiki: args => cmdWiki(args),

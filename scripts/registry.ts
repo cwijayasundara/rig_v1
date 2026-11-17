@@ -17,7 +17,7 @@ export const ALWAYS_ON: BuiltinId[] = ['secrets', 'harness-tamper']
 export type RegistrySensor = { id: string; cmd?: string; builtin?: true; cadence: Cadence; blocks: boolean; guide: string; timeoutMs?: number; enabled: boolean; options?: Record<string, unknown>; ratchet?: 'down' | 'up' }
 export type Paths = { tests: string[]; testSupport: string[]; fixtures: string[]; ignore: string[] }
 // The risk tier's knobs (proposal 2026-10-27 B1, B2): paths that always want a person, the diff size above which a person looks, and whether rig-check requires the approval.
-export type Risk = { enforce: boolean; alwaysHuman: string[]; maxLines: number; hardCap: boolean; window: number; maxRevertRate: number }
+export type Risk = { enforce: boolean; gate?: 'enforce' | 'observe'; alwaysHuman: string[]; maxLines: number; hardCap: boolean; window: number; maxRevertRate: number }
 export type Contracts = { files: string[]; covers: string[]; validate: string; run: string }
 type Policy = Record<string, Mode> & { default: Mode }
 export type Registry = { ratchets?: Record<string, number>; stack: string | null; gates: { plan: boolean; testWriter: boolean }; humanApproval: { selfApprovers: string[]; trusted: string[]; everyTier: boolean }; risk: Risk; contracts: Contracts; holdout: string; mutation: { minScore: number }; proof: 'warn' | 'block'; models: { build: string; evaluate: string; design: string; light: { build: string; evaluate: string }; full: { build: string; evaluate: string } }; paths: Paths; sensors: RegistrySensor[]; knownRed: string[]; policy: Policy }
@@ -54,7 +54,7 @@ export function defaultRegistry(): Registry {
     stack: null,
     gates: { plan: true, testWriter: false },
     humanApproval: { selfApprovers: [], trusted: [], everyTier: false },
-    risk: { enforce: false, alwaysHuman: [], maxLines: 400, hardCap: false, window: 20, maxRevertRate: 0.1 },
+    risk: { enforce: false, gate: 'enforce', alwaysHuman: [], maxLines: 400, hardCap: false, window: 20, maxRevertRate: 0.1 },
     contracts: { files: [], covers: [], validate: '', run: '' },
     holdout: '',
     mutation: { minScore: 0.8 },
@@ -154,12 +154,13 @@ function parseSections(value: Record<string, unknown>, r: Registry, errors: stri
     if (!isObject(k0)) errors.push('risk must be { enforce?: boolean, alwaysHuman?: [globs], maxLines?: positive integer }')
     else for (const [k, v] of Object.entries(k0)) {
       if (k === 'enforce') { if (typeof v === 'boolean') r.risk.enforce = v; else errors.push('risk.enforce must be true or false') }
+      else if (k === 'gate') { if (v === 'enforce' || v === 'observe') r.risk.gate = v; else errors.push('risk.gate must be "enforce" or "observe"') }
       else if (k === 'alwaysHuman') { if (isStringList(v)) r.risk.alwaysHuman = v; else errors.push('risk.alwaysHuman must be a list of globs') }
       else if (k === 'maxLines') { if (posInt(v)) r.risk.maxLines = v; else errors.push('risk.maxLines must be a positive integer') }
       else if (k === 'hardCap') { if (typeof v === 'boolean') r.risk.hardCap = v; else errors.push('risk.hardCap must be true or false') }
       else if (k === 'window') { if (posInt(v)) r.risk.window = v; else errors.push('risk.window must be a positive integer') }
       else if (k === 'maxRevertRate') { if (typeof v === 'number' && v >= 0 && v <= 1) r.risk.maxRevertRate = v; else errors.push('risk.maxRevertRate must be a number from 0 to 1') }
-      else errors.push(`risk.${k} is not enforce, alwaysHuman, maxLines, hardCap, window or maxRevertRate`)
+      else errors.push(`risk.${k} is not enforce, gate, alwaysHuman, maxLines, hardCap, window or maxRevertRate`)
     }
   }
   if ('contracts' in value) {
@@ -357,6 +358,7 @@ export function weakensRegistry(beforeText: string, afterText: string): string[]
   if (b.gates.testWriter && !a.gates.testWriter) out.push('gates.testWriter turned off')
   for (const u of a.humanApproval.selfApprovers) if (!b.humanApproval.selfApprovers.includes(u)) out.push(`humanApproval.selfApprovers added ${u}`)
   if (b.risk.enforce && !a.risk.enforce) out.push('risk.enforce turned off')
+  if (b.risk.gate === 'enforce' && a.risk.gate === 'observe') out.push('risk.gate loosened to observe')
   for (const g of b.risk.alwaysHuman) if (!a.risk.alwaysHuman.includes(g)) out.push(`risk.alwaysHuman lost ${g}`)
   if (a.risk.maxLines > b.risk.maxLines) out.push('risk.maxLines raised')
   if (b.risk.hardCap && !a.risk.hardCap) out.push('risk.hardCap turned off')
