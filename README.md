@@ -439,6 +439,17 @@ See [path C](#path-c-a-sprint-from-a-prd-greenfield-or-brownfield): init the emp
 
 When a review finding or a waiver recurs, run `/rig:learn` (or `/rig:rule "<what recurs>"` for a single rule). Both only propose: a person applies every lesson and rule, and `sdlc.ts learn check` must then pass.
 
+### Trusting the output
+
+What lets you read evidence instead of every diff:
+
+- **The commit gate has three modes.** Enforce is the default. `risk.gate: "observe"` in `.rig/sensors.json` (read from the trunk, so a branch cannot loosen it) logs what the gate would have blocked to `.rig/gates.jsonl` and lets the commit through, so you can review false positives before anyone is blocked; a broken config still blocks. `sdlc.ts off` switches it off.
+- **Every commit says how it was verified.** The `commit-msg` hook adds `Rig-Verified: pass`, `observed-N-would-block` or `replay`, or `none` when no verdict matches the staged tree. A commit made with `--no-verify` carries no trailer, so `git log --grep` or a missing trailer finds the unverified ones. Re-run `hooks install` in a repo that installed the hooks before this existed.
+- **Reliability checks fire from the diff.** A rule in `.rig/rules.json` with a `check` (and `paths`, and a `why` naming the incident) is listed by `sdlc.ts checklist` when the diff triggers it; `/rig:pr` hands the list to the code reviewer. `sdlc.ts learn prune` lists rules and checks that fired on none of the last N shipped changes, for a person to retire.
+- **Flaky tests are fixed, not rerun.** The test-tamper sensor blocks `retryTimes`, `@flaky` and `retries: N`; `guides/testing.md` also asks for property tests on parsers and migrations and a differential test against the old code for a rewrite.
+- **The review eval scores each stage.** `npm run eval` reports recall raw (named anywhere), final (under Findings) and verified (a Repro that fails), so a bug found and then lost shows.
+- **Unattended runs with `/goal`.** Claude Code's `/goal` judges its condition only from what the transcript shows, so name an end state rig prints: `/goal node .rig/bin/sdlc.ts verify <slug> exits 0 and prints `verify.json: pass`, or stop after 20 turns`. `/goal` is a Stop hook like rig's own; both run each turn, and rig's Stop gate still stops after two failed rounds and writes `unresolved.json` for a person.
+
 ### Parallel work
 
 Separate changes run side by side, each in its own checkout or worktree on its own `sdlc/<slug>` branch. That is how a team builds a sprint's ready intents in parallel.

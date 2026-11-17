@@ -74,3 +74,8 @@ test('a verdict is for the tree it judged: staging more after pre-commit makes t
   sdlc(repo, ['trailer', msg])
   assert.match(fs.readFileSync(msg, 'utf8'), /Rig-Verified: none/)
 })
+
+test('the README documents the gate modes, the trailer, the checklist and /goal', () => {
+  const readme = fs.readFileSync(path.join(import.meta.dirname, '..', 'README.md'), 'utf8')
+  for (const needle of ['risk.gate', 'Rig-Verified', 'sdlc.ts checklist', 'learn prune', '/goal']) assert.ok(readme.includes(needle), `README lacks ${needle}`)
+})
