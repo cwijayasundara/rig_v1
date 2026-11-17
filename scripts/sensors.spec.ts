@@ -30,6 +30,7 @@ const FIXTURES: Record<string, [string, string]> = {
   'unittest-skip': ['@unittest.skip("flaky")', 'unittest.skipTest_helper()'],
   'junit-disabled': ['  @Disabled', '  @DisabledForJreRange(min = JAVA_8)'],
   'go-skip': ['\tt.Skip("slow")', '\tt.SkipTo(next)'],
+  'retry-until-pass': ['jest.retryTimes(3)', 'const retries = 3'],
   'rspec-pending': ['  pending "not yet"', "  expect(t.status).toBe('pending')"],
 }
 

@@ -61,3 +61,10 @@ test('J3 concurrency follows the journey PRD\'s single-process decision, and J3.
   assert.match(j3.split('\n').find(l => l.startsWith('- J3.10')) ?? '', /no locking|adds no lock/)
   assert.match(j3.split('\n').find(l => l.startsWith('- J3.11')) ?? '', /other words/)
 })
+
+test('the testing guide names the flaky policy, property laws and differential tests (the Claude team verification post)', () => {
+  const g = read('guides/testing.md')
+  assert.match(g, /Flaky is a bug, never a rerun/)
+  assert.match(g, /round trip[\s\S]*idempotency[\s\S]*equivalence/)
+  assert.match(g, /old system is the oracle/)
+})

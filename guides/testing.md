@@ -17,11 +17,16 @@ why: agent-written tests often pass without proving anything, and tests are the 
 9. **API tests use the real surface.** Call the handler or HTTP endpoint and assert on status and body, including the error statuses the spec names.
 10. **Smoke and performance are declared commands.** `smoke` and `bench` in `.rig/sensors.json` `full`: smoke starts the app, hits a health check and stops under a timeout; bench exits non-zero when it misses the spec's `## Non-functional` number.
 11. **Hostile surfaces get a test.** A change that writes shared state has a test that runs two writers at once and counts what survived; one that parses options has a test passing `--opt --other`, and one passing nothing after `--opt`.
+12. **Flaky is a bug, never a rerun.** Do not skip, add a sleep, or retry until it passes (the test-tamper sensor blocks `retryTimes`, `@flaky` and `retries: N`). Find the nondeterminism (clock, order, shared state, network, randomness) and inject or isolate it. When no root cause can be found, request a waiver to delete the test and say why in it: a test everyone learned to rerun is worse than none.
+13. **State a law, then try to break it.** A change that parses, serialises, normalises, migrates, retries or ships an optimised path gets a property test over generated inputs (fast-check, Hypothesis, proptest, or a seeded loop of a few hundred cases when none is installed). Pick the law: round trip (decode of encode is the input), invariant (a balance never goes negative), idempotency (twice is once), equivalence (optimised matches the naive version). Print the seed, and keep each failing case as a plain example test.
+14. **A rewrite is judged against the old code.** For a migration or replacement, run old and new on the same inputs (generated, or sampled from real use), normalise differences that do not matter, and list each approved difference with its reason. The old system is the oracle; an unlisted difference is a bug until proven otherwise.
 
 ## Rationalizations
 | Thought | Reality |
 |---|---|
 | "I'll write the test after" | Then it is shaped by the code and passes by construction. |
-| "This assertion is flaky, drop it" | Find the nondeterminism and inject it. |
+| "This assertion is flaky, drop it" | Find the nondeterminism and inject it; never skip, sleep or retry. |
+| "A few examples cover it" | You chose them, so they share your blind spots. State the law and let generated inputs attack it. |
+| "The new code looks equivalent" | Run both on the same inputs and diff. Looking equivalent is how migrations break. |
 | "Mocking the internals is easier" | Then every refactor breaks tests that should still pass. |
 | "Coverage is high enough" | Coverage counts lines run, not behaviours proven. |

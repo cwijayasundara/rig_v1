@@ -14,6 +14,7 @@ export const TAMPER_PATTERNS: { id: string; re: RegExp; what: string }[] = [
   { id: 'unittest-skip', re: /^\s*@unittest\.(?:skip|skipIf|skipUnless|expectedFailure)\b/, what: 'unittest skip decorator' },
   { id: 'junit-disabled', re: /^\s*@(?:Disabled|Ignore)\b(?!\w)/, what: 'JUnit @Disabled/@Ignore' },
   { id: 'go-skip', re: /\bt\.Skip(?:Now|f)?\(/, what: 'Go t.Skip' },
+  { id: 'retry-until-pass', re: /\bjest\.retryTimes\s*\(|^\s*@(?:pytest\.mark\.)?flaky\b|\bretries\s*:\s*[1-9]/, what: 'test retried until it passes (flaky is a bug to fix, not to rerun)' },
   { id: 'rspec-pending', re: /^\s*(?:pending|skip)\b(?:\s+["']|\s*$|\s+do\b)/, what: 'RSpec pending/skip' },
 ]
 
