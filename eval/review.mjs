@@ -84,13 +84,27 @@ export const reprosOf = text => {
 }
 // Run in the throwaway copy the case was staged in, with HOME and PATH only, never in this repo. A command that names an absolute path or
 // leaves the directory is not run (unrun); one that still fails there reproduces the seeded defect (fails).
+const runOne = (cmd, dir) => {
+  if (/(^|[\s"'=])(\/|~|[A-Za-z]:[\\/])|\.\.[\\/]/.test(cmd)) return 'unrun'
+  return spawnSync(cmd, { shell: true, cwd: dir, timeout: 60_000, stdio: 'ignore', env: { PATH: process.env.PATH, HOME: dir } }).status !== 0 ? 'fail' : 'pass'
+}
 export const runRepros = (text, dir) => {
   let fails = 0, unrun = 0
-  for (const cmd of reprosOf(text)) {
-    if (/(^|[\s"'=])(\/|~|[A-Za-z]:[\\/])|\.\.[\\/]/.test(cmd)) { unrun++; continue }
-    if (spawnSync(cmd, { shell: true, cwd: dir, timeout: 60_000, stdio: 'ignore', env: { PATH: process.env.PATH, HOME: dir } }).status !== 0) fails++
-  }
+  for (const cmd of reprosOf(text)) { const r = runOne(cmd, dir); if (r === 'unrun') unrun++; else if (r === 'fail') fails++ }
   return { fails, unrun }
+}
+
+// Recall by stage (the Claude team's verification post: measure raw, verified and final separately, so a system that finds a bug and then
+// loses it shows up). Raw: a bullet anywhere in the answer, Deferred, Unverifiable and Pre-existing included, names the defect. Final:
+// scoreReview's caught, the defect sits under ## Findings. Verified: a finding that names the defect carries a Repro that fails in the case dir.
+const named = (d, l) => [d.file].flat().some(f => l.includes(f)) && d.re.test(l)
+export const rawCaught = (text, defects) => {
+  const bullets = text.split('\n').filter(l => /^\s*-\s/.test(l))
+  return defects.filter(d => bullets.some(l => named(d, l))).map(d => d.id)
+}
+export const verifiedCaught = (text, defects, dir) => {
+  const lines = (/^## Findings[ \t]*\n([\s\S]*?)(?=^## |(?![\s\S]))/m.exec(text)?.[1] ?? '').split('\n').filter(l => FINDING.test(l))
+  return defects.filter(d => lines.some(l => named(d, l) && REPRO.test(l) && runOne(REPRO.exec(l)[1], dir) === 'fail')).map(d => d.id)
 }
 
 // A group is an arm, or an arm and a model once the rows hold more than one model.
@@ -107,7 +121,8 @@ export function summarize(rows) {
     const rs = rows.filter(r => key(r) === g && !r.failed)
     const defect = rs.filter(r => !r.control), control = rs.filter(r => r.control)
     return [g, {
-      runs: rs.length, recall: recallOf(defect), hardRecall: recallOf(defect.filter(r => r.hard)),
+      runs: rs.length, recall: recallOf(defect), rawRecall: recallOf(defect.map(r => ({ ...r, caught: r.raw ?? r.caught }))),
+      verifiedRecall: defect.some(r => r.verified) ? recallOf(defect.filter(r => r.verified).map(r => ({ ...r, caught: r.verified }))) : null, hardRecall: recallOf(defect.filter(r => r.hard)),
       extraPerDefectRun: defect.length ? defect.reduce((n, r) => n + r.extra, 0) / defect.length : null,
       falseFindingsOnClean: control.reduce((n, r) => n + r.findings, 0), cleanRuns: control.length, reproFindings: rs.reduce((n, r) => n + (r.repros ?? 0), 0), reproFails: rs.reduce((n, r) => n + (r.reproFails ?? 0), 0), usd: rs.reduce((n, r) => n + (r.usd ?? 0), 0),
     }]
@@ -129,6 +144,8 @@ export function renderMarkdown(rows, { date, files }) {
     `Question: which reviewer catches more seeded defects, hard ones included, and raises fewer findings on correct changes? Source: ${files.join(', ')}. No tools; the prompt carries the change and the whole source tree.`, '',
     '| reviewer | runs | defects caught | hard defects caught | extra findings per defect run | findings on the clean changes | USD |', '|---|---|---|---|---|---|---|',
     ...names.map(g => `| ${label(g)} | ${s[g].runs} | ${pct(s[g].recall)} | ${pct(s[g].hardRecall)} | ${s[g].extraPerDefectRun?.toFixed(2) ?? '–'} | ${s[g].falseFindingsOnClean} in ${s[g].cleanRuns} runs | $${s[g].usd.toFixed(2)} |`), '',
+    '| reviewer | raw (named anywhere) | final (under Findings) | verified (Repro fails) |', '|---|---|---|---|',
+    ...names.map(g => `| ${label(g)} | ${pct(s[g].rawRecall)} | ${pct(s[g].recall)} | ${pct(s[g].verifiedRecall)} |`), '',
     ...names.filter(g => g.startsWith('tools')).map(g => `${label(g)}: ${s[g].reproFindings} findings with a Repro, ${s[g].reproFails} of them fail on the defect.`), '',
     `| case | ${names.map(g => `${label(g)}: runs that caught it`).join(' | ')} |`, `|---|${names.map(() => '---').join('|')}|`, ...byCase, ''].join('\n')
 }
@@ -160,7 +177,7 @@ if (process.argv[1] === import.meta.filename) {
       if (!dry && overCap(spent, done, maxUsd)) { console.log(`stopped at the cap: $${spent.toFixed(2)} of $${maxUsd}`); fs.rmSync(repo.dir, { recursive: true, force: true }); break runs }
       const row = { case: c.id, arm, model, run: n, control: Boolean(c.control), hard: Boolean(c.hard), defects: c.defects.length, at: new Date().toISOString() }
       const own = arm === 'tools' && !dry ? repoFor(c) : repo, runDir = own.dir
-      try { const r = runnerFor(model, arm, runDir)({ role: 'review', prompt: buildPrompt(c, arm, own), case: c, arm }); spent += r.usd; done++; Object.assign(row, scoreReview(r.text, c.defects), { usd: r.usd, text: r.text }, arm === 'tools' ? (({ fails, unrun }) => ({ reproFails: fails, reproUnrun: unrun }))(runRepros(r.text, runDir)) : {}) } catch (e) { Object.assign(row, { failed: true, error: String(e.message).split('\n')[0] }) }
+      try { const r = runnerFor(model, arm, runDir)({ role: 'review', prompt: buildPrompt(c, arm, own), case: c, arm }); spent += r.usd; done++; Object.assign(row, scoreReview(r.text, c.defects), { raw: rawCaught(r.text, c.defects), usd: r.usd, text: r.text }, arm === 'tools' ? { verified: verifiedCaught(r.text, c.defects, runDir) } : {}, arm === 'tools' ? (({ fails, unrun }) => ({ reproFails: fails, reproUnrun: unrun }))(runRepros(r.text, runDir)) : {}) } catch (e) { Object.assign(row, { failed: true, error: String(e.message).split('\n')[0] }) }
       if (own !== repo) fs.rmSync(own.dir, { recursive: true, force: true })
       written.push(row)
       fs.appendFileSync(results, JSON.stringify(row) + '\n')

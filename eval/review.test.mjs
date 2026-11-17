@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { CASES, buildPrompt, scoreReview, summarize, renderMarkdown, ARMS, DEFAULT_ARMS, reprosOf, overCap, runRepros, repoFor as ctxFor, baseOf } from './review.mjs'
+import { CASES, buildPrompt, scoreReview, summarize, renderMarkdown, ARMS, DEFAULT_ARMS, reprosOf, overCap, runRepros, rawCaught, verifiedCaught, repoFor as ctxFor, baseOf } from './review.mjs'
 
 // The cart cases run Python and pytest; a machine without them skips those tests, by name, rather than failing the suite.
 const has = (...cmd) => { try { execFileSync(cmd[0], cmd.slice(1), { stdio: 'pipe' }); return true } catch { return false } }
@@ -207,4 +207,25 @@ test('the spend cap stops before a call that would take the run over it', () => 
   assert.equal(overCap(0, 0, 8), false, 'the first call always runs')
   assert.equal(overCap(7.5, 25, 8), false, '$0.30 a call fits under $8')
   assert.equal(overCap(7.9, 25, 8), true, 'one more call at $0.32 would pass $8')
+})
+
+test('recall by stage: raw sees a defect named under Deferred, final needs it under Findings, verified needs a Repro that fails', () => {
+  const d = [{ id: 'x', file: 'src/a.js', re: /boom/ }, { id: 'y', file: 'src/b.js', re: /bang/ }]
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-stage-'))
+  const text = ['## Findings', '- [severity: high] [category: correctness] src/a.js:1: boom. Repro: node -e "process.exit(1)" → fix', '## Deferred', '- src/b.js:2: bang, a style thought', ''].join('\n')
+  assert.deepEqual(rawCaught(text, d), ['x', 'y'], 'raw includes the one parked under Deferred')
+  assert.deepEqual(scoreReview(text, d).caught, ['x'], 'final is Findings only')
+  assert.deepEqual(verifiedCaught(text, d, dir), ['x'])
+  assert.deepEqual(verifiedCaught(text.replace('process.exit(1)', 'process.exit(0)'), d, dir), [], 'a Repro that passes does not verify')
+  assert.deepEqual(verifiedCaught(text.replace(/ Repro:[^→]*/, ''), d, dir), [], 'no Repro, not verified (still a valid finding)')
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('summarize reports raw, final and verified recall separately, and a loss between stages shows', () => {
+  const row = (arm, extra) => ({ case: 'a', arm, control: false, defects: 2, caught: ['x'], raw: ['x', 'y'], findings: 1, extra: 0, usd: 0, ...extra })
+  const s = summarize([row('clean'), row('tools', { verified: [] })])
+  assert.deepEqual([s.clean.rawRecall, s.clean.recall, s.clean.verifiedRecall], [1, 0.5, null])
+  assert.equal(s.tools.verifiedRecall, 0)
+  assert.match(renderMarkdown([row('clean')], { date: 'd', files: ['f'] }), /\| clean context \| 100% \| 50% \| – \|/)
+  assert.equal(summarize([{ case: 'a', arm: 'clean', control: false, defects: 1, caught: ['x'], findings: 1, extra: 0, usd: 0 }]).clean.rawRecall, 1, 'older result rows fall back to caught')
 })
