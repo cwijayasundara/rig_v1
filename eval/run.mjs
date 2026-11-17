@@ -21,7 +21,8 @@ import { PHASE_S10 as S10, PHASE_S11 as S11, PHASE_S12 as S12 } from './variants
 import { PHASE_S13 as S13, PHASE_S14 as S14 } from './variants/contract.mjs'
 import { PHASE_S15 as S15, PHASE_S16 as S16, PHASE_S17 as S17, PHASE_S18 as S18 } from './variants/traps.mjs'
 import { PHASES as BROWNFIELD_PHASES } from './variants/brownfield.mjs'
-import { BARE_PROMPT_BROWNFIELD, BARE_PROMPT_KNEX } from './setup.mjs'
+import { BARE_PROMPT_BROWNFIELD, BARE_PROMPT_KNEX, BARE_PROMPT_UI } from './setup.mjs'
+import { PHASES as UI_PHASES } from './variants/ui.mjs'
 import { PHASES as KNEX_PHASES } from './variants/knex.mjs'
 import { PHASE_S15 as H15, PHASE_S16 as H16, PHASE_S17 as H17, PHASE_S18 as H18, PHASE_S19 as H19 } from './variants/hard.mjs'
 
@@ -38,11 +39,12 @@ export function orderArms(arms, seed, n) {
 const PHASES = { links: [S2, S3, S7], rules: [S2, S3, S7, S8, S9], delta: [S8, S9], pricing: [S10, S11, S12], contract: [S13, S14], traps: [S15, S16, S17, S18] }
 PHASES.brownfield = BROWNFIELD_PHASES
 PHASES.knex = KNEX_PHASES
+PHASES.ui = UI_PHASES
 PHASES.hard = [H15, H16, H17, H18, H19]
 export const phasesFor = variant => PHASES[variant] ?? [S2, S3]
 // delta is the rules task from a built B1–B7 shop: it is briefed, prompted and scored as rules.
 export const taskOf = variant => (variant === 'delta' ? 'rules' : variant)
-const barePrompt = variant => ({ links: BARE_PROMPT_LINKS, rules: BARE_PROMPT_RULES, delta: BARE_PROMPT_DELTA, pricing: BARE_PROMPT_PRICING, contract: BARE_PROMPT_CONTRACT, traps: BARE_PROMPT_TRAPS, brownfield: BARE_PROMPT_BROWNFIELD, knex: BARE_PROMPT_KNEX, hard: BARE_PROMPT_HARD }[variant] ?? BARE_PROMPT)
+const barePrompt = variant => ({ links: BARE_PROMPT_LINKS, rules: BARE_PROMPT_RULES, delta: BARE_PROMPT_DELTA, pricing: BARE_PROMPT_PRICING, contract: BARE_PROMPT_CONTRACT, traps: BARE_PROMPT_TRAPS, brownfield: BARE_PROMPT_BROWNFIELD, knex: BARE_PROMPT_KNEX, hard: BARE_PROMPT_HARD, ui: BARE_PROMPT_UI }[variant] ?? BARE_PROMPT)
 const failing = (driver, failAt) => (failAt ? { ...driver, [failAt]: async () => { throw new Error(`injected failure at ${failAt}`) } } : driver)
 
 // Where a run's sessions, dollars and denials went, kept in the row because the sandboxes are deleted after scoring.
@@ -102,7 +104,7 @@ export async function runOne(arm, n, { dry, out, capRunUsd, failAt, seed = null,
   const infra = sessions?.sessions.some(x => x.slept) ? 'sleep' : null
   const estimated = sessions?.sessions.some(x => x.estimated) ?? false
   return {
-    ...row, ...score, ...((variant === 'traps' || variant === 'hard') && (score.error || score.escaped === undefined) && { escaped: null }), accepted: !infra && !row.error && score.accepted, error: row.error ?? score.error, ...(infra && { infra }), ...(estimated && { estimated }),
+    ...row, ...score, ...((variant === 'traps' || variant === 'hard' || variant === 'ui') && (score.error || score.escaped === undefined) && { escaped: null }), accepted: !infra && !row.error && score.accepted, error: row.error ?? score.error, ...(infra && { infra }), ...(estimated && { estimated }),
     inputTokens: t.inputTokens, outputTokens: t.outputTokens, usd: Number(t.costUsd.toFixed(4)),
     minutes: Number(((Date.now() - t0) / 60_000).toFixed(2)), sessions: sessions?.sessions.length ?? 0,
     denials: t.denials.length, models: t.models, commits, ...(sessions && { trace: sessionTrace(sessions.sessions) }),
@@ -121,7 +123,7 @@ if (process.argv[1] === import.meta.filename) {
   const retries = Number(arg('retries', 1)) // reruns of a run the machine slept through
   fs.mkdirSync(path.dirname(results), { recursive: true })
   const variant = arg('variant', null)
-  if (variant && !['links', 'rules', 'delta', 'pricing', 'contract', 'traps', 'hard', 'brownfield', 'knex'].includes(variant)) { console.error('--variant must be: links, rules, delta, pricing, contract, traps, hard, brownfield or knex'); process.exit(2) }
+  if (variant && !['links', 'rules', 'delta', 'pricing', 'contract', 'traps', 'hard', 'brownfield', 'knex', 'ui'].includes(variant)) { console.error('--variant must be: links, rules, delta, pricing, contract, traps, hard, brownfield, knex or ui'); process.exit(2) }
   const seed = Number(arg('seed', Date.now() % 1_000_000))
   if (!Number.isInteger(seed) || seed < 0) { console.error('--seed must be a non-negative integer'); process.exit(2) }
   console.log(`arm order seed ${seed} (pass --seed ${seed} to repeat it)`)

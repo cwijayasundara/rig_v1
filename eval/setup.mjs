@@ -14,8 +14,10 @@ import { briefFor as hardBrief, dryOverlay as hardOverlay, SEED as HARD_SEED } f
 import { applyAblation } from './ablation.mjs'
 import * as brownfield from './variants/brownfield.mjs'
 import * as knex from './variants/knex.mjs'
+import * as ui from './variants/ui.mjs'
 export { BARE_PROMPT as BARE_PROMPT_BROWNFIELD } from './variants/brownfield.mjs'
 export { BARE_PROMPT as BARE_PROMPT_KNEX } from './variants/knex.mjs'
+export { BARE_PROMPT as BARE_PROMPT_UI } from './variants/ui.mjs'
 
 const BRIEF = path.resolve(import.meta.dirname, '../tests/e2e/prd/shop-brief.md')
 const FX = path.resolve(import.meta.dirname, '../tests/e2e/fixtures')
@@ -36,6 +38,7 @@ export const BARE_PROMPT_TRAPS = BARE_PROMPT.replace('Build the shop described i
 export const BARE_PROMPT_HARD = BARE_PROMPT.replace('Build the shop described in BRIEF.md: behaviours B1–B6, in src/,', 'The shop described in BRIEF.md already has behaviours B1–B14 built and passing. Add B15, B16, B17, B18 and B19 to it, editing the existing files in src/ and bin/,').replace('whose names start with their B-number', 'whose names start with their B-number (B15 in test/refund.test.js, B16 in test/money.test.js, B17 in test/place-order.test.js, B18 in test/orders-page.test.js, B19 in test/export-status.test.js)').replace(/ Keep the HTTP contract in api\/openapi\.yaml and contracts\/examples\/ \([^)]*\)\./, '')
 const BRIEFS = { links: briefFor, rules: rulesBrief, delta: rulesBrief, pricing: pricingBrief, contract: contractBrief, traps: trapsBrief }
 BRIEFS.hard = hardBrief
+BRIEFS.ui = hardBrief // the ui shop has B1–B19 built; its two issues are in the prompts
 const briefText = variant => (BRIEFS[variant] ?? (b => b))(fs.readFileSync(BRIEF, 'utf8'))
 
 // The layers the shop brief's own Architecture section states: http on top, nothing depends on http.
@@ -44,6 +47,7 @@ const LAYERS = '# Architecture\n\n## Layers\n\n```rig-layers\nlayer catalog src/
 // B1–B7 as a perfect session leaves them (the links dry overlay): the starting point every arm of the delta variant shares.
 function seedBase(sb, variant) {
   if (variant === 'hard') return hardBase(sb)
+  if (variant === 'ui') return uiBase(sb)
   fs.cpSync(path.join(FX, 'shop'), sb.dir, { recursive: true })
   fs.cpSync(path.join(FX, 'remove'), sb.dir, { recursive: true })
   dryOverlay(sb)
@@ -51,6 +55,10 @@ function seedBase(sb, variant) {
   if (['contract', 'traps'].includes(variant)) { pricingOverlay(sb); fs.cpSync(CONTRACT_SEED, sb.dir, { recursive: true }) }
   if (variant === 'traps') { contractOverlay(sb); fs.cpSync(TRAPS_SEED, sb.dir, { recursive: true }) } // B13–B14 are built; the seed adds the route table, the CLI and the conventions
 }
+
+// The ui variant starts from the finished hard shop (B1–B19).
+const uiBase = sb => { hardBase(sb); hardOverlay(sb) }
+ui.useBase(uiBase)
 
 // B1–B14 as a perfect session leaves them, then the hard seed (the CLI, the async inventory, the duplicated rounding, the integration test).
 function hardBase(sb) {
@@ -80,7 +88,7 @@ export function setupBare(sb, { dry = false, variant = null } = {}) {
   sb.write('BRIEF.md', briefText(variant))
   sb.write('CLAUDE.md', '# shop-app\n\nThe product brief is BRIEF.md.\n')
   if (['delta', 'pricing', 'contract', 'traps'].includes(variant)) seedBase(sb, variant)
-  if (variant === 'hard') seedBase(sb, variant)
+  if (variant === 'hard' || variant === 'ui') seedBase(sb, variant)
   sb.commitAll('chore: scaffold')
   return sb.git('rev-parse', 'HEAD')
 }
@@ -97,7 +105,7 @@ export const modelsSupported = (plugin = PLUGIN) => { try { return /\blight\s*:/
 export async function setupRig(sb, arm, { dry = false, variant = null, plugin = PLUGIN } = {}) {
   const registry = { ...REGISTRY, policy: { haiku: arm.policy, sonnet: 'continuous', opus: 'final', default: 'continuous' } }
   if (arm.models && modelsSupported(plugin)) registry.models = { ...REGISTRY.models, ...arm.models }
-  if (variant === 'hard') delete registry.contracts // the hard bare prompt has no contract sentence, so the rig arm has no contract to keep
+  if (variant === 'hard' || variant === 'ui') delete registry.contracts // the hard bare prompt has no contract sentence, so the rig arm has no contract to keep
   if (variant === 'brownfield') return brownfield.setupRig(sb, { dry, registry }) // existing repo: onboarding on the upstream tree, no brief
   if (variant === 'knex') return knex.setupRig(sb, { dry, registry })
   const c = await install(sb, { registry, plugins: dry ? [] : installedPlugins() })
@@ -107,7 +115,7 @@ export async function setupRig(sb, arm, { dry = false, variant = null, plugin = 
   if (b.failed.length) throw new Error(`brief failed: ${b.failed.map(f => f.name).join('; ')}`)
   // Rig is onboarded on the empty scaffold; the built shop lands after, in a commit of its own that tamper does not judge (run.mjs settles after setup).
   if (['delta', 'pricing', 'contract', 'traps'].includes(variant)) { seedBase(sb, variant); sb.commitAll(`chore: ${{ pricing: 'B1–B9', contract: 'B1–B12', traps: 'B1–B14' }[variant] ?? 'B1–B7'} baseline`) }
-  if (variant === 'hard') { seedBase(sb, variant); const bl = sb.sdlc(['baseline']); if (bl.status !== 0) throw new Error(`baseline failed: ${(bl.stderr || bl.stdout).trim().split('\n')[0]}`); sb.commitAll('chore: B1–B14 baseline') }
+  if (variant === 'hard' || variant === 'ui') { seedBase(sb, variant); const bl = sb.sdlc(['baseline']); if (bl.status !== 0) throw new Error(`baseline failed: ${(bl.stderr || bl.stdout).trim().split('\n')[0]}`); sb.commitAll(`chore: B1–${variant === 'ui' ? 'B19' : 'B14'} baseline`) }
   if (arm.arch) {
     // The person declares the layers and approves them once, before the sessions start: this arm differs only in that.
     sb.write('.rig/product/architecture.md', LAYERS)
@@ -125,6 +133,7 @@ export function dryBare(sb, { variant = null } = {}) {
   if (variant === 'brownfield') return brownfield.dryBare(sb)
   if (variant === 'knex') return knex.dryBare(sb)
   if (variant === 'hard') { hardBase(sb); return hardOverlay(sb) }
+  if (variant === 'ui') return ui.dryBare(sb, { base: uiBase })
   fs.cpSync(path.join(FX, 'shop'), sb.dir, { recursive: true })
   fs.cpSync(path.join(FX, 'remove'), sb.dir, { recursive: true })
   if (['links', 'rules', 'delta', 'pricing', 'contract', 'traps'].includes(variant)) dryOverlay(sb)

@@ -1,0 +1,13 @@
+diff --git a/src/http/customer-page.js b/src/http/customer-page.js
+index b78f80d..8060744 100644
+--- a/src/http/customer-page.js
++++ b/src/http/customer-page.js
+@@ -8,7 +8,7 @@ const lineName = (catalog, sku) => catalog.get(sku)?.name ?? sku
+ export function renderCustomerPage(customer, answer, catalog) {
+   let main
+   if (answer.status !== 200) {
+-    main = `<div role="alert">${esc(answer.body.error)}</div>`
++    main = '<table><thead><tr><th>Order</th></tr></thead><tbody></tbody></table>'
+   } else {
+     const rows = answer.body.orders.map(o => `<tr><td>${esc(o.id)}</td><td>${esc(o.status)}</td><td>${esc(o.placedAt.slice(0, 10))}</td><td>$${dollars(o.payableCents / 100)}</td><td>${o.lines.map(l => `<div>${esc(lineName(catalog, l.sku))} x ${l.qty}</div>`).join('')}</td></tr>`).join('')
+     main = `<table><thead><tr><th>Order</th><th>Status</th><th>Placed</th><th>Total</th><th>Items</th></tr></thead><tbody>${rows}</tbody></table>`

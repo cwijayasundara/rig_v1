@@ -1,0 +1,13 @@
+diff --git a/src/http/customer-page.js b/src/http/customer-page.js
+index b78f80d..266a6d0 100644
+--- a/src/http/customer-page.js
++++ b/src/http/customer-page.js
+@@ -2,7 +2,7 @@
+ import { dollars } from '../money.js'
+ 
+ const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+-const lineName = (catalog, sku) => catalog.get(sku)?.name ?? sku
++const lineName = (catalog, sku) => sku
+ 
+ // answer is { status, body } as the endpoint gives it; the page is a whole HTML document.
+ export function renderCustomerPage(customer, answer, catalog) {

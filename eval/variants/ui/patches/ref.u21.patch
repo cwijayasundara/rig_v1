@@ -1,0 +1,95 @@
+diff --git a/src/http/customer-page.js b/src/http/customer-page.js
+new file mode 100644
+index 0000000..b78f80d
+--- /dev/null
++++ b/src/http/customer-page.js
+@@ -0,0 +1,17 @@
++// The customer's orders page (B21): it shows what GET /customers/<name>/orders answers, as an HTML table.
++import { dollars } from '../money.js'
++
++const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
++const lineName = (catalog, sku) => catalog.get(sku)?.name ?? sku
++
++// answer is { status, body } as the endpoint gives it; the page is a whole HTML document.
++export function renderCustomerPage(customer, answer, catalog) {
++  let main
++  if (answer.status !== 200) {
++    main = `<div role="alert">${esc(answer.body.error)}</div>`
++  } else {
++    const rows = answer.body.orders.map(o => `<tr><td>${esc(o.id)}</td><td>${esc(o.status)}</td><td>${esc(o.placedAt.slice(0, 10))}</td><td>$${dollars(o.payableCents / 100)}</td><td>${o.lines.map(l => `<div>${esc(lineName(catalog, l.sku))} x ${l.qty}</div>`).join('')}</td></tr>`).join('')
++    main = `<table><thead><tr><th>Order</th><th>Status</th><th>Placed</th><th>Total</th><th>Items</th></tr></thead><tbody>${rows}</tbody></table>`
++  }
++  return `<!doctype html><html><head><meta charset="utf-8"><title>Orders of ${esc(customer)}</title></head><body><h1>Orders of ${esc(customer)}</h1>${main}</body></html>`
++}
+diff --git a/src/http/handler.js b/src/http/handler.js
+index 23e971a..8eb8abe 100644
+--- a/src/http/handler.js
++++ b/src/http/handler.js
+@@ -7,6 +7,7 @@ import { placeOrder } from '../orders/orders.js'
+ import { pageOrders } from '../orders/orders.js'
+ import { productPath } from '../catalog/products.js'
+ import { customerOrders } from '../orders/orders.js'
++import { renderCustomerPage } from './customer-page.js'
+ 
+ const TITLES = { 400: 'Bad Request', 404: 'Not Found', 405: 'Method Not Allowed', 409: 'Conflict', 412: 'Precondition Failed', 428: 'Precondition Required', 422: 'Unprocessable Entity', 403: 'Forbidden', 500: 'Internal Server Error' }
+ const problem = (status, slug, detail, headers = {}) => ({
+@@ -101,6 +102,14 @@ export function createHandler(catalog) {
+         const list = customerOrders(customer)
+         return list.length ? { status: 200, body: { customer, orders: list } } : { status: 404, body: { error: `no orders for ${customer}` } }
+       }
++      const page = /^\/ui\/customers\/([^/]+)$/.exec(url.pathname)
++      if (page) {
++        if (method !== 'GET') return { status: 405, headers: { allow: 'GET' }, body: { error: 'use GET' } }
++        const customer = decodeURIComponent(page[1])
++        const list = customerOrders(customer)
++        const answer = list.length ? { status: 200, body: { customer, orders: list } } : { status: 404, body: { error: `no orders for ${customer}` } }
++        return { status: answer.status, headers: { 'content-type': 'text/html; charset=utf-8' }, body: renderCustomerPage(customer, answer, catalog) }
++      }
+       if (method === 'GET' && path === '/products') return { status: 200, body: catalog.list() }
+       if (method === 'GET' && path.startsWith('/products/')) {
+         const product = catalog.get(decodeURIComponent(path.slice('/products/'.length)))
+diff --git a/src/server.js b/src/server.js
+index 8a9e28d..b283cba 100644
+--- a/src/server.js
++++ b/src/server.js
+@@ -23,7 +23,7 @@ const server = http.createServer((req, res) => {
+     try { body = data ? JSON.parse(data) : {} } catch { body = null }
+     const r = body === null ? { status: 400, body: { error: 'invalid JSON' } } : await handle({ method: req.method, path: req.url, body, headers: req.headers })
+     res.writeHead(r.status, { 'content-type': 'application/json', ...r.headers })
+-    res.end(r.body === undefined ? undefined : JSON.stringify(r.body))
++    res.end(r.body === undefined ? undefined : typeof r.body === 'string' ? r.body : JSON.stringify(r.body))
+   })
+ })
+ server.listen(Number(process.env.PORT ?? 3000), () => console.log(`listening on ${server.address().port}`))
+diff --git a/test/customer-page.test.js b/test/customer-page.test.js
+new file mode 100644
+index 0000000..fef9fea
+--- /dev/null
++++ b/test/customer-page.test.js
+@@ -0,0 +1,26 @@
++import { test } from 'node:test'
++import assert from 'node:assert/strict'
++import { Catalog } from '../src/catalog/products.js'
++import { createHandler } from '../src/http/handler.js'
++import { loadOrders } from '../src/orders/orders.js'
++
++const page = name => createHandler(new Catalog())({ method: 'GET', path: `/ui/customers/${encodeURIComponent(name)}` })
++
++test('B21 the page has one row per order with its id, status, date and total', () => {
++  loadOrders([
++    { id: 'ORD-0001', customer: 'ada', status: 'paid', version: 1, lines: [{ sku: 'TEA-001', qty: 2 }], payableCents: 450, placedAt: '2026-01-01T10:00:00.000Z' },
++    { id: 'ORD-0002', customer: 'ada', status: 'shipped', version: 1, lines: [{ sku: 'MUG-002', qty: 3 }], payableCents: 4650, placedAt: '2026-01-03T10:00:00.000Z' },
++  ])
++  const r = page('ada')
++  assert.equal(r.status, 200)
++  assert.match(r.headers['content-type'], /text\/html/)
++  assert.equal(r.body.split('<tr>').length - 1, 3, 'a header row and two order rows')
++  for (const text of ['ORD-0001', 'ORD-0002', 'paid', 'shipped', '2026-01-03', '4.50', '46.50']) assert.ok(r.body.includes(text), text)
++})
++
++test('B21 a name with markup is escaped', () => {
++  loadOrders([{ id: 'ORD-0001', customer: 'a<b>&c', status: 'paid', version: 1, lines: [{ sku: 'TEA-001', qty: 1 }], payableCents: 450, placedAt: '2026-01-01T10:00:00.000Z' }])
++  const r = page('a<b>&c')
++  assert.ok(r.body.includes('a&lt;b&gt;&amp;c'))
++  assert.ok(!r.body.includes('<b>'))
++})

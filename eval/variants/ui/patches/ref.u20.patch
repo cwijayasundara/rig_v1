@@ -1,0 +1,105 @@
+diff --git a/api/openapi.yaml b/api/openapi.yaml
+index fec16be..ddb32e7 100644
+--- a/api/openapi.yaml
++++ b/api/openapi.yaml
+@@ -128,6 +128,21 @@
+           }
+         }
+       }
++    },
++    "/customers/{name}/orders": {
++      "get": {
++        "responses": {
++          "200": {
++            "description": "the customer's orders, newest first"
++          },
++          "404": {
++            "description": "the customer has no orders"
++          },
++          "405": {
++            "description": "method not allowed"
++          }
++        }
++      }
+     }
+   }
+ }
+\ No newline at end of file
+diff --git a/src/http/handler.js b/src/http/handler.js
+index 475f736..23e971a 100644
+--- a/src/http/handler.js
++++ b/src/http/handler.js
+@@ -6,6 +6,7 @@ import { checkout, listOrders, getOrder, cancelOrder, refundOrder } from '../ord
+ import { placeOrder } from '../orders/orders.js'
+ import { pageOrders } from '../orders/orders.js'
+ import { productPath } from '../catalog/products.js'
++import { customerOrders } from '../orders/orders.js'
+ 
+ const TITLES = { 400: 'Bad Request', 404: 'Not Found', 405: 'Method Not Allowed', 409: 'Conflict', 412: 'Precondition Failed', 428: 'Precondition Required', 422: 'Unprocessable Entity', 403: 'Forbidden', 500: 'Internal Server Error' }
+ const problem = (status, slug, detail, headers = {}) => ({
+@@ -93,6 +94,13 @@ export function createHandler(catalog) {
+       return res instanceof Promise ? res.then(stamp) : stamp(res)
+     }
+     try {
++      const orders = /^\/customers\/([^/]+)\/orders$/.exec(url.pathname)
++      if (orders) {
++        if (method !== 'GET') return { status: 405, headers: { allow: 'GET' }, body: { error: 'use GET' } }
++        const customer = decodeURIComponent(orders[1])
++        const list = customerOrders(customer)
++        return list.length ? { status: 200, body: { customer, orders: list } } : { status: 404, body: { error: `no orders for ${customer}` } }
++      }
+       if (method === 'GET' && path === '/products') return { status: 200, body: catalog.list() }
+       if (method === 'GET' && path.startsWith('/products/')) {
+         const product = catalog.get(decodeURIComponent(path.slice('/products/'.length)))
+diff --git a/src/orders/orders.js b/src/orders/orders.js
+index 798e0df..d2f74f5 100644
+--- a/src/orders/orders.js
++++ b/src/orders/orders.js
+@@ -90,6 +90,13 @@ export function listOrders() {
+   return orders.map(o => structuredClone(o.order)).reverse()
+ }
+ 
++// The orders of one customer, newest first by placedAt; each line is { sku, qty }.
++export function customerOrders(customer) {
++  return orders.map(o => o.order).filter(o => o.customer === customer)
++    .sort((a, b) => b.placedAt.localeCompare(a.placedAt))
++    .map(o => ({ id: o.id, status: o.status, placedAt: o.placedAt, payableCents: o.payableCents, lines: o.lines.map(l => ({ sku: l.sku, qty: l.qty })) }))
++}
++
+ export function refundOrder(id) {
+   const entry = orders.find(o => o.order.id === id)
+   if (!entry) throw new Error(`unknown order: ${id}`)
+diff --git a/test/customer-orders.test.js b/test/customer-orders.test.js
+new file mode 100644
+index 0000000..6629ff0
+--- /dev/null
++++ b/test/customer-orders.test.js
+@@ -0,0 +1,28 @@
++import { test } from 'node:test'
++import assert from 'node:assert/strict'
++import { Catalog } from '../src/catalog/products.js'
++import { createHandler } from '../src/http/handler.js'
++import { loadOrders } from '../src/orders/orders.js'
++
++const order = (id, customer, placedAt, lines, payableCents = 450) => ({ id, customer, status: 'paid', version: 1, lines, payableCents, placedAt })
++const get = (handle, name) => handle({ method: 'GET', path: `/customers/${encodeURIComponent(name)}/orders` })
++
++test('B20 a customer\'s orders come newest first with their lines', () => {
++  loadOrders([
++    order('ORD-0001', 'ada', '2026-01-01T10:00:00.000Z', [{ sku: 'TEA-001', qty: 2 }]),
++    order('ORD-0002', 'bob', '2026-01-02T10:00:00.000Z', [{ sku: 'MUG-002', qty: 1 }]),
++    order('ORD-0003', 'ada', '2026-01-03T10:00:00.000Z', [{ sku: 'TEA-001', qty: 1 }, { sku: 'MUG-002', qty: 3 }], 4650),
++  ])
++  const r = get(createHandler(new Catalog()), 'ada')
++  assert.equal(r.status, 200)
++  assert.equal(r.body.customer, 'ada')
++  assert.deepEqual(r.body.orders.map(o => o.id), ['ORD-0003', 'ORD-0001'])
++  assert.deepEqual(r.body.orders[0], { id: 'ORD-0003', status: 'paid', placedAt: '2026-01-03T10:00:00.000Z', payableCents: 4650, lines: [{ sku: 'TEA-001', qty: 1 }, { sku: 'MUG-002', qty: 3 }] })
++})
++
++test('B20 a customer with no orders is 404 with an error', () => {
++  loadOrders([order('ORD-0001', 'ada', '2026-01-01T10:00:00.000Z', [{ sku: 'TEA-001', qty: 1 }])])
++  const r = get(createHandler(new Catalog()), 'nobody')
++  assert.equal(r.status, 404)
++  assert.equal(typeof r.body.error, 'string')
++})
