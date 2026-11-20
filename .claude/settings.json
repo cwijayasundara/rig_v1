@@ -3,6 +3,6 @@
   "model": "sonnet",
   "env": {
     "ENABLE_STOP_REVIEW": "0",
-    "CLAUDE_CODE_EXPERMENTAL_CODE_MODEL": "1"
+    "CLAUDE_CODE_EXPERIMENTAL_CODE_MODE": "1"
   }
 }

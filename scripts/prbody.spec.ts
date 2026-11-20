@@ -246,3 +246,10 @@ test('no agents means no ## Agents section and no banner', () => {
   const b = prBody({ intent, spec, plan, verify, outline: '', review: '', risk })
   assert.doesNotMatch(b, /## Agents|Draft: blocked/)
 })
+
+test('plan amendments after build are listed under their own heading, and none says none', () => {
+  const base = { intent, spec, plan, verify, outline: '', review: '', risk }
+  assert.match(prBody({ ...base, planChanges: ['- abc1234 plan(demo): spec and plan'] }), /## Plan changes after build\n\n- abc1234 plan\(demo\): spec and plan/)
+  assert.match(prBody({ ...base, planChanges: [] }), /## Plan changes after build\n\nnone/)
+  assert.doesNotMatch(prBody(base), /Plan changes after build/)
+})
