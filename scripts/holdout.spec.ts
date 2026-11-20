@@ -265,3 +265,33 @@ test('approving a chart writes .rig/product/.ignore with the holdout line, and .
   assert.equal(fs.readFileSync(path.join(repo, '.rig/product/.ignore'), 'utf8'), 'sprints/*/holdout/\n')
   assert.equal(fs.existsSync(path.join(repo, '.gitignore')) ? fs.readFileSync(path.join(repo, '.gitignore'), 'utf8') : null, gi)
 })
+
+const row = (id: number): string => `| TC-${id} | FR-1 | demo | B1 | holdout | - | Observed result | - |`
+
+test('pilot CI writes the by-ID report to the job summary, ids and counts only', () => {
+  pilotBase([1, 2].map(row).join('\n'), 'node --test {file}', { 'TC-1.test.js': PASS, 'TC-2.test.js': FAIL })
+  const summary = path.join(repo, 'summary.md')
+  const r = sdlc(repo, ['holdout', '--ci', '--base', 'main'], { env: { GITHUB_STEP_SUMMARY: summary } })
+  assert.equal(r.code, 1)
+  const text = fs.readFileSync(summary, 'utf8')
+  assert.match(text, /## Independent holdout evidence/)
+  assert.match(text, /required \(2\): TC-1, TC-2/)
+  assert.match(text, /failed \(1\): TC-2/)
+  assert.doesNotMatch(text, new RegExp(SECRET))
+})
+
+test('pilot CI: one required case whose toolchain is absent (exit 127) blocks while the others pass', () => {
+  pilotBase([1, 2].map(row).join('\n'), 'case {file} in *TC-2*) exit 127;; esac', { 'TC-1.test.js': PASS, 'TC-2.test.js': PASS })
+  const r = sdlc(repo, ['holdout', '--ci', '--base', 'main'])
+  assert.equal(r.code, 1)
+  assert.match(r.stdout, /passed \(1\): TC-1/)
+  assert.match(r.stdout, /missing \(1\): TC-2/)
+})
+
+test('pilot CI: a passing file that names no required case does not satisfy it', () => {
+  pilotBase(row(1), 'node --test {file}', { 'smoke.test.js': PASS })
+  const r = sdlc(repo, ['holdout', '--ci', '--base', 'main'])
+  assert.equal(r.code, 1)
+  assert.match(r.stdout, /required \(1\): TC-1/)
+  assert.match(r.stdout, /missing \(1\): TC-1/)
+})

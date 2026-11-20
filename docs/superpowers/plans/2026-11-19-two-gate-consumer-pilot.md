@@ -41,7 +41,7 @@ Enable the pilot chart binding with `"gates": { "plan": false, "requireChart": t
 **Start in** `scripts/holdout.ts`, `templates/rig-check.yml`, and the chart test-plan format. Today the holdout runner uses base-branch cases and can return a successful empty result. Consumer setup must install the application and its dependencies.
 
 - [x] At gate 1, associate each critical behaviour with a case ID, an observable result, and its verification method. Reuse frozen regression tests, consumer contracts, property checks, or application journeys as appropriate.
-- [ ] Keep the separate test writer, red run, and test freeze. In CI, run the approved cases against the candidate revision. Report required, executed, passed, failed, and missing cases by ID. A required case that fails, never runs, or lacks its toolchain must block.
+- [x] Keep the separate test writer, red run, and test freeze. In CI, run the approved cases against the candidate revision. Report required, executed, passed, failed, and missing cases by ID. A required case that fails, never runs, or lacks its toolchain must block.
 - [ ] Exercise one real failure mode. For a payment consumer, for example, send two concurrent retries with one idempotency key after a lost response and inspect the settled ledger. For a UI consumer, replay a critical journey and assert persisted state. Show the reviewer both the observed result and the regression that the check detects.
 - [ ] Demonstrate that a change deleting its own required evidence cannot turn the PR green. Confirm that work with no designated critical case accurately displays its evidence coverage.
 
