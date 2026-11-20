@@ -3,16 +3,20 @@
 // contract files those name, all under sprints/sprint-N/; the architecture and ADRs are shared and every sprint edits them.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, exists, read, sha, now, toPosix, frontmatter, skillRef, writeAtomic } from './core.ts'
+import { ROOT, SENSORS_PATH, exists, read, sha, now, toPosix, frontmatter, skillRef, writeAtomic, gitIn } from './core.ts'
 import { openQuestions, section } from './model.ts'
 import { changeDir, isShipped } from './lifecycle.ts'
 import { planText, type PlanRow } from './plan.ts'
 import { prdFormatProblems, prdLedger, conversionProblems } from './prdformat.ts'
 import { coverageProblems } from './prdcoverage.ts'
+import { parseRegistry } from './registry.ts'
+import { caseId } from './holdout.ts'
 import { PRODUCT, stripGenerated, carriedIds, ARCH_REL, archPath, prdPath, intentsDir, testplanDir, holdoutDir, approvalPath, approvalMdPath, sprintDir, sprintsOnDisk, intentRel, planPath, implPlanPath, sprintRel, ledgerPath, coveragePath, waiversPath, reviewPath, sourcePath, conversionPath, conversionReviewPath, writeProductIgnore } from './product.ts'
-import { designIntents, sharedScopeProblems, architectureProblems, implementationPlanProblems, accessProblems, parseAccess, parseIntent, parseCases, parkedDecisions, prdIds, traceReport, ledgerProblems, parseLedger, parentOf, parseReview, openFindings, type ReviewFinding, type ChartWaiver, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
+import { designIntents, sharedScopeProblems, architectureProblems, implementationPlanProblems, accessProblems, parseAccess, parseIntent, parseCases, requiredHoldouts, parkedDecisions, prdIds, traceReport, ledgerProblems, parseLedger, parentOf, parseReview, openFindings, type ReviewFinding, type ChartWaiver, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
 
 const SHARED_DIRS = ['adr'].map(d => `${toPosix(path.relative(ROOT, path.join(PRODUCT, d)))}/`)
+// The `by` of a seal the agent wrote: the chart PR's independent review is the decision, not a person at the terminal.
+export const PR_SEAL = 'chart PR review'
 export const CHART_RE = /^chart-(\d{1,4})$/
 type ChartFile = { path: string; sha: string }
 type ChartState = 'approved' | 'stale' | 'missing'
@@ -27,7 +31,42 @@ function walk(dir: string): string[] {
   if (!exists(dir)) return []
   return fs.readdirSync(dir, { withFileTypes: true }).filter(e => !local(e.name)).flatMap(e => (e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]))
 }
-const rel = (abs: string[]): string[] => [...new Set(abs.filter(f => exists(f)).map(f => toPosix(path.relative(ROOT, f))))].sort()
+const relative = (file: string): string => toPosix(path.relative(ROOT, file))
+type ChartTree = { exists: (file: string) => boolean; read: (file: string) => string; walk: (dir: string) => string[]; list: (dir: string) => string[]; sprints: () => number[] }
+const disk: ChartTree = { exists, read, walk, list: dir => exists(dir) ? fs.readdirSync(dir).map(f => path.join(dir, f)) : [], sprints: sprintsOnDisk }
+
+// Recompute the chart from committed blobs, without checking out files or running hooks.
+export function chartTreeAt(ref: string): ChartTree | null {
+  const raw = gitIn(ROOT, ['ls-tree', '-r', '-z', ref], false)
+  if (raw === null) return null
+  const blobs = new Map<string, string>()
+  for (const entry of raw.split('\0')) {
+    const m = /^100(?:644|755) blob ([0-9a-f]+)\t([\s\S]+)$/.exec(entry)
+    if (m?.[1] && m[2]) blobs.set(m[2], m[1])
+  }
+  const under = (dir: string): string[] => {
+    const rel = relative(dir)
+    const prefix = rel ? rel + '/' : ''
+    return [...blobs.keys()].filter(f => f.startsWith(prefix)).map(f => f.slice(prefix.length))
+  }
+  return {
+    exists: file => blobs.has(relative(file)),
+    read: file => {
+      const oid = blobs.get(relative(file))
+      if (!oid) return ''
+      const content = gitIn(ROOT, ['cat-file', 'blob', oid], false)
+      if (content === null) throw new Error(`could not read ${relative(file)} at ${ref}`)
+      return content.replace(/\r\n/g, '\n')
+    },
+    walk: dir => under(dir).filter(f => f.split('/').every(name => !local(name))).map(f => path.join(dir, f)),
+    list: dir => under(dir).filter(f => !f.includes('/')).map(f => path.join(dir, f)),
+    sprints: () => [...new Set([...blobs.keys()].flatMap(f => {
+      const m = /^\.rig\/product\/sprints\/sprint-(\d{1,4})\//.exec(f)
+      return m ? [Number(m[1])] : []
+    }))].sort((a, b) => a - b),
+  }
+}
+const rel = (abs: string[], tree: ChartTree): string[] => [...new Set(abs.filter(tree.exists).map(relative))].sort()
 
 // The folder an intent sits in is its sprint; `declared` is what its frontmatter says, and a difference is a finding.
 type Charted = Omit<Intent, 'sprint'> & { sprint: number; declared: number | null; file: string }
@@ -57,39 +96,44 @@ export const intentOf = (slug: string): Intent | null => allIntents().find(i => 
 // The sprint's design doc. `design:` in architecture.md frontmatter names the newest one (a repo-relative posix path, or `none`, or the template's
 // `<path or none>` prompt left in); an older sprint's is the `<date>-sprint-<N>-design.md` beside it, so charting sprint 2 leaves sprint 1's design,
 // and its approval, alone. The raw string comes back for a path outside the repo, so the design-missing rule can name it.
-export function designDocOf(n: number): string | null {
+export function designDocOf(n: number, tree = disk): string | null {
   const arch = archPath
-  const d = exists(arch) ? frontmatter(read(arch)).data.design?.trim() : undefined
+  const d = tree.exists(arch) ? frontmatter(tree.read(arch)).data.design?.trim() : undefined
   if (!d || d === 'none' || d.startsWith('<')) return null
   if (escapes(d)) return d
   const named = path.join(ROOT, path.dirname(d))
-  const mine = exists(named) ? fs.readdirSync(named).filter(f => f.endsWith(`-sprint-${n}-design.md`)).sort().at(-1) : undefined
+  const mine = tree.list(named).filter(f => f.endsWith(`-sprint-${n}-design.md`)).sort().at(-1)
   const of = /-sprint-(\d+)-design\.md$/.exec(d)?.[1]
   if (!mine && of !== undefined && Number(of) !== n) return null // the newest design belongs to another sprint
-  return toPosix(path.relative(ROOT, mine ? path.join(named, mine) : path.join(ROOT, d)))
+  return relative(mine ?? path.join(ROOT, d))
 }
 // This sprint's ADRs: the files under adr/ whose frontmatter says `sprint: N` (quotes and brackets ignored).
 export const adrFilesOf = (n: number): string[] => walk(path.join(PRODUCT, 'adr')).filter(f => f.endsWith('.md') && String(frontmatter(read(f)).data.sprint ?? '').replace(/[\s\[\]"']/g, '') === String(n))
-export const designFile = (n: number): string[] => { const d = designDocOf(n); return d && !escapes(d) ? [path.join(ROOT, d)] : [] }
+export const designFile = (n: number, tree = disk): string[] => { const d = designDocOf(n, tree); return d && !escapes(d) ? [path.join(ROOT, d)] : [] }
 
 // The generated page is hashed only for an approval that lists it (older approvals did not) or one being written.
-const pageOwned = (n: number): boolean => { const row = readRow(n); return !row || row.files.some(f => f.path === toPosix(path.relative(ROOT, approvalMdPath(n)))) }
-function ownFiles(n: number): string[] {
-  const own = intentsOf(n)
-  return rel([prdPath(n), ...(pageOwned(n) ? [approvalMdPath(n)] : []), sourcePath(n), conversionPath(n), coveragePath(n), ledgerPath(n), waiversPath(n), ...designFile(n), implPlanPath(n), ...walk(testplanDir(n)), ...walk(holdoutDir(n)), ...own.map(i => i.file), ...own.flatMap(i => [...i.contractFiles, ...i.exampleFiles]).filter(f => !escapes(f)).map(f => path.join(ROOT, f))])
+const pageOwned = (n: number, tree: ChartTree): boolean => { const row = readRow(n, tree); return !row || row.files.some(f => f.path === relative(approvalMdPath(n))) }
+function ownFiles(n: number, tree: ChartTree): string[] {
+  const dir = intentsDir(n)
+  const intents = tree.list(dir).filter(f => f.endsWith('.md') && !local(path.basename(f)))
+  const references = intents.flatMap(f => { const i = parseIntent(path.basename(f, '.md'), tree.read(f)); return [...i.contractFiles, ...i.exampleFiles] })
+  return rel([prdPath(n), ...(pageOwned(n, tree) ? [approvalMdPath(n)] : []), sourcePath(n), conversionPath(n), coveragePath(n), ledgerPath(n), waiversPath(n), ...designFile(n, tree), implPlanPath(n), ...tree.walk(testplanDir(n)), ...tree.walk(holdoutDir(n)), ...intents, ...references.filter(f => !escapes(f)).map(f => path.join(ROOT, f))], tree)
 }
-const sharedFiles = (): string[] => rel([archPath, ...walk(path.join(PRODUCT, 'adr')).filter(f => f.endsWith('.md'))])
-export const chartFiles = (n: number): string[] => [...new Set([...ownFiles(n), ...sharedFiles()])].sort()
+const sharedFiles = (tree: ChartTree): string[] => rel([archPath, ...tree.walk(path.join(PRODUCT, 'adr')).filter(f => f.endsWith('.md'))], tree)
+export const chartFiles = (n: number, tree = disk): string[] => [...new Set([...ownFiles(n, tree), ...sharedFiles(tree)])].sort()
 // An intent's `owner:` line is left out of its hash: who builds an intent is decided after the chart is approved, and changing it
 // is not a change to what was approved. The same goes for the sections `sdlc pr` generates (carried items, additions).
 const INTENT_FILE = /^\.rig\/product\/sprints\/sprint-\d{1,4}\/intents\/[^/]+\.md$/
-const hashed = (p: string): string => { const t = read(path.join(ROOT, p)); return INTENT_FILE.test(p) ? stripGenerated(t).replace(/^owner:[^\n]*\n/m, '') : t }
-const manifest = (paths: string[]): ChartFile[] => paths.map(p => ({ path: p, sha: sha(hashed(p)) }))
-export const chartDigest = (n: number): string => sha(manifest(chartFiles(n)).map(f => `${f.path}\n${f.sha}\n`).join(''))
+const manifest = (paths: string[], tree = disk): ChartFile[] => paths.map(p => {
+  const text = tree.read(path.join(ROOT, p))
+  return { path: p, sha: sha(INTENT_FILE.test(p) ? stripGenerated(text).replace(/^owner:[^\n]*\n/m, '') : text) }
+})
+const manifestDigest = (files: ChartFile[]): string => sha(files.map(f => `${f.path}\n${f.sha}\n`).join(''))
+export const chartDigest = (n: number): string => manifestDigest(manifest(chartFiles(n)))
 
-function readRow(n: number): Row | null {
+function readRow(n: number, tree = disk): Row | null {
   try {
-    const v = JSON.parse(read(approvalPath(n))) as Partial<Row>
+    const v = JSON.parse(tree.read(approvalPath(n))) as Partial<Row>
     return typeof v.digest === 'string' && Array.isArray(v.files) && v.files.every(f => typeof f?.path === 'string' && typeof f?.sha === 'string') ? (v as Row) : null
   } catch { return null }
 }
@@ -111,8 +155,6 @@ export function writeChartApproval(n: number, by: string, answers: ApprovalAnswe
   fs.mkdirSync(sprintDir(n), { recursive: true }); writeProductIgnore()
   writeAtomic(approvalPath(n), JSON.stringify(row, null, 2) + '\n')
 }
-const approvedSprints = (): number[] => sprintsOnDisk().filter(n => exists(approvalPath(n)))
-
 // The paths of `current` that differ from what `row` recorded (kept by `keep`), plus recorded paths now gone.
 function drift(row: Row, current: ChartFile[], keep: (p: string) => boolean): string[] {
   const before = new Map(row.files.filter(f => keep(f.path)).map(f => [f.path, f.sha]))
@@ -121,18 +163,20 @@ function drift(row: Row, current: ChartFile[], keep: (p: string) => boolean): st
 // Own files must match this sprint's approval. Shared files must match it too, or match the approval of a later sprint whose
 // own files still match its approval: charting sprint N+1 edits the architecture and test plan, and once a person approves
 // chart-(N+1) the unstarted intents of sprint N stay startable.
-export function chartState(n: number): { state: ChartState; changed: string[] } {
-  const row = readRow(n)
-  if (!row) return { state: 'missing', changed: chartFiles(n) }
-  const own = drift(row, manifest(ownFiles(n)), p => !isShared(p))
-  const sharedNow = manifest(sharedFiles())
+export function chartState(n: number, tree = disk): { state: ChartState; changed: string[]; digest?: string } {
+  const row = readRow(n, tree)
+  if (!row) return { state: 'missing', changed: chartFiles(n, tree) }
+  const validSeal = (r: Row): boolean => tree === disk || r.digest === manifestDigest(r.files)
+  if (!validSeal(row)) return { state: 'stale', changed: [relative(approvalPath(n))] }
+  const own = drift(row, manifest(ownFiles(n, tree), tree), p => !isShared(p))
+  const sharedNow = manifest(sharedFiles(tree), tree)
   const sharedBy = (m: number): boolean => {
-    const r = readRow(m)
-    return Boolean(r) && drift(r as Row, sharedNow, isShared).length === 0 && (m === n || drift(r as Row, manifest(ownFiles(m)), p => !isShared(p)).length === 0)
+    const r = m === n ? row : readRow(m, tree)
+    return Boolean(r && validSeal(r) && drift(r, sharedNow, isShared).length === 0 && (m === n || drift(r, manifest(ownFiles(m, tree), tree), p => !isShared(p)).length === 0))
   }
-  const sharedOk = sharedBy(n) || approvedSprints().some(m => m > n && sharedBy(m))
+  const sharedOk = sharedBy(n) || tree.sprints().some(m => m > n && sharedBy(m))
   const changed = [...own, ...(sharedOk ? [] : drift(row, sharedNow, isShared))].sort()
-  return { state: changed.length ? 'stale' : 'approved', changed }
+  return changed.length ? { state: 'stale', changed } : { state: 'approved', changed, digest: row.digest }
 }
 
 // The trace rules over the files, plus what only the files can say: unresolved concerns and the architecture's open questions.
@@ -143,6 +187,20 @@ export function chartFindings(n: number, withCases: boolean): ChartFinding[] {
     prd: read(prdPath(n)), intents: intentsOf(n), others: allIntents().filter(i => i.sprint !== n), repoExists: p => exists(path.join(ROOT, p)), cases,
     exists: p => exists(path.join(testplan, p)),
   })
+  if (cases) {
+    const { gates, holdout } = parseRegistry(read(SENSORS_PATH)).registry
+    if (!gates.plan && gates.requireChart) {
+      for (const intent of intentsOf(n).filter(i => !i.scope.length)) found.push({ rule: 'chart-scope', severity: 'block', where: intent.slug, message: `${intent.slug} needs allowed paths in scope: before approval` })
+      const required = requiredHoldouts(cases)
+      const files = walk(holdoutDir(n)).filter(f => { const stat = fs.lstatSync(f); return stat.isFile() && stat.size > 0 })
+      const available = new Set(files.map(caseId))
+      if (required.length && !holdout) found.push({ rule: 'holdout-command', severity: 'block', where: 'testplan', message: 'configure the holdout command with {file} in .rig/sensors.json' })
+      for (const c of required) {
+        if (!c.expected || c.expected === '-') found.push({ rule: 'holdout-expected', severity: 'block', where: c.id, message: `${c.id} needs an observable result in the Expected column` })
+        if (!available.has(c.id)) found.push({ rule: 'holdout-missing', severity: 'block', where: c.id, message: `${c.id} has no non-empty holdout file under ${sprintRel(n)}/holdout` })
+      }
+    }
+  }
   // A sprint approved before the ledger existed is not made to grow one; any sprint never approved is.
   const prd = read(prdPath(n))
   const format = prdFormatProblems(prd)

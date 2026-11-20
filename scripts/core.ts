@@ -76,9 +76,10 @@ export function fail(message: string, code = 1): never {
 }
 
 // A diff larger than the default 1 MB buffer must not turn into "no changes": allow 256 MB.
-export function gitIn(cwd: string, args: string[]): string | null {
+export function gitIn(cwd: string, args: string[], trim = true): string | null {
   try {
-    return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 256 * 1024 * 1024, timeout: 120_000 }).trim()
+    const text = execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 256 * 1024 * 1024, timeout: 120_000 })
+    return trim ? text.trim() : text
   } catch {
     return null
   }

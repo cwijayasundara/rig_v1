@@ -136,3 +136,36 @@ test('at CI the scope comes from the base only: a head-only intent scopes nothin
   assert.equal(at('ci'), null, 'not on the base: no scope from the working tree at CI')
   assert.deepEqual(at('ship').scope, ['src/cart/**'], 'ship keeps the working-tree fallback')
 })
+
+test('CI scope checks actual paths omitted from the plan, including both ends of a binary rename and a deletion', () => {
+  const repo = scoped('[src/cart/**]')
+  gitIn(repo, 'checkout', '-q', 'main')
+  const original = 'src/orders/items.bin'
+  const removed = 'src/orders/legacy.bin'
+  for (const name of [original, removed]) {
+    fs.mkdirSync(path.dirname(path.join(repo, name)), { recursive: true })
+    fs.writeFileSync(path.join(repo, name), Buffer.alloc(4096, 0))
+  }
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], gates: { plan: false } }))
+  gitIn(repo, 'add', 'src', '.rig/sensors.json')
+  gitIn(repo, 'commit', '-qm', 'base assets')
+  gitIn(repo, 'checkout', '-q', 'work')
+  gitIn(repo, 'merge', '--ff-only', 'main')
+  write(repo, '.rig/changes/cart-add/plan.md', '# Plan\n\n## Files\n- src/cart/cart.js\n')
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', 'plan')
+  fs.mkdirSync(path.join(repo, 'src/pay'))
+  const renamed = 'src/pay/items.bin'
+  gitIn(repo, 'mv', original, renamed)
+  const content = Buffer.alloc(4096)
+  content[0] = 1
+  fs.writeFileSync(path.join(repo, renamed), content)
+  gitIn(repo, 'rm', '-q', removed)
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', 'move and remove assets')
+  assert.match(gitIn(repo, 'diff', '--name-status', 'main', 'HEAD'), /R\d+\tsrc\/orders\/items\.bin\tsrc\/pay\/items\.bin/)
+  const result = sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main', '--slug', 'cart-add', '--json'])
+  assert.deepEqual(findings(result).map(f => [f.file, f.severity]).sort(), [
+    [original, 'block'], [removed, 'block'], [renamed, 'block'],
+  ])
+})

@@ -43,6 +43,7 @@ type CheckInput = {
   ratchetWrite?: RatchetWrite // tighten .rig/ratchets.json: never at CI or against another ref's config
   after?: (file: string) => string // the text being judged; defaults to the working tree (commit passes the index)
   gates?: { plan: boolean } // the plan gate; absent: on
+  chartRef?: string
   contracts?: boolean // run the contract commands (validate, then run); absent: at ship and ci only
   drifted?: boolean // the diff is not the working tree (a push of other commits), so {changed} sensors, run on disk, skip
 }
@@ -231,13 +232,14 @@ function shipVerdicts(slug: string, config: Registry, diffs: FileDiff[], base: s
 const onDisk = (f: string): string => read(path.join(ROOT, f))
 
 // The built-in diff sensors every point runs, edit time included; harness-tamper is added by the callers that judge a turn or more.
-function builtinFindings(diffs: FileDiff[], config: Registry, rules: Rule[], lineCounts: Record<string, number>, point: Parameters<typeof size>[3], slugs: string[], touched: string[], after: (f: string) => string, base: string | null, planGate = true): Finding[] {
+function builtinFindings(diffs: FileDiff[], config: Registry, rules: Rule[], lineCounts: Record<string, number>, point: Parameters<typeof size>[3], slugs: string[], touched: string[], after: (f: string) => string, base: string | null, planGate = true, chartRef?: string): Finding[] {
   // At ship and CI the scope comes from the base branch (the PR cannot edit it); a slug with no intent there falls back to the working tree.
-  const scopeOf = (slug: string): ReturnType<typeof intentScope> => scopeAt(slug, base, point)
+  const scopeOf = (slug: string): ReturnType<typeof intentScope> => scopeAt(slug, chartRef ?? base, point)
+  const scope = scopeFindings(diffs, slugs, config.paths, point, scopeOf)
   const pattern = withoutFixtures(diffs, config)
   return [
     ...testTamper(pattern, config), ...suppressions(pattern, config), ...layering(pattern, config), ...size(diffs, config, lineCounts, point),
-    ...secretsInDiff(pattern), ...rulesSensor(pattern, rules), ...frozenFindings(slugs, touched, after), ...unapprovedBuild(slugs, touched, planGate && (point === 'edit' || point === 'stop')), ...scopeFindings(diffs, slugs, config.paths, point, scopeOf),
+    ...secretsInDiff(pattern), ...rulesSensor(pattern, rules), ...frozenFindings(slugs, touched, after), ...unapprovedBuild(slugs, touched, planGate && (point === 'edit' || point === 'stop')), ...(chartRef ? scope.map(f => ({ ...f, sensor: 'plan-check' })) : scope),
   ]
 }
 
@@ -247,14 +249,14 @@ export function runChecks(i: CheckInput): CheckResult {
   const point = i.point === 'commit' ? 'stop' : i.point
   const after = i.after ?? onDisk
   const findings: Finding[] = [
-    ...builtinFindings(diffs, config, i.rules, fileLines(diffs.filter(d => d.status !== 'D').map(d => d.file), after), point, i.slugs, diffs.flatMap(d => d.from ? [d.file, d.from] : [d.file]), after, i.base, i.gates?.plan ?? true),
+    ...builtinFindings(diffs, config, i.rules, fileLines(diffs.filter(d => d.status !== 'D').map(d => d.file), after), point, i.slugs, diffs.flatMap(d => d.from ? [d.file, d.from] : [d.file]), after, i.base, i.gates?.plan ?? true, i.chartRef),
     ...harnessTamper(diffs, { point, toolEdited: i.toolEdited, before: i.before, after }), ...(i.point === 'ci' && i.gates?.plan === false ? untrackedFindings(diffs, config.paths) : []),
   ]
   // A diff whose plan the person approved is big by design: the diff-size limit warns instead of blocking.
   if (i.slugs.length && i.slugs.every(s => approvalState(s) === 'approved')) {
     for (const f of findings) if (f.sensor === 'size' && !f.file) f.severity = 'warn'
   }
-  for (const slug of i.slugs) findings.push(...freezeFindings(slug, point, i.base, config), ...(i.point === 'ci' && i.gates?.plan === false ? planCheck(slug, { base: i.base ?? null, ci: true }) : []), ...(i.point === 'ship' || i.point === 'ci' ? proofFindings(slug, config, i.point === 'ci' ? i.base : null) : []))
+  for (const slug of i.slugs) findings.push(...freezeFindings(slug, point, i.base, config), ...(i.point === 'ci' && i.gates?.plan === false ? planCheck(slug, { base: i.base ?? null, ci: true, chartRef: i.chartRef }) : []), ...(i.point === 'ship' || i.point === 'ci' ? proofFindings(slug, config, i.point === 'ci' ? i.base : null) : []))
   if (point !== 'stop') for (const slug of i.slugs) findings.push(...shipVerdicts(slug, config, diffs, i.base, i.budgetMs, i.gates?.plan ?? true))
   // Contracts (spec §6): ship and CI always, commit always, a turn only when it reaches a contract. Validate gates run.
   const c = config.contracts
@@ -464,6 +466,7 @@ export function cmdCheck(args: Args): void {
   const enforce = config.risk.enforce || config.humanApproval.everyTier // everyTier is never inert: it implies enforcement
   const enforced = Boolean(risk && enforce && !queued)
   const live = baseRef ?? base ?? 'HEAD' // the base tip, not the merge base: a rung lowered or a revert made since the PR branched counts
+  const chartRef = at === 'ci' && !config.gates.plan && config.gates.requireChart ? live : undefined
   const refusal = enforced && !humanRows.length && risk?.tier === 0 ? tierZeroRefusal(live, config, whoIs()) : null // '': tier 0 merges without a person
   // The merge queue: approvals were judged on the PR, but the unattended path depends on the rung and the breaker, which move. Re-check it here.
   const queueWho = queued && risk && enforce ? whoIs() : null
@@ -475,7 +478,7 @@ export function cmdCheck(args: Args): void {
     if (!person) queueRefusal = risk.tier === 0 ? tierZeroRefusal(live, config, queueWho) : `tier ${risk.tier} and no approval of its head commit`
   }
   const why = humanRows.length || (enforced && refusal !== '') ? independentApproval(config.humanApproval.selfApprovers, Boolean((git(['diff', '--name-only', base ?? 'HEAD', 'HEAD', '--', '.github/workflows']) ?? '').trim()), enforce) : null // before runChecks: the PR's test commands could rewrite the event file or shadow gh
-  const result = runChecks({ point: at, diffs, config, rules, slugs, commands: replaying ? 'none' : at === 'stop' ? 'fast' : 'full', budgetMs, before, after, base, ratchet: !optString(args, 'config-from') && at !== 'commit', ratchetWrite: optString(args, 'config-from') ? null : at === 'commit' ? 'stage' : 'write', contracts: at === 'commit' ? !replaying : undefined, gates: config.gates })
+  const result = runChecks({ point: at, diffs, config, rules, slugs, commands: replaying ? 'none' : at === 'stop' ? 'fast' : 'full', budgetMs, before, after, base, ratchet: !optString(args, 'config-from') && at !== 'commit', ratchetWrite: optString(args, 'config-from') ? null : at === 'commit' ? 'stage' : 'write', contracts: at === 'commit' ? !replaying : undefined, gates: config.gates, chartRef })
   // At commit, like at push, a sensor out of time warns: CI runs it again, and a hanging tool must not hold git commit hostage.
   if (at === 'commit') for (const f of result.findings) if (f.outOfTime) f.severity = 'warn'
   result.blocks = result.findings.filter(f => f.severity === 'block')

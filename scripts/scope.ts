@@ -35,13 +35,11 @@ export function scopeFindings(diffs: FileDiff[], slugs: string[], paths: Paths, 
   if (!scoped.length) return []
   const allowed = expand([...new Set(scoped.flatMap(s => [...s.scope, ...s.touches]))]).concat(scoped.map(s => `.rig/changes/${s.slug}/**`))
   const outside = (f: string): boolean => !f.startsWith('.rig/') && !ROOT_CONFIG.test(f) && !matchesAny(f, allowed) && !matchesAny(f, paths.ignore) && !isTest(f, paths) && !matchesAny(f, paths.testSupport)
-  // A rename is judged at both ends: moving a file out of scope, or in from outside it, is a change outside the scope either way.
-  return diffs.filter(d => !d.binary && [d.file, ...(d.from ? [d.from] : [])].some(outside)).map(d => {
-    const file = [d.file, d.from ?? ''].find(f => f && outside(f)) as string
-    return {
-      sensor: 'scope', severity: point === 'edit' || point === 'stop' ? 'warn' as const : 'block' as const, file,
-      message: `${file} is outside the scope of ${scoped.map(s => s.slug).join(', ')} (scope: ${scoped.flatMap(s => s.scope).join(', ')})`,
-      fix: 'put this change in its own intent, or name the path under `touches:` in the intent for deliberate cross-slice work (a person approves that change to the intent, on the base branch, first)',
-    }
-  })
+  // Scope is path-based. Binary changes and deleted files count, and renames touch both paths.
+  const touched = new Set(diffs.flatMap(d => d.from ? [d.file, d.from] : [d.file]))
+  return [...touched].filter(outside).map(file => ({
+    sensor: 'scope', severity: point === 'edit' || point === 'stop' ? 'warn' : 'block', file,
+    message: `${file} is outside the scope of ${scoped.map(s => s.slug).join(', ')} (scope: ${scoped.flatMap(s => s.scope).join(', ')})`,
+    fix: 'put this change in its own intent, or name the path under `touches:` in the intent for deliberate cross-slice work (a person approves that change to the intent, on the base branch, first)',
+  }))
 }

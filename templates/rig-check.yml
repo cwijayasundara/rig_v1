@@ -98,6 +98,7 @@ jobs:
         with:
           node-version: '22.18'
       - name: Load the checker and config from the base branch
+        id: load-checker
         env:
           BASE: ${{ github.base_ref || github.event.merge_group.base_ref }}
         run: |
@@ -130,7 +131,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node --disable-warning=ExperimentalWarning "$RUNNER_TEMP/sdlc/sdlc.ts" check --at ci --base "origin/${BASE#refs/heads/}" --config-from "origin/${BASE#refs/heads/}"
       - name: Hidden acceptance cases (holdout)
+        if: ${{ !cancelled() && steps.load-checker.outcome == 'success' }}
         # runs EVERY case file in the base branch (the PR picks none and cannot edit them) against this PR's tree; prints only counts and case ids.
+        # Run even when the approval check blocks, so the reviewer has independent evidence before approving.
         # This job has no project toolchain: the project's setup steps must precede this step (install its runtime, dependencies, build the binary the cases exercise).
         env:
           CLAUDE_PROJECT_DIR: ${{ github.workspace }}

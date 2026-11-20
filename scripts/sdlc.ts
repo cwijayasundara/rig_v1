@@ -46,7 +46,7 @@ import { cmdRisk, cmdWeight, cmdRouteCheck, cmdModels } from './risk.ts'
 import { cmdClaims } from './claims.ts'
 import { protect } from './protect.ts'; import { cmdAudit } from './audit.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'
-import { CHART_RE, conversionMapOf, intentOf, intentReady, chartFindings, chartState, writeChartApproval, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, intentSettled, nextChart, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, waiveChartFinding, changeRequirements, PRD_RE, isConverted, conversionRefusal } from './chart.ts'
+import { CHART_RE, conversionMapOf, intentOf, intentReady, chartFindings, chartState, writeChartApproval, PR_SEAL, chartDigest, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, intentSettled, nextChart, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, waiveChartFinding, changeRequirements, PRD_RE, isConverted, conversionRefusal } from './chart.ts'
 import { journey, journeyText } from './journey.ts'; import { cmdIntentRecord, cmdIntentProject, cmdIntentAdjudicate } from './intentmapio.ts'; import { cmdIntentRecheck } from './intentrecheck.ts'; import { cmdTestsFreeze } from './testfreeze.ts'
 import { TYPES, changeDir, newChange, setActive, activeSlug, isShipped, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
 
@@ -229,8 +229,7 @@ function approveTarget(): string {
 
 const needPrd = (n: number): void => { if (!exists(prdPath(n))) fail(`no PRD for sprint ${n}: write ${prdRel(n)} first`) }
 
-function approveChart(n: number, args: Args): void {
-  needPrd(n)
+function approveChart(n: number, args: Args, seal = false): void { needPrd(n) // seal: the agent writes the hashes; the chart PR's independent review is the one human decision
   const conversion = isConverted(n) ? conversionRefusal(n) : null
   if (conversion) fail(conversion)
   const block = chartFindings(n, true).filter(f => f.severity === 'block')
@@ -242,8 +241,8 @@ function approveChart(n: number, args: Args): void {
   if (open.length) fail(`chart-${n} has ${open.length} review finding(s) not confirmed fixed:\n${open.map(f => `  ${f.n}. ${f.text}${f.status === 'claimed' ? ' (marked fixed, never confirmed)' : ''}`).join('\n')}\nFix them and re-run the chart's confirm pass, or waive one with ${skillRef('waive')} chart-${n} <finding number> <reason>`)
   // The reviewer's Deferred list is for the person to decide; approval is where it is seen (shop_app 2026-10-27: a whitespace-sku question sat there undecided).
   const deferred = (/^#{2,3}[ \t]+Deferred\b[^\n]*\n([\s\S]*?)(?=^#{2,3}[ \t]|(?![\s\S]))/m.exec(read(reviewPath(n)))?.[1] ?? '').replace(/^\s*\n/, '').split(/\n(?=[-*]\s)/).filter(c => /^[-*]\s/.test(c)).filter(c => !/→\s*(?:fixed|waived|dropped|carried|taken)\b/i.test(c)).map(c => c.replace(/^[-*]\s+/, '').replace(/\s*\n\s*/g, ' ').trim()).filter(c => c && !/^(none|nothing|no (items?|deferred|findings?)|no .*\b(found|noted|recorded)\b)\.?$/i.test(c))
-  const by = ownerOrFail(args, 'approvals')
-  const answers = approvalGate(n, Boolean(args.opt.ask)); writeChartApproval(n, by, answers)
+  const by = seal ? PR_SEAL : ownerOrFail(args, 'approvals')
+  const answers = seal ? (writeApprovalPage(n), []) : approvalGate(n, Boolean(args.opt.ask)); writeChartApproval(n, by, answers)
   // A sensors.json with edits of its own is not swept into the approval commit: the person commits it.
   const sensorsDirty = (git(['status', '--porcelain', '--', '.rig/sensors.json']) ?? '') !== ''
   const reg = registerContracts((exists(intentsDir(n)) ? fs.readdirSync(intentsDir(n)) : []).flatMap(f => { const i = parseIntent(f, read(path.join(intentsDir(n), f))); return [...i.contractFiles, ...i.exampleFiles] }))
@@ -253,7 +252,7 @@ function approveChart(n: number, args: Args): void {
   const branch = git(['branch', '--show-current']) ?? ''
   const trunk = trunkName()
   const first = branch && !isTrunk(branch) ? `merge ${branch} into ${trunk} first, then start from ${trunk} with ` : 'engineers run `ready` to see which intents can start, then '
-  out(`${echoAnswers(answers)}${registered.length ? `registered ${registered.length} contract file(s) in .rig/sensors.json: ${registered.join(', ')}${sensorsDirty ? ' (sensors.json had uncommitted edits: commit it yourself)' : ''}\n` : ''}${deferred.length ? `${deferred.length} deferred review item(s) nobody has decided (chart-review.md ## Deferred); decide each before or during the build:\n${deferred.map(d => `  - ${d}`).join('\n')}\n` : ''}${reg.warning ? `warning: declared contract files were not registered (${reg.warning}); add them to contracts.files\n` : ''}${committed === null ? `warning: the approval is kept but git refused to commit it: commit it before building, with git add ${approvalRel(n)} ${sprintRel(n)}/plan.md ${ARCH_REL} .rig/product/adr && git commit -m "chore: approve chart-${n}"\n` : ''}approved chart-${n} by ${by}: ${chartFiles(n).length} file(s). Next: ${first}${skillRef('start')} ${sprintRel(n)}/intents/<slug>.md`)
+  out(`${seal ? `sealed chart-${n} at ${chartDigest(n).slice(0, 12)}, awaiting the independent review of the chart PR (its approval of the head commit is the decision)\n` : echoAnswers(answers)}${registered.length ? `registered ${registered.length} contract file(s) in .rig/sensors.json: ${registered.join(', ')}${sensorsDirty ? ' (sensors.json had uncommitted edits: commit it yourself)' : ''}\n` : ''}${deferred.length ? `${deferred.length} deferred review item(s) nobody has decided (chart-review.md ## Deferred); decide each before or during the build:\n${deferred.map(d => `  - ${d}`).join('\n')}\n` : ''}${reg.warning ? `warning: declared contract files were not registered (${reg.warning}); add them to contracts.files\n` : ''}${committed === null ? `warning: the approval is kept but git refused to commit it: commit it before building, with git add ${approvalRel(n)} ${sprintRel(n)}/plan.md ${ARCH_REL} .rig/product/adr && git commit -m "chore: approve chart-${n}"\n` : ''}${seal ? 'sealed' : 'approved'} chart-${n} by ${by}: ${chartFiles(n).length} file(s). Next: ${first}${skillRef('start')} ${sprintRel(n)}/intents/<slug>.md`)
 }
 
 const approvalRel = (n: number): string => `${sprintRel(n)}/approval.json`
@@ -275,9 +274,10 @@ function cmdChart(args: Args): void {
     const next = nextChart()
     return out(args.opt.json ? JSON.stringify(next) : `${next.sprint === null ? 'sprint: ask' : `sprint ${next.sprint}`}${next.prd ? ` ${next.prd}` : ''} (${next.why})${next.candidates.length > 1 ? `\n${next.candidates.map(c => `  sprint ${c.sprint}: ${c.prd}`).join('\n')}` : ''}`)
   }
-  if ((sub !== 'check' && sub !== 'report' && sub !== 'plan' && sub !== 'summary') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: chart next [--json] | chart (check [--cases] [--json] | report | plan [--print] | summary) <sprint number>')
+  if ((sub !== 'check' && sub !== 'report' && sub !== 'plan' && sub !== 'summary' && sub !== 'seal') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: chart next [--json] | chart (check [--cases] [--json] | report | plan [--print] | summary | seal) <sprint number>')
   const n = Number(num)
   needPrd(n)
+  if (sub === 'seal') return approveChart(n, args, true) // no SDLC_HUMAN: the PR review decides
   if (sub === 'plan') return out(args.opt.print ? sprintPlan(n) : `wrote ${writePlan(n)}`)
   if (sub === 'report') return out(chartReport(n))
   if (sub === 'summary') return out(chartState(n).state === 'approved' ? approvalPage(n) : `wrote ${writeApprovalPage(n)}`) // an approved chart's page is hashed: print it, never rewrite it

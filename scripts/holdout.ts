@@ -10,6 +10,7 @@ import { holdoutDir, sprintRel } from './product.ts'
 import { parseRegistry } from './registry.ts'
 import { showAt } from './diffs.ts'
 import { shQuote } from './model.ts'
+import { parseCases, requiredHoldouts } from './chartcheck.ts'
 
 type HoldoutResult = { sprint: number | null; passed: number; total: number; failing: string[]; none: boolean; error?: string }
 export const hidden = (): string => `holdout cases are hidden from the builder; run ${skillRef('test')}`
@@ -28,30 +29,42 @@ export function sprintOf(slug: string, read_: (f: string) => string = f => read(
 const sha = (b: Buffer): string => crypto.createHash('sha256').update(b).digest('hex')
 const CI_VARS = ['GITHUB_STEP_SUMMARY', 'GITHUB_OUTPUT', 'GITHUB_ENV', 'GITHUB_PATH']
 type Case = { rel: string; data: Buffer }
+type CaseStatus = 'passed' | 'failed' | 'missing'
 // Each case runs alone from its own fresh temp dir holding only that file (read-only, sha256 checked just before the run, deleted after),
 // so code under test cannot blank or add files for a later case. Output is discarded and the CI output files are not in its env.
 // This is no isolation from the same uid: the code under test can still read its caller (see SECURITY.md).
-export function runCases(cases: Case[], cmd: string, before?: (file: string) => void): { passed: number; failing: string[] } {
+function caseOutcomes(cases: Case[], cmd: string, before?: (file: string) => void): { id: string; status: CaseStatus }[] {
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !CI_VARS.includes(k)))
-  const failing = cases.filter(c => {
-    if (!c.data.length) return true
+  return cases.map(c => {
+    const id = caseId(c.rel)
+    if (!cmd || !c.data.length) return { id, status: 'missing' }
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-holdout-')), f = path.join(dir, c.rel)
     try {
       fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, c.data); fs.chmodSync(f, 0o444)
       before?.(f)
       const now = fs.existsSync(f) ? fs.readFileSync(f) : null
-      return !now || sha(now) !== sha(c.data) || spawnSync(cmd.replaceAll('{file}', shQuote(f)), { shell: true, cwd: ROOT, env, stdio: 'ignore', timeout: 300_000 }).status !== 0
-    } catch { return true } finally { fs.rmSync(dir, { recursive: true, force: true }) }
-  }).map(c => caseId(c.rel))
+      if (!now || sha(now) !== sha(c.data)) return { id, status: 'missing' }
+      const r = spawnSync(cmd.replaceAll('{file}', shQuote(f)), { shell: true, cwd: ROOT, env, stdio: 'ignore', timeout: 300_000 })
+      if (r.status === 126 || r.status === 127 || (r.error && !r.pid)) return { id, status: 'missing' }
+      return { id, status: r.status === 0 ? 'passed' : 'failed' }
+    } catch { return { id, status: 'missing' } } finally { fs.rmSync(dir, { recursive: true, force: true }) }
+  })
+}
+
+export function runCases(cases: Case[], cmd: string, before?: (file: string) => void): { passed: number; failing: string[] } {
+  const failing = caseOutcomes(cases, cmd, before).filter(c => c.status !== 'passed').map(c => c.id)
   return { passed: cases.length - failing.length, failing }
 }
 
 const gitBuf = (args: string[]): Buffer | null => { try { return execFileSync('git', args, { cwd: ROOT, maxBuffer: 256 * 1024 * 1024, timeout: 120_000, stdio: ['ignore', 'pipe', 'ignore'] }) } catch { return null } }
 // At CI every case file comes from the base ref (a PR cannot edit them, nor choose which run) and runs against the PR tree; a git error fails.
-function baseCases(base: string): Case[] {
+function baseFiles(base: string): string[] {
   const list = gitBuf(['ls-tree', '-r', '--name-only', '-z', base, '--', '.rig/product/sprints'])
   if (list === null) fail(`holdout --ci: cannot read ${base} (git ls-tree failed)`)
-  return list.toString().split('\0').filter(n => touchesHoldout(n) && !path.basename(n).startsWith('.')).sort().map(n => {
+  return list.toString().split('\0').filter(Boolean)
+}
+function baseCases(base: string, files: string[]): Case[] {
+  return files.filter(n => touchesHoldout(n) && !path.basename(n).startsWith('.')).sort().map(n => {
     const data = gitBuf(['show', `${base}:${n}`])
     if (data === null) fail(`holdout --ci: cannot read ${n} at ${base}`)
     return { rel: n, data }
@@ -70,6 +83,31 @@ export function runHoldout(sprint: number, cmd: string, cases: Case[] = localCas
 export const holdoutLines = (r: HoldoutResult): string[] => r.none ? [`holdout: none for sprint ${r.sprint}`] : [`holdout: ${r.passed}/${r.total} passed`, ...(r.failing.length ? [`failing: ${r.failing.join(', ')}`] : []), ...(r.error ? [r.error] : [])]
 export const holdoutFix = (): string => `fix the code against the requirement the failing case id names in the test plan (cases.md), not to look for the test`
 
+function requiredCoverage(sprint: number, cmd: string, cases: Case[], required: string[]): { lines: string[]; pass: boolean } {
+  if (cmd) posixShell(cmd)
+  const outcomes = caseOutcomes(cases, cmd)
+  const ids = (status: CaseStatus): string[] => [...new Set(outcomes.filter(c => c.status === status).map(c => c.id))]
+  const passed = ids('passed'), failed = ids('failed')
+  const missing = [...new Set([...ids('missing'), ...required.filter(id => !outcomes.some(c => c.id === id))])]
+  const counts = { required, executed: [...new Set([...passed, ...failed])], passed, failed, missing }
+  return {
+    pass: !failed.length && !missing.length,
+    lines: [`holdout: sprint ${sprint}`, ...Object.entries(counts).map(([label, ids]) => `  ${label} (${ids.length}): ${ids.join(', ') || 'none'}`)],
+  }
+}
+
+function baseRequirements(base: string, files: string[]): Map<number, string[]> {
+  const plans = new Map<number, string[]>()
+  for (const name of files) {
+    const m = /^\.rig\/product\/sprints\/sprint-(\d{1,4})\/testplan\/cases\.md$/.exec(name)
+    if (!m) continue
+    const data = gitBuf(['show', `${base}:${name}`])
+    if (data === null) fail(`holdout --ci: cannot read ${name} at ${base}`)
+    plans.set(Number(m[1]), [...new Set(requiredHoldouts(parseCases(data.toString())).map(c => c.id))])
+  }
+  return plans
+}
+
 export function cmdHoldout(args: Args): void {
   const ci = args.opt.ci === true
   if (!ci) {
@@ -82,10 +120,22 @@ export function cmdHoldout(args: Args): void {
   }
   const base = optString(args, 'base') ?? fail('holdout --ci needs --base <ref>')
   const sensors = showAt(base, SENSORS_JSON)
-  const cmd = parseRegistry(sensors ?? '{}').registry.holdout
-  const cases = baseCases(base), sprints = [...new Set(cases.map(c => Number(/sprint-(\d+)\//.exec(c.rel)?.[1])))]
+  const { gates, holdout: cmd } = parseRegistry(sensors ?? '{}').registry
+  const files = baseFiles(base), cases = baseCases(base, files)
+  const bySprint = (n: number): Case[] => cases.filter(c => c.rel.startsWith(`${sprintRel(n)}/holdout/`))
+  const sprints = [...new Set(cases.map(c => Number(/sprint-(\d+)\//.exec(c.rel)?.[1])))]
+  if (!gates.plan && gates.requireChart) {
+    const plans = baseRequirements(base, files)
+    const numbers = [...new Set([...plans.keys(), ...sprints])].sort((a, b) => a - b)
+    const runs = numbers.map(n => requiredCoverage(n, cmd, bySprint(n), plans.get(n) ?? []))
+    const report = runs.length ? runs.flatMap(r => r.lines).join('\n') : `holdout: no required or executable cases in ${base}`
+    out(report)
+    if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, '## Independent holdout evidence\n\n' + report.split('\n').map(line => '    ' + line).join('\n') + '\n')
+    process.exitCode = runs.every(r => r.pass) ? 0 : 1
+    return
+  }
   if (!sprints.length) return out(`holdout: none in ${base}`)
-  const rs = sprints.map(n => runHoldout(n, cmd, cases.filter(c => c.rel.includes(`/sprint-${n}/`))))
+  const rs = sprints.map(n => runHoldout(n, cmd, bySprint(n)))
   out(rs.flatMap(holdoutLines).join('\n'))
   process.exitCode = rs.some(r => r.failing.length) ? 1 : 0
 }

@@ -5,7 +5,7 @@ import path from 'node:path'
 import { ROOT, CHANGES, WAIVERS, UNREQUESTABLE, waiverLive, readJson, exists, isTrunk, trunkName, read, readJsonl, out, fail, git, checkSlug, optString, ensureGitignore, dirtyFiles, isHarnessPath, skillRef, defaultBase, writeAtomic, type Args, type Waiver} from './core.ts'
 import { frozenFindings, frozenFor } from './contracts.ts'
 import { loadConfig } from './check.ts'
-import { planCheck, planChangesAfterBuild } from './plancheck.ts'; import { unproved } from './proof.ts'
+import { localPlanCheck, planChangesAfterBuild } from './plancheck.ts'; import { unproved } from './proof.ts'
 import { gh as ghRun, section, isTest } from './model.ts'
 import type { RunRow } from './runs.ts'
 import { treeStamp } from './stamp.ts'
@@ -64,7 +64,7 @@ export function cmdPr(args: Args): void {
   const blocked = agentRows(slug).find(a => a.status === 'BLOCKED' && !(verified?.pass && verified.at && a.at < verified.at))
   if (blocked && !draft) fail(`not shipping: ${blocked.agent} reported BLOCKED: ${blocked.note}. Open a draft with S pr ${slug} --draft "<why>" --message ..., or fix it and verify`)
   if (gates.plan && approvalState(slug) !== 'approved') fail(`not shipping: ${slug}'s plan is not approved (a person runs ${skillRef('approve')} ${slug})`)
-  const planBlocks = gates.plan ? [] : planCheck(slug, { base: defaultBase(), ci: false }).filter(f => f.severity === 'block')
+  const planBlocks = gates.plan ? [] : localPlanCheck(slug).filter(f => f.severity === 'block')
   if (planBlocks.length) fail(`not shipping: plan-check blocks ${slug}:\n${planBlocks.map(f => `  - ${f.message}`).join('\n')}`)
   if (!draft && !verifyFresh(slug, treeStamp())) fail(`not shipping: verify.json is missing, failing or from another tree; run ${skillRef('test')} ${slug}`)
   // Contract files can sit under .rig/, which the tree stamp leaves out: judge the freeze here, with the person's waivers.

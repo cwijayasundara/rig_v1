@@ -2,6 +2,7 @@
 import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { makeRepo, sdlc, write, hook, ARCH_OK, IMPL_OK } from './testkit.ts'
 
@@ -46,6 +47,18 @@ test('the hidden-case column is read from file names only: a holdout file is nev
   const text = summary()
   assert.ok(!text.includes(SECRET))
   assert.match(text, /\| TC-1 \| yes \|/)
+})
+
+test('the chart summary shows the observable result of a required holdout without opening the script', () => {
+  fixture()
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], gates: { plan: false, requireChart: true } }))
+  write(repo, S + '/intents/alpha.md', intent().replace('kind: boundary', 'kind: boundary\nscope: [src/cart]\ntouches: [src/http]'))
+  write(repo, S + '/testplan/cases.md', CASES.replace('B1 | unit | - | ok', 'B1 | holdout | - | Total equals 1.25'))
+  const text = summary()
+  assert.match(text, /## Outcomes and allowed scope[\s\S]*Allowed paths: src\/cart, src\/http[\s\S]*B1 rounds totals/)
+  assert.match(text, /## Required holdout cases/)
+  assert.match(text, /\| TC-1 \| alpha \| B1 \| Total equals 1\.25 \|/)
+  assert.ok(!text.includes(SECRET))
 })
 
 test('supplied by the agent reuses prd proposed; not covered lists open and n/a topics, open questions and findings not confirmed or waived', () => {
@@ -286,4 +299,32 @@ test('approval.md is protected from the model\'s Write and Edit, and may still b
   for (const tool of ['Write', 'Edit', 'MultiEdit']) assert.equal(denied(tool, { file_path: path.join(repo, PAGE) }), 'deny', tool)
   assert.equal(denied('Write', { file_path: path.join(repo, `${S}/prd.md`) }), null)
   assert.equal(denied('Read', { file_path: path.join(repo, PAGE) }), null)
+})
+
+// ---------- gate 1 as the chart PR's single human decision (two-gate pilot §2) ----------
+test('chart seal needs no person: it writes the seal for the PR review to decide, with no recorded answers', () => {
+  cleanChart()
+  const r = sdlc(repo, ['chart', 'seal', '1'])
+  assert.equal(r.code, 0, r.stderr)
+  const rec = record() as unknown as { by: string; digest: string; answers: unknown[] }
+  assert.equal(rec.by, 'chart PR review'); assert.deepEqual(rec.answers, [])
+  assert.match(r.stdout, /sealed chart-1 at [0-9a-f]{12}.*awaiting the independent review of the chart PR/)
+  assert.match(sdlc(repo, ['chart', 'report', '1']).stdout, /chart-1: approved/)
+})
+
+test('chart seal refuses what approve refuses: open review findings', () => {
+  cleanChart()
+  write(repo, `${S}/chart-review.md`, 'verdict: changes-needed\n## Findings\n- an open problem\n')
+  const r = sdlc(repo, ['chart', 'seal', '1'])
+  assert.notEqual(r.code, 0)
+  assert.match(r.stderr, /review finding/)
+  assert.ok(!fs.existsSync(path.join(repo, `${S}/approval.json`)))
+})
+
+test('the CI row of a sealed chart names the revision the PR review covers and is not INCOMPLETE', () => {
+  cleanChart()
+  sdlc(repo, ['chart', 'seal', '1'])
+  const mod = path.resolve(import.meta.dirname, 'approvalsummary.ts')
+  const row = execFileSync(process.execPath, ['--disable-warning=ExperimentalWarning', '-e', `import(${JSON.stringify(mod)}).then(m => console.log(m.approvalRow('${S}/approval.json', 'chart-1', 'chart PR review', v => String(v))))`], { cwd: repo, encoding: 'utf8' }).trim()
+  assert.match(row, /^approval chart-1 sealed at [0-9a-f]{12}; decided by the independent review of the PR head$/)
 })

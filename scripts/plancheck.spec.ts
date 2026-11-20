@@ -9,10 +9,10 @@ let repo: string
 const INTENT = '.rig/product/sprints/sprint-1/intents/demo.md'
 const SPEC = '# Spec\n\n## Behaviours\n- B1: the change works (FR-1)\n\n## Open questions\nnone\n'
 const PLAN = '# Plan\n\n## Files\n- src/a.js\n\n## Open questions\nnone\n'
-const setup = (o: { plan?: boolean; intent?: string | null; spec?: string; plan_?: string } = {}) => {
-  write(repo, '.rig/sensors.json', registry({ contracts: { files: ['.rig/contracts/**'] }, extra: { gates: { plan: o.plan ?? false } } }))
+const setup = (o: { plan?: boolean; requireChart?: boolean; intent?: string | null; spec?: string; plan_?: string } = {}) => {
+  write(repo, '.rig/sensors.json', registry({ contracts: { files: ['.rig/contracts/**'] }, extra: { gates: { plan: o.plan ?? false, requireChart: o.requireChart ?? false } } }))
   write(repo, '.rig/contracts/api.yaml', 'openapi: 3.1.0\n')
-  if (o.intent !== null) write(repo, INTENT, o.intent ?? '---\nscope: [src]\n---\n# Demo\n\nFR-1 the thing\n')
+  if (o.intent !== null) write(repo, INTENT, o.intent ?? '---\nscope: [src]\nprd: [FR-1]\n---\n# Demo\n\n## Behaviours\n- B1 (FR-1): the change works\n')
   gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'cfg')
   sdlc(repo, ['new', 'demo'])
   write(repo, '.rig/changes/demo/spec.md', o.spec ?? SPEC)
@@ -100,9 +100,10 @@ test('a later plan.md edit is listed by planChangesAfterBuild', () => {
   setup(); branched()
   assert.deepEqual(JSON.parse(changesAfter().stdout), [])
   write(repo, 'src/a.js', 'export const a = 1\n'); gitIn(repo, 'add', 'src'); gitIn(repo, 'commit', '-qm', 'code')
-  write(repo, '.rig/changes/demo/plan.md', PLAN + '\nmore\n'); gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'replan')
+  write(repo, '.rig/changes/demo/plan.md', PLAN.replace('- src/a.js', '- src/a.js\n- src/b.js'))
+  branched()
   const sha = gitIn(repo, 'rev-parse', '--short=7', 'HEAD')
-  assert.deepEqual(JSON.parse(changesAfter().stdout), [`- ${sha} replan`])
+  assert.deepEqual(JSON.parse(changesAfter().stdout), [`- ${sha} plan(demo): spec and plan`])
 })
 
 test('open question in spec blocks via approvalRefusal', () => {
@@ -238,4 +239,77 @@ test('CI: source changed with no change record blocks when gates.plan is false',
   assert.match(ciWith().stdout, /\[plan-check\]\n[^\n]*source changed with no change record: a change needs \.rig\/changes\/<slug>\/ and a plan commit \(S plan-check <slug> --commit\)/)
   gitIn(repo, 'checkout', '-q', 'main'); gitIn(repo, 'checkout', '-q', '-b', 'docs'); write(repo, '.rig/notes.md', 'x\n'); gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'rig only')
   assert.doesNotMatch(ciWith().stdout, /source changed with no change record/)
+})
+
+const seal = () => {
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', `const { writeChartApproval } = await import(${JSON.stringify(path.resolve(import.meta.dirname, 'chart.ts'))}); writeChartApproval(1, 'Reviewer')`], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo } })
+  assert.equal(r.status, 0, r.stderr)
+  gitIn(repo, 'add', '.rig/product')
+  gitIn(repo, 'commit', '-qm', 'seal chart')
+}
+const pilotCi = () => ciWith({}, '--config-from', 'main', '--slug', 'demo')
+const commitPlanManually = () => {
+  gitIn(repo, 'add', '-f', '.rig/changes/demo')
+  gitIn(repo, 'commit', '-qm', 'plan')
+}
+
+test('pilot: local planning and base-controlled CI block uncharted work', () => {
+  setup({ requireChart: true, intent: null })
+  assert.match(planCheck('--commit').stdout, /intent demo is not on the trunk/)
+  gitIn(repo, 'checkout', '-qb', 'sdlc/demo')
+  commitPlanManually()
+  write(repo, '.rig/sensors.json', registry({ extra: { gates: { plan: true } } }))
+  write(repo, 'src/a.js', 'export const a = 1\n')
+  gitIn(repo, 'add', '-A')
+  gitIn(repo, 'commit', '-qm', 'uncharted code')
+  assert.match(pilotCi().stdout, /intent demo is not on the trunk/)
+  assert.match(sdlc(repo, ['pr', 'demo', '--message', 'feat: uncharted']).stderr, /plan is not approved|plan-check blocks demo/)
+})
+
+test('pilot: a landed intent needs a seal and CI rejects changed chart files on the base', () => {
+  setup({ requireChart: true })
+  assert.match(planCheck('--commit').stdout, /chart-1 approval on main is missing/)
+  seal()
+  branched()
+  gitIn(repo, 'checkout', '-q', 'main')
+  write(repo, '.rig/product/sprints/sprint-1/testplan/cases.md', 'A new case after approval\n')
+  gitIn(repo, 'add', '.rig/product')
+  gitIn(repo, 'commit', '-qm', 'unsealed chart change')
+  gitIn(repo, 'checkout', '-q', 'sdlc/demo')
+  assert.match(pilotCi().stdout, /chart-1 approval on main is stale \(changed: .*cases.md\)/)
+})
+
+test('pilot: sealed plan passes and an actual path omitted from it blocks', () => {
+  setup({ requireChart: true })
+  seal()
+  branched()
+  write(repo, 'src/a.js', 'export const a = 1\n')
+  gitIn(repo, 'add', 'src')
+  gitIn(repo, 'commit', '-qm', 'code')
+  assert.doesNotMatch(pilotCi().stdout, /\[plan-check\]/)
+  write(repo, 'lib/unplanned.js', 'export const b = 2\n')
+  gitIn(repo, 'add', 'lib')
+  gitIn(repo, 'commit', '-qm', 'unplanned code')
+  assert.match(pilotCi().stdout, /\[plan-check\][\s\S]*lib\/unplanned.js is outside the scope/)
+})
+
+test('pilot: implementation cannot change acceptance by resealing its own chart', () => {
+  setup({ requireChart: true })
+  seal()
+  branched()
+  write(repo, '.rig/product/sprints/sprint-1/testplan/cases.md', 'Different acceptance on the implementation branch\n')
+  seal()
+  assert.match(pilotCi().stdout, /the implementation changes chart-1 or its approval/)
+})
+
+test('pilot: merging a newly approved base does not change the revision the original plan started from', () => {
+  setup({ requireChart: true })
+  seal()
+  branched()
+  gitIn(repo, 'checkout', '-q', 'main')
+  write(repo, INTENT, '---\nscope: [src]\nprd: [FR-1]\n---\n# Demo\n\n## Behaviours\n- B1 (FR-1): changed outcome\n')
+  seal()
+  gitIn(repo, 'checkout', '-q', 'sdlc/demo')
+  gitIn(repo, 'merge', '--no-edit', 'main')
+  assert.match(pilotCi().stdout, /the plan did not start from the current approval of chart-1/)
 })

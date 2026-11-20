@@ -99,6 +99,47 @@ test('--ci without --base fails; an empty case file in the base is a failure, no
   assert.equal(sdlc(repo, ['holdout', '--ci', '--base', 'nope']).code, 1, 'a base git cannot read fails, never passes')
 })
 
+const pilotBase = (rows: string, cmd: string, files: Record<string, string>): void => {
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], gates: { plan: false, requireChart: true }, holdout: cmd }))
+  write(repo, '.rig/product/sprints/sprint-1/testplan/cases.md', rows)
+  baseWith(files)
+}
+
+test('pilot CI reports passed, failed and missing required cases from the base even if the candidate deletes them', () => {
+  const plans = '.rig/product/sprints/sprint-1/testplan/cases.md'
+  const rows = [1, 2, 3].map(id => '| TC-' + id + ' | FR-1 | demo | B1 | holdout | - | Observed result | - |').join('\n')
+  pilotBase(rows, 'node --test {file}', { 'TC-1.test.js': PASS, 'TC-2.test.js': FAIL })
+  const missing = sdlc(repo, ['holdout', '--ci', '--base', 'main'])
+  assert.equal(missing.code, 1)
+  assert.match(missing.stdout, /required \(3\): TC-1, TC-2, TC-3/)
+  assert.match(missing.stdout, /executed \(2\): TC-1, TC-2/)
+  assert.match(missing.stdout, /passed \(1\): TC-1/)
+  assert.match(missing.stdout, /failed \(1\): TC-2/)
+  assert.match(missing.stdout, /missing \(1\): TC-3/)
+  assert.doesNotMatch(missing.stdout, new RegExp(SECRET))
+  gitIn(repo, 'rm', '-qr', H, plans)
+  gitIn(repo, 'commit', '-qm', 'delete required evidence')
+  const deleted = sdlc(repo, ['holdout', '--ci', '--base', 'main'])
+  assert.equal(deleted.code, 1)
+  assert.equal(deleted.stdout, missing.stdout)
+})
+
+test('pilot CI distinguishes a missing runner from a sprint with no designated cases', () => {
+  pilotBase('| TC-1 | FR-1 | demo | B1 | holdout | - | Observed result | - |\n', 'rig-missing-holdout-runner {file}', { 'TC-1.test.js': PASS })
+  const run = sdlc(repo, ['holdout', '--ci', '--base', 'main'])
+  assert.equal(run.code, 1)
+  assert.match(run.stdout, /executed \(0\): none/)
+  assert.match(run.stdout, /missing \(1\): TC-1/)
+  gitIn(repo, 'checkout', 'main')
+  write(repo, '.rig/product/sprints/sprint-1/testplan/cases.md', '| TC-1 | FR-1 | demo | B1 | unit | - | Observed result | - |\n')
+  gitIn(repo, 'rm', '-qr', H)
+  gitIn(repo, 'commit', '-qam', 'no designated cases')
+  const empty = sdlc(repo, ['holdout', '--ci', '--base', 'main'])
+  assert.equal(empty.code, 0)
+  assert.match(empty.stdout, /required \(0\): none/)
+  assert.match(empty.stdout, /missing \(0\): none/)
+})
+
 test('--ci: a case that blanks the other base copies cannot change their verdict (fresh dir per file)', () => {
   const blank = "const fs = require('fs'), os = require('os'), path = require('path')\nconst walk = d => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const f = path.join(d, e.name); if (e.isDirectory()) walk(f); else fs.writeFileSync(f, '') } }\nfor (const d of fs.readdirSync(os.tmpdir())) if (d.startsWith('rig-holdout-')) try { walk(path.join(os.tmpdir(), d)) } catch {}\n"
   write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], holdout: 'node {file}' }))
@@ -178,6 +219,19 @@ test('the chart approval covers the holdout files: editing one after approval ma
   assert.match(run('return C.chartState(1).state'), /approved/)
   write(repo, `${H}/TC-1.holdout.test.js`, FAIL)
   assert.match(run('return C.chartState(1)'), /stale[\s\S]*TC-1\.holdout\.test\.js/)
+})
+
+test('pilot chart checking requires a case file, runner and observable result for each holdout row', () => {
+  const plans = '.rig/product/sprints/sprint-1/testplan/cases.md'
+  const cfg = { sensors: [], gates: { plan: false, requireChart: true } }
+  write(repo, '.rig/sensors.json', JSON.stringify(cfg))
+  write(repo, plans, '| TC-1 | FR-1 | demo | B1 | holdout | - | - | - |\n')
+  const rules = () => JSON.parse(chartJs("return C.chartFindings(1, true).filter(f => f.rule.startsWith('holdout-')).map(f => f.rule)"))
+  assert.deepEqual(rules(), ['holdout-command', 'holdout-expected', 'holdout-missing'])
+  write(repo, '.rig/sensors.json', JSON.stringify({ ...cfg, holdout: 'node --test {file}' }))
+  write(repo, plans, '| TC-1 | FR-1 | demo | B1 | holdout | - | Exit code is 2 | - |\n')
+  write(repo, H + '/TC-1.test.js', PASS)
+  assert.deepEqual(rules(), [])
 })
 
 function chartJs(code: string): string {

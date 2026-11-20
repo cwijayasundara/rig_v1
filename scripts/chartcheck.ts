@@ -12,7 +12,7 @@ export type Intent = {
   owner: string // who builds it: a person fills it in when the sprint is allocated; empty until then
   scope: string[] // the repo files the intent writes (frontmatter `scope:`)
 }
-export type TestCase = { id: string; reqs: string[]; rules: string[]; intent: string; behaviour: string; level: string; data: string; access: string }
+export type TestCase = { id: string; reqs: string[]; rules: string[]; intent: string; behaviour: string; level: string; data: string; expected: string; access: string }
 // A row of architecture.md `## Access`: who may take an action, on which interfaces. `nobody`: the cell says no role may.
 export type AccessRule = { action: string; allowed: string[]; nobody: boolean; interfaces: string[]; intent: string }
 export type ChartFinding = { rule: string; severity: 'block' | 'report'; where: string; message: string }
@@ -103,9 +103,11 @@ export const designIntents = (designDoc: string): string[] =>
 // cases.md rows: | ID | Requirement | Intent | Behaviour | Level | Data | Expected | Access | (Access optional: a seven-column table still reads)
 export function parseCases(text: string): TestCase[] {
   return text.replace(/\r\n/g, '\n').split('\n').map(l => l.split('|').map(c => c.trim())).filter(c => /^TC-\d+$/.test(c[1] ?? '')).map(c => ({
-    id: c[1] ?? '', reqs: (c[2] ?? '').match(REQ) ?? [], rules: (c[2] ?? '').match(RULE_ID) ?? [], intent: (c[3] ?? '').replace(/\.md$/, ''), behaviour: c[4] ?? '', level: c[5] ?? '', data: c[6] || '-', access: c[8] || '-',
+    id: c[1] ?? '', reqs: (c[2] ?? '').match(REQ) ?? [], rules: (c[2] ?? '').match(RULE_ID) ?? [], intent: (c[3] ?? '').replace(/\.md$/, ''), behaviour: c[4] ?? '', level: c[5] ?? '', data: c[6] || '-', expected: c[7] ?? '', access: c[8] || '-',
   }))
 }
+
+export const requiredHoldouts = (cases: TestCase[]): TestCase[] => cases.filter(c => c.level.toLowerCase() === 'holdout')
 
 // ---------- the requirements ledger (spec 2026-10-26 PRD fidelity) ----------
 // sprint-N/requirements.md quotes every in-scope sentence of the PRD copy word for word, so a dropped rule is a blocking finding
