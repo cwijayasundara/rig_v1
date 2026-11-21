@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { activeSlug } from './lifecycle.ts'
 import { ROOT, SDLC, CHANGES, PLUGIN_ROOT, ownerOrFail, out, fail, read, readJson, BUDGET_MS, exists, sha, writeAtomic, sanctionWrites, skillRef, type Args } from './core.ts'
-import { cmdAppDiff } from './appdiff.ts'
+import { cmdAppDiff, diffFindings } from './appdiff.ts'
 import { runCommand } from './runs.ts'
 import { formatFindings, type Finding } from './model.ts'
 import type { Inert } from './registry.ts'
@@ -53,7 +53,7 @@ function missingEntries(a: App): string[] {
   return featureFiles(a).flatMap(f => [...read(path.join(ROOT, f)).matchAll(/^entry:\s*(\S+)\s*$/gm)].map(m => m[1] as string).filter(p => !exists(path.join(ROOT, p))).map(p => `${path.basename(f)}: ${p}`))
 }
 
-function appState(a: App): AppState {
+export function appState(a: App): AppState {
   const ap = approvalOf(a)
   if (!ap) return 'draft'
   if (missingEntries(a).length) return 'stale'
@@ -90,8 +90,9 @@ export function runDriver(a: App, budgetMs: number, o: { cwd?: string; stateDir?
 }
 
 // What verify, ship and CI run: every approved app's driver. A draft is skipped.
-export function journeyFindings(budgetMs: number, only?: string, ci = false): Finding[] {
-  const findings: Finding[] = appProblems().map(m => ({ sensor: 'journeys', severity: 'block' as const, message: `journeys: ${m}`, fix: 'fix or remove it in a reviewed change' }))
+export function journeyFindings(budgetMs: number, only?: string, ci = false, base?: string | null): Finding[] {
+  const findings: Finding[] = ci ? diffFindings(base) : []
+  findings.push(...appProblems().map(m => ({ sensor: 'journeys', severity: 'block' as const, message: `journeys: ${m}`, fix: 'fix or remove it in a reviewed change' })))
   let left = budgetMs
   for (const a of listApps().filter(x => !only || x.name === only)) {
     const state = appState(a)

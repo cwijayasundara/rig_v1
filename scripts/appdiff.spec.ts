@@ -95,3 +95,22 @@ test('app diff blocks a changed behaviour by id, and the base\'s approved list u
   const ok = sdlc(repo, ['app', 'diff', 'shop', '--base', 'main'])
   assert.equal(ok.code, 0, ok.stdout); assert.match(ok.stdout, /1 approved, 0 unapproved/)
 })
+
+// CI: the base's charted intent says the change replaces the app, so the diff must run there and block an unapproved difference.
+const ciFindings = (replaces: boolean): { sensor: string; message: string }[] => {
+  write(repo, '.rig/product/sprints/sprint-1/intents/x.md', `---\nslug: x\n${replaces ? 'replaces: shop\n' : ''}---\n# x\n`)
+  sdlc(repo, ['app', 'approve', 'shop'], { env: { SDLC_HUMAN: '1' } })
+  gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'chart and approval')
+  gitIn(repo, 'checkout', '-q', 'main'); gitIn(repo, 'merge', '-q', 'work'); gitIn(repo, 'checkout', '-qb', 'pr')
+  changePrice()
+  return JSON.parse(sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main', '--json']).stdout).findings
+}
+
+test('CI blocks an unapproved difference when the base intent says replaces', () => {
+  const f = ciFindings(true).filter(x => x.sensor === 'journeys')
+  assert.ok(f.some(x => /differential shop: D-a-shopper-sees-the-products .* changed/.test(x.message)), JSON.stringify(f))
+})
+
+test('CI runs no differential when no base intent says replaces', () => {
+  assert.ok(!ciFindings(false).some(x => /differential/.test(x.message)))
+})

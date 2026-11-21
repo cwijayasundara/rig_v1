@@ -293,3 +293,12 @@ test('evidence links point at the branch runs, the base chart and hidden cases, 
   const b = prBody({ intent, spec, plan, verify, outline: '', review: '', risk, chart: 'chart-3 approved at 0123456789ab', links: l })
   assert.match(b.split('## Why the change')[0]!, /Links: \[CI runs for this branch\].* · \[tests frozen\]/)
 })
+
+test('Review first shows the differential, lists an unapproved difference first under Flags, and says not applicable without one; the trace is linked', () => {
+  const base = { intent, spec, plan, verify, outline: '', review: '', risk, chart: 'chart-1 approved at 0123456789ab' }
+  const b = prBody({ ...base, differential: { line: '4 step(s) run, 1 difference(s), 0 approved, 1 unapproved', unapproved: ['D-total checkout total'] } })
+  assert.match(b, /Differential: 4 step\(s\) run, 1 difference\(s\), 0 approved, 1 unapproved/)
+  assert.match(b, /Flags: \n {2}- unapproved difference: D-total checkout total/)
+  assert.match(prBody(base), /Differential: not applicable/)
+  assert.ok(evidenceLinks('https://github.com/a/b', { base: 'main', branch: 'sdlc/x', sprint: null, slug: 'x', trace: true }).some(l => /journey trace\]\(https:\/\/github\.com\/a\/b\/tree\/sdlc%2Fx\/\.rig\/changes\/x\/evidence\/journeys\)/.test(l)))
+})

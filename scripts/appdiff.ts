@@ -2,10 +2,11 @@
 // oracle. A difference blocks unless a person approved it on the base branch (.rig/verify/<app>/differences.json, read from the base ref).
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, PLUGIN_ROOT, read, readJson, writeAtomic, optString, fail, out, defaultBase, type Args } from './core.ts'
+import { ROOT, PLUGIN_ROOT, read, readJson, writeAtomic, optString, fail, out, defaultBase, gitIn, type Args } from './core.ts'
 import { showAt } from './diffs.ts'
 import { withBaseTree } from './basetree.ts'
-import { runDriver, listApps, type App } from './app.ts'
+import { runDriver, listApps, appState, type App } from './app.ts'
+import type { Finding } from './model.ts'
 
 export type Step = { name: string; ok: boolean; observed?: unknown }
 export type Rule = { step: string; replace: string; with: string }
@@ -97,4 +98,22 @@ export function cmdAppDiff(args: Args): void {
   out(text)
   if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, '## Differential evidence\n\n' + rep.lines.map(l => '    ' + l).join('\n') + '\n')
   process.exitCode = rep.unapproved.length ? 1 : 0
+}
+
+// CI: for each app a charted intent at the base says a change `replaces`, the diff must run and have no unapproved difference. The base's
+// intents decide, so a PR cannot drop the requirement by editing its own copy.
+export function diffFindings(base: string | null | undefined): Finding[] {
+  if (!base) return []
+  const names = (gitIn(ROOT, ['ls-tree', '-r', '--name-only', base, '--', '.rig/product/sprints']) ?? '').split('\n').filter(f => /\/intents\/[^/]+\.md$/.test(f))
+  const wanted = [...new Set(names.map(f => replacesOf(showAt(base, f) ?? '')).filter((a): a is string => a !== null))]
+  return wanted.flatMap((name): Finding[] => {
+    const app = listApps().find(a => a.name === name)
+    const block = (message: string, fix: string): Finding[] => [{ sensor: 'journeys', severity: 'block', message: `differential ${name}: ${message}`, fix }]
+    if (!app) return block('an approved intent says this change replaces it, but there is no such app', 'add the journeys with /rig:app, or correct `replaces:` on the chart PR')
+    if (appState(app) !== 'current') return block('the driver is not approved as it stands, so CI does not run it', 'a person approves the journeys again with /rig:approve app')
+    const r = appDiff(app, base)
+    if (!r.ok) return block(`not run: ${r.error}`, 'make the driver pass on the base and the head')
+    const rep = report(r.diffs, approvedAt(base, name), r.executed, r.unstable)
+    return rep.unapproved.map(d => ({ sensor: 'journeys', severity: 'block' as const, message: `differential ${name}: ${d.id} ${d.step} changed: ${JSON.stringify(d.before).slice(0, 100)} -> ${JSON.stringify(d.after).slice(0, 100)}`, fix: `if intended, a person adds ${d.id} to .rig/verify/${name}/differences.json on the base branch; otherwise fix the code` }))
+  })
 }
