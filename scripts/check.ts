@@ -24,7 +24,7 @@ import { riskOf, formatRisk, hardCapFindings, type Risk } from './risk.ts'
 import { changeHistory, breaker } from './reverts.ts'
 import { parseAccess } from './chartcheck.ts'
 import { ARCH_REL } from './product.ts'
-import { approvalRow, INCOMPLETE } from './approvalsummary.ts'
+import { approvalRow } from './approvalsummary.ts'
 import { gateCommit } from './gate.ts'; import { rigOff, trunkRef, offLine, frozenWhileOff } from './off.ts'
 import { answersMissing, heldFindings, ANSWER_FIX } from './prcheck.ts'; import { draftFindings } from './draft.ts'
 type Point = 'stop' | 'commit' | 'ship' | 'ci'
@@ -482,9 +482,8 @@ export function cmdCheck(args: Args): void {
   const configFindings: Finding[] = errors.map(e => ({ sensor: 'config', severity: 'block', file: SENSORS_JSON, message: e, fix: 'fix the file; see the sdlc README for its format' }))
   const queueFindings: Finding[] = [...(at === 'ci' ? [...heldFindings(whoIs()), ...draftFindings(slugs)] : []), ...(queueRefusal ? [{ sensor: 'human-approval', severity: 'block', message: `merge queue: this PR needs a person: ${queueRefusal}`, fix: 'someone other than the author approves the PR\'s head commit, then queue it again' } as Finding] : [])]
   const humanFindings: Finding[] = why ? [{ sensor: 'human-approval', severity: 'block', message: humanRows.length ? `this PR adds ${humanRows.length} approval/waiver row(s): ${why}` : `risk.enforce: this PR is tier ${risk?.tier} and needs a person: ${refusal ? `${refusal}; ` : ''}${why}`, fix: why?.includes('does not answer') ? ANSWER_FIX : humanRows.length ? 'a code owner other than the PR author reviews the rows below and approves the current head commit; pushing again needs a fresh approval' : 'someone other than the PR author approves the current head commit; pushing again needs a fresh approval' }] : []
-  const answerFindings: Finding[] = humanRows.filter(r => r.includes(INCOMPLETE)).map(r => ({ sensor: 'human-approval', severity: 'block', message: r, fix: `approve the chart again through ${skillRef('approve')} and answer every check question` }))
   const syncBlocks = (at === 'commit' || at === 'ci') && declaresRegistry() ? syncFindings(config, [], 'block') : [] // config errors already block above
-  const all = { ...result, findings: [...queueFindings, ...humanFindings, ...answerFindings, ...configFindings, ...syncBlocks, ...result.findings], blocks: [...queueFindings, ...humanFindings, ...answerFindings, ...configFindings, ...syncBlocks.filter(f => f.severity === 'block'), ...result.blocks] }
+  const all = { ...result, findings: [...queueFindings, ...humanFindings, ...configFindings, ...syncBlocks, ...result.findings], blocks: [...queueFindings, ...humanFindings, ...configFindings, ...syncBlocks.filter(f => f.severity === 'block'), ...result.blocks] }
   if (at === 'commit') gateCommit(all, replaying); report(at, all, diffs.length, Boolean(args.opt.json), humanRows, inertSensors(config, rules.length, draftApps()), risk && refusal === '' ? { ...risk, reasons: ['tier 0: merges without a person (rung 3, trusted author)'] } : risk)
   process.exitCode = all.blocks.length ? 1 : 0
 }

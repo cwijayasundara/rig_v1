@@ -19,13 +19,12 @@ export function writeFixture(sb) {
   }
 }
 
-// The person's side of the gate: list the questions (--ask), then answer them through the AskUserQuestion hook, as /rig-approve does.
+// The person's side of the gate: get the page sha (--ask), then pick "Approve chart-N" through the AskUserQuestion hook, as /rig-approve does.
 function answerChart(sb, n) {
   const asked = sb.sdlc(['approve', `chart-${n}`, '--ask'], { human: true }), sha = /page sha ([0-9a-f]{64})/.exec(asked.stderr)?.[1]
   if (!sha) return
-  const qs = [...asked.stderr.matchAll(/^  \d+\. (.*)$/gm)].map(m => `[page sha ${sha.slice(0, 12)}] ${m[1]}`)
-  const tool_response = { answers: Object.fromEntries(qs.map(q => [q, 'The person confirmed this in their own words.'])) }
-  sb.sdlc(['hook', 'asked'], { input: JSON.stringify({ tool_name: 'AskUserQuestion', tool_input: { questions: qs.map(question => ({ question })) }, tool_response }) })
+  const q = `[page sha ${sha.slice(0, 12)}] Approve chart-${n}?`
+  sb.sdlc(['hook', 'asked'], { input: JSON.stringify({ tool_name: 'AskUserQuestion', tool_input: { questions: [{ question: q }] }, tool_response: { answers: { [q]: `Approve chart-${n}` } } }) })
 }
 
 export async function runChart(sb) {

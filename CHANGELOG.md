@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **One decision to approve a chart.** `/rig:approve chart-<N>` asks one question, approve or not approved, instead of up to three free-text check questions (a pick of an option label was stored as an answer in the first shop-app run). The hook records only the exact `Approve chart-<N>` option, tied to the page sha; anything else records nothing and the person fixes the chart and approves again. The page's `## Check questions` became `## Look at first` (reading, nothing to answer). CI no longer blocks an approval row for `INCOMPLETE ANSWERS`; rows of older approvals still show their stored answers.
+
 ## 0.11.1
 
 Fixes after 0.11.0 for rig-on sessions, plus the W5 knex eval variant. Measured on Haiku rig-on, `hard`, 3 runs each

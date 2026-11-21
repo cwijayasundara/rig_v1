@@ -360,21 +360,17 @@ test('CI lists a sprint chart approval the PR adds, for human review', () => {
   assert.deepEqual(json.humanRows, ['approval chart-3 by Mallory'])
 })
 
-test('CI shows each stored question and answer of a chart approval row (cut to 80 characters) and blocks a row with fewer answers than its page lists questions', () => {
+test('CI shows each stored question and answer of an older chart approval row (cut to 80 characters); a row with none shows only who', () => {
   gitIn(repo, 'checkout', '-qb', 'pr')
   const S = '.rig/product/sprints/sprint-3'
   write(repo, `${S}/approval.json`, JSON.stringify({ by: 'Mallory', at: '2026-10-03T00:00:00Z', digest: 'x', files: [], answers: [{ question: 'Q one ' + 'x'.repeat(100), answer: 'a real answer' }] }))
-  write(repo, `${S}/approval.md`, '# page\n\n## Check questions\n\n1. first\n2. second\n')
   gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'pr')
-  const r = sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main', '--json'])
-  const json = JSON.parse(r.stdout)
-  assert.match(json.humanRows[0], /^approval chart-3 by Mallory; Q: "Q one x+\.\.\." A: "a real answer" \[INCOMPLETE ANSWERS: 1 for 2 question\(s\)\]$/)
+  const json = JSON.parse(sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main', '--json']).stdout)
+  assert.match(json.humanRows[0], /^approval chart-3 by Mallory; Q: "Q one x+\.\.\." A: "a real answer"$/)
   assert.ok(json.humanRows[0].length < 200)
-  assert.ok(json.findings.some((f: { sensor: string; message: string }) => f.sensor === 'human-approval' && /INCOMPLETE ANSWERS/.test(f.message)))
-  write(repo, `${S}/approval.json`, JSON.stringify({ by: 'Mallory', at: '2026-10-03T00:00:00Z', digest: 'x', files: [], answers: [{ question: 'a', answer: 'b' }, { question: 'c', answer: 'd' }] }))
+  write(repo, `${S}/approval.json`, JSON.stringify({ by: 'Mallory', at: '2026-10-03T00:00:00Z', digest: 'x', files: [] }))
   gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'pr2')
-  const ok = JSON.parse(sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main', '--json']).stdout)
-  assert.ok(!ok.humanRows[0].includes('INCOMPLETE'))
+  assert.deepEqual(JSON.parse(sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main', '--json']).stdout).humanRows, ['approval chart-3 by Mallory'])
 })
 
 test('CI lists each chart waiver row the PR adds, for human review', () => {

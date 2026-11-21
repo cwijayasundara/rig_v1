@@ -1,5 +1,5 @@
-// The one-page approval summary (`chart summary <N>`, three-gates C5): a reviewer approves a chart from one generated page and
-// answers its check questions in their own words before the approval is recorded. Pure text from the chart's files: no model.
+// The one-page approval summary (`chart summary <N>`, three-gates C5): a reviewer approves a chart from one generated page with one
+// decision, approve or not approved; a no records nothing, they correct the chart and decide again. Pure text from the chart's files: no model.
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
@@ -134,7 +134,7 @@ export function approvalPage(n: number): string {
     '## Supplied by the agent', '', ...(proposed.length > MAX_ROWS ? [...proposed.slice(0, MAX_ROWS), `... ${proposed.length - MAX_ROWS} more line(s): run \`prd proposed ${n}\``] : proposed), '',
     '## Not covered', '', ...notCovered(n), '',
     '## Decisions', '', ...decisions(n), '',
-    '## Check questions', '', 'Answer each in your own words when you approve; a blank, "skip" or "n/a" is refused.', '', ...qs.map((q, i) => `${i + 1}. ${q}`), ''].join('\n')
+    '## Look at first', '', 'Nothing to answer: these are the points most worth a look before you decide approve or not approved.', '', ...qs.map(q => `- ${q}`), ''].join('\n')
 }
 export function writeApprovalPage(n: number): string {
   fs.mkdirSync(sprintDir(n), { recursive: true }); writeProductIgnore()
@@ -142,63 +142,51 @@ export function writeApprovalPage(n: number): string {
   return `${sprintRel(n)}/approval.md`
 }
 
-// What an answer must be: the reviewer's own words, not a way past the question.
-const badAnswer = (a: unknown): string | null => {
-  if (typeof a !== 'string') return 'not text'
-  const t = a.trim().replace(/[.!\s]+$/, '').toLowerCase()
-  return !t ? 'blank' : /^(skip|n\/a|na|none|-)$/.test(t) ? `"${a.trim()}"` : t.length < 10 ? 'under 10 characters' : null
-}
-// The answers file is written by the AskUserQuestion hook, never by the model; it is tied to the page the person saw by the page's hash
-// (the generated-on line is left out, so a later day does not change it).
+// The decision is one AskUserQuestion with two options; the hook, never the model, records it. Only the exact label "Approve chart-N" approves: a free-text
+// answer, the other option or a skipped question records nothing. The record is tied to the page the person saw by the page's hash (the generated-on line
+// is left out, so a later day does not change it).
 const pendingPath = (n: number): string => path.join(sprintDir(n), 'answers.pending.json')
 const pageSha = (page: string): string => crypto.createHash('sha256').update(page.split('\n').slice(1).join('\n')).digest('hex')
 const text = (v: unknown): string => (typeof v === 'string' ? v : Array.isArray(v) ? v.join(', ') : v && typeof v === 'object' ? String((v as { answer?: unknown }).answer ?? '') : '')
+const APPROVE = (n: number): string => `Approve chart-${n}`
 
 // PostToolUse on AskUserQuestion. The tool_response shape is not documented in this repo; this reads `answers` as an object keyed by question text
-// (or an array in question order), beside the `tool_input.questions[].question` shape the `asked` hook already reads. A batch that is not this
-// chart's questions, each carrying the page sha marker, writes nothing.
-export function recordAnswers(input: HookInput): void {
+// (or an array in question order), beside the `tool_input.questions[].question` shape the `asked` hook already reads. A batch that is not exactly this
+// chart's one decision question, carrying the page sha marker, writes nothing; any answer but the approve label clears an earlier record.
+export function recordDecision(input: HookInput): void {
   if (input.tool_name !== 'AskUserQuestion') return
   try {
     const asked = (Array.isArray(input.tool_input?.questions) ? input.tool_input.questions : []).map(q => String((q as { question?: unknown } | null)?.question ?? ''))
     const resp = input.tool_response?.answers
     for (const n of sprintsOnDisk()) {
       if (!exists(prdPath(n)) || chartState(n).state === 'approved') continue
-      const sha = pageSha(approvalPage(n)), qs = checkQuestions(n)
-      if (asked.length !== qs.length || !qs.every((q, i) => asked[i]!.includes(q) && asked[i]!.includes(`page sha ${sha.slice(0, 12)}`))) continue
-      const given = (i: number): unknown => (Array.isArray(resp) ? resp[i] : resp && typeof resp === 'object' ? (resp as Record<string, unknown>)[asked[i]!] : undefined)
-      writeAtomic(pendingPath(n), JSON.stringify({ page_sha: sha, at: new Date().toISOString(), answers: qs.map((question, i) => ({ question, answer: text(given(i)).trim() })) }, null, 2) + '\n')
+      const sha = pageSha(approvalPage(n))
+      if (asked.length !== 1 || !asked[0]!.includes(`page sha ${sha.slice(0, 12)}`) || !asked[0]!.includes(APPROVE(n) + '?')) continue
+      const given = Array.isArray(resp) ? resp[0] : resp && typeof resp === 'object' ? (resp as Record<string, unknown>)[asked[0]!] : undefined
+      if (text(given).trim().toLowerCase() === APPROVE(n).toLowerCase()) writeAtomic(pendingPath(n), JSON.stringify({ page_sha: sha, at: new Date().toISOString(), decision: 'approved' }, null, 2) + '\n')
+      else fs.rmSync(pendingPath(n), { force: true })
     }
   } catch { /* nothing recorded: the approval then refuses */ }
 }
 
-// Regenerates the page, then returns the answers the hook recorded for it; refuses (naming each question) until every question has a real answer.
-// `ask` (the skill's preamble) only prints the questions: it never approves.
-export function approvalGate(n: number, ask = false): ApprovalAnswer[] {
-  const page = writeApprovalPage(n), sha = pageSha(read(approvalMdPath(n))), qs = checkQuestions(n)
-  const numbered = qs.map((q, i) => `  ${i + 1}. ${q}`).join('\n')
-  const how = `page sha ${sha}\nread ${page}, then put each question to the person through ${skillRef('approve')} (AskUserQuestion, free text, no skip), each question starting "[page sha ${sha.slice(0, 12)}] " then the text as listed; the hook records their answers, then run approve chart-${n}`
-  if (ask) fail(`chart-${n} has ${qs.length} check question(s) the approver answers in their own words (${page}):\n${numbered}\n${how}`)
-  let rec: { page_sha?: unknown; answers?: unknown } = {}
-  try { rec = JSON.parse(read(pendingPath(n))) as typeof rec } catch { fail(`no recorded answers for chart-${n}: answer the questions through ${skillRef('approve')}\n${numbered}\n${how}`) }
-  if (rec.page_sha !== sha) fail(`the recorded answers are for another version of the page (${String(rec.page_sha).slice(0, 12)}, now ${sha.slice(0, 12)}): answer the questions again through ${skillRef('approve')}\n${numbered}\n${how}`)
-  const given = Array.isArray(rec.answers) ? rec.answers as { question?: unknown; answer?: unknown }[] : []
-  if (given.length !== qs.length || qs.some((q, i) => given[i]?.question !== q)) fail(`the recorded answers are not for these questions: answer them again through ${skillRef('approve')}\n${numbered}\n${how}`)
-  const bad = qs.flatMap((q, i) => { const why = badAnswer(given[i]!.answer); return why ? [`the answer to\n  ${i + 1}. ${q}\nis ${why}: ask it again in the person's own words (at least 10 characters; not "skip" or "n/a")`] : [] })
-  if (bad.length) fail(bad.join('\n'))
-  return qs.map((question, i) => ({ question, answer: String(given[i]!.answer).trim() }))
+// Regenerates the page, then checks the hook recorded "approved" for it; refuses until it did. `ask` (the skill's preamble) only prints how to ask: it never approves.
+export function approvalGate(n: number, ask = false): void {
+  const page = writeApprovalPage(n), sha = pageSha(read(approvalMdPath(n)))
+  const how = `page sha ${sha}\nread ${page}, then put ONE question to the person through ${skillRef('approve')} (AskUserQuestion): "[page sha ${sha.slice(0, 12)}] ${APPROVE(n)}?" with exactly two options, "${APPROVE(n)}" and "Not approved: I will fix it"; the hook records the choice. On approve run approve chart-${n}; on anything else stop (nothing is recorded: they correct the chart and run ${skillRef('approve')} chart-${n} again)`
+  if (ask) fail(`chart-${n} waits for one decision, approve or not approved (${page})\n${how}`)
+  let rec: { page_sha?: unknown; decision?: unknown } = {}
+  try { rec = JSON.parse(read(pendingPath(n))) as typeof rec } catch { fail(`no recorded decision for chart-${n}: the person decides through ${skillRef('approve')}\n${how}`) }
+  if (rec.page_sha !== sha) fail(`the recorded decision is for another version of the page (${String(rec.page_sha).slice(0, 12)}, now ${sha.slice(0, 12)}): ask again through ${skillRef('approve')}\n${how}`)
+  if (rec.decision !== 'approved') fail(`the recorded decision is not an approval: ask again through ${skillRef('approve')}\n${how}`)
 }
-export const echoAnswers = (a: ApprovalAnswer[]): string => `recorded answers:\n${a.map(x => `  ${short(x.question, 80)} -> ${short(x.answer, 80)}`).join('\n')}\n`
 
-// CI's row for a chart approval: who, and each answer cut short; INCOMPLETE when it holds fewer answers than its page lists questions (a page absent at HEAD: an older approval).
-export const INCOMPLETE = 'INCOMPLETE ANSWERS'
+// CI's row for a chart approval: who, and each stored answer cut short (an approval made before the single decision kept check answers).
 export function approvalRow(f: string, name: string, by: string, clean: (v: unknown) => string): string {
   let a: ApprovalAnswer[] = []
   // A seal records no answers: the independent review of the PR head decides, and the row names the revision it covers.
   if (by === PR_SEAL) { let d = '?'; try { d = String((JSON.parse(read(path.join(ROOT, f))) as { digest?: unknown }).digest ?? '?').slice(0, 12) } catch { /* shown as ? */ } return `approval ${name} sealed at ${clean(d)}; decided by the independent review of the PR head` }
   try { const v = (JSON.parse(read(path.join(ROOT, f))) as { answers?: unknown }).answers; if (Array.isArray(v)) a = v as ApprovalAnswer[] } catch { /* a row with none */ }
-  const page = path.join(ROOT, path.dirname(f), 'approval.md'), listed = exists(page) ? (read(page).split('## Check questions')[1]?.match(/^\d+\. /gm) ?? []).length : 0
-  return `approval ${name} by ${clean(by)}${a.map(x => `; Q: "${clean(short(String(x?.question), 80))}" A: "${clean(short(String(x?.answer), 80))}"`).join('')}${a.length < listed ? ` [${INCOMPLETE}: ${a.length} for ${listed} question(s)]` : ''}`
+  return `approval ${name} by ${clean(by)}${a.map(x => `; Q: "${clean(short(String(x?.question), 80))}" A: "${clean(short(String(x?.answer), 80))}"`).join('')}`
 }
 
 // The model never writes the page or the answers file (the first is generated, the second is the hook's record of what the person said): the guard denies Write and Edit on them.

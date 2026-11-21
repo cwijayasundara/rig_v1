@@ -20,7 +20,7 @@ import { rigOff, trunkRef, offLine } from './off.ts'
 import { recordHuman, questionsAsked } from './humanload.ts'
 import { runCommand } from './runs.ts'
 import { holdoutDenied, hidden } from './holdout.ts'
-import { generatedDenied, recordAnswers } from './approvalsummary.ts'
+import { generatedDenied, recordDecision } from './approvalsummary.ts'
 import { chartState } from './chart.ts'
 import { sprintsOnDisk } from './product.ts'
 import { policyMode, modelFamily, activeSensors, commandFor, contractGlobs, ALWAYS_ON, type Registry, type Mode } from './registry.ts'
@@ -321,7 +321,7 @@ const HOOKS: Record<string, (input: HookInput) => void> = {
   'holdout-guard': hookHoldoutGuard,
   'prompt-submit': i => hookPromptSubmit(i),
   asking: i => recordHuman('asking', i),
-  asked: i => { recordHuman('question', i, questionsAsked(i)); recordAnswers(i) },
+  asked: i => { recordHuman('question', i, questionsAsked(i)); recordDecision(i) },
   stop: i => {
     recordHuman('stop', i)
     const r = hookStop(i)
