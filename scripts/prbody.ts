@@ -12,7 +12,7 @@ import type { FreezeRow } from './testfreeze.ts'
 import { checkQuestions } from './prcheck.ts'
 import type { AgentRow } from './agents.ts'
 
-type PrBodyInput = { paths?: Paths; requirements?: string; claims?: ClaimRow[]; intent: string; spec: string; plan: string; verify: { pass: boolean; tree: string | null; blocks: string[]; from?: string; holdout?: { passed: number; total: number } } | null; outline: string; review: string; risk: Risk; amendments?: string; runs?: RunRow[]; tests?: string; intentMap?: string; freeze?: FreezeRow[]; changes?: FileDiff[]; agents?: AgentRow[]; draft?: string; planChanges?: string[]; proof?: { ids: string[]; exempt: string | null } }
+type PrBodyInput = { paths?: Paths; requirements?: string; claims?: ClaimRow[]; intent: string; spec: string; plan: string; verify: { pass: boolean; tree: string | null; blocks: string[]; from?: string; holdout?: { passed: number; total: number } } | null; outline: string; review: string; risk: Risk; amendments?: string; runs?: RunRow[]; tests?: string; intentMap?: string; freeze?: FreezeRow[]; changes?: FileDiff[]; agents?: AgentRow[]; draft?: string; planChanges?: string[]; chart?: string; waivers?: string[]; proof?: { ids: string[]; exempt: string | null } }
 
 const firstSentence = (text: string): string => /^[\s\S]*?[.!?](?=\s|$)/.exec(text.trim())?.[0].replace(/\s+/g, ' ') ?? text.trim().replace(/\s+/g, ' ')
 
@@ -105,6 +105,19 @@ const agentsNote = (rows: AgentRow[] = []): string => {
   return `## Agents\n\n${rows.map(line).join('\n')}\n\nTotal: ${rows.length} launches, ${sum('tokens')} tokens, ${(sum('ms') / 60000).toFixed(1)} min${unknown ? ' (some unknown)' : ''}`
 }
 
+// What a reviewer reads first (pilot §4): the approved revision, the worst consequence, the independent evidence, what is unproven, and what was weakened, waived or amended.
+function reviewFirst(i: PrBodyInput, amended: string[], uncertain: string[]): string {
+  const flags = [...(i.freeze ?? []).slice(1).map(r => `weakened test: re-frozen, ${clean(r.why)}${r.dropped?.length ? ` (dropped: ${r.dropped.map(clean).join(', ')})` : ''}`), ...(i.waivers ?? []).map(w => `waiver: ${w}`), ...(i.planChanges ?? []).map(c => `plan amendment ${c.replace(/^- /, '')}`), ...amended.map(a => `behaviour amendment: ${a.replace(/^[-*]\s+/, '')}`)]
+  const holdout = i.verify?.holdout ? `${i.verify.holdout.passed}/${i.verify.holdout.total} hidden acceptance cases pass` : 'no hidden acceptance case ran'
+  return `## Review first\n\n${[
+    `Approved intent: ${i.chart}`,
+    `Highest consequence: ${i.risk.reasons.length ? `tier ${i.risk.tier}, ${i.risk.reasons[0]}` : 'tier 0, none of the signals'}; door: ${door(i.plan)}`,
+    `Independent evidence: ${holdout}; verify ${i.verify ? (i.verify.pass ? 'pass' : 'fail') : 'none'}`,
+    `Remaining uncertainty: ${uncertain.length ? `${uncertain.length} item(s), first: ${uncertain[0]!.replace(/^[-*]\s+/, '')}` : 'nothing the reviewer named'}`,
+    `Flags: ${flags.length ? '' : 'none'}`,
+  ].map(l => `- ${l}`).join('\n')}${flags.length ? '\n' + flags.map(f => `  - ${f}`).join('\n') : ''}`
+}
+
 export function prBody(i: PrBodyInput): string {
   const why = firstSentence(section(i.intent, 'Intent')) || 'none recorded'
   const behaviours = bullets(section(i.spec, 'Behaviours'))
@@ -115,8 +128,10 @@ export function prBody(i: PrBodyInput): string {
   // Only the latest verify's runs: an older run of a check it did not re-run is not evidence about this tree.
   const from = i.verify?.from, runs = (i.runs ?? []).filter(r => !from || r.at >= from)
   const blocked = (i.agents ?? []).filter(a => a.status === 'BLOCKED'), concerns = (i.agents ?? []).filter(a => a.status === 'DONE_WITH_CONCERNS')
+  const would = [...(!i.review.trim() ? ['no review.md'] : /^reviewer:\s*none\b/.test(i.review) ? [`No agent reviewed this change (tier ${i.risk.tier}): the sensors and the tests are the evidence.`] : missed), ...concerns.map(a => `- ${a.agent} (${a.model ?? 'unknown model'}): ${a.note}`), ...(i.proof?.ids ?? []).map(id => `- ${id} is proved only by unit tests: no holdout case or approved journey names it`), ...(i.proof?.exempt ? [`- proof: exempt, ${i.proof.exempt}`] : [])]
   const parts = [
     blocked.length || i.draft !== undefined ? `> Draft: blocked. ${blocked.map(a => a.note).filter(Boolean).join('; ') || i.draft || 'no reason given'}` : '',
+    i.chart !== undefined ? reviewFirst(i, amended, would) : '',
     `## Why the change\n\n${why}`,
     behaviours.length ? `## Behaviours\n\n${behaviours.join('\n')}` : '',
     amended.length ? `## Amendments after approval\n\n${amended.join('\n')}` : '',
@@ -124,7 +139,7 @@ export function prBody(i: PrBodyInput): string {
     `## Blast radius\n\n${radius.length ? radius.join('\n') : 'none recorded'}\n\nDoor: ${door(i.plan)}`,
     `## Risk\n\n${i.risk.reasons.length ? `Tier ${i.risk.tier}\n\n${i.risk.reasons.map(r => `- ${r}`).join('\n')}` : 'Tier 0: none of the signals'}`,
     `## How to revert\n\n${revert(i.plan)}`,
-    `## What the checks would miss\n\n${[...(!i.review.trim() ? ['no review.md'] : /^reviewer:\s*none\b/.test(i.review) ? [`No agent reviewed this change (tier ${i.risk.tier}): the sensors and the tests are the evidence.`] : missed), ...concerns.map(a => `- ${a.agent} (${a.model ?? 'unknown model'}): ${a.note}`), ...(i.proof?.ids ?? []).map(id => `- ${id} is proved only by unit tests: no holdout case or approved journey names it`), ...(i.proof?.exempt ? [`- proof: exempt, ${i.proof.exempt}`] : [])].join('\n') || 'nothing the reviewer named'}`,
+    `## What the checks would miss\n\n${would.join('\n') || 'nothing the reviewer named'}`,
     `## Evidence\n\n${[evidence, baseProof(runs), headChecks(runs), mutationNote(runs), behaviourTests(i.spec, i.tests), frozenNote(i.freeze), claimsNote(i.review, i.claims), proposedNote(i.spec, i.requirements)].filter(Boolean).join('\n\n')}`,
     `## Check before approving\n\nAnswer these in your approving review, one line each (\`Q1: <answer>\`, 10+ characters; CI checks they are there; a sample of merged changes is audited):\n\n${checkQuestions(i.changes ?? [], i.spec, i.paths).join('\n')}`,
     agentsNote(i.agents),

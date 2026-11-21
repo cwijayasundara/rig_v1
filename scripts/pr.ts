@@ -18,7 +18,7 @@ import { riskOf, ships } from './risk.ts'
 import { parseAccess } from './chartcheck.ts'
 import { branchDiff } from './diffs.ts'
 import { archPath } from './product.ts'
-import { intentOf, intentsOf, writePlan, readyAfter } from './chart.ts'
+import { intentOf, intentsOf, writePlan, readyAfter, chartState } from './chart.ts'; import { sprintOf } from './holdout.ts'
 import { untestedAcs } from './actrace.ts'
 import { routeReview, recordAdditions } from './carry.ts'
 import { readFreeze } from './testfreeze.ts'
@@ -42,6 +42,12 @@ function openPr(slug: string, branch: string, title: string, draft: boolean): st
 // Another change's folder never rides along, so its own gate cannot fail this PR. A sprint chart approval does, so CI sees it.
 const changeFiles = (slug: string, wrote: string[]): string[] => dirtyFiles().filter(f => ships(slug)(f) || wrote.includes(f))
 
+
+// The approved chart revision this change was built from, or that it has none.
+function chartLine(slug: string): string {
+  const n = sprintOf(slug), c = n === null ? null : chartState(n)
+  return n === null || !c ? 'none: not charted' : `chart-${n} ${c.state}${c.digest ? ` at ${c.digest.slice(0, 12)}` : ''}`
+}
 
 export function cmdPr(args: Args): void {
   const given = args.pos[0]
@@ -92,7 +98,7 @@ export function cmdPr(args: Args): void {
     // Suggestions only: a failure here must never stop a ship.
     let claims: ClaimRow[] | undefined
     try { claims = claimRows(slug); writeAtomic(path.join(CHANGES, slug, 'claims.json'), JSON.stringify(claims, null, 2) + '\n') } catch { claims = undefined }
-    fs.writeFileSync(path.join(CHANGES, slug, 'pr-body.md'), prBody({ paths: registry.paths, proof: unproved(slug), agents: agentRows(slug), draft: draft ? reason : undefined, claims, planChanges: gates.plan ? undefined : planChangesAfterBuild(slug, verify?.base ?? defaultBase() ?? 'HEAD'), requirements: c('requirements.md'), intent: c('intent.md'), spec: c('spec.md'), plan: c('plan.md'), verify, outline: c('pr-outline.md'), review: c('review.md'), amendments: c('amendments.md'), runs: readJsonl<RunRow>(path.join(CHANGES, slug, 'evidence', 'runs.jsonl')), tests, intentMap: intentReceipt(slug), freeze: readFreeze(slug), changes: diff, risk: riskOf(diff.filter(d => ships(slug)(d.file)), [slug], registry, parseAccess(read(archPath)), false) }))
+    fs.writeFileSync(path.join(CHANGES, slug, 'pr-body.md'), prBody({ chart: chartLine(slug), waivers: readJsonl<Waiver>(WAIVERS).filter(w => w.slug === slug && waiverLive(w)).map(w => `${w.sensor} ${w.file}`), paths: registry.paths, proof: unproved(slug), agents: agentRows(slug), draft: draft ? reason : undefined, claims, planChanges: gates.plan ? undefined : planChangesAfterBuild(slug, verify?.base ?? defaultBase() ?? 'HEAD'), requirements: c('requirements.md'), intent: c('intent.md'), spec: c('spec.md'), plan: c('plan.md'), verify, outline: c('pr-outline.md'), review: c('review.md'), amendments: c('amendments.md'), runs: readJsonl<RunRow>(path.join(CHANGES, slug, 'evidence', 'runs.jsonl')), tests, intentMap: intentReceipt(slug), freeze: readFreeze(slug), changes: diff, risk: riskOf(diff.filter(d => ships(slug)(d.file)), [slug], registry, parseAccess(read(archPath)), false) }))
   }
   // A follow-up without --draft ends the draft (it ran the normal refusals above); with --draft it records the reason again.
   const prMd = path.join(CHANGES, slug, 'pr.md'), prMdBefore = followUp ? read(prMd) : ''

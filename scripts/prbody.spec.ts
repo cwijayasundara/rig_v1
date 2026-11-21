@@ -253,3 +253,26 @@ test('plan amendments after build are listed under their own heading, and none s
   assert.match(prBody({ ...base, planChanges: [] }), /## Plan changes after build\n\nnone/)
   assert.doesNotMatch(prBody(base), /Plan changes after build/)
 })
+
+test('Review first leads the body: revision, worst consequence, independent evidence, uncertainty, and flags for weakened tests, waivers and amendments', () => {
+  const frozen = [{ commit: 'abcdef1234', why: 'initial' }, { commit: 'bcdef12345', why: 'assertion was wrong', dropped: ['t/old.test.ts'] }] as never
+  const b = prBody({ intent, spec, plan, verify: { ...verify, holdout: { passed: 2, total: 3 } }, outline: '', review: 'reviewer: none\n', risk: { tier: 2, reasons: ['edits a payment path', 'second reason'] }, chart: 'chart-1 approved at 0123456789ab', waivers: ['sast src/a.ts'], planChanges: ['- abc1234 plan(demo): spec and plan'], freeze: frozen })
+  assert.ok(b.indexOf('## Review first') < b.indexOf('## Why the change'))
+  assert.match(b, /Approved intent: chart-1 approved at 0123456789ab/)
+  assert.match(b, /Highest consequence: tier 2, edits a payment path; door: two-way/)
+  assert.doesNotMatch(b.split('## Why the change')[0]!, /second reason/)
+  assert.match(b, /Independent evidence: 2\/3 hidden acceptance cases pass; verify pass/)
+  assert.match(b, /Remaining uncertainty: 1 item\(s\), first: No agent reviewed this change/)
+  assert.match(b, /weakened test: re-frozen, assertion was wrong \(dropped: t\/old\.test\.ts\)/)
+  assert.match(b, /waiver: sast src\/a\.ts/)
+  assert.match(b, /plan amendment abc1234 plan\(demo\): spec and plan/)
+})
+
+test('Review first says so when there is no chart, no hidden case and nothing to flag; it is absent when no chart line is given', () => {
+  const base = { intent, spec, plan, verify, outline: '', review: '', risk }
+  const b = prBody({ ...base, chart: 'none: not charted' })
+  assert.match(b, /Approved intent: none: not charted/)
+  assert.match(b, /Independent evidence: no hidden acceptance case ran/)
+  assert.match(b, /Flags: none/)
+  assert.doesNotMatch(prBody(base), /## Review first/)
+})
