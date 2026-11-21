@@ -1,7 +1,7 @@
 // The PR body (proposal 2026-10-25 A1): what a reviewer needs before reading the diff. Built from the change's own files, no model
 // call; the pr skill adds the part that takes judgement (special things to note, the change outline) as pr-outline.md.
 import { section, blastRadius, bullets, type FileDiff } from './model.ts'
-import type { Paths } from './registry.ts'
+import { defaultRegistry, type Paths } from './registry.ts'
 import { clean } from './core.ts'
 import type { Risk } from './risk.ts'
 import type { RunRow } from './runs.ts'
@@ -9,7 +9,8 @@ import { behaviourIds, missingBehaviours } from './sensors.ts'
 import { parseFindings, type ClaimRow } from './claims.ts'
 import { parseLedger } from './chartcheck.ts'
 import type { FreezeRow } from './testfreeze.ts'
-import { checkQuestions } from './prcheck.ts'
+import { checkQuestions, isSrc } from './prcheck.ts'
+import { isTest } from './model.ts'
 import type { AgentRow } from './agents.ts'
 
 type PrBodyInput = { paths?: Paths; requirements?: string; claims?: ClaimRow[]; intent: string; spec: string; plan: string; verify: { pass: boolean; tree: string | null; blocks: string[]; from?: string; holdout?: { passed: number; total: number } } | null; outline: string; review: string; risk: Risk; amendments?: string; runs?: RunRow[]; tests?: string; intentMap?: string; freeze?: FreezeRow[]; changes?: FileDiff[]; agents?: AgentRow[]; draft?: string; planChanges?: string[]; chart?: string; waivers?: string[]; proof?: { ids: string[]; exempt: string | null } }
@@ -105,6 +106,15 @@ const agentsNote = (rows: AgentRow[] = []): string => {
   return `## Agents\n\n${rows.map(line).join('\n')}\n\nTotal: ${rows.length} launches, ${sum('tokens')} tokens, ${(sum('ms') / 60000).toFixed(1)} min${unknown ? ' (some unknown)' : ''}`
 }
 
+// Files in the order to read them: contracts, then source, tests, other; mechanical edits (lockfiles, snapshots, generated, renames, binaries) last. Larger first within a class.
+const MECHANICAL = /(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|Cargo\.lock|go\.sum)$|\.snap$|(^|\/)(dist|build|generated|__snapshots__)\//
+export function readOrder(diffs: FileDiff[], plan: string, paths?: Paths): string[] {
+  const c = contracts(plan)
+  const rank = (d: FileDiff): number => d.binary || d.oversize || d.status === 'R' || MECHANICAL.test(d.file) ? 4 : c.includes(d.file) ? 0 : isSrc(d.file, paths) ? 1 : isTest(d.file, paths ?? defaultRegistry().paths) ? 2 : 3
+  const size = (d: FileDiff): number => d.added.length + d.removed.length
+  return [...diffs].sort((a, b) => rank(a) - rank(b) || size(b) - size(a) || (a.file < b.file ? -1 : 1)).map(d => `${d.file} (${['contract', 'source', 'test', 'other', 'mechanical'][rank(d)]}, ${size(d)} lines)`)
+}
+
 // What a reviewer reads first (pilot §4): the approved revision, the worst consequence, the independent evidence, what is unproven, and what was weakened, waived or amended.
 function reviewFirst(i: PrBodyInput, amended: string[], uncertain: string[]): string {
   const flags = [...(i.freeze ?? []).slice(1).map(r => `weakened test: re-frozen, ${clean(r.why)}${r.dropped?.length ? ` (dropped: ${r.dropped.map(clean).join(', ')})` : ''}`), ...(i.waivers ?? []).map(w => `waiver: ${w}`), ...(i.planChanges ?? []).map(c => `plan amendment ${c.replace(/^- /, '')}`), ...amended.map(a => `behaviour amendment: ${a.replace(/^[-*]\s+/, '')}`)]
@@ -115,6 +125,7 @@ function reviewFirst(i: PrBodyInput, amended: string[], uncertain: string[]): st
     `Independent evidence: ${holdout}; verify ${i.verify ? (i.verify.pass ? 'pass' : 'fail') : 'none'}`,
     `Remaining uncertainty: ${uncertain.length ? `${uncertain.length} item(s), first: ${uncertain[0]!.replace(/^[-*]\s+/, '')}` : 'nothing the reviewer named'}`,
     `Flags: ${flags.length ? '' : 'none'}`,
+    ...(i.changes?.length ? [`Read in this order: ${readOrder(i.changes, i.plan, i.paths).slice(0, 8).join('; ')}${i.changes.length > 8 ? `; and ${i.changes.length - 8} more` : ''}`] : []),
   ].map(l => `- ${l}`).join('\n')}${flags.length ? '\n' + flags.map(f => `  - ${f}`).join('\n') : ''}`
 }
 

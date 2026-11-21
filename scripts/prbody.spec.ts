@@ -276,3 +276,11 @@ test('Review first says so when there is no chart, no hidden case and nothing to
   assert.match(b, /Flags: none/)
   assert.doesNotMatch(prBody(base), /## Review first/)
 })
+
+test('Review first lists files to read in order: a small source edit and a contract ahead of a larger lockfile and snapshot', () => {
+  const d = (file: string, n: number, status: 'A' | 'M' | 'R' = 'M') => ({ file, status, added: Array.from({ length: n }, (_, k) => ({ n: k + 1, text: 'x' })), removed: [] })
+  const changes = [d('package-lock.json', 900), d('src/pay.ts', 4), d('src/pay.test.ts', 30), d('docs/a.md', 2), d('src/old.ts', 50, 'R'), d('__snapshots__/a.snap', 70), d('api/schema.json', 3)]
+  const b = prBody({ intent, spec, plan: plan.replace(/## Contracts[\s\S]*?(?=\n## |$)/, '') + '\n## Contracts\n- api/schema.json\n', verify, outline: '', review: '', risk, chart: 'chart-1 approved at 0123456789ab', changes })
+  const line = /Read in this order: (.*)/.exec(b)![1]!.split('; ').map(x => x.split(' ')[0])
+  assert.deepEqual(line, ['api/schema.json', 'src/pay.ts', 'src/pay.test.ts', 'docs/a.md', 'package-lock.json', '__snapshots__/a.snap', 'src/old.ts'].map(x => x))
+})
