@@ -46,12 +46,11 @@ import { cmdRisk, cmdWeight, cmdRouteCheck, cmdModels } from './risk.ts'
 import { cmdClaims } from './claims.ts'
 import { protect } from './protect.ts'; import { cmdAudit } from './audit.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'; import { cmdInterrogate } from './interrogate.ts'
-import { CHART_RE, conversionMapOf, intentOf, intentReady, chartFindings, chartState, writeChartApproval, PR_SEAL, chartDigest, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, intentSettled, nextChart, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, chartSizeText, waiveChartFinding, changeRequirements, PRD_RE, isConverted, conversionRefusal } from './chart.ts'
+import { CHART_RE, conversionMapOf, intentOf, intentReady, chartFindings, chartState, writeChartApproval, PR_SEAL, chartDigest, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, intentSettled, nextChart, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, chartSizeText, chartDone, waiveChartFinding, changeRequirements, PRD_RE, isConverted, conversionRefusal } from './chart.ts'
 import { journey, journeyText } from './journey.ts'; import { cmdIntentRecord, cmdIntentProject, cmdIntentAdjudicate } from './intentmapio.ts'; import { cmdIntentRecheck } from './intentrecheck.ts'; import { cmdTestsFreeze } from './testfreeze.ts'
 import { TYPES, changeDir, newChange, setActive, activeSlug, isShipped, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
 
 // ---------- commands ----------
-
 // NaN (a missing or unreadable date) is treated as infinitely old, so it can never hide from the stale check.
 const STALE_WAIVER_DAYS = 30
 const MAX_WAIVER_DAYS = 180
@@ -274,11 +273,12 @@ function cmdChart(args: Args): void {
     const next = nextChart()
     return out(args.opt.json ? JSON.stringify(next) : `${next.sprint === null ? 'sprint: ask' : `sprint ${next.sprint}`}${next.prd ? ` ${next.prd}` : ''} (${next.why})${next.candidates.length > 1 ? `\n${next.candidates.map(c => `  sprint ${c.sprint}: ${c.prd}`).join('\n')}` : ''}`)
   }
-  if ((sub !== 'check' && sub !== 'report' && sub !== 'plan' && sub !== 'summary' && sub !== 'seal' && sub !== 'size' && sub !== 'precheck') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: chart next [--json] | chart (check [--cases] [--json] | report | plan [--print] | summary | seal | size [--tier M|L] | precheck) <sprint number>')
+  if ((sub !== 'check' && sub !== 'report' && sub !== 'plan' && sub !== 'summary' && sub !== 'seal' && sub !== 'size' && sub !== 'precheck' && sub !== 'done') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: chart next [--json] | chart (check [--cases] [--json] | report | plan [--print] | summary | seal | size [--tier M|L] | precheck | done) <sprint number>')
   const n = Number(num); needPrd(n)
   if (sub === 'size' || sub === 'precheck') return sub === 'size' ? out(chartSizeText(n, args.opt.tier)) : chartPrecheck(n)
+  if (sub === 'done') { const left = chartDone(n); return left.length ? fail(`chart-${n} is not done:\n${left.map(l => `  ${l}`).join('\n')}\nRun the missing steps of ${skillRef('chart')} ${n}`) : out(`chart-${n} is done. Next: review the branch, then ${skillRef('approve')} chart-${n}`) }
   if (sub === 'seal') return approveChart(n, args, true) // no SDLC_HUMAN: the PR review decides
-  if (sub === 'plan') return out(args.opt.print ? sprintPlan(n) : `wrote ${writePlan(n)}`)
+  if (sub === 'plan') return out(args.opt.print ? sprintPlan(n) : `wrote ${writePlan(n)}`) 
   if (sub === 'report') return out(chartReport(n))
   if (sub === 'summary') return out(chartState(n).state === 'approved' ? approvalPage(n) : `wrote ${writeApprovalPage(n)}`) // an approved chart's page is hashed: print it, never rewrite it
   const found = chartFindings(n, Boolean(args.opt.cases))

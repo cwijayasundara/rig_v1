@@ -309,6 +309,13 @@ test('every intent has one section with tasks citing all its behaviours and no o
   assert.deepEqual(impl(IMPL.replace('- [ ] B2: failing test, then load', '- [ ] B3: failing test, then load')), ['impl-behaviour store', 'impl-behaviour store'])
 })
 
+test('a range of B-numbers in a task cites every behaviour in it', () => {
+  const s = parse({ store: intent('store', { behaviours: '- B1 (FR-1): a\n- B2 (FR-1): b\n- B3 (FR-1): c\n- B4 (FR-1): d\n' }) })
+  const plan = `# Plan\n\n${lanes('1 | store')}\n## Intents\n\n### store\n\n- [ ] B1-B4: failing tests, then code\n`
+  assert.deepEqual(implementationPlanProblems(plan, s).map(f => `${f.rule} ${f.where}`), [])
+  assert.deepEqual(implementationPlanProblems(plan.replace('B1-B4', 'B1-B3'), s).map(f => `${f.rule} ${f.where}`), ['impl-behaviour store'])
+})
+
 test('allocation puts every intent in exactly one lane, after its dependencies in that lane', () => {
   assert.deepEqual(impl(IMPL.replace(lanes('1 | store → model → cli'), lanes('1 | store → model'))), ['impl-allocation cli'])
   assert.deepEqual(impl(IMPL.replace(lanes('1 | store → model → cli'), lanes('1 | store → model → cli', '2 | cli'))), ['impl-allocation cli'])

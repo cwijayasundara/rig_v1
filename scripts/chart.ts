@@ -241,6 +241,16 @@ export function chartFindings(n: number, withCases: boolean): ChartFinding[] {
 
 // The review findings that still stop approval, or null when the sprint has no chart-review.md.
 export const chartWaivers = (n: number): ChartWaiver[] => { try { const v = JSON.parse(read(waiversPath(n))) as unknown; return Array.isArray(v) ? (v as ChartWaiver[]) : [] } catch { return [] } }
+// `chart done N`: what the chart still lacks before the person's one approval. Empty means every step ran and nothing blocks.
+export function chartDone(n: number): string[] {
+  const rel = (p: string): string => path.relative(ROOT, p)
+  const need = [path.join(testplanDir(n), 'plan.md'), path.join(testplanDir(n), 'cases.md'), path.join(testplanDir(n), 'data'), reviewPath(n), planPath(n), approvalMdPath(n)]
+  const out = need.filter(p => !exists(p)).map(p => `missing ${rel(p)}`)
+  if (!intentsOf(n).length) out.push('missing intents')
+  for (const f of chartFindings(n, true)) if (f.severity === 'block') out.push(`blocking [${f.rule}] ${f.message}`)
+  for (const f of chartOpenFindings(n) ?? []) out.push(`review finding ${f.n} not confirmed: ${f.text}`)
+  return out
+}
 export const chartReview = (n: number): ReviewFinding[] | null => (exists(reviewPath(n)) ? parseReview(read(reviewPath(n))) : null)
 // Tier S sizes the chart to a small PRD: at most 3 FRs and 15 client rule rows, no NFR row, no roles, no external integration. L is more than 8 FRs or
 // more than 60 rows; M is the rest. The counts come from the PRD and the ledger, so `chart size` is run after `prd ledger`.

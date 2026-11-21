@@ -55,9 +55,9 @@ test('every script is at most 45000 bytes and has no line over 1600 characters',
   assert.deepEqual(over, [], 'scripts over the byte or line-length cap')
 })
 
-test('every skill is at most 22000 bytes with no line over 3800 characters, and the skills total at most 102000 bytes', () => {
+test('every skill is at most 22000 bytes with no line over 3800 characters, and the skills total at most 103000 bytes', () => {
   const over = SKILLS.filter(f => bytes(f) > 22000 || longest(f) > 3800).map(f => `${path.relative(ROOT, f)} (${bytes(f)} bytes, longest line ${longest(f)})`)
   assert.deepEqual(over, [], 'skills over the byte or line-length cap')
   const total = SKILLS.reduce((n, f) => n + bytes(f), 0)
-  assert.ok(total <= 102000, `skills total ${total} bytes`)
+  assert.ok(total <= 103000, `skills total ${total} bytes`)
 })

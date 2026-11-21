@@ -32,6 +32,15 @@ const chart1 = (): void => {
 const files = (n: number): unknown => call(`return C.chartFiles(${n})`)
 const state = (n: number): { state: string; changed: string[] } => call(`return C.chartState(${n})`) as { state: string; changed: string[] }
 
+test('chart done lists every step the chart skipped and fails until the artifacts exist', () => {
+  chart1()
+  const r = sdlc(repo, ['chart', 'done', '1'])
+  assert.notEqual(r.code, 0)
+  for (const m of ['testplan/plan.md', 'testplan/cases.md', 'testplan/data', 'chart-review.md', 'sprint-1/plan.md', 'approval.md']) assert.match(r.stderr + r.stdout, new RegExp(`missing [^\\n]*${m.replace('.', '\\.')}`))
+  write(repo, `${P}/sprints/sprint-1/testplan/plan.md`, '# plan\n')
+  assert.doesNotMatch(sdlc(repo, ['chart', 'done', '1']).stderr, /missing [^\n]*testplan\/plan\.md/)
+})
+
 test('the digest changes when a sprint file is edited, added or removed, and not for another sprint intent', () => {
   chart1()
   write(repo, `${P}/sprints/sprint-2/intents/zeta.md`, intent(2))

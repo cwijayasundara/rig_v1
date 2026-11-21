@@ -319,9 +319,20 @@ test('chart skill: sizes the chart from the ledger before the design, and a pers
   assert.ok(skill.indexOf('S prd ledger <N>') < skill.indexOf('S chart size <N>') && skill.indexOf('S chart size <N>') < skill.indexOf('2. **Design.**'))
 })
 
+test('chart step 3: open questions are answered or marked proposed, and the chart never ends with a blocking check', () => {
+  const step3 = skill.split('\n').find(l => l.startsWith('3. **Check.**')) ?? ''
+  assert.match(step3, /Answer every `open-question` finding[^\n]*`\(proposed at chart\)`[^\n]*`## Open questions` to `none`/)
+  assert.match(step3, /The chart is not done while `S chart check <N> --json` or `--cases` has a `block` finding/)
+  assert.match(step3, /Never skip steps 4 to 8 with one open\./)
+})
+
+test('chart step 8 runs chart done before the summary', () => {
+  assert.match(skill, /8\. Run `S chart done <N>` first[^\n]*Then run `S chart summary <N>`/)
+})
+
 test('tier S: no design spec, design: none, one intent, an 80-line architecture, ADRs only for one-way doors', () => {
   assert.match(skill, /\*\*Tier S: skip this step\*\*[^\n]*no `superpowers:brainstorming`, no design doc/)
-  assert.match(archStep, /Tier S: `design: none`, one intent for the sprint unless its FRs can be built independently, `architecture\.md` at most 80 lines/)
+  assert.match(archStep, /Tier S: `design: none`, one intent per FR[^\n]*each with `depends:` taken from the PRD's `Depends on:` lines[^\n]*never one lump, `architecture\.md` at most 80 lines/)
   assert.match(archStep, /an ADR only for a one-way door/)
   assert.match(archStep, /`## Decisions` row `\(proposed at chart\)`/)
   assert.match(architect, /On tier S[^\n]*`design: none`/)

@@ -410,6 +410,8 @@ export function implementationPlanProblems(plan: string, intents: Intent[]): Cha
     if (body === undefined) { add('impl-intent', t.slug, `has no \`### ${t.slug}\` section: plan every intent`); continue }
     if (!/^\s*[-*]\s+\[[ xX]\]\s+\S/m.test(body)) add('impl-tasks', t.slug, `### ${t.slug} has no \`- [ ]\` tasks`)
     const cited = new Set(body.match(/\bB\d+\b/g) ?? [])
+    // `B3-B6` cites B3, B4, B5 and B6
+    for (const m of body.matchAll(/\bB(\d+)\s*[-–]\s*B(\d+)\b/g)) for (let n = Number(m[1]); n <= Math.min(Number(m[2]), Number(m[1]) + 200); n++) cited.add(`B${n}`)
     const known = new Set(t.behaviours.map(b => b.id))
     const unknown = [...cited].filter(b => !known.has(b))
     if (unknown.length) add('impl-behaviour', t.slug, `### ${t.slug} cites ${unknown.join(', ')}, which ${t.slug} does not have`)
