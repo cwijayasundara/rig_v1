@@ -314,3 +314,13 @@ test('Dependents section: files that import the change and are not in the spec\'
   assert.match(b, /1 dependent\(s\) outside the spec's blast radius \(see Dependents\)/)
   assert.doesNotMatch(prBody({ intent, spec, plan, verify, outline: '', review: '', risk }), /## Dependents/)
 })
+
+test('Interrogation: counts under Review first, each reproduced finding is a flag, and a tier 2 change with none recorded is flagged', () => {
+  const base = { intent, spec, plan, verify, outline: '', review: '', chart: 'chart-1 approved at 0123456789ab' }
+  const b = prBody({ ...base, risk, interrogate: { line: '3 found, 1 reproduced, 2 dismissed', reproduced: ['I-2 total drops tax (breaks B1): node check.js'] } })
+  assert.match(b, /Interrogation: 3 found, 1 reproduced, 2 dismissed/)
+  assert.match(b, /Flags: \n {2}- reproduced finding I-2 total drops tax \(breaks B1\): node check\.js/)
+  const two = prBody({ ...base, risk: { tier: 2, reasons: ['edits a payment path'] } })
+  assert.match(two, /Interrogation: not run/); assert.match(two, /tier 2 change: no interrogation recorded/)
+  assert.doesNotMatch(prBody({ ...base, risk }), /Interrogation:/)
+})

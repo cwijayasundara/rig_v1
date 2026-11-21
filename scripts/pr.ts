@@ -10,7 +10,7 @@ import { gh as ghRun, section, isTest } from './model.ts'
 import type { RunRow } from './runs.ts'
 import { treeStamp } from './stamp.ts'
 import { activeSlug, setActive, approvalState, verifyFresh, isShipped, changeDir } from './lifecycle.ts'
-import { prBody, evidenceLinks } from './prbody.ts'; import { repoDependents } from './dependents.ts'; import { listApps, appState } from './app.ts'; import { appDiff, report, approvedAt, replacesOf } from './appdiff.ts'
+import { prBody, evidenceLinks } from './prbody.ts'; import { repoDependents } from './dependents.ts'; import { resultPath, type Result } from './interrogate.ts'; import { listApps, appState } from './app.ts'; import { appDiff, report, approvedAt, replacesOf } from './appdiff.ts'
 import { agentRows } from './agents.ts'
 import { intentReceipt } from './intentmapio.ts'
 import { claimRows, type ClaimRow } from './claims.ts'
@@ -52,6 +52,14 @@ function differentialOf(slug: string, base: string): { line: string; unapproved:
   if (!r.ok) return { line: `not run: ${r.error}`, unapproved: [] }
   const rep = report(r.diffs, approvedAt(base, app.name), r.executed, r.unstable)
   return { line: rep.lines[0]!.replace(/^differential: /, ''), unapproved: rep.unapproved.map(d => `${d.id} ${d.step}`) }
+}
+
+// The interrogation (design: adversaries prove findings by running them), as the PR states it; nothing when none was recorded.
+function interrogation(slug: string): { line: string; reproduced: string[] } | undefined {
+  const r = readJson<Result | null>(resultPath(slug), null)
+  if (!r) return undefined
+  if (r.tree !== treeStamp()) return { line: 'stale: the code changed after it ran', reproduced: [] }
+  return { line: `${r.found} found, ${r.reproduced} reproduced, ${r.dismissed} dismissed`, reproduced: r.rows.filter(x => x.status === 'reproduced').map(x => `${x.id} ${x.title} (breaks ${x.breaks}): ${x.cmd}`) }
 }
 
 // The approved chart revision this change was built from, or that it has none.
@@ -109,7 +117,7 @@ export function cmdPr(args: Args): void {
     // Suggestions only: a failure here must never stop a ship.
     let claims: ClaimRow[] | undefined
     try { claims = claimRows(slug); writeAtomic(path.join(CHANGES, slug, 'claims.json'), JSON.stringify(claims, null, 2) + '\n') } catch { claims = undefined }
-    fs.writeFileSync(path.join(CHANGES, slug, 'pr-body.md'), prBody({ dependents: repoDependents(diff.flatMap(d => (d.from ? [d.file, d.from] : [d.file]))), chart: chartLine(slug), links: evidenceLinks(git(['remote', 'get-url', 'origin']), { base: verify?.base ?? defaultBase() ?? 'main', branch: git(['rev-parse', '--abbrev-ref', 'HEAD']) ?? '', sprint: sprintOf(slug), frozen: readFreeze(slug)[0]?.commit, slug, trace: exists(path.join(CHANGES, slug, 'evidence', 'journeys')) }), differential: differentialOf(slug, verify?.base ?? defaultBase() ?? 'main'), waivers: readJsonl<Waiver>(WAIVERS).filter(w => w.slug === slug && waiverLive(w)).map(w => `${w.sensor} ${w.file}`), paths: registry.paths, proof: unproved(slug), agents: agentRows(slug), draft: draft ? reason : undefined, claims, planChanges: gates.plan ? undefined : planChangesAfterBuild(slug, verify?.base ?? defaultBase() ?? 'HEAD'), requirements: c('requirements.md'), intent: c('intent.md'), spec: c('spec.md'), plan: c('plan.md'), verify, outline: c('pr-outline.md'), review: c('review.md'), amendments: c('amendments.md'), runs: readJsonl<RunRow>(path.join(CHANGES, slug, 'evidence', 'runs.jsonl')), tests, intentMap: intentReceipt(slug), freeze: readFreeze(slug), changes: diff, risk: riskOf(diff.filter(d => ships(slug)(d.file)), [slug], registry, parseAccess(read(archPath)), false) }))
+    fs.writeFileSync(path.join(CHANGES, slug, 'pr-body.md'), prBody({ interrogate: interrogation(slug), dependents: repoDependents(diff.flatMap(d => (d.from ? [d.file, d.from] : [d.file]))), chart: chartLine(slug), links: evidenceLinks(git(['remote', 'get-url', 'origin']), { base: verify?.base ?? defaultBase() ?? 'main', branch: git(['rev-parse', '--abbrev-ref', 'HEAD']) ?? '', sprint: sprintOf(slug), frozen: readFreeze(slug)[0]?.commit, slug, trace: exists(path.join(CHANGES, slug, 'evidence', 'journeys')) }), differential: differentialOf(slug, verify?.base ?? defaultBase() ?? 'main'), waivers: readJsonl<Waiver>(WAIVERS).filter(w => w.slug === slug && waiverLive(w)).map(w => `${w.sensor} ${w.file}`), paths: registry.paths, proof: unproved(slug), agents: agentRows(slug), draft: draft ? reason : undefined, claims, planChanges: gates.plan ? undefined : planChangesAfterBuild(slug, verify?.base ?? defaultBase() ?? 'HEAD'), requirements: c('requirements.md'), intent: c('intent.md'), spec: c('spec.md'), plan: c('plan.md'), verify, outline: c('pr-outline.md'), review: c('review.md'), amendments: c('amendments.md'), runs: readJsonl<RunRow>(path.join(CHANGES, slug, 'evidence', 'runs.jsonl')), tests, intentMap: intentReceipt(slug), freeze: readFreeze(slug), changes: diff, risk: riskOf(diff.filter(d => ships(slug)(d.file)), [slug], registry, parseAccess(read(archPath)), false) }))
   }
   // A follow-up without --draft ends the draft (it ran the normal refusals above); with --draft it records the reason again.
   const prMd = path.join(CHANGES, slug, 'pr.md'), prMdBefore = followUp ? read(prMd) : ''

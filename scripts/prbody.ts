@@ -14,7 +14,7 @@ import { outsideRadius, type Dependents } from './dependents.ts'
 import { isTest } from './model.ts'
 import type { AgentRow } from './agents.ts'
 
-type PrBodyInput = { dependents?: Dependents; links?: string[]; differential?: { line: string; unapproved: string[] }; paths?: Paths; requirements?: string; claims?: ClaimRow[]; intent: string; spec: string; plan: string; verify: { pass: boolean; tree: string | null; blocks: string[]; from?: string; holdout?: { passed: number; total: number } } | null; outline: string; review: string; risk: Risk; amendments?: string; runs?: RunRow[]; tests?: string; intentMap?: string; freeze?: FreezeRow[]; changes?: FileDiff[]; agents?: AgentRow[]; draft?: string; planChanges?: string[]; chart?: string; waivers?: string[]; proof?: { ids: string[]; exempt: string | null } }
+type PrBodyInput = { interrogate?: { line: string; reproduced: string[] }; dependents?: Dependents; links?: string[]; differential?: { line: string; unapproved: string[] }; paths?: Paths; requirements?: string; claims?: ClaimRow[]; intent: string; spec: string; plan: string; verify: { pass: boolean; tree: string | null; blocks: string[]; from?: string; holdout?: { passed: number; total: number } } | null; outline: string; review: string; risk: Risk; amendments?: string; runs?: RunRow[]; tests?: string; intentMap?: string; freeze?: FreezeRow[]; changes?: FileDiff[]; agents?: AgentRow[]; draft?: string; planChanges?: string[]; chart?: string; waivers?: string[]; proof?: { ids: string[]; exempt: string | null } }
 
 const firstSentence = (text: string): string => /^[\s\S]*?[.!?](?=\s|$)/.exec(text.trim())?.[0].replace(/\s+/g, ' ') ?? text.trim().replace(/\s+/g, ' ')
 
@@ -140,7 +140,7 @@ function dependentsNote(d: Dependents, radius: string[]): string {
 
 // What a reviewer reads first (pilot §4): the approved revision, the worst consequence, the independent evidence, what is unproven, and what was weakened, waived or amended.
 function reviewFirst(i: PrBodyInput, amended: string[], uncertain: string[]): string {
-  const flags = [...(i.dependents && outsideRadius(i.dependents.all, blastRadius(i.spec) ?? []).length ? [`${outsideRadius(i.dependents.all, blastRadius(i.spec) ?? []).length} dependent(s) outside the spec's blast radius (see Dependents)`] : []), ...(i.differential?.unapproved ?? []).map(d => `unapproved difference: ${d}`), ...(i.freeze ?? []).slice(1).map(r => `weakened test: re-frozen, ${clean(r.why)}${r.dropped?.length ? ` (dropped: ${r.dropped.map(clean).join(', ')})` : ''}`), ...(i.waivers ?? []).map(w => `waiver: ${w}`), ...(i.planChanges ?? []).map(c => `plan amendment ${c.replace(/^- /, '')}`), ...amended.map(a => `behaviour amendment: ${a.replace(/^[-*]\s+/, '')}`)]
+  const flags = [...(i.interrogate?.reproduced ?? []).map(f => `reproduced finding ${f}`), ...(i.risk.tier === 2 && !i.interrogate ? ['tier 2 change: no interrogation recorded'] : []), ...(i.dependents && outsideRadius(i.dependents.all, blastRadius(i.spec) ?? []).length ? [`${outsideRadius(i.dependents.all, blastRadius(i.spec) ?? []).length} dependent(s) outside the spec's blast radius (see Dependents)`] : []), ...(i.differential?.unapproved ?? []).map(d => `unapproved difference: ${d}`), ...(i.freeze ?? []).slice(1).map(r => `weakened test: re-frozen, ${clean(r.why)}${r.dropped?.length ? ` (dropped: ${r.dropped.map(clean).join(', ')})` : ''}`), ...(i.waivers ?? []).map(w => `waiver: ${w}`), ...(i.planChanges ?? []).map(c => `plan amendment ${c.replace(/^- /, '')}`), ...amended.map(a => `behaviour amendment: ${a.replace(/^[-*]\s+/, '')}`)]
   const holdout = i.verify?.holdout ? `${i.verify.holdout.passed}/${i.verify.holdout.total} hidden acceptance cases pass` : 'no hidden acceptance case ran'
   return `## Review first\n\n${[
     `Approved intent: ${i.chart}`,
@@ -148,6 +148,7 @@ function reviewFirst(i: PrBodyInput, amended: string[], uncertain: string[]): st
     `Independent evidence: ${holdout}; verify ${i.verify ? (i.verify.pass ? 'pass' : 'fail') : 'none'}`,
     `Remaining uncertainty: ${uncertain.length ? `${uncertain.length} item(s), first: ${uncertain[0]!.replace(/^[-*]\s+/, '')}` : 'nothing the reviewer named'}`,
     `Differential: ${i.differential?.line ?? 'not applicable'}`,
+    ...(i.interrogate || i.risk.tier === 2 ? [`Interrogation: ${i.interrogate?.line ?? 'not run'}`] : []),
     ...(i.links?.length ? [`Links: ${i.links.join(' · ')}`] : []),
     ...(i.changes?.length ? [`Read in this order: ${readOrder(i.changes, i.plan, i.paths).slice(0, 8).join('; ')}${i.changes.length > 8 ? `; and ${i.changes.length - 8} more` : ''}`] : []),
     `Flags: ${flags.length ? '' : 'none'}`,

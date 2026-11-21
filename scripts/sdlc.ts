@@ -45,7 +45,7 @@ import { cmdAutonomy, initAutonomy } from './autonomy.ts'
 import { cmdRisk, cmdWeight, cmdRouteCheck, cmdModels } from './risk.ts'
 import { cmdClaims } from './claims.ts'
 import { protect } from './protect.ts'; import { cmdAudit } from './audit.ts'
-import { cmdApp, draftApps, appStates } from './app.ts'
+import { cmdApp, draftApps, appStates } from './app.ts'; import { cmdInterrogate } from './interrogate.ts'
 import { CHART_RE, conversionMapOf, intentOf, intentReady, chartFindings, chartState, writeChartApproval, PR_SEAL, chartDigest, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, intentSettled, nextChart, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, waiveChartFinding, changeRequirements, PRD_RE, isConverted, conversionRefusal } from './chart.ts'
 import { journey, journeyText } from './journey.ts'; import { cmdIntentRecord, cmdIntentProject, cmdIntentAdjudicate } from './intentmapio.ts'; import { cmdIntentRecheck } from './intentrecheck.ts'; import { cmdTestsFreeze } from './testfreeze.ts'
 import { TYPES, changeDir, newChange, setActive, activeSlug, isShipped, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
@@ -475,7 +475,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   app: cmdApp,
   slice: cmdSlice,
   maintain: cmdMaintain,
-  readiness: cmdReadiness, autonomy: cmdAutonomy, audit: cmdAudit,
+  readiness: cmdReadiness, autonomy: cmdAutonomy, audit: cmdAudit, interrogate: cmdInterrogate,
   risk: cmdRisk,
   claims: cmdClaims,
   weight: cmdWeight, models: cmdModels, 'route-check': cmdRouteCheck, 'intent-record': cmdIntentRecord, 'intent-adjudicate': cmdIntentAdjudicate, off: cmdOff, on: cmdOn,

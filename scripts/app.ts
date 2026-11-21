@@ -64,7 +64,7 @@ export const draftApps = (): Inert[] => listApps().filter(a => appState(a) === '
 export const appStates = (): { name: string; state: AppState }[] => listApps().map(a => ({ name: a.name, state: appState(a) }))
 
 // The driver runs with a clean environment: no tokens or secrets the checker was given, and its own state directory.
-const SECRETISH = /TOKEN|SECRET|PASSWORD|CREDENTIAL|API_?KEY|^SDLC_|^GH_|^GITHUB_|^ACTIONS_/i
+export const SECRETISH = /TOKEN|SECRET|PASSWORD|CREDENTIAL|API_?KEY|^SDLC_|^GH_|^GITHUB_|^ACTIONS_/i
 
 // Kills the process groups a driver recorded in its pids file (the app it launched, in its own group) and nothing else: a driver that was
 // killed on a timeout cannot clean up after itself.

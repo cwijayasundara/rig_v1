@@ -3,7 +3,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import { ROOT, read, readJson, writeAtomic, optString, fail, out, defaultBase, gitIn, type Args } from './core.ts'
+import { ROOT, read, readJson, writeAtomic, skillRef, optString, fail, out, defaultBase, gitIn, type Args } from './core.ts'
 import { showAt } from './diffs.ts'
 import { withBaseTree } from './basetree.ts'
 import { runDriver, listApps, appState, type App } from './app.ts'
@@ -117,8 +117,8 @@ export function diffFindings(base: string | null | undefined): Finding[] {
   return wanted.flatMap((name): Finding[] => {
     const app = listApps().find(a => a.name === name)
     const block = (message: string, fix: string): Finding[] => [{ sensor: 'journeys', severity: 'block', message: `differential ${name}: ${message}`, fix }]
-    if (!app) return block('an approved intent says this change replaces it, but there is no such app', 'add the journeys with /rig:app, or correct `replaces:` on the chart PR')
-    if (appState(app) !== 'current') return block('the driver is not approved as it stands, so CI does not run it', 'a person approves the journeys again with /rig:approve app')
+    if (!app) return block('an approved intent says this change replaces it, but there is no such app', `add the journeys with ${skillRef('app')}, or correct \`replaces:\` on the chart PR`)
+    if (appState(app) !== 'current') return block('the driver is not approved as it stands, so CI does not run it', `a person approves the journeys again with ${skillRef('approve')} app`)
     const r = appDiff(app, base)
     if (!r.ok) return block(`not run: ${r.error}`, 'make the driver pass on the base and the head')
     const rep = report(r.diffs, approvedAt(base, name), r.executed, r.unstable)
