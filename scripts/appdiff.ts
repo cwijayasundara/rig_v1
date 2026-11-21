@@ -2,6 +2,7 @@
 // oracle. A difference blocks unless a person approved it on the base branch (.rig/verify/<app>/differences.json, read from the base ref).
 import fs from 'node:fs'
 import path from 'node:path'
+import crypto from 'node:crypto'
 import { ROOT, read, readJson, writeAtomic, optString, fail, out, defaultBase, gitIn, type Args } from './core.ts'
 import { showAt } from './diffs.ts'
 import { withBaseTree } from './basetree.ts'
@@ -11,7 +12,9 @@ import type { Finding } from './model.ts'
 export type Step = { name: string; ok: boolean; observed?: unknown }
 export type Rule = { step: string; replace: string; with: string }
 export type Diff = { id: string; step: string; before: unknown; after: unknown }
-export type Approved = { id: string; reason?: string; by?: string }
+// An approval names the new value it accepts (`after`: afterOf), so a later, different change to the same step is not covered by it.
+export type Approved = { id: string; after?: string; reason?: string; by?: string }
+export const afterOf = (d: Diff): string => crypto.createHash('sha256').update(JSON.stringify(d.after)).digest('hex').slice(0, 12)
 
 const DEFAULTS: Rule[] = [
   { step: '*', replace: '\\d{4}-\\d\\d-\\d\\dT[\\d:.]+Z?', with: '<time>' },
@@ -48,12 +51,13 @@ export function compare(base: Step[], head: Step[], head2: Step[]): { diffs: Dif
 }
 
 export function report(diffs: Diff[], approved: Approved[], executed: number, unstable: string[] = []): { lines: string[]; unapproved: Diff[]; stale: string[] } {
-  const ok = new Set(approved.map(a => a.id)), unapproved = diffs.filter(d => !ok.has(d.id)), stale = approved.filter(a => !diffs.some(d => d.id === a.id)).map(a => a.id)
+  const covers = (a: Approved, d: Diff): boolean => a.id === d.id && a.after === afterOf(d)
+  const ok = (d: Diff): boolean => approved.some(a => covers(a, d)), unapproved = diffs.filter(d => !ok(d)), stale = approved.filter(a => !diffs.some(d => covers(a, d))).map(a => a.id)
   const j = (v: unknown): string => JSON.stringify(v).slice(0, 120)
   return { unapproved, stale, lines: [
     `differential: ${executed} step(s) run, ${diffs.length} difference(s), ${diffs.length - unapproved.length} approved, ${unapproved.length} unapproved`,
-    ...diffs.map(d => `${d.id}: ${d.step}: ${j(d.before)} -> ${j(d.after)} (${ok.has(d.id) ? 'approved' : 'UNAPPROVED'})`),
-    ...stale.map(id => `${id}: approved but no longer differs (stale)`),
+    ...diffs.map(d => `${d.id}: ${d.step}: ${j(d.before)} -> ${j(d.after)} (${ok(d) ? 'approved' : `UNAPPROVED; to accept this value add {"id":"${d.id}","after":"${afterOf(d)}"}`})`),
+    ...stale.map(id => `${id}: approved, but the step no longer differs or its new value changed (stale)`),
     ...unstable.map(n => `unstable: ${n} (the head's two runs disagree; not compared)`)] }
 }
 
@@ -106,7 +110,9 @@ export function cmdAppDiff(args: Args): void {
 // intents decide, so a PR cannot drop the requirement by editing its own copy.
 export function diffFindings(base: string | null | undefined): Finding[] {
   if (!base) return []
-  const names = (gitIn(ROOT, ['ls-tree', '-r', '--name-only', base, '--', '.rig/product/sprints']) ?? '').split('\n').filter(f => /\/intents\/[^/]+\.md$/.test(f))
+  const shipped = new Set((gitIn(ROOT, ['ls-tree', '-r', '--name-only', base, '--', '.rig/changes']) ?? '').split('\n').filter(f => f.endsWith('/pr.md')).map(f => f.split('/')[2]))
+  // An intent whose change already merged (its pr.md is on the base) no longer asks for the differential: only the change in flight does.
+  const names = (gitIn(ROOT, ['ls-tree', '-r', '--name-only', base, '--', '.rig/product/sprints']) ?? '').split('\n').filter(f => /\/intents\/[^/]+\.md$/.test(f) && !shipped.has(path.basename(f, '.md')))
   const wanted = [...new Set(names.map(f => replacesOf(showAt(base, f) ?? '')).filter((a): a is string => a !== null))]
   return wanted.flatMap((name): Finding[] => {
     const app = listApps().find(a => a.name === name)
@@ -117,6 +123,6 @@ export function diffFindings(base: string | null | undefined): Finding[] {
     if (!r.ok) return block(`not run: ${r.error}`, 'make the driver pass on the base and the head')
     const rep = report(r.diffs, approvedAt(base, name), r.executed, r.unstable)
     const unstable = r.unstable.map((n): Finding => ({ sensor: 'journeys', severity: 'block', message: `differential ${name}: step "${n}" differs between two runs of the head, so it cannot be compared`, fix: 'make the step deterministic, or add a normalize rule for the varying part' }))
-    return [...unstable, ...rep.unapproved.map(d => ({ sensor: 'journeys', severity: 'block' as const, message: `differential ${name}: ${d.id} ${d.step} changed: ${JSON.stringify(d.before).slice(0, 100)} -> ${JSON.stringify(d.after).slice(0, 100)}`, fix: `if intended, a person adds ${d.id} to .rig/verify/${name}/differences.json on the base branch; otherwise fix the code` }))]
+    return [...unstable, ...rep.unapproved.map(d => ({ sensor: 'journeys', severity: 'block' as const, message: `differential ${name}: ${d.id} ${d.step} changed: ${JSON.stringify(d.before).slice(0, 100)} -> ${JSON.stringify(d.after).slice(0, 100)}`, fix: `if intended, a person adds {"id":"${d.id}","after":"${afterOf(d)}"} to .rig/verify/${name}/differences.json on the base branch; otherwise fix the code` }))]
   })
 }

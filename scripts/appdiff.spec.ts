@@ -1,7 +1,7 @@
 // The differential runner (design 2026-11-21): the base's journey trace is the oracle; a difference blocks unless approved on the base.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { normalise, compare, report, replacesOf, type Step } from './appdiff.ts'
+import { normalise, compare, report, replacesOf, afterOf, type Step } from './appdiff.ts'
 
 const s = (name: string, observed?: unknown, ok = true): Step => ({ name, ok, ...(observed === undefined ? {} : { observed }) })
 
@@ -45,12 +45,20 @@ test('compare: a step that stops passing is a difference even with no observed v
 
 test('report: approved ids are approved, a list entry with no difference is stale, lines are by id', () => {
   const r = compare([s('a', 1), s('b', 1)], [s('a', 2), s('b', 2)], [s('a', 2), s('b', 2)])
-  const rep = report(r.diffs, [{ id: 'D-a' }, { id: 'D-zzz' }], r.executed, ['flaky'])
+  const rep = report(r.diffs, [{ id: 'D-a', after: afterOf(r.diffs[0]!) }, { id: 'D-zzz', after: 'x' }], r.executed, ['flaky'])
   assert.equal(rep.lines[0], 'differential: 2 step(s) run, 2 difference(s), 1 approved, 1 unapproved')
   assert.match(rep.lines.join('\n'), /D-a: a: .* \(approved\)/)
-  assert.match(rep.lines.join('\n'), /D-b: b: .* \(UNAPPROVED\)/)
+  assert.match(rep.lines.join('\n'), /D-b: b: .* \(UNAPPROVED; to accept this value add \{"id":"D-b","after":"[0-9a-f]{12}"\}\)/)
   assert.deepEqual(rep.stale, ['D-zzz']); assert.deepEqual(rep.unapproved.map(d => d.id), ['D-b'])
   assert.match(rep.lines.join('\n'), /unstable: flaky/)
+})
+
+test('an approval covers only the value it names: a later, different change to the same step is unapproved', () => {
+  const first = compare([s('a', 1)], [s('a', 2)], [s('a', 2)]).diffs, later = compare([s('a', 1)], [s('a', 3)], [s('a', 3)]).diffs
+  const approved = [{ id: 'D-a', after: afterOf(first[0]!) }]
+  assert.equal(report(first, approved, 1).unapproved.length, 0)
+  assert.equal(report(later, approved, 1).unapproved.length, 1)
+  assert.equal(report(first, [{ id: 'D-a' }], 1).unapproved.length, 1, 'an id with no value approves nothing')
 })
 
 test('replacesOf reads the intent front matter only', () => {
@@ -93,18 +101,19 @@ test('app diff blocks a changed behaviour by id, and the base\'s approved list u
   changePrice()
   const r = sdlc(repo, ['app', 'diff', 'shop', '--base', 'main'])
   assert.equal(r.code, 1, r.stdout + r.stderr)
-  assert.match(r.stdout, /D-a-shopper-sees-the-products: .* \(UNAPPROVED\)/)
+  assert.match(r.stdout, /D-a-shopper-sees-the-products: .* \(UNAPPROVED; to accept/)
   write(repo, '.rig/verify/shop/differences.json', JSON.stringify([{ id: 'D-a-shopper-sees-the-products', reason: 'price rise', by: 'me' }])); gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'approve on the head')
   assert.equal(sdlc(repo, ['app', 'diff', 'shop', '--base', 'main']).code, 1, 'a list added by the PR itself does not approve it')
-  gitIn(repo, 'checkout', '-q', 'main'); write(repo, '.rig/verify/shop/differences.json', JSON.stringify([{ id: 'D-a-shopper-sees-the-products', reason: 'price rise', by: 'me' }])); gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'approve on the base')
+  gitIn(repo, 'checkout', '-q', 'main'); write(repo, '.rig/verify/shop/differences.json', JSON.stringify([{ id: 'D-a-shopper-sees-the-products', after: /"after":"([0-9a-f]{12})"/.exec(r.stdout)![1], reason: 'price rise', by: 'me' }])); gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'approve on the base')
   gitIn(repo, 'checkout', '-q', 'work')
   const ok = sdlc(repo, ['app', 'diff', 'shop', '--base', 'main'])
   assert.equal(ok.code, 0, ok.stdout); assert.match(ok.stdout, /1 approved, 0 unapproved/)
 })
 
 // CI: the base's charted intent says the change replaces the app, so the diff must run there and block an unapproved difference.
-const ciFindings = (replaces: boolean, price?: string): { sensor: string; message: string }[] => {
+const ciFindings = (replaces: boolean, price?: string, shipped = false): { sensor: string; message: string }[] => {
   write(repo, '.rig/product/sprints/sprint-1/intents/x.md', `---\nslug: x\n${replaces ? 'replaces: shop\n' : ''}---\n# x\n`)
+  if (shipped) write(repo, '.rig/changes/x/pr.md', '# merged\n')
   sdlc(repo, ['app', 'approve', 'shop'], { env: { SDLC_HUMAN: '1' } })
   gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'chart and approval')
   gitIn(repo, 'checkout', '-q', 'main'); gitIn(repo, 'merge', '-q', 'work'); gitIn(repo, 'checkout', '-qb', 'pr')
@@ -124,4 +133,8 @@ test('CI runs no differential when no base intent says replaces', () => {
 test('CI blocks a step the PR made nondeterministic: unstable is not a way past the gate', () => {
   const f = ciFindings(true, 'Math.floor(Math.random() * 1e9)')
   assert.ok(f.some(x => /differs between two runs of the head/.test(x.message)), JSON.stringify(f))
+})
+
+test('CI no longer runs the differential for an intent whose change already merged (its pr.md is on the base)', () => {
+  assert.ok(!ciFindings(true, undefined, true).some(x => /differential/.test(x.message)))
 })
