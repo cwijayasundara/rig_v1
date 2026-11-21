@@ -15,5 +15,12 @@
     { "id": "audit", "cmd": "npm audit --audit-level=high", "cadence": "ci", "blocks": false, "guide": "Do not add dependencies with known high-severity vulnerabilities." },
     { "id": "mutation-diff", "cmd": "S=\"${RIG_SDLC:-.rig/bin/sdlc.ts}\"; [ -f \"$S\" ] || { echo 'mutation-diff: sdlc not found; re-run sdlc.ts vendor'; exit 1; }; [ -x node_modules/.bin/stryker ] || { echo 'mutation-diff: Stryker is not installed: npm i -D @stryker-mutator/core, or the person waives mutation-diff'; exit 1; }; rm -rf reports/mutation; { npx --no-install stryker run --mutate {changed-lines:js,jsx,ts,tsx,mjs,cjs,mts,cts} --reporters json --logLevel warn; } >&2; node --disable-warning=ExperimentalWarning \"$S\" mutscore --tool stryker --report reports/mutation/mutation.json --lines {changed-lines:js,jsx,ts,tsx,mjs,cjs,mts,cts}; s=$?; rm -rf reports/mutation; exit $s", "cadence": "ci", "blocks": true, "timeoutMs": 600000, "guide": "Every line this change adds is pinned by a test: the mutation score on the changed lines must reach mutation.minScore; a survivor names a line and a change no test noticed, and goes back to the test writer." },
     { "id": "mutation", "cmd": "npx --no-install stryker run", "cadence": "nightly", "blocks": false, "guide": "Tests must assert behaviour so that changing the code makes them fail." }
+  ],
+  "fit": [
+    {"sensor":"types","unless":["tsconfig.json"],"drop":true,"note":"types sensor left out: no tsconfig.json. Add it back (npx --no-install tsc --noEmit) when the project uses TypeScript."},
+    {"sensor":"lint","unless":[".eslintrc*","eslint.config.*",{"in":["package.json"],"match":"eslint"}],"when":[{"in":["package.json"],"match":"\"lint\"\\s*:"}],"cmd":"npm run lint --silent","note":"lint runs npm run lint (eslint is not a dependency)."},
+    {"sensor":"lint","unless":[".eslintrc*","eslint.config.*",{"in":["package.json"],"match":"eslint"},{"in":["package.json"],"match":"\"lint\"\\s*:"}],"drop":true,"note":"lint sensor left out: eslint is not a dependency and package.json has no lint script. npm i -D eslint, then add the sensor back."},
+    {"sensor":"lint","when":[{"in":["package.json"],"match":"\"lint\"\\s*:\\s*\"[^\"]*node\\s+--check"}],"note":"That lint script is only a syntax check, and it ignores the edited file: install eslint for a real lint."},
+    {"sensor":"mutation-diff","unless":["node_modules/.bin/stryker",{"in":["package.json"],"match":"stryker"}],"note":"mutation-diff blocks CI until Stryker is installed (npm i -D @stryker-mutator/core) or a person waives it."}
   ]
 }

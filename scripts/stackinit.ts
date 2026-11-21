@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process'
 import { ROOT, SENSORS_PATH, SENSORS_JSON, SDLC, PLUGIN_ROOT, exists, read, git, listChanges, sanctionWrites, writeAtomic } from './core.ts'
 import { loadPacks, detectStacks, packFile, packRegistry, PACKS_DIR } from './stackpacks.ts'
 import { writeSync, BRIEF } from './sync.ts'
+import { adaptPack } from './stackadapt.ts'
 import { isRegistryShape, type Contracts } from './registry.ts'
 
 // Specmatic runs on Java (spec §4): without java on PATH its commands would fail every gate, so init leaves them empty and says why.
@@ -45,16 +46,17 @@ export function declareStack(opt: string | true): string {
   if (listChanges().length) return 'a change already exists; --stack is for onboarding only'
   const { packs, found } = packsFor(opt)
   if (found.length > 1) return `several stacks match (${found.sort().join(', ')}); run init --stack <name> with one of them`
-  const pack = packs.find(p => p.stack === found[0])
-  if (!pack) return `no stack pack for ${found[0] ?? 'this directory'} (known: ${packs.map(p => p.stack).join(', ')}); write .rig/sensors.json yourself`
+  const shipped = packs.find(p => p.stack === found[0])
+  if (!shipped) return `no stack pack for ${found[0] ?? 'this directory'} (known: ${packs.map(p => p.stack).join(', ')}); write .rig/sensors.json yourself`
   fs.mkdirSync(SDLC, { recursive: true })
+  const { pack, notes } = adaptPack(shipped, ROOT)
   const pc = packContracts(pack.contracts, javaOk())
   writeAtomic(file, JSON.stringify({ ...packFile(pack), contracts: pc.contracts }, null, 2) + '\n')
   sanctionWrites([SENSORS_JSON])
   const brief = path.join(ROOT, BRIEF)
   if (!exists(brief)) { fs.mkdirSync(path.dirname(brief), { recursive: true }); fs.copyFileSync(path.join(PLUGIN_ROOT, 'templates', 'brief.md'), brief) }
   const synced = writeSync(packRegistry(pack))
-  return `wrote .rig/sensors.json from the ${pack.stack} pack (${pack.sensors.length} sensors); edit the commands to fit this repo. ${BRIEF} is ready to fill in. ${prdFolder()}${synced}${pc.note}`
+  return `wrote .rig/sensors.json from the ${pack.stack} pack (${pack.sensors.length} sensors); edit the commands to fit this repo. ${BRIEF} is ready to fill in. ${prdFolder()}${synced}${pc.note}${notes.map(n => `\n${n}`).join('')}`
 }
 
 // The suggested PRD folder, on disk so a person finds it (2026-10-26 tester feedback): a README and the template, never a sprint

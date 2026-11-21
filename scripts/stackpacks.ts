@@ -4,9 +4,18 @@ import path from 'node:path'
 import { globToRegex, isObject, isStringList } from './model.ts'
 import { parseRegistry, type Contracts, type Paths, type Registry } from './registry.ts'
 
-type StackPack = { stack: string; markers: string[]; paths: Partial<Paths>; contracts: Contracts; holdout: string; sensors: unknown[] }
+// A fit rule (see stackadapt.ts): `unless` probes that suppress it, `when` probes of which one must hit, and what it does to `sensor`.
+export type Probe = string | { in: string[]; match: string }
+export type FitRule = { sensor?: string; unless?: Probe[]; when?: Probe[]; drop?: boolean; cmd?: string; note: string }
+export type StackPack = { stack: string; markers: string[]; paths: Partial<Paths>; contracts: Contracts; holdout: string; sensors: unknown[]; fit: FitRule[] }
 export const PACKS_DIR = path.resolve(import.meta.dirname, '../templates/stacks')
-const PACK_KEYS = ['stack', 'markers', 'paths', 'contracts', 'holdout', 'sensors']
+const PACK_KEYS = ['stack', 'markers', 'paths', 'contracts', 'holdout', 'sensors', 'fit']
+const isProbe = (p: unknown): boolean => typeof p === 'string' || (isObject(p) && isStringList(p.in) && typeof p.match === 'string')
+const isProbes = (v: unknown): boolean => v === undefined || (Array.isArray(v) && v.every(isProbe))
+const fitErrors = (fit: unknown, file: string): string[] => !Array.isArray(fit)
+  ? [`${file}: fit must be a list of rules`]
+  : fit.flatMap((r, i) => !isObject(r) || typeof r.note !== 'string' || !isProbes(r.unless) || !isProbes(r.when) || (r.drop === true && typeof r.sensor !== 'string') || (r.cmd !== undefined && (typeof r.cmd !== 'string' || typeof r.sensor !== 'string'))
+    ? [`${file}: fit rule ${i} needs a note, valid unless/when probes, and a sensor when it drops or swaps one`] : [])
 
 // The registry rig init writes for a pack: everything but the markers.
 export const packFile = (p: StackPack): Record<string, unknown> => ({ stack: p.stack, paths: p.paths, contracts: p.contracts, ...(p.holdout ? { holdout: p.holdout } : {}), sensors: p.sensors })
@@ -23,6 +32,7 @@ export function parsePack(text: string, file: string): { pack: StackPack | null;
   if ('holdout' in v && typeof v.holdout !== 'string') errors.push(`${file}: holdout must be a string`)
   if (!Array.isArray(v.sensors)) errors.push(`${file}: sensors must be a list`)
   else if (v.sensors.some(s => isObject(s) && s.builtin === true)) errors.push(`${file}: packs declare no built-in sensors`)
+  if ('fit' in v) errors.push(...fitErrors(v.fit, file))
   for (const k of Object.keys(v)) if (!PACK_KEYS.includes(k)) errors.push(`${file}: unknown key "${k}"`)
   if (errors.length) return { pack: null, errors }
   const pack: StackPack = {
@@ -32,6 +42,7 @@ export function parsePack(text: string, file: string): { pack: StackPack | null;
     contracts: isObject(v.contracts) ? { covers: [], ...(v.contracts as Partial<Contracts>) } as Contracts : { files: [], covers: [], validate: '', run: '' },
     holdout: typeof v.holdout === 'string' ? v.holdout : '',
     sensors: v.sensors as unknown[],
+    fit: (v.fit ?? []) as FitRule[],
   }
   const parsed = parseRegistry(registryText(pack))
   if (parsed.errors.length) return { pack: null, errors: parsed.errors.map(e => `${file}: ${e}`) }
