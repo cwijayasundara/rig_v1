@@ -29,7 +29,7 @@ The workflow trace found two separate interactions on the chart path. The local 
 
 **Start in** `scripts/chart.ts`, `scripts/plancheck.ts`, `scripts/check.ts`, and `skills/build/SKILL.md`. The plan checker already checks commit ordering, protects contracts, and consults base-branch intent. Its ad hoc path warns and skips scope and ledger checks.
 
-- [ ] On the chart PR, show outcomes, invariants, allowed scope, contracts, critical acceptance cases, and unresolved assumptions. Record the independent human review and the revision it covered. Reuse the chart seal and approval machinery where available. A successful chart PR must require a single human decision.
+- [x] On the chart PR, show outcomes, invariants, allowed scope, contracts, critical acceptance cases, and unresolved assumptions. Record the independent human review and the revision it covered. Reuse the chart seal and approval machinery where available. A successful chart PR must require a single human decision.
 - [x] For unattended changes, have base-controlled CI resolve the intent to the approved chart and verify its revision. Compare actual source changes with the approved scope, including both paths of renames and deleted files.
 - [x] Allow plan repairs inside that scope and surface amendments on the PR. Update build instructions that request routine reapproval. Route changed contracts, scope expansions, or revised acceptance criteria back to the chart. Leave blocked work with a concrete reason and a resumable state.
 - [x] Verify that an uncharted intent, stale approval, and out-of-scope edit omitted from the plan each block. Verify that an in-scope plan amendment reaches the PR without an intermediate human prompt.
