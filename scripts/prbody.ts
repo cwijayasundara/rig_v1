@@ -10,10 +10,11 @@ import { parseFindings, type ClaimRow } from './claims.ts'
 import { parseLedger } from './chartcheck.ts'
 import type { FreezeRow } from './testfreeze.ts'
 import { checkQuestions, isSrc } from './prcheck.ts'
+import { outsideRadius, type Dependents } from './dependents.ts'
 import { isTest } from './model.ts'
 import type { AgentRow } from './agents.ts'
 
-type PrBodyInput = { links?: string[]; differential?: { line: string; unapproved: string[] }; paths?: Paths; requirements?: string; claims?: ClaimRow[]; intent: string; spec: string; plan: string; verify: { pass: boolean; tree: string | null; blocks: string[]; from?: string; holdout?: { passed: number; total: number } } | null; outline: string; review: string; risk: Risk; amendments?: string; runs?: RunRow[]; tests?: string; intentMap?: string; freeze?: FreezeRow[]; changes?: FileDiff[]; agents?: AgentRow[]; draft?: string; planChanges?: string[]; chart?: string; waivers?: string[]; proof?: { ids: string[]; exempt: string | null } }
+type PrBodyInput = { dependents?: Dependents; links?: string[]; differential?: { line: string; unapproved: string[] }; paths?: Paths; requirements?: string; claims?: ClaimRow[]; intent: string; spec: string; plan: string; verify: { pass: boolean; tree: string | null; blocks: string[]; from?: string; holdout?: { passed: number; total: number } } | null; outline: string; review: string; risk: Risk; amendments?: string; runs?: RunRow[]; tests?: string; intentMap?: string; freeze?: FreezeRow[]; changes?: FileDiff[]; agents?: AgentRow[]; draft?: string; planChanges?: string[]; chart?: string; waivers?: string[]; proof?: { ids: string[]; exempt: string | null } }
 
 const firstSentence = (text: string): string => /^[\s\S]*?[.!?](?=\s|$)/.exec(text.trim())?.[0].replace(/\s+/g, ' ') ?? text.trim().replace(/\s+/g, ' ')
 
@@ -127,9 +128,19 @@ export function evidenceLinks(origin: string | null, o: { base: string; branch: 
     ...(o.frozen ? [`[tests frozen](${u}/commit/${o.frozen})`] : [])]
 }
 
+// The computed dependents (pilot §3): what imports the changed files, against what the spec said the change may touch.
+function dependentsNote(d: Dependents, radius: string[]): string {
+  const out = outsideRadius(d.all, radius)
+  return `## Dependents (computed)\n\n${[
+    `${d.all.length} file(s) outside the diff import the changed code, within two hops, by a static search of the import lines.`,
+    out.length ? `Not in the spec's blast radius (${out.length}):\n${out.slice(0, 10).map(x => `- ${x.file} (via ${x.via})`).join('\n')}${out.length > 10 ? `\n- and ${out.length - 10} more` : ''}` : '',
+    d.unsupported.length ? `Not analysed (a language this search does not read): ${d.unsupported.join(', ')}` : '',
+    d.limited ? 'The search read only the first 5000 source files.' : ''].filter(Boolean).join('\n\n')}`
+}
+
 // What a reviewer reads first (pilot §4): the approved revision, the worst consequence, the independent evidence, what is unproven, and what was weakened, waived or amended.
 function reviewFirst(i: PrBodyInput, amended: string[], uncertain: string[]): string {
-  const flags = [...(i.differential?.unapproved ?? []).map(d => `unapproved difference: ${d}`), ...(i.freeze ?? []).slice(1).map(r => `weakened test: re-frozen, ${clean(r.why)}${r.dropped?.length ? ` (dropped: ${r.dropped.map(clean).join(', ')})` : ''}`), ...(i.waivers ?? []).map(w => `waiver: ${w}`), ...(i.planChanges ?? []).map(c => `plan amendment ${c.replace(/^- /, '')}`), ...amended.map(a => `behaviour amendment: ${a.replace(/^[-*]\s+/, '')}`)]
+  const flags = [...(i.dependents && outsideRadius(i.dependents.all, blastRadius(i.spec) ?? []).length ? [`${outsideRadius(i.dependents.all, blastRadius(i.spec) ?? []).length} dependent(s) outside the spec's blast radius (see Dependents)`] : []), ...(i.differential?.unapproved ?? []).map(d => `unapproved difference: ${d}`), ...(i.freeze ?? []).slice(1).map(r => `weakened test: re-frozen, ${clean(r.why)}${r.dropped?.length ? ` (dropped: ${r.dropped.map(clean).join(', ')})` : ''}`), ...(i.waivers ?? []).map(w => `waiver: ${w}`), ...(i.planChanges ?? []).map(c => `plan amendment ${c.replace(/^- /, '')}`), ...amended.map(a => `behaviour amendment: ${a.replace(/^[-*]\s+/, '')}`)]
   const holdout = i.verify?.holdout ? `${i.verify.holdout.passed}/${i.verify.holdout.total} hidden acceptance cases pass` : 'no hidden acceptance case ran'
   return `## Review first\n\n${[
     `Approved intent: ${i.chart}`,
@@ -162,6 +173,7 @@ export function prBody(i: PrBodyInput): string {
     amended.length ? `## Amendments after approval\n\n${amended.join('\n')}` : '',
     i.planChanges ? `## Plan changes after build\n\n${i.planChanges.join('\n') || 'none'}` : '',
     `## Blast radius\n\n${radius.length ? radius.join('\n') : 'none recorded'}\n\nDoor: ${door(i.plan)}`,
+    i.dependents ? dependentsNote(i.dependents, blastRadius(i.spec) ?? []) : '',
     `## Risk\n\n${i.risk.reasons.length ? `Tier ${i.risk.tier}\n\n${i.risk.reasons.map(r => `- ${r}`).join('\n')}` : 'Tier 0: none of the signals'}`,
     `## How to revert\n\n${revert(i.plan)}`,
     `## What the checks would miss\n\n${would.join('\n') || 'nothing the reviewer named'}`,

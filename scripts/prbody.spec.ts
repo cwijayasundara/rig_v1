@@ -302,3 +302,15 @@ test('Review first shows the differential, lists an unapproved difference first 
   assert.match(prBody(base), /Differential: not applicable/)
   assert.ok(evidenceLinks('https://github.com/a/b', { base: 'main', branch: 'sdlc/x', sprint: null, slug: 'x', trace: true }).some(l => /journey trace\]\(https:\/\/github\.com\/a\/b\/tree\/sdlc%2Fx\/\.rig\/changes\/x\/evidence\/journeys\)/.test(l)))
 })
+
+test('Dependents section: files that import the change and are not in the spec\'s blast radius are listed with via, flagged, and an unread language is named', () => {
+  const deps = { all: [{ file: 'src/export/a.ts', via: 'src/export/csv.ts' }, { file: 'src/billing/charge.ts', via: 'src/export/csv.ts' }], unsupported: ['svc/pay.go'], limited: false }
+  const b = prBody({ intent, spec, plan, verify, outline: '', review: '', risk, chart: 'chart-1 approved at 0123456789ab', dependents: deps })
+  const sec = /## Dependents \(computed\)\n\n([\s\S]*?)\n\n## Risk/.exec(b)![1]!
+  assert.match(sec, /2 file\(s\) outside the diff import the changed code/)
+  assert.match(sec, /Not in the spec's blast radius \(1\):\n- src\/billing\/charge\.ts \(via src\/export\/csv\.ts\)/)
+  assert.doesNotMatch(sec, /- src\/export\/a\.ts/)
+  assert.match(sec, /Not analysed .*: svc\/pay\.go/)
+  assert.match(b, /1 dependent\(s\) outside the spec's blast radius \(see Dependents\)/)
+  assert.doesNotMatch(prBody({ intent, spec, plan, verify, outline: '', review: '', risk }), /## Dependents/)
+})

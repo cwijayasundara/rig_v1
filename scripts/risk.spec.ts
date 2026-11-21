@@ -142,3 +142,12 @@ test('a PR touching a sprint holdout directory is tier 2 (holdout changed), on a
   process.env.GITHUB_HEAD_REF = 'rig/chart-1'
   try { const r = riskOf(diff, [], defaultRegistry(), [], true); assert.equal(r.tier, 2); assert.ok(r.reasons.includes('holdout changed'), 'a branch name the author picks exempts nothing') } finally { if (was === undefined) delete process.env.GITHUB_HEAD_REF; else process.env.GITHUB_HEAD_REF = was }
 })
+
+test('a dependent of the changed code in an always-human path makes it tier 2 and names the file and what it imports', () => {
+  const risk = { enforce: false, alwaysHuman: ['src/billing/**'], maxLines: 400, hardCap: false, window: 20, maxRevertRate: 0.1 }
+  const r = assessRisk(input({ files: ['src/price.ts'], risk, dependents: [{ file: 'src/billing/charge.ts', via: 'src/price.ts' }, { file: 'src/ui/a.ts', via: 'src/price.ts' }] }))
+  assert.equal(r.tier, 2)
+  assert.ok(r.reasons.includes('dependent of the changed code sits in an always-human path: src/billing/charge.ts (imports src/price.ts)'))
+  assert.ok(!r.reasons.some(x => x.includes('src/ui/a.ts')))
+  assert.equal(assessRisk(input({ files: ['src/price.ts'], risk, dependents: [{ file: 'src/ui/a.ts', via: 'src/price.ts' }] })).tier, 0)
+})
