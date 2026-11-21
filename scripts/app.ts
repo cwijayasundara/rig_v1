@@ -4,7 +4,8 @@
 import fs from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
-import { ROOT, SDLC, PLUGIN_ROOT, ownerOrFail, out, fail, read, readJson, BUDGET_MS, exists, sha, writeAtomic, sanctionWrites, skillRef, type Args } from './core.ts'
+import { activeSlug } from './lifecycle.ts'
+import { ROOT, SDLC, CHANGES, PLUGIN_ROOT, ownerOrFail, out, fail, read, readJson, BUDGET_MS, exists, sha, writeAtomic, sanctionWrites, skillRef, type Args } from './core.ts'
 import { runCommand } from './runs.ts'
 import { formatFindings, type Finding } from './model.ts'
 import type { Inert } from './registry.ts'
@@ -19,7 +20,7 @@ const readRel = <T>(rel: string): T | null => readJson<T | null>(path.join(ROOT,
 const UNSAFE = /(^|\/)\.\.(\/|$)|^\//
 const appDirs = (): string[] => (exists(path.join(ROOT, VERIFY)) ? fs.readdirSync(path.join(ROOT, VERIFY), { withFileTypes: true }).filter(d => d.isDirectory() && /^[a-z0-9][a-z0-9-]*$/.test(d.name)).map(d => d.name) : [])
 
-function listApps(): App[] {
+export function listApps(): App[] {
   return appDirs().flatMap(name => {
     const def = readRel<{ run?: unknown; files?: unknown; timeoutMs?: unknown }>(`${VERIFY}/${name}/app.json`)
     if (!def || typeof def.run !== 'string' || !def.run.trim() || !Array.isArray(def.files)) return []
@@ -72,17 +73,19 @@ function reap(stateDir: string): void {
   fs.rmSync(file, { force: true })
 }
 
-function runDriver(a: App, budgetMs: number): { exit: number; tail: string; timedOut: boolean } {
-  const stateDir = path.join(SDLC, 'state', 'verify', a.name)
+// `o.cwd` runs the driver in another checkout (the base worktree), `o.stateDir` keeps its trace apart, `o.keep` copies the trace and shots for the PR.
+export function runDriver(a: App, budgetMs: number, o: { cwd?: string; stateDir?: string; keep?: string } = {}): { exit: number; tail: string; timedOut: boolean; stateDir: string } {
+  const stateDir = o.stateDir ?? path.join(SDLC, 'state', 'verify', a.name)
   fs.mkdirSync(stateDir, { recursive: true })
   reap(stateDir)
   fs.rmSync(path.join(stateDir, 'evidence.json'), { force: true })
-  const row = runCommand(a.run, { timeoutMs: Math.max(1000, Math.min(a.timeoutMs, budgetMs)), env: { RIG_VERIFY_STATE: stateDir }, unsetEnv: SECRETISH })
+  const row = runCommand(a.run, { cwd: o.cwd, timeoutMs: Math.max(1000, Math.min(a.timeoutMs, budgetMs)), env: { RIG_VERIFY_STATE: stateDir }, unsetEnv: SECRETISH })
   reap(stateDir)
   // Exit 0 is not enough: the driver must say what it checked. No evidence, or none that holds, is a failed run.
   const evidence = readJson<{ ok?: boolean; steps?: unknown[] } | null>(path.join(stateDir, 'evidence.json'), null)
   const hollow = row.exit === 0 && !(evidence?.ok === true && Array.isArray(evidence.steps) && evidence.steps.length > 0)
-  return { exit: hollow ? 1 : row.exit, tail: hollow ? `${row.tail}\nthe driver exited 0 but wrote no evidence of any journey step to $RIG_VERIFY_STATE/evidence.json` : row.tail, timedOut: Boolean(row.timedOut) }
+  if (o.keep && evidence) { fs.rmSync(o.keep, { recursive: true, force: true }); fs.cpSync(stateDir, o.keep, { recursive: true, filter: f => !f.endsWith('pids') }) }
+  return { exit: hollow ? 1 : row.exit, tail: hollow ? `${row.tail}\nthe driver exited 0 but wrote no evidence of any journey step to $RIG_VERIFY_STATE/evidence.json` : row.tail, timedOut: Boolean(row.timedOut), stateDir }
 }
 
 // What verify, ship and CI run: every approved app's driver. A draft is skipped.
@@ -98,7 +101,7 @@ export function journeyFindings(budgetMs: number, only?: string, ci = false): Fi
     if (ci && state === 'changed') continue
     if (left <= 0) { findings.push({ sensor: 'journeys', severity: 'block', message: `journeys ${a.name} not run: the time budget ran out`, fix: 'raise the budget or make the driver faster', outOfTime: true }); continue }
     const t0 = Date.now()
-    const r = runDriver(a, left)
+    const slug = ci ? null : activeSlug(), r = runDriver(a, left, slug ? { keep: path.join(CHANGES, slug, 'evidence', 'journeys', a.name) } : {})
     left -= Date.now() - t0
     if (r.exit !== 0) findings.push({ sensor: 'journeys', severity: 'block', message: `a journey of ${a.name} failed (exit ${r.exit}${r.timedOut ? ', timed out' : ''}):\n${r.tail.split('\n').slice(-12).map(l => `      ${l}`).join('\n')}`, fix: `fix the app; the journey is how a person uses it. Rerun: ${a.run}`, ...(r.timedOut ? { outOfTime: true as const } : {}) })
   }
@@ -128,7 +131,7 @@ export function cmdApp(args: Args): void {
   }
   if (sub === 'run') {
     const a = pick(args, apps)
-    const r = runDriver(a, a.timeoutMs)
+    const slug = activeSlug(), r = runDriver(a, a.timeoutMs, slug ? { keep: path.join(CHANGES, slug, 'evidence', 'journeys', a.name) } : {})
     out(r.tail)
     process.exitCode = r.exit === 0 ? 0 : 1
     return

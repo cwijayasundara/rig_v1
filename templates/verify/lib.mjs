@@ -45,12 +45,21 @@ process.on('exit', () => { for (const c of started) { try { kill(c.pid, 'SIGKILL
 // verify('shop', async ({ launch, step }) => { ... }): the steps run in order; the first failed one stops the run, evidence is written either way.
 export async function verify(app, fn) {
   const steps = []
+  // A step's returned value is what it observed (JSON, 2 KB at most): the differential compares it between the base and the head.
+  const keep = v => { if (v === undefined) return {}; let t = JSON.stringify(v) ?? 'null'; return { observed: t.length > 2048 ? `${t.slice(0, 2048)}…(truncated)` : JSON.parse(t) } }
   const step = async (name, run) => {
     const t0 = Date.now()
-    try { const value = await run(); steps.push({ name, ok: true, ms: Date.now() - t0 }); return value } catch (e) { steps.push({ name, ok: false, ms: Date.now() - t0, error: String(e?.message ?? e) }); throw e }
+    try { const value = await run(); steps.push({ name, ok: true, ms: Date.now() - t0, ...keep(value) }); return value } catch (e) { steps.push({ name, ok: false, ms: Date.now() - t0, error: String(e?.message ?? e) }); throw e }
+  }
+  // Saves a screenshot for the reviewer and names it on the latest step.
+  const shot = async (name, bytes) => {
+    const rel = `shots/${String(name).replace(/[^\w.-]+/g, '-')}.png`
+    fs.mkdirSync(path.join(STATE, 'shots'), { recursive: true }); fs.writeFileSync(path.join(STATE, rel), bytes)
+    if (steps.length) steps.at(-1).shot = rel
+    return path.join(STATE, rel)
   }
   let failure = null
-  try { await fn({ launch, step }) } catch (e) { failure = e }
+  try { await fn({ launch, step, shot }) } catch (e) { failure = e }
   await stopAll()
   fs.mkdirSync(STATE, { recursive: true })
   fs.writeFileSync(path.join(STATE, 'evidence.json'), JSON.stringify({ app, at: new Date().toISOString(), ok: !failure, steps }, null, 2) + '\n')
