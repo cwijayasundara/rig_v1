@@ -12,6 +12,12 @@ test('normalise makes traces that differ only in a time, an id and a port equal'
   assert.notDeepEqual(normalise([s('t', { n: 1 })]), normalise([s('t', { n: 2 })]))
 })
 
+test('normalise never rewrites a number, and a port only inside a URL: a price change is not hidden', () => {
+  assert.deepEqual(normalise([s('p', { total: 1999 })]), [s('p', { total: 1999 })])
+  assert.notDeepEqual(normalise([s('p', { k: 'price:1999' })]), normalise([s('p', { k: 'price:2999' })]))
+  assert.deepEqual(normalise([s('p', { u: 'http://localhost:40123/x' })]), [s('p', { u: 'http://localhost:<port>/x' })])
+})
+
 test('a rule rewrites what the app names, for the steps its glob matches', () => {
   const rules = [{ step: 'cart*', replace: 'sku-\\d+', with: '<sku>' }]
   assert.deepEqual(normalise([s('cart add', { k: 'sku-9' })], rules), [s('cart add', { k: '<sku>' })])
@@ -75,7 +81,7 @@ beforeEach(() => {
   write(repo, '.rig/verify/shop/journey.mjs', DRIVER)
   sdlc(repo, ['sync']); gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'base'); gitIn(repo, 'checkout', '-qb', 'work')
 })
-const changePrice = (): void => { write(repo, 'src/shop.js', fs.readFileSync(path.join(repo, 'src/shop.js'), 'utf8').replace('priceCents: 450', 'priceCents: 475')); gitIn(repo, 'commit', '-qam', 'raise the tea price') }
+const changePrice = (to = '475'): void => { write(repo, 'src/shop.js', fs.readFileSync(path.join(repo, 'src/shop.js'), 'utf8').replace('priceCents: 450', `priceCents: ${to}`)); gitIn(repo, 'commit', '-qam', 'raise the tea price') }
 
 test('app diff passes when the head behaves like the base', () => {
   const r = sdlc(repo, ['app', 'diff', 'shop', '--base', 'main'])
@@ -97,12 +103,12 @@ test('app diff blocks a changed behaviour by id, and the base\'s approved list u
 })
 
 // CI: the base's charted intent says the change replaces the app, so the diff must run there and block an unapproved difference.
-const ciFindings = (replaces: boolean): { sensor: string; message: string }[] => {
+const ciFindings = (replaces: boolean, price?: string): { sensor: string; message: string }[] => {
   write(repo, '.rig/product/sprints/sprint-1/intents/x.md', `---\nslug: x\n${replaces ? 'replaces: shop\n' : ''}---\n# x\n`)
   sdlc(repo, ['app', 'approve', 'shop'], { env: { SDLC_HUMAN: '1' } })
   gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'chart and approval')
   gitIn(repo, 'checkout', '-q', 'main'); gitIn(repo, 'merge', '-q', 'work'); gitIn(repo, 'checkout', '-qb', 'pr')
-  changePrice()
+  changePrice(price)
   return JSON.parse(sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--config-from', 'main', '--json']).stdout).findings
 }
 
@@ -113,4 +119,9 @@ test('CI blocks an unapproved difference when the base intent says replaces', ()
 
 test('CI runs no differential when no base intent says replaces', () => {
   assert.ok(!ciFindings(false).some(x => /differential/.test(x.message)))
+})
+
+test('CI blocks a step the PR made nondeterministic: unstable is not a way past the gate', () => {
+  const f = ciFindings(true, 'Math.floor(Math.random() * 1e9)')
+  assert.ok(f.some(x => /differs between two runs of the head/.test(x.message)), JSON.stringify(f))
 })

@@ -47,7 +47,8 @@ const changeFiles = (slug: string, wrote: string[]): string[] => dirtyFiles().fi
 function differentialOf(slug: string, base: string): { line: string; unapproved: string[] } | undefined {
   const name = replacesOf(read(path.join(CHANGES, slug, 'intent.md'))), app = name ? listApps().find(a => a.name === name) : undefined
   if (!app || appState(app) !== 'current') return undefined
-  const r = appDiff(app, base)
+  let r: ReturnType<typeof appDiff>
+  try { r = appDiff(app, base) } catch (e) { return { line: `not run: ${(e as Error).message}`, unapproved: [] } } // a failure here never stops a ship
   if (!r.ok) return { line: `not run: ${r.error}`, unapproved: [] }
   const rep = report(r.diffs, approvedAt(base, app.name), r.executed, r.unstable)
   return { line: rep.lines[0]!.replace(/^differential: /, ''), unapproved: rep.unapproved.map(d => `${d.id} ${d.step}`) }

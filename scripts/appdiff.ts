@@ -2,7 +2,7 @@
 // oracle. A difference blocks unless a person approved it on the base branch (.rig/verify/<app>/differences.json, read from the base ref).
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, PLUGIN_ROOT, read, readJson, writeAtomic, optString, fail, out, defaultBase, gitIn, type Args } from './core.ts'
+import { ROOT, read, readJson, writeAtomic, optString, fail, out, defaultBase, gitIn, type Args } from './core.ts'
 import { showAt } from './diffs.ts'
 import { withBaseTree } from './basetree.ts'
 import { runDriver, listApps, appState, type App } from './app.ts'
@@ -16,18 +16,18 @@ export type Approved = { id: string; reason?: string; by?: string }
 const DEFAULTS: Rule[] = [
   { step: '*', replace: '\\d{4}-\\d\\d-\\d\\dT[\\d:.]+Z?', with: '<time>' },
   { step: '*', replace: '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', with: '<uuid>' },
-  { step: '*', replace: '(?<=:)\\d{4,5}\\b', with: '<port>' },
+  { step: '*', replace: '(?<=//[^/\\s:]+:)\\d{2,5}\\b', with: '<port>' },
 ]
 const glob = (g: string, name: string): boolean => new RegExp(`^${g.split('*').map(x => x.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`).test(name)
 const slug = (t: string): string => t.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 
-// Irrelevant differences (times, ids, ports, and what the app names) are replaced in the JSON text of each observed value.
+// Irrelevant differences (times, ids, URL ports, and what the app names) are replaced inside string values only: a number is never rewritten.
+const deep = (v: unknown, f: (s: string) => string): unknown => typeof v === 'string' ? f(v) : Array.isArray(v) ? v.map(x => deep(x, f)) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, deep(x, f)])) : v
 export function normalise(steps: Step[], rules: Rule[] = []): Step[] {
   return steps.map(s => {
     if (s.observed === undefined) return s
-    let t = JSON.stringify(s.observed)
-    for (const r of [...DEFAULTS, ...rules]) if (glob(r.step, s.name)) t = t.replace(new RegExp(r.replace, 'g'), r.with)
-    return { ...s, observed: JSON.parse(t) }
+    const rs = [...DEFAULTS, ...rules].filter(r => glob(r.step, s.name))
+    return { ...s, observed: deep(s.observed, t => rs.reduce((x, r) => { try { return x.replace(new RegExp(r.replace, 'g'), r.with) } catch { return x } }, t)) }
   })
 }
 
@@ -71,11 +71,13 @@ export function appDiff(app: App, base: string): DiffRun {
   const dirs: string[] = []
   try {
     const head = state('h1'), head2 = state('h2'), basel = state('b'); dirs.push(head, head2, basel)
-    const h1 = runDriver(app, app.timeoutMs, { stateDir: head }); runDriver(app, app.timeoutMs, { stateDir: head2 })
+    const h1 = runDriver(app, app.timeoutMs, { stateDir: head }), h2 = runDriver(app, app.timeoutMs, { stateDir: head2 })
+    if (h2.exit !== 0) return { ok: false, error: `the driver fails on the head's second run (exit ${h2.exit})` }
+    if (h2.exit !== 0) return { ok: false, error: `the driver fails on the head's second run (exit ${h2.exit})` }
     if (h1.exit !== 0) return { ok: false, error: `the driver fails on the head (exit ${h1.exit})` }
     const b = withBaseTree(base, dir => {
-      // The base records what the head's helper records, so an older helper there cannot hide an observed value.
-      writeAtomic(path.join(dir, '.rig/verify/lib.mjs'), read(path.join(PLUGIN_ROOT, 'templates', 'verify', 'lib.mjs')))
+      // The base runs the head's approved helper, so both sides record the same fields whatever helper the base had.
+      writeAtomic(path.join(dir, '.rig/verify/lib.mjs'), read(path.join(ROOT, '.rig/verify/lib.mjs')))
       return runDriver(app, app.timeoutMs, { cwd: dir, stateDir: basel })
     })
     if (!b.ok) return { ok: false, error: b.error }
@@ -114,6 +116,7 @@ export function diffFindings(base: string | null | undefined): Finding[] {
     const r = appDiff(app, base)
     if (!r.ok) return block(`not run: ${r.error}`, 'make the driver pass on the base and the head')
     const rep = report(r.diffs, approvedAt(base, name), r.executed, r.unstable)
-    return rep.unapproved.map(d => ({ sensor: 'journeys', severity: 'block' as const, message: `differential ${name}: ${d.id} ${d.step} changed: ${JSON.stringify(d.before).slice(0, 100)} -> ${JSON.stringify(d.after).slice(0, 100)}`, fix: `if intended, a person adds ${d.id} to .rig/verify/${name}/differences.json on the base branch; otherwise fix the code` }))
+    const unstable = r.unstable.map((n): Finding => ({ sensor: 'journeys', severity: 'block', message: `differential ${name}: step "${n}" differs between two runs of the head, so it cannot be compared`, fix: 'make the step deterministic, or add a normalize rule for the varying part' }))
+    return [...unstable, ...rep.unapproved.map(d => ({ sensor: 'journeys', severity: 'block' as const, message: `differential ${name}: ${d.id} ${d.step} changed: ${JSON.stringify(d.before).slice(0, 100)} -> ${JSON.stringify(d.after).slice(0, 100)}`, fix: `if intended, a person adds ${d.id} to .rig/verify/${name}/differences.json on the base branch; otherwise fix the code` }))]
   })
 }

@@ -35,3 +35,9 @@ test('shot saves the file under shots/ and names it on the latest step', () => {
   assert.equal(steps[0]!.shot, 'shots/cart-view.png')
   assert.equal(fs.readFileSync(path.join(dir, 'state', 'shots', 'cart-view.png'), 'utf8'), 'x')
 })
+
+test('a step that returns something that cannot be serialised still passes, with no observed value', () => {
+  const { steps } = run(`await step('cyc', async () => { const o = {}; o.self = o; return o })\nawait step('big', async () => 10n)`)
+  assert.deepEqual(steps.map(x => x.ok), [true, true])
+  assert.ok(!('observed' in steps[0]!))
+})

@@ -49,7 +49,7 @@ export async function verify(app, fn) {
   const keep = v => { if (v === undefined) return {}; let t = JSON.stringify(v) ?? 'null'; return { observed: t.length > 2048 ? `${t.slice(0, 2048)}…(truncated)` : JSON.parse(t) } }
   const step = async (name, run) => {
     const t0 = Date.now()
-    try { const value = await run(); steps.push({ name, ok: true, ms: Date.now() - t0, ...keep(value) }); return value } catch (e) { steps.push({ name, ok: false, ms: Date.now() - t0, error: String(e?.message ?? e) }); throw e }
+    try { const value = await run(); let seen = {}; try { seen = keep(value) } catch { /* not serializable: the step passed, nothing to compare */ } steps.push({ name, ok: true, ms: Date.now() - t0, ...seen }); return value } catch (e) { steps.push({ name, ok: false, ms: Date.now() - t0, error: String(e?.message ?? e) }); throw e }
   }
   // Saves a screenshot for the reviewer and names it on the latest step.
   const shot = async (name, bytes) => {
