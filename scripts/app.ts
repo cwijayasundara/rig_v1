@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { activeSlug } from './lifecycle.ts'
 import { ROOT, SDLC, CHANGES, PLUGIN_ROOT, ownerOrFail, out, fail, read, readJson, BUDGET_MS, exists, sha, writeAtomic, sanctionWrites, skillRef, type Args } from './core.ts'
+import { cmdAppDiff } from './appdiff.ts'
 import { runCommand } from './runs.ts'
 import { formatFindings, type Finding } from './model.ts'
 import type { Inert } from './registry.ts'
@@ -136,6 +137,7 @@ export function cmdApp(args: Args): void {
     process.exitCode = r.exit === 0 ? 0 : 1
     return
   }
+  if (sub === 'diff') return cmdAppDiff(args)
   if (sub === 'approve') {
     if (process.env.SDLC_HUMAN !== '1') fail(`journey approvals are human-only: the person runs ${skillRef('approve')} app <app>`, 3)
     const a = pick(args, apps)
@@ -155,5 +157,5 @@ export function cmdApp(args: Args): void {
     process.exitCode = found.some(f => f.severity === 'block') ? 1 : 0
     return
   }
-  fail('usage: app (init | run | status | approve | check) [<app>]')
+  fail('usage: app (init | run | status | approve | check | diff) [<app>]')
 }
