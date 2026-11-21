@@ -78,6 +78,7 @@ test('approve chart-N refuses with no review, and with a finding not confirmed f
   const none = approveChart(repo, ['approve', 'chart-1'], HUMAN)
   assert.equal(none.code, 1)
   assert.match(none.stderr, /no chart-review\.md/)
+  write(repo, `${P}/sprints/sprint-1/prd.md`, prd(1, '\n## Roles\n')) // roles make the chart tier M, where a bare "→ fixed" is not enough
   write(repo, `${P}/sprints/sprint-1/chart-review.md`, 'verdict: pass\n## Findings\n- [severity: high] [category: coverage] a.md:1: nextId can repeat → fix (confidence 90) → fixed\n')
   const open = approveChart(repo, ['approve', 'chart-1'], HUMAN)
   assert.equal(open.code, 1)
@@ -1131,4 +1132,45 @@ test('complete external row passes; internal rows need no stand-in', async () =>
 
 test('no Integrations table passes', async () => {
   assert.deepEqual(await standin(''), [])
+})
+
+// chart size: the tier comes from the PRD and the ledger, so a small PRD gets the cheap path and a person can only raise it.
+const SP = `${P}/sprints/sprint-1`
+const frs = (k: number, extra = ''): string => `---\nsprint: 1\nengineers: 1\n---\n# S\n\n${Array.from({ length: k }, (_, i) => `### FR-${i + 1}: f${i}\n\n`).join('')}${extra}## Open questions\nnone\n`
+const rows = (k: number, extra = ''): string => Array.from({ length: k }, (_, i) => `- AC-1.${i + 1} [rule] prd.md:5 "rule ${i}"\n`).join('') + extra
+const size = (...a: string[]): string => { const r = sdlc(repo, ['chart', 'size', '1', ...a]); assert.equal(r.code, 0, r.stderr); return r.stdout }
+test('chart size: 3 FRs and 14 client rule rows with no NFR is tier S; an NFR row or a role makes it M; more than 8 FRs is L; a person raises it, never lowers it', () => {
+  write(repo, `${SP}/prd.md`, frs(3)); write(repo, `${SP}/requirements.md`, rows(14))
+  assert.match(size(), /^tier S: 3 FR\(s\), 14 client rule row/)
+  write(repo, `${SP}/requirements.md`, rows(14, '- NFR-1 [rule] prd.md:6 "p95 under 200 ms"\n'))
+  assert.match(size(), /^tier M.*an NFR row/)
+  write(repo, `${SP}/requirements.md`, rows(14)); write(repo, `${SP}/prd.md`, frs(3, '## Roles\n\n- admin\n\n'))
+  assert.match(size(), /^tier M.*roles/)
+  write(repo, `${SP}/prd.md`, frs(3, '## Users and scenarios\n\n- a shopper\n\n')); write(repo, `${SP}/requirements.md`, rows(14)) // the PRD format's own Users heading is not a role matrix
+  assert.match(size(), /^tier S/)
+  write(repo, `${SP}/prd.md`, frs(3, '## Integrations and constraints\n\n- Node 22, no third-party dependencies\n\n')); write(repo, `${SP}/requirements.md`, rows(14))
+  assert.match(size(), /^tier S/) // a negated constraint is not an integration
+  write(repo, `${SP}/prd.md`, frs(3, '## Integrations and constraints\n\n- webhook to billing\n\n')); assert.match(size(), /^tier M.*external integration/)
+  write(repo, `${SP}/prd.md`, frs(3)); write(repo, `${SP}/requirements.md`, rows(16))
+  assert.match(size(), /^tier M.*16 client rule rows/)
+  write(repo, `${SP}/requirements.md`, rows(14)); assert.match(size('--tier', 'L'), /^tier L/)
+  write(repo, `${SP}/prd.md`, frs(9)); assert.match(size('--tier', 'M'), /^tier L/)
+})
+
+test('tier S: a bare "→ fixed" closes a high finding but a critical one still needs the confirm pass', () => {
+  cleanChart()
+  write(repo, `${SP}/prd.md`, prd(1))
+  write(repo, `${SP}/chart-review.md`, 'verdict: changes-needed\n## Findings\n- [severity: critical] [category: weakened] a.md:1: id reused → fix (confidence 90) → fixed\n')
+  assert.match(approveChart(repo, ['approve', 'chart-1'], HUMAN).stderr, /id reused/)
+  write(repo, `${SP}/chart-review.md`, 'verdict: changes-needed\n## Findings\n- [severity: high] [category: coverage] a.md:1: nextId can repeat → fix (confidence 90) → fixed\n')
+  const ok = approveChart(repo, ['approve', 'chart-1'], HUMAN)
+  assert.equal(ok.code, 0, ok.stderr)
+})
+
+test('chart precheck runs the PRD checks in one call, names each finding by its check, and writes the ledger only for a PRD in format', () => {
+  write(repo, `${SP}/prd.md`, '# not in format\n'); write(repo, `${SP}/source.md`, 'Round totals.\n')
+  const bad = sdlc(repo, ['chart', 'precheck', '1'])
+  assert.match(bad.stdout, /\[check:[^\]]+\]/)
+  assert.doesNotMatch(bad.stdout, /wrote .*requirements\.md/)
+  assert.match(bad.stdout, /precheck-1: [1-9]\d* finding\(s\)/)
 })

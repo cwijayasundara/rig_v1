@@ -34,7 +34,7 @@ import { cmdArch, layerState, layerStateText } from './arch.ts'
 import { cmdQueue, conflictsFor } from './queue.ts'
 import { intentScope } from './scope.ts'
 import { prdFormatProblems, prdLedger, conversionProblems } from './prdformat.ts'
-import { cmdPrdMore } from './prdcmd.ts'; import { writeApprovalPage, approvalPage, approvalGate, echoAnswers } from './approvalsummary.ts'
+import { cmdPrdMore, chartPrecheck } from './prdcmd.ts'; import { writeApprovalPage, approvalPage, approvalGate, echoAnswers } from './approvalsummary.ts'
 import { parseLedger, parseIntent } from './chartcheck.ts'; import { superpowersWarning } from './superpowers.ts'
 import { ARCH_REL, intentsDir, intentRelOf, prdRel, sprintRel, prdPath, reviewPath, ledgerPath, sourcePath } from './product.ts'
 import { cmdSlice } from './slice.ts'
@@ -46,7 +46,7 @@ import { cmdRisk, cmdWeight, cmdRouteCheck, cmdModels } from './risk.ts'
 import { cmdClaims } from './claims.ts'
 import { protect } from './protect.ts'; import { cmdAudit } from './audit.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'; import { cmdInterrogate } from './interrogate.ts'
-import { CHART_RE, conversionMapOf, intentOf, intentReady, chartFindings, chartState, writeChartApproval, PR_SEAL, chartDigest, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, intentSettled, nextChart, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, waiveChartFinding, changeRequirements, PRD_RE, isConverted, conversionRefusal } from './chart.ts'
+import { CHART_RE, conversionMapOf, intentOf, intentReady, chartFindings, chartState, writeChartApproval, PR_SEAL, chartDigest, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, intentSettled, nextChart, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, chartSizeText, waiveChartFinding, changeRequirements, PRD_RE, isConverted, conversionRefusal } from './chart.ts'
 import { journey, journeyText } from './journey.ts'; import { cmdIntentRecord, cmdIntentProject, cmdIntentAdjudicate } from './intentmapio.ts'; import { cmdIntentRecheck } from './intentrecheck.ts'; import { cmdTestsFreeze } from './testfreeze.ts'
 import { TYPES, changeDir, newChange, setActive, activeSlug, isShipped, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
 
@@ -274,9 +274,9 @@ function cmdChart(args: Args): void {
     const next = nextChart()
     return out(args.opt.json ? JSON.stringify(next) : `${next.sprint === null ? 'sprint: ask' : `sprint ${next.sprint}`}${next.prd ? ` ${next.prd}` : ''} (${next.why})${next.candidates.length > 1 ? `\n${next.candidates.map(c => `  sprint ${c.sprint}: ${c.prd}`).join('\n')}` : ''}`)
   }
-  if ((sub !== 'check' && sub !== 'report' && sub !== 'plan' && sub !== 'summary' && sub !== 'seal') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: chart next [--json] | chart (check [--cases] [--json] | report | plan [--print] | summary | seal) <sprint number>')
-  const n = Number(num)
-  needPrd(n)
+  if ((sub !== 'check' && sub !== 'report' && sub !== 'plan' && sub !== 'summary' && sub !== 'seal' && sub !== 'size' && sub !== 'precheck') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: chart next [--json] | chart (check [--cases] [--json] | report | plan [--print] | summary | seal | size [--tier M|L] | precheck) <sprint number>')
+  const n = Number(num); needPrd(n)
+  if (sub === 'size' || sub === 'precheck') return sub === 'size' ? out(chartSizeText(n, args.opt.tier)) : chartPrecheck(n)
   if (sub === 'seal') return approveChart(n, args, true) // no SDLC_HUMAN: the PR review decides
   if (sub === 'plan') return out(args.opt.print ? sprintPlan(n) : `wrote ${writePlan(n)}`)
   if (sub === 'report') return out(chartReport(n))

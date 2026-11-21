@@ -242,9 +242,31 @@ export function chartFindings(n: number, withCases: boolean): ChartFinding[] {
 // The review findings that still stop approval, or null when the sprint has no chart-review.md.
 export const chartWaivers = (n: number): ChartWaiver[] => { try { const v = JSON.parse(read(waiversPath(n))) as unknown; return Array.isArray(v) ? (v as ChartWaiver[]) : [] } catch { return [] } }
 export const chartReview = (n: number): ReviewFinding[] | null => (exists(reviewPath(n)) ? parseReview(read(reviewPath(n))) : null)
+// Tier S sizes the chart to a small PRD: at most 3 FRs and 15 client rule rows, no NFR row, no roles, no external integration. L is more than 8 FRs or
+// more than 60 rows; M is the rest. The counts come from the PRD and the ledger, so `chart size` is run after `prd ledger`.
+export type ChartTier = 'S' | 'M' | 'L'
+export function chartSize(n: number, floor: ChartTier = 'S'): { tier: ChartTier; fr: number; rows: number; why: string[] } {
+  const prdText = exists(prdPath(n)) ? read(prdPath(n)) : ''
+  const ledger = exists(ledgerPath(n)) ? parseLedger(read(ledgerPath(n))) : []
+  const fr = prdIds(prdText).filter(id => /^FR-/.test(id)).length
+  const rows = ledger.filter(r => r.origin === 'client' && r.kind !== 'context' && !/^NFR-/.test(r.id)).length
+  const nfr = ledger.some(r => /^NFR-/.test(r.id)) || /^\|\s*NFR-\d+\s*\|/m.test(prdText)
+  const roles = /^#{2,4}\s+(Access|Roles|Actors|Permissions)\b/im.test(prdText)
+  const external = section(prdText, 'Integrations and constraints').split('\n').some(l => !/\b(no|not|without|never|none)\b/i.test(l) && /\b(external|third-party|webhook|payment|oauth|smtp)\b/i.test(l)) // "no third-party dependencies" is a constraint, not an integration
+  const why = [fr > 3 && `${fr} FRs`, rows > 15 && `${rows} client rule rows`, nfr && 'an NFR row', roles && 'roles', external && 'an external integration'].filter((x): x is string => Boolean(x))
+  const computed: ChartTier = fr > 8 || rows > 60 ? 'L' : why.length ? 'M' : 'S'
+  const tier = (['S', 'M', 'L'] as const)[Math.max(['S', 'M', 'L'].indexOf(computed), ['S', 'M', 'L'].indexOf(floor))]!
+  return { tier, fr, rows, why }
+}
+export function chartSizeText(n: number, tier: unknown): string {
+  const floor = tier === 'M' || tier === 'L' ? tier : 'S', s = chartSize(n, floor)
+  return `tier ${s.tier}: ${s.fr} FR(s), ${s.rows} client rule row(s)${s.why.length ? `; above S: ${s.why.join(', ')}` : ''}${floor !== 'S' ? `; raised to at least ${floor} by the person` : ''}`
+}
+// On tier S a bare `→ fixed` closes a finding that is not critical (the approval page shows it); a critical one still needs the confirm pass.
 export function chartOpenFindings(n: number): ReviewFinding[] | null {
   const review = chartReview(n)
-  return review && openFindings(review, chartWaivers(n))
+  const s = review && review.some(f => f.status === 'claimed') && chartSize(n).tier === 'S'
+  return review && openFindings(s ? review.map(f => (f.status === 'claimed' && !/\bcritical\b/i.test(f.text.slice(0, 40)) ? { ...f, status: 'confirmed' as const } : f)) : review, chartWaivers(n))
 }
 // A person's waiver of finding `k`: kept with the text it covered, so editing the finding re-opens it.
 export function waiveChartFinding(n: number, f: ReviewFinding, by: string, reason: string): void {

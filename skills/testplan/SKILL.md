@@ -6,7 +6,7 @@ allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_R
 ---
 # Test plan for a sprint
 
-`/rig:chart <N>` already runs this as its step 4. Use this skill alone to redo the plan after the PRD or an intent changed.
+`/rig:chart <N>` runs this as its step 4; use it alone to redo the plan after the PRD or an intent changed.
 
 `S` means `node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts`. Run each command as its own Bash call.
 
@@ -16,7 +16,8 @@ allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_R
    - write `.rig/product/sprints/sprint-<N>/testplan/plan.md`, `cases.md` and `data/`;
    - every requirement gets at least one case; every case cites its requirement ids, an intent slug and one of its B-numbers; a contract-level case for a `kind: boundary` intent uses that intent's example files;
    - for every `## Access` row in `architecture.md` whose intent is this sprint's: one allowed and one refused case per interface (refused only, for `nobody`), with the Access column filled as `<action>: allowed <interface>` or `<action>: refused <interface>`;
-   - also write one black-box holdout test per case in `.rig/product/sprints/sprint-<N>/holdout/`, named by case id as `testplan-format.md` says, at acceptance or contract level through the public interface only (CLI, HTTP, contract files), never an internal module, with the expected values inline;
+   - a DR row an AC's case already asserts goes in that case's Requirement column, and every row carries an FR or NFR id beside any DR or AC id;
+   - write a black-box holdout test in `.rig/product/sprints/sprint-<N>/holdout/` only for a case at Level `holdout`, named by case id as `testplan-format.md` says, at acceptance or contract level through the public interface only (CLI, HTTP, contract files), with the expected values inline and shared boot code in one helper file;
    - test data is synthetic, never real personal data; a case's Data is a path under `.rig/product/sprints/sprint-<N>/testplan/` such as `data/cart.json`, or `-`.
 3. **Check.** `S chart check <N> --cases --json`. Make at most one fix round for the findings, then check again. Then launch `rig:evaluator` in test plan mode ("review the test plan for sprint <N>"; Opus by its front matter; never pass a model override) and write its reply to `.rig/product/sprints/sprint-<N>/testplan-review.md`. It reviews the test plan against the PRD and the intents; fix its findings once.
 4. **Commit** on branch `rig/chart-<N>` (`git checkout rig/chart-<N>`, or `git checkout -b` when it does not exist): `git add .rig/product`, `git commit -m "docs: test plan for sprint <N>"`.

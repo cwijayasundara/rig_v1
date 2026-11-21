@@ -309,3 +309,66 @@ test('chart step 1 writes coverage.md from source.md, asks at most the first 4 o
   for (const w of ['coverage.md', 'templates/prd-topics.md', 'S prd coverage <N>', 'S prd gaps <N>', 'client-gaps.md', '`source.md` only', 'first 4', 'never a second one', 'block `/rig:approve chart-<N>`', 'Never invent a value for an absent topic', 'never the `coverage-*` ones', 'coverage takes the slots first', 'on a re-run with no `coverage.md`', 'the behaviours resting on them, and the design and ADR decisions']) assert.ok(skill.includes(w), w)
   assert.match(fs.readFileSync(path.resolve(import.meta.dirname, '../agents/evaluator.md'), 'utf8'), /\*\*missed-topic\*\*/)
 })
+
+// 2026-11-21 chart evaluation: a 3-FR PRD took 14 minutes because the chart ran the full ceremony; each change below is pinned to the text that carries it.
+const architect = text('agents/architect.md'), evaluator = text('agents/evaluator.md'), testplan = text('skills/testplan/SKILL.md')
+
+test('chart skill: sizes the chart from the ledger before the design, and a person can raise the tier but not lower it', () => {
+  assert.match(skill, /argument-hint:[^\n]*--tier M\|L/)
+  assert.match(skill, /`S chart size <N>`[^\n]*never lower it/)
+  assert.ok(skill.indexOf('S prd ledger <N>') < skill.indexOf('S chart size <N>') && skill.indexOf('S chart size <N>') < skill.indexOf('2. **Design.**'))
+})
+
+test('tier S: no design spec, design: none, one intent, an 80-line architecture, ADRs only for one-way doors', () => {
+  assert.match(skill, /\*\*Tier S: skip this step\*\*[^\n]*no `superpowers:brainstorming`, no design doc/)
+  assert.match(archStep, /Tier S: `design: none`, one intent for the sprint unless its FRs can be built independently, `architecture\.md` at most 80 lines/)
+  assert.match(archStep, /an ADR only for a one-way door/)
+  assert.match(archStep, /`## Decisions` row `\(proposed at chart\)`/)
+  assert.match(architect, /On tier S[^\n]*`design: none`/)
+  assert.match(architect, /tier S: at most 80[^\n]*an ADR only for a one-way door/)
+})
+
+test('no walking-skeleton intent without a requirement: the first slice carries it, or init\'s scaffold stands', () => {
+  assert.doesNotMatch(skill, /always includes a `walking-skeleton` intent/)
+  assert.match(archStep, /no `walking-skeleton` intent without a requirement[^\n]*first tasks[^\n]*cites the FR of the thinnest end-to-end slice[^\n]*write none/)
+})
+
+test('the architect writes the contract and example files a boundary intent names', () => {
+  assert.match(architect, /Write only under `\.rig\/product\/` and `docs\/contracts\/`/)
+  assert.match(architect, /one example per status code at most/)
+  assert.match(archStep, /which you write in the same pass under `docs\/contracts\/`/)
+  assert.match(architect, /Never edit source code/)
+})
+
+test('prd.md is frozen once the ledger is written; a headless gap is a proposed criterion or an edge-case behaviour, never a PRD line added after the architect', () => {
+  assert.match(step1, /\*\*prd\.md is frozen at the ledger\*\*: write every gap answer before `S prd ledger`[^\n]*never after the architect ran/)
+  assert.match(step1, /Headless[^\n]*`\(proposed at chart\)` criterion under its FR[^\n]*never an AC or `## Open questions` line/)
+  assert.doesNotMatch(step1, /"You decide" is left for the architect's ADR/)
+  assert.match(step1, /On tier S[^\n]*no separate review[^\n]*reports `weakened` and `invented`[^\n]*before the architect is launched/)
+  assert.match(evaluator, /On tier S[^\n]*`source\.md` and `conversion\.md`[^\n]*`weakened` and `invented`/)
+})
+
+test('holdout files only for Level holdout rows; a DR row an AC case asserts is cited there; every row carries an FR id', () => {
+  const qa = skill.slice(skill.indexOf('4. **QA.**'), skill.indexOf('5. **Review.**'))
+  assert.doesNotMatch(qa, /one black-box holdout test per case/)
+  assert.match(qa, /holdout test[^\n]*only for a case at Level `holdout`[^\n]*one happy path per FR and one case per error status/)
+  assert.match(qa, /a DR row an AC's case already asserts goes in that case's Requirement column[^\n]*FR or NFR id beside any DR or AC id/)
+  assert.match(testplan, /only for a case at Level `holdout`/)
+  assert.match(testplan, /FR or NFR id beside any DR or AC id/)
+  assert.match(text('templates/testplan-format.md'), /every row names an FR or NFR id beside any DR or AC id/)
+})
+
+test('tier S: medium findings are deferred, one fixer, confirm only for a critical', () => {
+  const step5 = skill.slice(skill.indexOf('5. **Review.**'), skill.indexOf('6. **Plan view.**'))
+  assert.match(step5, /Tier S: the reviewer lists only `critical` and `high` under `## Findings` and `medium` under `## Deferred`/)
+  assert.match(step5, /one `general-purpose` `sonnet` fixer owns the architect's and QA's files/)
+  assert.match(step5, /confirm launch runs only when that round fixed a `critical`/)
+  assert.match(evaluator, /list only `critical` and `high` under `## Findings` and put each `medium` under `## Deferred`/)
+  assert.match(evaluator, /On tier S the caller runs it only when a round fixed a `critical`/)
+})
+
+test('conversion.md ids are comma-separated, and one chart precheck call replaces the read-only checks', () => {
+  assert.match(step1, /ids comma-separated: `- AC-1\.1, DR-1 source\.md:35 "\.\.\."`/)
+  assert.match(step1, /\*\*Check the conversion\.\*\* For a converted PRD, run `S chart precheck <N>`/)
+  assert.doesNotMatch(step1, /run `S prd check <N> --json` and `S prd map <N> --json`/)
+})

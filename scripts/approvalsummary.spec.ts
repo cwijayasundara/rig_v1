@@ -330,3 +330,12 @@ test('the CI row of a sealed chart names the revision the PR review covers and i
   const row = execFileSync(process.execPath, ['--disable-warning=ExperimentalWarning', '-e', `import(${JSON.stringify(mod)}).then(m => console.log(m.approvalRow('${S}/approval.json', 'chart-1', 'chart PR review', v => String(v))))`], { cwd: repo, encoding: 'utf8' }).trim()
   assert.match(row, /^approval chart-1 sealed at [0-9a-f]{12}; decided by the independent review of the PR head$/)
 })
+
+test('tier S: a fixed high finding is listed as never confirmed and the reviewer\'s Deferred items are printed for the approver', () => {
+  fixture()
+  write(repo, `${S}/prd.md`, PRD.replace(/## Non-functional requirements[\s\S]*?\n\n(?=## Open)/, '')); write(repo, `${S}/requirements.md`, LEDGER.split('\n').slice(0, 2).join('\n') + '\n')
+  write(repo, `${S}/chart-review.md`, 'verdict: changes-needed\n## Findings\n- [severity: high] [category: cases] x.md:1: vague result → fix (confidence 90) → fixed\n## Deferred\n- [severity: medium] naming nit in alpha\n')
+  const notCovered = summary().split('## Not covered')[1]!.split('## Decisions')[0]!
+  assert.match(notCovered, /finding 1: .*vague result.*\(tier S: fixed, never confirmed; read the fix\)/)
+  assert.match(notCovered, /deferred review item: \[severity: medium\] naming nit in alpha/)
+})

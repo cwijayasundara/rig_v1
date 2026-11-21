@@ -5,7 +5,7 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import { ROOT, SENSORS_PATH, read, exists, fail, fmList, toPosix, skillRef, writeAtomic, type HookInput} from './core.ts'
 import { section, openQuestions } from './model.ts'
-import { approvalMdPath, sprintDir, sprintRel, sprintsOnDisk, holdoutDir, ledgerPath, coveragePath, prdPath, writeProductIgnore } from './product.ts'
+import { reviewPath, approvalMdPath, sprintDir, sprintRel, sprintsOnDisk, holdoutDir, ledgerPath, coveragePath, prdPath, writeProductIgnore } from './product.ts'
 import { PR_SEAL, intentsOf, chartReview, chartWaivers, chartOpenFindings, chartState, conversionMapOf, adrFilesOf, type ApprovalAnswer } from './chart.ts'
 import { parseLedger, parseCases, requiredHoldouts } from './chartcheck.ts'
 import { parseMap } from './prdformat.ts'
@@ -96,6 +96,9 @@ function outcomesAndScope(n: number): string[] {
   ])]
 }
 
+// The reviewer's ## Deferred items (a tier S chart parks its medium findings there): the approver reads them here.
+const deferred = (n: number): string[] => (/^#{2,3}[ \t]+Deferred\b[^\n]*\n([\s\S]*?)(?=^#{2,3}[ \t]|(?![\s\S]))/m.exec(exists(reviewPath(n)) ? read(reviewPath(n)) : '')?.[1] ?? '').split(/\n(?=[-*]\s)/).filter(c => /^[-*]\s/.test(c)).map(c => c.replace(/^[-*]\s+/, '').replace(/\s*\n\s*/g, ' ').trim()).filter(c => c && !/^(none|nothing|no .*)\.?$/i.test(c)).map(c => `deferred review item: ${short(c, 160)}`)
+
 function notCovered(n: number): string[] {
   const review = chartReview(n) ?? [], open = new Set((chartOpenFindings(n) ?? []).map(f => f.n)), waivers = chartWaivers(n)
   const coverage = exists(coveragePath(n)) ? parseCoverage(read(coveragePath(n))).filter(c => c.state === 'open' || c.state === 'n/a') : []
@@ -104,8 +107,9 @@ function notCovered(n: number): string[] {
     ...openQuestions(read(prdPath(n))).map(q => `PRD open question: ${q}`),
     ...review.filter(f => f.status !== 'confirmed').flatMap(f => {
       const w = waivers.find(x => x.finding === f.n && x.text_sha === f.sha)
-      return open.has(f.n) ? [`finding ${f.n}: ${short(f.text, 160)} (not confirmed)`] : w ? [`finding ${f.n}: ${short(f.text, 160)} (waived by ${w.by}: ${w.reason})`] : []
-    })], 'Nothing: every topic is covered, no question is open, every review finding is confirmed.')
+      return open.has(f.n) ? [`finding ${f.n}: ${short(f.text, 160)} (not confirmed)`] : f.status === 'claimed' && !w ? [`finding ${f.n}: ${short(f.text, 160)} (tier S: fixed, never confirmed; read the fix)`] : w ? [`finding ${f.n}: ${short(f.text, 160)} (waived by ${w.by}: ${w.reason})`] : []
+    }),
+    ...deferred(n)], 'Nothing: every topic is covered, no question is open, every review finding is confirmed.')
 }
 
 // `- <NNNN title>: <the sentence under ## Decision>` per ADR of the sprint, then each contract the intents name.

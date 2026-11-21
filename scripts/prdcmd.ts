@@ -2,8 +2,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { ROOT, read, exists, out, fail, toPosix } from './core.ts'
-import { prdPath, sourcePath, coveragePath, gapsPath, sprintRel } from './product.ts'
-import { prdProposed, prdCriteria, prdOrigins, type ProposedMore } from './prdformat.ts'
+import { prdPath, sourcePath, coveragePath, gapsPath, ledgerPath, sprintRel } from './product.ts'
+import { prdProposed, prdCriteria, prdOrigins, prdFormatProblems, prdLedger, conversionProblems, type ProposedMore } from './prdformat.ts'
 import { coverageProblems, clientGaps } from './prdcoverage.ts'
 import { conversionMapOf, intentsOf, designFile, adrFilesOf } from './chart.ts'
 
@@ -37,3 +37,16 @@ export function cmdPrdMore(sub: string, n: number, json: boolean): void {
   if (json) return out(JSON.stringify(found))
   out([...found.map(f => `[${f.rule}] ${f.where}: ${f.message}`), `prd-${n}: ${found.length ? `${found.length} coverage finding(s)` : 'coverage complete'}`].join('\n'))
 }
+
+// One call for the read-only PRD checks of the chart's first step (check, map, coverage), then the ledger and client-gaps files they let it write.
+export function chartPrecheck(n: number): void {
+  const prd = read(prdPath(n)), source = exists(sourcePath(n)), cov = exists(coveragePath(n))
+  const format = prdFormatProblems(prd)
+  const found = [...format.map(f => ['check', f] as const), ...(source ? conversionProblems({ source: read(sourcePath(n)), prd, map: conversionMapOf(n) }).map(f => ['map', f] as const) : []),
+    ...(source ? coverageProblems({ source: read(sourcePath(n)), prd, coverage: cov ? read(coveragePath(n)) : null }).map(f => ['coverage', f] as const) : [])]
+  const done: string[] = []
+  if (!format.length) { fs.writeFileSync(ledgerPath(n), prdLedger(prd, conversionMapOf(n))); done.push(`wrote ${sprintRel(n)}/requirements.md`) }
+  if (cov) { fs.writeFileSync(gapsPath(n), clientGaps(read(coveragePath(n)))); done.push(`wrote ${sprintRel(n)}/client-gaps.md`) }
+  out([...found.map(([c, f]) => `[${c}:${f.rule}] ${f.where}: ${f.message}`), ...done, `precheck-${n}: ${found.length} finding(s)`].join('\n'))
+}
+
