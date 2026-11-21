@@ -56,7 +56,7 @@ On the local cart CLI, `TC-1` checked the process exit code and the absence of t
 **Start in** `scripts/protect.ts`, `scripts/prcheck.ts`, `scripts/prbody.ts`, and the consumer's effective GitHub rules. Existing branch protection can already be present when Rig adds required check names.
 
 - [ ] Verify effective required checks, independent approval, dismissal of stale reviews, code ownership of workflow and checker changes, and bypass identities. Exercise those rules on a disposable PR. Repeat after rules or ownership change.
-- [ ] Lead the PR summary with the approved intent revision, highest-consequence changed behaviour, independent evidence, and remaining uncertainty. Flag weakened tests, waivers, and scope amendments. Link to exact runs and artefacts. Keep the existing comprehension questions as a fallback.
+- [x] Lead the PR summary with the approved intent revision, highest-consequence changed behaviour, independent evidence, and remaining uncertainty. Flag weakened tests, waivers, and scope amendments. Link to exact runs and artefacts. Keep the existing comprehension questions as a fallback.
 - [ ] Verify that a small high-risk change appears ahead of a larger mechanical edit, a later push invalidates the approval, and a workflow edit requires the intended owner.
 
 ## 5. Decide whether to expand

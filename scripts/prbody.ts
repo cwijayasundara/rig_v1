@@ -13,7 +13,7 @@ import { checkQuestions, isSrc } from './prcheck.ts'
 import { isTest } from './model.ts'
 import type { AgentRow } from './agents.ts'
 
-type PrBodyInput = { paths?: Paths; requirements?: string; claims?: ClaimRow[]; intent: string; spec: string; plan: string; verify: { pass: boolean; tree: string | null; blocks: string[]; from?: string; holdout?: { passed: number; total: number } } | null; outline: string; review: string; risk: Risk; amendments?: string; runs?: RunRow[]; tests?: string; intentMap?: string; freeze?: FreezeRow[]; changes?: FileDiff[]; agents?: AgentRow[]; draft?: string; planChanges?: string[]; chart?: string; waivers?: string[]; proof?: { ids: string[]; exempt: string | null } }
+type PrBodyInput = { links?: string[]; paths?: Paths; requirements?: string; claims?: ClaimRow[]; intent: string; spec: string; plan: string; verify: { pass: boolean; tree: string | null; blocks: string[]; from?: string; holdout?: { passed: number; total: number } } | null; outline: string; review: string; risk: Risk; amendments?: string; runs?: RunRow[]; tests?: string; intentMap?: string; freeze?: FreezeRow[]; changes?: FileDiff[]; agents?: AgentRow[]; draft?: string; planChanges?: string[]; chart?: string; waivers?: string[]; proof?: { ids: string[]; exempt: string | null } }
 
 const firstSentence = (text: string): string => /^[\s\S]*?[.!?](?=\s|$)/.exec(text.trim())?.[0].replace(/\s+/g, ' ') ?? text.trim().replace(/\s+/g, ' ')
 
@@ -115,6 +115,17 @@ export function readOrder(diffs: FileDiff[], plan: string, paths?: Paths): strin
   return [...diffs].sort((a, b) => rank(a) - rank(b) || size(b) - size(a) || (a.file < b.file ? -1 : 1)).map(d => `${d.file} (${['contract', 'source', 'test', 'other', 'mechanical'][rank(d)]}, ${size(d)} lines)`)
 }
 
+// Where the evidence lives, as links: the CI runs for the branch, the chart and holdout cases at the base (CI reads them there), the frozen-test commit.
+// An origin that is not a GitHub URL gives no links. Paths are repo-relative with forward slashes.
+export function evidenceLinks(origin: string | null, o: { base: string; branch: string; sprint: number | null; frozen?: string }): string[] {
+  const m = /github\.com[:/]([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/.exec((origin ?? '').trim())
+  if (!m) return []
+  const u = `https://github.com/${m[1]}`, sp = o.sprint === null ? '' : `.rig/product/sprints/sprint-${o.sprint}`
+  return [`[CI runs for this branch](${u}/actions?query=branch%3A${encodeURIComponent(o.branch)})`,
+    ...(sp ? [`[approved chart at ${o.base}](${u}/tree/${encodeURIComponent(o.base)}/${sp})`, `[hidden cases at ${o.base}](${u}/tree/${encodeURIComponent(o.base)}/${sp}/testplan)`] : []),
+    ...(o.frozen ? [`[tests frozen](${u}/commit/${o.frozen})`] : [])]
+}
+
 // What a reviewer reads first (pilot §4): the approved revision, the worst consequence, the independent evidence, what is unproven, and what was weakened, waived or amended.
 function reviewFirst(i: PrBodyInput, amended: string[], uncertain: string[]): string {
   const flags = [...(i.freeze ?? []).slice(1).map(r => `weakened test: re-frozen, ${clean(r.why)}${r.dropped?.length ? ` (dropped: ${r.dropped.map(clean).join(', ')})` : ''}`), ...(i.waivers ?? []).map(w => `waiver: ${w}`), ...(i.planChanges ?? []).map(c => `plan amendment ${c.replace(/^- /, '')}`), ...amended.map(a => `behaviour amendment: ${a.replace(/^[-*]\s+/, '')}`)]
@@ -125,6 +136,7 @@ function reviewFirst(i: PrBodyInput, amended: string[], uncertain: string[]): st
     `Independent evidence: ${holdout}; verify ${i.verify ? (i.verify.pass ? 'pass' : 'fail') : 'none'}`,
     `Remaining uncertainty: ${uncertain.length ? `${uncertain.length} item(s), first: ${uncertain[0]!.replace(/^[-*]\s+/, '')}` : 'nothing the reviewer named'}`,
     `Flags: ${flags.length ? '' : 'none'}`,
+    ...(i.links?.length ? [`Links: ${i.links.join(' · ')}`] : []),
     ...(i.changes?.length ? [`Read in this order: ${readOrder(i.changes, i.plan, i.paths).slice(0, 8).join('; ')}${i.changes.length > 8 ? `; and ${i.changes.length - 8} more` : ''}`] : []),
   ].map(l => `- ${l}`).join('\n')}${flags.length ? '\n' + flags.map(f => `  - ${f}`).join('\n') : ''}`
 }

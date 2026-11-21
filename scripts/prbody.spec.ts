@@ -1,7 +1,7 @@
 // The PR body (proposal 2026-10-25 A1): why in one sentence, the behaviours, blast radius, door, evidence, and the outline the pr skill wrote.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { prBody } from './prbody.ts'
+import { prBody, evidenceLinks } from './prbody.ts'
 import type { RunRow } from './runs.ts'
 
 const intent = '---\nslug: demo\n---\n# Demo\n\n## Intent\n\nUsers cannot export a report. They need a CSV so finance can reconcile. Done is a download button.\n\n## Open questions\nnone\n'
@@ -283,4 +283,13 @@ test('Review first lists files to read in order: a small source edit and a contr
   const b = prBody({ intent, spec, plan: plan.replace(/## Contracts[\s\S]*?(?=\n## |$)/, '') + '\n## Contracts\n- api/schema.json\n', verify, outline: '', review: '', risk, chart: 'chart-1 approved at 0123456789ab', changes })
   const line = /Read in this order: (.*)/.exec(b)![1]!.split('; ').map(x => x.split(' ')[0])
   assert.deepEqual(line, ['api/schema.json', 'src/pay.ts', 'src/pay.test.ts', 'docs/a.md', 'package-lock.json', '__snapshots__/a.snap', 'src/old.ts'].map(x => x))
+})
+
+test('evidence links point at the branch runs, the base chart and hidden cases, and the frozen tests; no GitHub origin gives none', () => {
+  const l = evidenceLinks('git@github.com:acme/shop.git\n', { base: 'main', branch: 'sdlc/x y', sprint: 3, frozen: 'abc1234' })
+  assert.deepEqual(l, ['[CI runs for this branch](https://github.com/acme/shop/actions?query=branch%3Asdlc%2Fx%20y)', '[approved chart at main](https://github.com/acme/shop/tree/main/.rig/product/sprints/sprint-3)', '[hidden cases at main](https://github.com/acme/shop/tree/main/.rig/product/sprints/sprint-3/testplan)', '[tests frozen](https://github.com/acme/shop/commit/abc1234)'])
+  assert.deepEqual(evidenceLinks('https://gitlab.com/a/b.git', { base: 'main', branch: 'b', sprint: null }).length, 0)
+  assert.equal(evidenceLinks('https://github.com/a/b', { base: 'main', branch: 'b', sprint: null }).length, 1)
+  const b = prBody({ intent, spec, plan, verify, outline: '', review: '', risk, chart: 'chart-3 approved at 0123456789ab', links: l })
+  assert.match(b.split('## Why the change')[0]!, /Links: \[CI runs for this branch\].* · \[tests frozen\]/)
 })
