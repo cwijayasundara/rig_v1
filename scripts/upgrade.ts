@@ -7,7 +7,7 @@ import { ROOT, SDLC, SENSORS_PATH, IS_VENDORED, PLUGIN_ROOT, skillRef, exists, r
 import { isObject } from './model.ts'
 import { isRegistryShape } from './registry.ts'
 import { loadPacks, PACKS_DIR } from './stackpacks.ts'
-import { harnessFiles, readManifest, mergeProjectFiles, manifestProfile, MANIFEST, pluginVersion, versionGuards, type Manifest } from './vendor.ts'
+import { harnessFiles, readManifest, mergeProjectFiles, manifestProfile, manifestDashboard, MANIFEST, pluginVersion, versionGuards, type Manifest } from './vendor.ts'
 import { pendingMigrations, runMigrations, type Migration } from './migrations.ts'
 import { cmdSync } from './sync.ts'
 import { cmdBaseline } from './initbaseline.ts'
@@ -81,7 +81,7 @@ function buildPlan(): Plan {
   const raw = readManifest()
   const ignoredManifestKeys = Object.keys(raw?.files ?? {}).filter(rel => !isHarnessPath(rel))
   const manifest = raw && { ...raw, files: Object.fromEntries(Object.entries(raw.files ?? {}).filter(([rel]) => isHarnessPath(rel))) }
-  const next = standalone ? harnessFiles(true, manifestProfile(raw)) : new Map<string, string>()
+  const next = standalone ? harnessFiles(true, manifestProfile(raw), manifestDashboard(raw)) : new Map<string, string>()
   const disk = new Map<string, string | null>()
   if (standalone) for (const rel of new Set([...Object.keys(manifest?.files ?? {}), ...next.keys()])) {
     if (rel.endsWith('.rig-new')) continue
@@ -176,7 +176,7 @@ function applyUpgrade(args: Args): void {
     else if (v === 'conflict' && d === 'later' && text !== undefined) put(`${rel}.rig-new`, text)
   }
   const profile = manifestProfile(plan.manifest)
-  if (plan.standalone) mergeProjectFiles(written, profile)
+  if (plan.standalone) mergeProjectFiles(written, profile, manifestDashboard(plan.manifest))
   if (plan.workflow === 'differs') { fs.writeFileSync(path.join(ROOT, `${WORKFLOW}.rig-new`), read(path.join(PLUGIN_ROOT, 'templates', 'rig-check.yml'))); written.push(`${WORKFLOW}.rig-new`) }
   const notes = runMigrations(plan.migrations, ROOT)
   for (const rel of plan.migrations.length ? ['.rig/sensors.json.rig-new'] : []) if (exists(path.join(ROOT, rel))) written.push(rel)

@@ -38,7 +38,7 @@ function writeFile(rel: string, text: string, written: string[]): void {
 
 // The plugin's settings hooks, pointed at the project copy and merged into .claude/settings.json. A re-run removes
 // every previous sdlc entry, in any event (so hooks a newer version retired go too); the project's own hooks are kept.
-function mergeHooks(written: string[], profile: Profile): void {
+function mergeHooks(written: string[], dashboard: boolean): void {
   const plugin = JSON.parse(read(path.join(PLUGIN_ROOT, 'hooks', 'hooks.json'))) as { hooks: Record<string, HookGroup[]> }
   const file = path.join(ROOT, '.claude', 'settings.json')
   const settings = (read(file) ? JSON.parse(read(file)) : {}) as Record<string, unknown> & { hooks?: Record<string, HookGroup[]>; extraKnownMarketplaces?: object; enabledPlugins?: Record<string, boolean> }
@@ -59,11 +59,11 @@ function mergeHooks(written: string[], profile: Profile): void {
   // The template's permissions too (deny and ask rules guard the evidence), merged under the project's own.
   mergeMissing(settings, { permissions: (JSON.parse(read(path.join(PLUGIN_ROOT, 'templates', 'settings.json'))) as { permissions: object }).permissions })
   // The dashboard mod is a local plugin: register its marketplace and enable it (an older 'rig-mod' entry is dropped).
-  // Core ships no dashboard, so it drops both entries instead.
+  // Without the dashboard (the default, and always in core) both entries are dropped instead.
   const { 'rig-mod@rig-local': _oldMod, ...enabled } = settings.enabledPlugins ?? {}
   const { 'rig@rig-local': _mod, ...coreEnabled } = enabled
   const { 'rig-local': _market, ...coreMarkets } = (settings.extraKnownMarketplaces ?? {}) as Record<string, unknown>
-  const merged: Record<string, unknown> = profile === 'core'
+  const merged: Record<string, unknown> = !dashboard
     ? { ...settings, hooks, extraKnownMarketplaces: coreMarkets, enabledPlugins: coreEnabled }
     : { ...settings, hooks, extraKnownMarketplaces: { ...settings.extraKnownMarketplaces, 'rig-local': { source: { source: 'directory', path: '.' } } }, enabledPlugins: { ...enabled, 'rig@rig-local': true } }
   writeFile('.claude/settings.json', JSON.stringify(merged, null, 2) + '\n', written)
@@ -92,12 +92,14 @@ function writeMarketplace(written: string[]): void {
 // Every file the harness owns outright, as repo-relative posix path to final text. The manifest hashes exactly these.
 export const MANIFEST = '.rig/bin/MANIFEST.json'
 export type Manifest = { version: string; profile?: Profile; files: Record<string, string> }
+// The dashboard is opt-in (--dashboard) and an upgrade keeps it: it is installed when the manifest hashed its module.
+export const manifestDashboard = (m: Manifest | null): boolean => '.rig/mod/hooks/dashboard.tsx' in (m?.files ?? {})
 export const manifestProfile = (m: Manifest | null): Profile => m?.profile ?? 'full'
 export function readManifest(): Manifest | null {
   try { return JSON.parse(read(path.join(ROOT, MANIFEST))) as Manifest } catch { return null }
 }
 
-export function harnessFiles(standalone: boolean, profile: Profile = 'full'): Map<string, string> {
+export function harnessFiles(standalone: boolean, profile: Profile = 'full', dashboard = false): Map<string, string> {
   const files = new Map<string, string>()
   for (const name of VENDORED) files.set(`.rig/bin/${name}.ts`, read(path.join(PLUGIN_ROOT, 'scripts', `${name}.ts`)))
   for (const [rel, text] of HOOK_SCRIPTS()) files.set(rel, text)
@@ -120,17 +122,17 @@ export function harnessFiles(standalone: boolean, profile: Profile = 'full'): Ma
     const text = read(path.join(templates, file === README_TEMPLATE && profile === 'core' ? README_CORE : file))
     files.set(`.rig/templates/${file}`, file === README_TEMPLATE ? vendoredCommands(text) : text)
   }
-  if (profile === 'full') dashboardFiles(files)
+  if (dashboard) dashboardFiles(files)
   return files
 }
 
 // The files a project owns a share of, merged in place and never hashed: settings, CLAUDE.md, the README, the PRD docs, the marketplace.
-export function mergeProjectFiles(written: string[], profile: Profile = 'full'): void {
-  mergeHooks(written, profile)
+export function mergeProjectFiles(written: string[], profile: Profile = 'full', dashboard = false): void {
+  mergeHooks(written, dashboard)
   routeClaudeMd(written)
   routeReadme(written, profile)
   routePrdDocs(written)
-  if (profile === 'full') writeMarketplace(written)
+  if (dashboard) writeMarketplace(written)
 }
 
 const README_TEMPLATE = 'readme-rig.md'
@@ -198,21 +200,33 @@ export function cmdVendor(args: Args): void {
   // No --profile keeps what is installed, so the documented upgrade (re-run vendor --standalone) never turns core into full.
   const profile = args.opt.profile === undefined ? manifestProfile(readManifest()) : parseProfile(args.opt.profile)
   if (args.opt.profile !== undefined && !standalone) fail('--profile needs --standalone: a plain vendor copies no skills')
-  const files = harnessFiles(standalone, profile)
+  if (args.opt.dashboard && !standalone) fail('--dashboard needs --standalone: the dashboard is a local plugin of the project copy')
+  if (args.opt.dashboard && profile === 'core') fail('--dashboard needs the full profile: core ships no dashboard')
+  const dashboard = profile === 'full' && (Boolean(args.opt.dashboard) || manifestDashboard(readManifest()))
+  const files = harnessFiles(standalone, profile, dashboard)
   if (standalone) fs.rmSync(path.join(ROOT, '.rig', 'mod'), { recursive: true, force: true })
   const kept = standalone ? dropStale(files) : readManifest()?.files ?? {}
   for (const [rel, text] of files) {
     writeFile(rel, text, written)
     if (rel.startsWith('.rig/githooks/')) fs.chmodSync(path.join(ROOT, rel), 0o755)
   }
-  if (standalone) mergeProjectFiles(written, profile)
+  if (standalone) mergeProjectFiles(written, profile, dashboard)
+  if (standalone && args.opt.dashboard) enableCodeMode()
   // A plain vendor owns only the .rig/bin files: it keeps the standalone entries an earlier `vendor --standalone` recorded.
   const hashes = Object.fromEntries([...Object.entries(kept), ...[...files].map(([rel, text]): [string, string] => [rel, sha(text)])].sort(([a], [b]) => a.localeCompare(b, 'en')))
   writeFile(MANIFEST, JSON.stringify({ version: next, ...(profile === 'core' ? { profile } : {}), files: hashes }, null, 2) + '\n', written)
   sanctionWrites(written)
   out(standalone
-    ? `vendored sdlc ${next} standalone: .rig/bin, .claude/skills/rig-*, .claude/agents/rig-*, hooks in .claude/settings.json. Commit .rig/ and .claude/; re-run from the plugin to upgrade.`
+    ? `vendored sdlc ${next} standalone: .rig/bin, .claude/skills/rig-*, .claude/agents/rig-*, hooks in .claude/settings.json. Commit .rig/ and .claude/; re-run from the plugin to upgrade.${args.opt.dashboard ? ` The dashboard needs Claude Code's experimental Code Mode: CLAUDE_CODE_EXPERIMENTAL_CODE_MODE=1 is set in .claude/settings.local.json (yours, not the team's); restart Claude Code.` : ''}`
     : `vendored sdlc ${next} into ${path.relative(ROOT, path.join(SDLC, 'bin'))} (${VENDORED.length} files). Commit it; CI runs the base branch's copy.`)
+}
+
+// Code Mode is experimental and per person, so the flag goes in settings.local.json, which Claude Code keeps out of git; other keys stay.
+function enableCodeMode(): void {
+  const rel = '.claude/settings.local.json'
+  let local: { env?: Record<string, string> } = {}
+  try { local = JSON.parse(read(path.join(ROOT, rel)) || '{}') } catch { fail(`${rel} is not plain JSON; fix it first so --dashboard can set CLAUDE_CODE_EXPERIMENTAL_CODE_MODE`) }
+  writeFile(rel, JSON.stringify({ ...local, env: { ...local.env, CLAUDE_CODE_EXPERIMENTAL_CODE_MODE: '1' } }, null, 2) + '\n', [])
 }
 
 // Harness files an earlier vendor wrote that this one does not (full -> core): untouched ones go, edited ones stay and keep
@@ -245,8 +259,8 @@ function mergeMissing(into: Record<string, unknown>, from: Record<string, unknow
 // `init --full [--workflows]`: the deterministic half of onboarding, so the model need not hand-copy files. Vendors the
 // standalone harness, wires the git hooks and merges templates/settings.json. The CI workflows and REVIEW.md need a
 // remote, so they are written only with --workflows, and never over a file that is already there.
-export function installStandalone(workflows: boolean, profile: Profile = 'full'): string {
-  cmdVendor({ pos: [], opt: { standalone: true, ...(profile === 'core' ? { profile } : {}) } })
+export function installStandalone(workflows: boolean, profile: Profile = 'full', dashboard = false): string {
+  cmdVendor({ pos: [], opt: { standalone: true, ...(profile === 'core' ? { profile } : {}), ...(dashboard ? { dashboard: true } : {}) } })
   const hooks = installHooks()
   const lines = [hooks.ok ? hooks.message : `git hooks not installed: ${hooks.message}`]
   const file = path.join(ROOT, '.claude', 'settings.json')

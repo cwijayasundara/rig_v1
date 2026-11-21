@@ -349,11 +349,15 @@ function runsOwnHook(name: string): boolean {
 // Hooks rig no longer registers (spec §7): a settings file vendored before step 4a may still call them.
 const RETIRED_HOOKS = ['subagent-start', 'subagent-stop', 'skill-failed']
 
+// This copy of the hook runs only when the plugin is loaded, and it steps aside only when the project carries its own: both installs are live,
+// so every skill is listed twice (/rig:x and /rig-x) and the plugin shares its name with the dashboard mod. Say so once per session.
+const DOUBLE_INSTALL = 'rig is installed twice here: both the plugin and a standalone copy (.claude/skills/rig-*) are active, so each skill is listed under two names (rig:x and rig-x). Tell the person to keep one: start claude without --plugin-dir (or disable the plugin) to use the standalone copy, or remove the standalone copy to use the plugin.'
+
 export function cmdHook(args: Args): void {
   if (RETIRED_HOOKS.includes(args.pos[0] ?? '')) return
   const handler = HOOKS[args.pos[0] ?? '']
   if (!handler) fail(`unknown hook ${args.pos[0]}`)
-  if (runsOwnHook(args.pos[0] ?? '')) return
+  if (runsOwnHook(args.pos[0] ?? '')) return void (args.pos[0] === 'session-start' && out(DOUBLE_INSTALL))
   const off = rigOff()
   if (off) return void (args.pos[0] === 'session-start' && out(offLine(off, trunkRef())))
   handler(readStdin())

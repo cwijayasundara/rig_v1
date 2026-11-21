@@ -211,11 +211,11 @@ test('standalone vendoring ships the v0.4 skills and REVIEW.md template', () => 
   assert.ok(fs.existsSync(path.join(repo, '.rig/templates/REVIEW.md')))
 })
 
-test('standalone vendoring installs the journey dashboard as the local plugin rig and drops an old mod', () => {
+test('standalone vendoring with --dashboard installs the journey dashboard as the local plugin rig and drops an old mod', () => {
   const repo = makeRepo()
   write(repo, '.rig/mod/hooks/register.ts', 'old\n')
   write(repo, '.claude/settings.json', JSON.stringify({ extraKnownMarketplaces: { mine: {} }, enabledPlugins: { 'rig-mod@rig-local': true, 'x@mine': true } }))
-  assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
+  assert.equal(sdlc(repo, ['vendor', '--standalone', '--dashboard']).code, 0)
   assert.ok(!fs.existsSync(path.join(repo, '.rig/mod/hooks/register.ts')), 'the old module is removed')
   for (const f of ['hooks/dashboard.tsx', 'hooks/hooks.json', '.claude-plugin/plugin.json', 'types/index.d.ts']) assert.ok(fs.existsSync(path.join(repo, '.rig/mod', f)), f)
   assert.equal(JSON.parse(fs.readFileSync(path.join(repo, '.rig/mod/.claude-plugin/plugin.json'), 'utf8')).name, 'rig')
@@ -258,7 +258,7 @@ test('a standalone copy prints /rig-<name> in readiness, refusals and the dashbo
   write(repo, '.rig/sensors.json', JSON.stringify({ stack: 'x', paths: { tests: ['**/*.test.ts'] }, sensors: [] }))
   assert.equal(sdlc(repo, ['sync']).code, 0)
   assert.match(fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8'), /the \/rig:pr reviewer/, 'the plugin copy writes the plugin spelling')
-  assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
+  assert.equal(sdlc(repo, ['vendor', '--standalone', '--dashboard']).code, 0)
   const claude = fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8')
   assert.match(claude, /the \/rig-pr reviewer/)
   assert.doesNotMatch(claude, /\/rig:[a-z]/)
@@ -428,7 +428,7 @@ test('every module a script imports is vendored', () => {
 test('vendor --standalone writes a manifest of the harness files', () => {
   const repo = makeRepo()
   sdlc(repo, ['init'])
-  assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
+  assert.equal(sdlc(repo, ['vendor', '--standalone', '--dashboard']).code, 0)
   const m = JSON.parse(fs.readFileSync(path.join(repo, '.rig/bin/MANIFEST.json'), 'utf8')) as { version: string; files: Record<string, string> }
   assert.equal(m.version, fs.readFileSync(path.join(repo, '.rig/bin/VERSION'), 'utf8').trim())
   const sha = (f: string): string => crypto.createHash('sha256').update(fs.readFileSync(path.join(repo, f), 'utf8')).digest('hex').slice(0, 16)
