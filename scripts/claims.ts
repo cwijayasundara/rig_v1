@@ -1,4 +1,4 @@
-// Claims against evidence (docs/superpowers/specs/2026-11-01-run-your-claims-design.md): what review.md and plan.md say, compared with the tree.
+// Claims against evidence (docs/HISTORY.md, superpowers/specs/2026-11-01-run-your-claims-design.md): what review.md and plan.md say, compared with the tree.
 // Every rule only suggests. Nothing here may fail a ship or a verify.
 import fs from 'node:fs'
 import path from 'node:path'

@@ -103,25 +103,3 @@ export const totals = sessions => ({
   }, {}),
   denials: sessions.flatMap(s => s.denials),
 })
-
-// rig's skills are rig-* in a standalone repo and rig:* from the plugin, and its stages call two built-ins (pr-review runs
-// code-review; security-review where a stage names it). Anything else means a plugin leaked into the run.
-const RIG_SKILL = /^(?:rig[-:]|code-review$|security-review$)/
-
-export async function assertProcess(c, sessions, { label = 'phase' } = {}) {
-  await c.check(`${label}: every session ran to a result`, () =>
-    (sessions.length > 0 && sessions.every(s => s.ended)) || sessions.filter(s => !s.ended).map(s => s.file).join(', ') || 'no sessions')
-  await c.check(`${label}: no session ended in error`, () => sessions.every(s => !s.isError) || sessions.filter(s => s.isError).map(s => s.file).join(', '))
-  await c.check(`${label}: 0 permission denials`, () => {
-    const d = totals(sessions).denials
-    return d.length === 0 || d.map(x => `${x.tool_name}: ${JSON.stringify(x.tool_input).slice(0, 120)}`).join(' | ')
-  })
-  await c.check(`${label}: only rig skills invoked`, () => {
-    const other = sessions.flatMap(s => s.skills).filter(n => !RIG_SKILL.test(n))
-    return other.length === 0 || [...new Set(other)].join(', ')
-  })
-  await c.check(`${label}: no skill-load fallbacks`, () => {
-    const hit = sessions.filter(s => fs.existsSync(s.file) && /skill-load-failed/.test(fs.readFileSync(s.file, 'utf8')))
-    return hit.length === 0 || hit.map(s => s.file).join(', ')
-  })
-}

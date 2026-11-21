@@ -1,4 +1,4 @@
-// Claims against evidence (docs/superpowers/specs/2026-11-01-run-your-claims-design.md): what review.md and plan.md say, checked against the tree.
+// Claims against evidence (docs/HISTORY.md, superpowers/specs/2026-11-01-run-your-claims-design.md): what review.md and plan.md say, checked against the tree.
 // Every rule only suggests; none blocks a ship.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'

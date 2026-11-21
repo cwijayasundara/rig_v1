@@ -353,3 +353,315 @@ Caveat common to all: the 2026-10-17 notes were written by subagents from WebFet
   - Intent home: folder in repo / monorepo dir / dedicated intent repo; non-engineers get Claude access.
 - **How rig used it:** README.md says rig "follows the AI-native SDLC playbook" and lifecycle is opt-in per its "starting point to tailor". docs/GOAL.md cites it as evidence ("the playbook's plays with measures"); GOAL scope item 4 (CI evals + PR review, plays 10, 11, 13) and item 5 (Maintain, plays 14-16; scripts/maintain.ts) map to it; chain-of-files became intent.md/plan/contracts committed as files; templates/managed-settings.json + templates/production-gate.sh implement the playbook's managed settings and managed-only production gate (README l.395); metrics (first-pass CI, comments resolved w/o human, repeat-mistake rate) taken from scorecard. Companion: docs/research/2026-10-17-playbook-gap-analysis.md. Related commits: 7f35f71 (added), 86141c3 merge feat/factory-checklist-and-recon-eval, 6f8a6f9 (an unrelated "edge-case checklist" at chart).
 - **Not adopted:** (GOAL.md "Not goals") a state machine reimplementing the six stages (status comes from which files exist); spend ledgers/tiers/budgets; auto-approval or anything letting the agent mark work done. No `bands.yaml` or scheduled routine yet; no `claude-code-action` review workflow (reviewer is in /rig:pr); `eval/baseline.json` still empty. Org-platform items (section 8 rollout links, Claude Tag on-call, fleet/MDM rollout, legacy-system bidirectional linkage, OTel dashboards) are outside rig's scope. ai-sdlc-map.html rendering was removed 2026-10-17.
+
+# Archived 2026-11-21: proposals, specs and plans of 2026-10-31..2026-11-15
+
+These 37 documents were removed from the working tree on 2026-11-21. The originals are unchanged in git at commit `7114419`:
+
+```sh
+git show 7114419:docs/superpowers/plans/2026-11-14-w1-inner-loop-basics.md    # read one
+git checkout 7114419 -- docs/proposals docs/superpowers                      # restore all
+```
+
+Still live in `docs/`: `proposals/2026-11-14-implementation-order.md`, the 2026-11-19 pilot plan, and the 2026-11-21 trace plan and spec. The digests were written by a Sonnet pass; "unverified" means the original is the authority.
+
+## proposals/2026-11-03-prd-sufficiency-and-provenance.md  (2026-11-03, 8190 chars)
+- **Question/problem:** Colleague feedback 3 and 4: did the client write enough (agent PRDs miss failure handling, escalation, ground truth, rollout), who said each rule, and when is a finding a bug (hand-edited data file).
+- **Evidence:** Fidelity is already strong (`conversion.md`, `prd check`, evaluator conversion mode). Gap pass asks only technology/NFRs/ambiguities; only `answered` marker is parsed (`prdformat.ts:59`), so `default`/`decided` inventions are invisible to the ledger.
+- **Options considered and rejected:** Filling absent topics from model imagination; a new question wave (feedback 2 complained of 20 questions); new approval machinery (reuse `## Open questions` and `/rig:waive`).
+- **Decision:** Proposal in three steps. (1) Provenance: closed set client (derived by script) / confirmed (`(confirmed at chart by <who>)`) / proposed (`(proposed at chart)`); a numbered line with none is an `unattributed` block; ledger `Origin` column; chart summary opens with a "Proposed by the agent" table. (2) `templates/prd-topics.md`, `coverage.md` written from `source.md` only, `S prd coverage <N>`, `client-gaps.md`; top 4 absent topics join the existing gap batch. (3) "state file trust" topic (app-owned vs user-editable) and a `reach` field in triage. Each step inline, `npm test` once, one Opus review.
+- **Outcome:** Status "proposal, nothing built"; no later build stated (unverified).
+- **Still open:** Decisions needed: block approval on unanswered absent topic (recommended) or warn; `proposed` lines allowed if listed (recommended); the one-bug report for step 3. Step 2 needs fixture eval first.
+
+## proposals/2026-11-14-frontend-design-in-the-loops.md  (2026-11-14, 18104 chars)
+- **Question/problem:** A product with an API and a UI cannot be charted end to end: no design artifact, no `kind: ui` intent, one stack per repo (`Registry.stack`), no UI sensors.
+- **Evidence:** Sources: main at 7324485, `frontend-design` plugin v1.1.1 (about 70-line skill, no files/checks); Kiro/BMAD/Spec Kit trace nothing. Fable 5.2 reviewer returned changes-needed with 16 findings, all applied. Harness cap 13,000 lines.
+- **Options considered and rejected:** Vendoring the plugin; designer checkpoint mid-chart (owner ruled out 2026-11-14); `apps[]` registry (composed packs instead); W3C token JSON; visual baselines; Figma over MCP (D2 recommends static HTML).
+- **Decision:** Optional PRD `## Experience` (`UX-n.m`); Sonnet designer in chart step 2 writes `design-system.md`, `tokens.css`, `ux.md`, mockups; `kind: ui` intents plus explicit integration intent; one chart gate; `/rig:chart <N> --redo look`; sensors `contract-client`, `a11y`, `states`; holdout launcher; React+Vite pack. Cost $5-15 per sprint (estimate). Order: U0 kill-gate eval task, U1 traceability, U2 designer, U3 packs/sensors.
+- **Outcome:** Proposal; U0 built as the `ui` eval variant (see docs below); rest unverified.
+- **Still open:** D1 plugin install, D2 mockups, D3 first stack (React+Vite recommended), D4 `design/` owner; auth screens, i18n, dark mode, keyboard journeys, cross-repo contract freeze.
+
+## proposals/2026-11-14-inner-loop-from-poteto-mode.md  (2026-11-14, 19008 chars)
+- **Question/problem:** What made the semantic_layers build reliable, and which parts of pstack poteto mode should rig's inner loop take? Sources: pstack 0.15.36, rig `main` 7324485, run log `.superpowers/sdd/2026-11-06-e2e-knowledge-graph/`. Fable 5.2 review of draft: 2 critical, 7 high, 6 medium findings applied.
+- **Evidence:** Reliability came from (1) independent review after every task (Needs fixes at progress.md:54, :65, :81, :116, :128, :163) and (2) controller full-scale runs the implementers never did (:149, :161); slowness came from review/fix rounds (125k-232k tokens, 11-30 min per Sonnet round), fixed by R17/R26/R32. 126 trailers mostly in squash `b19b8e9` (209 files, 29,706 lines); 89 Playwright snapshots.
+- **Options considered and rejected:** live verifier agent, separate implementer agent, per-unit commits (frozen tests, `pr.ts:101-103` single commit), 40-line PR body, rulings in `plan.md`, "only both models block" (every finding blocks, agreement ranks).
+- **Decision:** N1 proof per behaviour (approved journey or holdout, CI runs only approved drivers); N2 scale cases (deferred); N3 stand-ins for external dependencies; N4 sprint interface table (deferred); N5 `DONE|DONE_WITH_CONCERNS|BLOCKED` reports in `evidence/reports.jsonl`; N6 tokens/tools/minutes per launch; R1 local review on every change incl. tier 0 (deferred); R2 second model family in CI `ai-review` (deferred). D1 (2026-11-14): light = Haiku build / Sonnet evaluate, full = Sonnet / Opus, picked at plan time by `predictWeight` (`risk.ts:105`), `models.light|full` in `sensors.json`, `S models <slug>`; D2 at most 5 local launches per change; D3 scale cases from a QA-written seeded generator.
+- **Outcome:** Status per the doc: N1, N3, N5, N6, D1, D2 implemented (W1, W2); W0 done (bare caught 5/5 traps, rig-on caught every trap on `hard` and `brownfield`, tasks too easy); N2, N4, R1, R2 deferred. Commit hashes: unverified.
+- **Still open:** N2/N4/R1/R2 deferred until a W5 trap escapes rig-on; Haiku-light vs Sonnet-light escaped defects per dollar measured in P3.
+
+## proposals/2026-11-14-path-to-production-and-adoption.md  (2026-11-14, 25953 chars)
+- **Question/problem:** Where rig stands against a 15-point brief and rivals, and the path to production and mass adoption. Main at 7324485 (v0.10.0 + 15 commits); Fable 5.2 reviewer's 13 findings applied.
+- **Evidence:** Scorecard: strong on ledger/approval hashes/frozen tests/mutation; gaps: no measured lift (`ablation.json` is `[]`), blast radius asserted not computed, tier 0 gets no agent review, `everyTier` default false, roles not driving agents. rig+Haiku $0.087/8.2 min vs bare Haiku $0.032, bare Sonnet $0.212/0.9 min, same pass rate; 1,274 commits since 2026-10-03; 17 skills.
+- **Options considered and rejected:** wiki search index (Read/Grep tied 6/6); freeze before lift shown; raising caps; relaxing `everyTier` before breaker covers all tiers; hook-only observation like code-modernization.
+- **Decision:** Phases: P0 defaults, real model roles (`read` role), one `/rig` front door, `sprint` profile; P1 hard bare-arm eval (6 traps, kill if bare catches all, <= $150); P2 `sdlc map`, `sdlc impact`, affected-tests at turn cadence, `investigation.md`; P3 rig arms, kill rule if no lift, <= $1,500; P4 parallel intents, HTML gate pages, verifier pass, breaker on every tier; P5 marketplace, GitLab/Azure, integrations. New sensors: impact, affected-tests, complexity, dead-code, api-diff, adr-conformance.
+- **Outcome:** unverified (proposal; later W-plans start it).
+- **Still open:** D1 brief vs cost defaults, D2 Opus vs Fable evaluator, D3 public vs client reference repo, D4 kill rule.
+
+## proposals/2026-11-14-two-human-gates.md  (2026-11-14, 12707 chars)
+- **Question/problem:** Owner rule: a person approves twice only, the chart PR (outer loop) and the change PR (inner loop); nothing else waits on a person.
+- **Evidence:** Today the chart is approved twice (`/rig:approve chart-N` with `SDLC_HUMAN`, then CI needs a second person, `check.ts:297-303`); table of every human stop. Fable 5.2 reviewer returned changes-needed (2 critical, 7 high, 4 medium), all applied.
+- **Options considered and rejected:** model-verdict "seal" of the plan (not deterministic); weakening check as refusal (stays a warning, `weaken.ts:2-4`); silent stop on refusal (becomes draft PR); CODEOWNERS matching in CI now (later, if a pilot needs it).
+- **Decision:** `sdlc chart seal <N>` + approved chart PR is gate 1; `everyTier` PR approval is gate 2. Per-change `/rig:approve` replaced by `sdlc plan-check` recomputed in CI (contracts equal merge-base, inside charted intent/scope, plan committed first, existing refusals); evaluator plan review as `ai-review` veto; agent `waive --request` passes locally as pending and is granted by PR approval; `pull_request_review` trigger on `rig-check`; queue fixed at rung 2. Order G0-G4.
+- **Outcome:** G0 specified in the W1 plan (task 4); G1-G4 unverified.
+- **Still open:** D1 keep `gates.plan: true` opt-in (recommended), D2 who grants waivers, D3 accept fixed rung 2; `docs/GOAL.md:36` must change; Phase 3 eval arm keeps per-change human approval.
+
+## superpowers/2026-11-11-rig-readiness-and-adoption.md  (2026-11-11, 15463 chars)
+- **Question/problem:** Is rig production ready for a client project (Magenta), how to avoid moving goalposts, and how to embed and harvest harness variants? Reviewed by an independent Fable 5.2 evaluator, 19 findings applied; written at `main` 1b84d61.
+- **Evidence:** `docs/GOAL.md`: no eval shows lift over plain Claude Code; rig+Haiku 3/3 same as bare at ~2.8x cost, 3.5x time (`eval/results/2026-10-31-delta.jsonl`); learning loop: mistake recurred in 34/36 changes without vs 12/36 with. Tester runs $24.32 and $34.54, concurrency and weakened-requirement defects. 66 journey reports all synthetic, `triage.json` and `eval/journey-baseline.json` are `{}`, `eval/ablation.json` `[]`. 1,227 commits in 36 days, last tag v0.4.1, size cap raised 7 times (6,000 to 12,000; GOAL.md still says 8,000). `npm test` passes: 1,444/1,444 specs, 290/292 e2e/eval (2 skipped).
+- **Options considered and rejected:** running client on `main`; a fresh harness per project (forks); fixed per-person modes (rung is per repo, so use CODEOWNERS).
+- **Decision:** Freeze: tag `v0.8.0`, branch `release/0.8`, build rig-core profile (`vendor --standalone --profile core`; off: rungs 2-3, Maintain, wiki, dashboard, `/rig:chart`). Exit criteria R1-R9 (paired eval 20-30 tasks n>=3; 3 green live e2e runs; <= $8 and 45 min; readiness client level; runbook; failure-class guides; half-day onboarding; data/IP sign-off; first `eval:ablate`). Shadow sprint then 2-sprint pilot, go/no-go; ~10-12 harness-engineer weeks. Two channels (stable tagged, at most one minor per quarter; edge = main), adoption gate, baseline+overlay promotion ladder, reference repo. If R1 shows no lift, ship the floor only.
+- **Outcome:** unverified (plan; later plans R5 runbook and three-gates cite it).
+- **Still open:** the question's "variants quoted below" were missing from the pasted text.
+
+## superpowers/2026-11-12-three-gates-to-strong.md  (2026-11-12, 10988 chars)
+- **Question/problem:** Move three report rows (human design approval, auto tests/mutation, human final approval) from Partial to Strong, re-checked at `main` be1533f (0.10.0).
+- **Evidence:** Tier-0/rung-3 PRs merge with no human (`templates/rig-check.yml:7-8`); `protect.ts` only prints a PUT, `required_pull_request_reviews: null`; `size` sensor `blocks: false` and an approved plan downgrades it (`check.ts:250-252`); mutation-diff blocks only on node/angular (`node.json:15`), six stacks nightly non-blocking; one context writes tests and code.
+- **Options considered and rejected:** none rejected; D1-D4 decided 2026-11-12: holdout in repo under `holdout/` (separate repo is stronger), keep rung 3 behind `everyTier: false`, mutation threshold 0.8, seeded defects in real PRs with CI holding the merge.
+- **Decision:** C1 `humanApproval.everyTier`, `risk.hardCap`, `init --protect --create` (1 review, code-owner, `enforce_admins`); C2 separate Sonnet test writer + `sdlc tests-freeze` (`tests.freeze.json`); C3 hidden holdout acceptance cases denied via managed settings/hooks, judged in CI; C4 `mutation-diff` on all stacks with `scripts/mutscore.ts` and `mutation.minScore` 0.8; C5 `sdlc chart summary` `approval.md` with <=3 check questions; C6 PR comprehension check, `sdlc audit seed`, `report --github`. Waves: C1; C2 then C3; C4; C5, C6.
+- **Outcome:** unverified (no hashes). Later proposals reference holdouts and the `everyTier` gate as existing (inner-loop doc, W2 plan).
+- **Still open:** C2 adds one Sonnet launch per change, to be measured in the eval before default.
+
+## superpowers/plans/2026-10-31-journey-e2e.md  (2026-10-31, 24022 chars)
+- **Question/problem:** One command (`npm run e2e`) should drive rig through init, chart, approve and build for a greenfield and a brownfield sprint on one sandbox repo, judged by a Sonnet inspector, with no person in the loop.
+- **Evidence:** Spec `docs/superpowers/specs/2026-10-31-journey-e2e-design.md`; reuses `createSessions`/`liveDriver`, `eval/lib/cli.mjs` (`claudeJson`), `tests/e2e/lib`. Constraints: actor `claude-haiku-5-5`, inspector/reviewer `claude-sonnet-5-5`, cap $25 and 60 min (`--cap`, `--minutes`), max 3 `--continue` per stage then `stuck-on-input`, `SDLC_HUMAN=1` only for the reviewer's approve command.
+- **Options considered and rejected:** none stated; `test:e2e:parallel`/`test:e2e:stacks` left alone; old phases s1-brief/s2-greenfield/s3-delete retired only if no importer (`eval/` still reads fixtures/shop, remove, s0-install, s1-brief).
+- **Decision:** 13 tasks. T0 init spike; T1 `violations.mjs`/`alert.mjs`/`triage.json` (`alert` exit 0 iff `open()` empty); T2 `inspector.mjs`/`reviewer.mjs` (`parseRubric`, `inspect`, `review`, no-edit guard via tree hash); T3 `gates.mjs` (gateInit/Chart/Approved/Built/UnchangedTests); T4 `stages.mjs`/`journey.mjs` (`runJourney`, J0-J6, `from` refuses unless earlier stages passed, cap -> `cap-reached`); T5 PRDs (Library Desk, FR-1..FR-10, five intents, sprint 2 delta table, `unchanged-tests.json`; person reads them); T6 rubrics J0-J6 (<=60 lines, `- Jn.k [block|warn]`); T7 `driver-live.mjs`; T8 scripted driver + `record.mjs` + recorded snapshots; T9 `run.mjs` flags, `e2e`/`e2e:scripted` scripts, CI, `writeJourneyReport`; T10 retire superseded phases; T11 `eval/journey.mjs` (arms haiku-rig, sonnet-rig, `--dry`, `--dry-check` over 5 seeded `recorded/bad/` cases, agreement sample, gate); T12 first live run, README/CLAUDE.md docs.
+- **Acceptance:** each task has failing specs first (e.g. unchanged-test edited in sprint 2 caught by byte-identical gate even if pytest green; reviewer reject -> no approve run; accepted triage id does not alert; `run.mjs --driver scripted` exits 0 on synthetic set, 1 on seeded-bad set); `npm test` and `npm run typecheck` quoted.
+- **Outcome:** unverified (no commit hashes in the doc). Later docs (readiness doc) say 66 local journey reports are synthetic and one real recorded snapshot (J2) exists.
+- **Still open:** T7 chart stop detection called the one task with real unknowns; live run, triage and real `--record` are person-started.
+
+## superpowers/plans/2026-11-01-run-your-claims.md  (2026-11-01, 13963 chars)
+- **Question/problem:** Implement the run-your-claims spec: optional runnable `Repro:` on review findings plus a suggest-only `S claims` check of claims vs tree.
+- **Evidence:** Plan only; cites the design spec and CLAUDE.md constraints (no blocking, no new agent launch, review brief at most 60 lines).
+- **Options considered and rejected:** none stated (dropping findings without a Repro and blocking rules excluded by Global Constraints).
+- **Decision:** 6 tasks. T1 `scripts/claims.ts`: `parseFindings`, `fileRows` (C1 path:line exists, C3 plan file unchanged, C4 amendment cites missing B-id, C5 confirmed finding with repro). T2 C2 via `stampReview` (`claims-stamp.json` blob hashes), `fixedRows`, `claimRows`, `cmdClaims` (`S claims <slug>`, `S claims stamp <slug>`, always exit 0), registered in `scripts/sdlc.ts`. T3 `scripts/pr.ts`/`prbody.ts` list suggestions in Evidence, writes `claims.json`, try/catch, never fails a ship. T4 `Repro:` in `templates/review-brief.md`, `confirm-brief.md`, `skills/pr/SKILL.md` (`claims stamp` after review.md, before fix wave) plus pinning specs. T5 `eval/review.mjs` `tools` arm (`claudeRunner` opts in `scripts/wikigen.ts`), `repros`/`reproFails`. T6 `npm test`, `npm run typecheck`, one Opus review.
+- **Acceptance:** new `scripts/claims.spec.ts`, prbody/reviewbrief/prskill specs, `eval/review.test.mjs`, `node eval/review.mjs --dry --arms clean,tools --runs 1`.
+- **Outcome:** unverified (no commit hashes in the doc).
+- **Still open:** live tools-arm run is the person's (`--arms clean,tools --models claude-sonnet-5-5,claude-opus-5-5 --runs 3 --max-usd 8`); gate: tools recall not below clean, no more false findings on controls.
+
+## superpowers/plans/2026-11-03-prd-provenance.md  (2026-11-03, 8761 chars)
+- **Question/problem:** Every AC/DR/NFR line of a sprint PRD should have exactly one origin, and a line with none should block.
+- **Evidence:** Spec `docs/proposals/2026-11-03-prd-sufficiency-and-provenance.md` Change 2; owner decision 2026-11-03: list proposed lines at approval.
+- **Options considered and rejected:** a migration (legacy markers `answered at chart`, `default at chart`, `decided at chart` keep working); writing default origin to the ledger (written only when not default, so old ledgers stay byte-identical). Out of scope: PR-body count, intent-behaviour tag check, topic coverage (step 2), trust boundary (step 3).
+- **Decision:** Origins `client`, `confirmed`, `proposed`, `unattributed`; markers `(confirmed at chart by <who>)`, `(proposed at chart)`; marker wins over map row. Ledger `[rule, proposed]`. New block rule `map-origin`. T1 `prdOrigins`/`prdLedger` in `prdformat.ts` and `chartcheck.ts` (`normalise`, `LedgerRow.origin`); T2 `conversionProblems` `map-origin`; T3 helper `conversionMapOf(n)` in `chart.ts` used by four reads; T4 `prd proposed <N>` table; T5 chart skill/templates/agents text and final message heading "Proposed by the agent"; T6 one Opus review.
+- **Acceptance:** specs in `prdformat.spec.ts`, `chartcheck.spec.ts`, `chart.spec.ts`, `chartskill.spec.ts`; old ledger still parses, no spurious `ledger-stale`; no `source.md` means no `map-origin` findings.
+- **Outcome:** unverified (no hashes).
+
+## superpowers/plans/2026-11-03-prd-sufficiency.md  (2026-11-03, 8973 chars)
+- **Question/problem:** The chart should find whole topics a client `source.md` never mentions and refuse approval until each is covered, answered, or marked not applicable.
+- **Evidence:** Spec `docs/proposals/2026-11-03-prd-sufficiency-and-provenance.md` Change 1; owner decision 2026-11-03: unanswered absent topic blocks chart approval, `proposed` lines only listed.
+- **Options considered and rejected:** a new question wave (instead the top 4 absent topics join the existing gap-pass batch); growing `coverage.md` on already approved sprints.
+- **Decision:** `coverage.md` row per topic (core `failure`, `security`, `ground-truth`, `rollout`, `escalation`; agent `accuracy`, `autonomy`, `fallback`, `budget`, `audit`), states covered/answered/open/n/a, written from `source.md` only. Block rules `coverage-missing|row|topic|quote|answer|open|reason`; `answered` pointing at a `proposed` criterion refused. Tasks: T1 `scripts/prdcoverage.ts` + `templates/prd-topics.md` (`TOPICS`, `parseCoverage`, `coverageProblems`, `clientGaps`); T2 gate in `chart.ts`, `product.ts coveragePath`, `prd coverage <N>` and `prd gaps <N>` (`client-gaps.md`), maybe `scripts/prdcmd.ts` (`sdlc.ts` at 499 lines); T3 chart skill, evaluator `missed-topic`, fixture `eval/fixtures/prd-agent-gaps.md`; T4 one Opus review.
+- **Acceptance:** specs in `prdcoverage.spec.ts`, `chart.spec.ts`, `chartskill.spec.ts`; `npm test` once.
+- **Outcome:** unverified (no hashes).
+- **Still open:** live eval over `prd-agent-gaps.md` (topic recall, false-absent rate, cost) decides whether the probe is kept; needs the person.
+
+## superpowers/plans/2026-11-04-task-router.md  (2026-11-04, 11299 chars)
+- **Question/problem:** `/rig:start` should take a quick path (no brainstorm, no question batch) for a clear bugfix or refactor.
+- **Evidence:** Spec `docs/superpowers/specs/2026-11-04-task-router-design.md` (about 140 lines); plan expects about 90 lines of code.
+- **Options considered and rejected:** Separate router skill and the draft's type list (superseded by spec revisions); model-judged routing (no model calls: script can only narrow toward full). Live-dollar arm deferred.
+- **Decision:** Branch `feat/task-router`. T1: `scripts/route.ts` `routeCheck(type, request, {noRoute})`, CLI `S route-check <type> "<request>" [--no-route] [--json]`, registered in `sdlc.ts`; rules in order: no-route, unknown type, feature/chore always full, >600 chars, bugfix needs symptom regex, refactor with new-behaviour words is full. T2: `skills/start/SKILL.md` (+12 lines max, `--no-route`), `scripts/routeskill.spec.ts`, `npm run validate`. T3: `eval/fixtures/route/requests.json` (>=15 labelled), corpus test: zero false-quick, quick recall >=80%.
+- **Outcome:** Unverified (plan only; no commits stated).
+- **Still open:** Nothing stated.
+
+## superpowers/plans/2026-11-07-intent-map.md  (2026-11-07, 12788 chars)
+- **Question/problem:** A change with `.rig/changes/<slug>/intent-map.md` must fail approve, verify and the PR body unless every said sentence is a formal, empirical or not-promised row.
+- **Evidence:** Spec `docs/superpowers/specs/2026-11-07-intent-map-design.md`; oracle `eval/intent-map.mjs` + `eval/intent-map.test.mjs` + `eval/fixtures/intent-map/` is the contract; 15 rule ids (`unmapped-said`, `formal-failed`, `vacuous`, `prune`, ...).
+- **Options considered and rejected:** recording results inside the frozen map (would trip `harness-tamper`); a missing formal command relabelled as empirical (fails closed as `formal-failed`).
+- **Decision:** Branch `feat/intent-map`. Results live in `intent-results.json`, merged by `applyResults`; the `intent-map` sensor has `options.formal` printing `{"clauses":..,"mutants":[..]}`. Tasks: T1 port oracle to `scripts/intentmap.ts` (`parse`, `scenarioHash`, `freezeFor`, `check`, `applyResults`, `receipt`, CRLF safe); T2 plan phase + `freeze.json` at approve (`lifecycle.ts`); T3 ship sensor in `registry.ts`/`check.ts`/`model.ts` plus `S intent-record`; T4 `## Intent map` receipt in `prbody.ts`/`pr.ts` ("evidence, not proof"); T5 plan/build/approve skills, `behavioursFrom`, `S intent-project`, `behaviours-drift`; T6 Python pack + full `npm test`/typecheck + one `/code-review`.
+- **Acceptance:** parity with oracle on plan/ship/gap/one-way inputs; no map means no findings; unknown E ids ignored; pass without commit is `empirical-unrecorded`; no new subagent launches in hooks.
+- **Outcome:** unverified (no hashes). Execution inline, one fresh context.
+- **Still open:** spec wording needs updating with the two plan-time decisions; live lift eval not built.
+
+## superpowers/plans/2026-11-08-intent-map-incorporations-wave1.md  (2026-11-08, 13178 chars)
+- **Question/problem:** Three escape hatches in the intent map ship path: only the last mutant of a clause read (item 8), equivalent mutants have no recorded exit (item 1), a hand-written `pass` accepted (item 6).
+- **Evidence:** Spec `docs/superpowers/specs/2026-11-08-intent-map-incorporations.md` items 1, 6, 8.
+- **Options considered and rejected:** Waiver-style signing for adjudication (user chose: non-empty `by` plus `harness-tamper` coverage); hashing results into approval (map stays frozen); dogfooding via `/rig:start` (impossible on this repo).
+- **Decision:** T1 `scripts/intentmap.ts:124-137,148-160` and oracle `eval/intent-map.mjs`: group mutants per clause, duplicate id is `formal-failed`, zero mutants `unmutated`. T2 adjudications (`adjudications.json`, `intent-adjudicate <slug> <mutant> <non-bug|clause-vacuous> --by`, `readAdjudications`). T3 `result-unbacked` rule: `recordRun` returns `r<n>` id, results carry `run`+`commit`, must match ledger line with exit 0. T4 `scripts/intentmap.integration.spec.ts` drives real CLI (green path, equivalent mutant, second mutant survives, hand-written pass, ledger mismatch, no formal run). Then one Opus review.
+- **Outcome:** Wave 2 doc states wave 1 built on branch `feat/intent-map-wave1`; no hashes.
+- **Still open:** Items 2-5, 7 deferred to waves 2-3; whether `adjudications.json` is already in `PROTECTED` left to executor.
+
+## superpowers/plans/2026-11-08-intent-map-incorporations-wave2-3.md  (2026-11-08, 19617 chars)
+- **Question/problem:** Close the rest of the spec: formal checker bound to shipped code (3), one-way decision reasons (5), named and pinned trusted deps (4), sampled-evidence property tier (7), scheduled recheck (2).
+- **Evidence:** Same spec; scripts at 9026 lines vs `SCRIPTS_CAP` 9500; user raised harness to 12,000 lines on 2026-11-08.
+- **Options considered and rejected:** Spec's `formal-failed` (own id `formal-targets-diff`); counting a side copy created by the same change; deeper import resolution (one level, Python and JS/TS only); a "tier-1 finding" (item 2 reuses `maintain` proposals).
+- **Decision:** Wave 2 (branch, own Opus review, merged before wave 3): T1 `scripts/intenttargets.ts` `formalTargets`, rule `formal-targets-diff`, cap to 10000; T2 `one-way-unjustified` (login fixtures D2, D3); T3 `## Trusted` with `pin:`, rule `trusted-unpinned`; T4 journeys. Wave 3: T5 optional `## Property command`, `property-failed`, receipt "property: pass (evidence, sampled, not exhaustive)"; T6 `scripts/intentrecheck.ts`, `sdlc intent-recheck --cap 5`, `templates/rig-intent-recheck.yml` (cron `37 5 * * 1`, off until `RIG_INTENT_RECHECK=on`), proposals once via `seen.json`; T7 journey. Commits named per task (e.g. `feat(intent-map): the formal checker must bind to changed source`).
+- **Outcome:** Unverified (plan; wave 1 assumed merged).
+- **Still open:** Two wave-1 minors (adjudication keyed by clause, ledger ids from line count) and stale-pass gap excluded.
+
+## superpowers/plans/2026-11-11-readiness-client.md  (2026-11-11, 11912 chars)
+- **Question/problem:** `sdlc.ts readiness --client` must say per check whether a client repo has the platform controls that make gates binding, exit 1 until all pass.
+- **Evidence:** Spec same readiness doc section 2 Step 1, row R4; harness 11,532 of 12,000.
+- **Options considered and rejected:** A fifth readiness level (level 4 needs wiki and Maintain, which core turns off; security controls should not pass at 80%).
+- **Decision:** New `scripts/readyclient.ts`: pure `clientCriteria` (10 ids: protection, codeowner-review, ci-secret, codeowners-rig, codeowners-claude, codeowners-workflows, codeowners-owner, managed, sandbox, managed-rules), `covers()`, IO `gatherClient` reading CODEOWNERS, managed settings (per-OS default, `--managed` override) and protection via classic API and rulesets through `gh`. `protect.ts` exports `CHECKS`, `SECRETS`, `trunk`; `vendor.ts` VENDORED adds `readyclient`; SECURITY.md and CHANGELOG lines. Plain `readiness` makes no gh call. Tests use fake gh (`protect.spec.ts:10-16`); expect "client readiness: 10/10". One Opus review after.
+- **Outcome:** Unverified (plan only).
+- **Still open:** Nothing stated.
+
+## superpowers/plans/2026-11-11-rig-core-profile.md  (2026-11-11, 12500 chars)
+- **Question/problem:** Client repos need only the rig-core skills; `vendor --standalone --profile core` must copy just those and the profile must survive `upgrade` and `init --full`.
+- **Evidence:** Spec `docs/superpowers/2026-11-11-rig-readiness-and-adoption.md` section 2 Step 0 item 2; harness 11,455 of 12,000 lines; `sdlc.ts` at its 500-line cap.
+- **Options considered and rejected:** Raising the size cap; a plain `--profile core` without `--standalone` (fails); keeping architect agent (chart-only, off).
+- **Decision:** Core skills start, plan, approve, build, test, pr, waive, learn, rule; agent evaluator; off: chart, testplan, wiki, arch, app, autonomy, init, dashboard mod, `rig-local` marketplace, `rig-maintain.yml`. T1 `scripts/profile.ts` + `vendor.ts` filtering, manifest `profile` key (only for core), stale removal keeps edited files. T2 `templates/readme-rig-core.md` (<=40 lines), no dangling off-commands in core skills (`approve` line 18, `learn` line 20). T3 `upgrade.ts` reads `manifestProfile`, old manifests read as full, `installStandalone(workflows, profile)`, `sdlc.ts:79` edit in place. Tests in `scripts/profile.spec.ts`; CHANGELOG line.
+- **Outcome:** Unverified (plan only).
+- **Still open:** Nothing stated.
+
+## superpowers/plans/2026-11-12-human-load.md  (2026-11-12, 11233 chars)
+- **Question/problem:** `sdlc report` does not say how much of a person each shipped change took; the pilot needs questions and approvals per change plus minutes of attention (ceiling e.g. at most 3 questions).
+- **Evidence:** Readiness doc `2026-11-11-rig-readiness-and-adoption.md` §2 Step 2: "human load needs new instrumentation".
+- **Options considered and rejected:** none stated; PR reading time left to `report --github`.
+- **Decision:** 2 tasks. T1 `scripts/humanload.ts` (`recordHuman`, `questionsAsked`) hooks append counts-only rows (`prompt`, `stop`, `question` with `n`) to `.rig/changes/<slug>/evidence/human.jsonl`; new PostToolUse hook `asked` on AskUserQuestion in `hooks/hooks.json`; deny rules in `templates/settings.json`/`managed-settings.json`; `VENDORED`. T2 `summarise` (attention = stop-to-next-prompt gaps within a session, capped 10 min) and `humanLoad`; `scripts/report.ts` prints "human load" section, `humanLoad` JSON, `--max-questions` (default 3), `overCeiling`.
+- **Acceptance:** `scripts/humanload.spec.ts` (unpaired prompts, interleaved sessions, malformed rows, missing questions payload counts 1, human.jsonl raises no Stop finding), report spec.
+- **Outcome:** unverified (no hashes).
+
+## superpowers/plans/2026-11-12-known-failure-classes.md  (2026-11-12, 11980 chars)
+- **Question/problem:** Three defect classes (lost updates under concurrent commands, option swallowing next flag, rule weakened between requirements and spec) reach only `/rig:chart`, off in the core profile. Row R6 of `2026-11-11-rig-readiness-and-adoption.md`.
+- **Evidence:** `docs/feedback/` defects: "ids are never reused" weakened, items lost under 20 concurrent adds, `--name --json` taking `--json` as name.
+- **Options considered and rejected:** journey item for option parsing (PRD lists command line as non-goal); weakening as a refusal (it only warns).
+- **Decision:** 3 tasks. T1 `scripts/weaken.ts` (`weakenings`, `weakeningLines`) warns `WARNING weakened: B<n> cites <id> but drops "<word>"` in `S approve <slug> --check` (strong words never/always/must/only/at most/at least/exactly/every/unique, numbers); `sdlc.ts:195` edited in place (stays 500 lines); `VENDORED`. T2 start skill step 3 walks `templates/edge-cases.md`; guides rules 11 Concurrent writers, 12 Options; `REVIEW.md` pass 6 Robustness; CHANGELOG. T3 `J3.10`/`J3.11` rubric items and bad snapshots `lost-loan-concurrent`, `spec-weakens-rule`.
+- **Acceptance:** `scripts/weaken.spec.ts`, `scripts/failureclasses.spec.ts`, `driver-scripted.test.mjs`, `rubrics.test.mjs`; live `npm run e2e` is the person's.
+- **Outcome:** unverified (no hashes).
+
+## superpowers/plans/2026-11-12-rig-off-and-runbook.md  (2026-11-12, 11986 chars)
+- **Question/problem:** R5: switch rig off for a repo in one committed file and document outages (CI down, provider down).
+- **Evidence:** Spec = readiness doc Step 1 row R5; person decisions 2026-11-12: build `off`/`on`; support owner and response time stay placeholders.
+- **Options considered and rejected:** an agent-writable marker honoured on a feature branch (only counts once on the trunk, read via `git show <trunkRef>:.rig/off.json`); rig-check honouring the PR head (base only, no provider needed).
+- **Decision:** `.rig/off.json` `{by, why, at}`, protected path (PROTECTED, CODEOWNERS, deny rules in `templates/settings.json`/`managed-settings.json`). T1 `scripts/off.ts` (`trunkRef`, `rigOff`, `offLine`, `cmdOff`, `cmdOn`); `cmdCheck`, `cmdCheckPush`, `cmdHook` return early; `sdlc.ts` stays exactly 500 lines. T2 `ai-review` guard in both review steps of `templates/rig-check.yml` passes when the base or PR head has the marker; `docs/runbook.md` (<=90 lines: switch off, CI down, provider down, rig broken, upgrading, support).
+- **Acceptance:** `scripts/off.spec.ts` (marker on feature branch switches nothing off; malformed marker reads as off; no trunk gives null; idempotent on/off); owners/permissions/managed/hooks/vendor specs; `npm test && npm run typecheck`.
+- **Outcome:** unverified (no hashes). One Opus review planned.
+- **Still open:** support owner and response time placeholders; 0.8.0 to 0.8.1 upgrade rehearsal by a person.
+
+## superpowers/plans/2026-11-14-u0-ui-variant.md  (2026-11-14, 10478 chars)
+- **Question/problem:** Build the `ui` eval variant (B20 endpoint, B21 screen, traps `error` and `field`) on the built `hard` shop, scored by a real browser.
+- **Evidence:** Spec `2026-11-14-u0-ui-task-design.md`; shape follows `eval/variants/knex.mjs`, `hard.mjs:174-196`.
+- **Options considered and rejected:** Adding Playwright to `package.json` or a sandbox (lives in `~/.cache/rig-eval/playwright`, playwright 1.49.1).
+- **Decision:** Only `eval/` changes. T1 `eval/lib/browser.mjs` (`browserAvailable`, `withPage`, `RIG_EVAL_BROWSER_CACHE`), `eval/setup-browser.mjs`. T2 `eval/variants/ui/{tasks/ui.md,patches/ref|error.slip|field.slip.patch,checks.mjs}`. T3 `eval/variants/ui.mjs` (U20, U21 phases) wired into `eval/setup.mjs`, `eval/run.mjs`, `eval/score.mjs`. Acceptance: `node --test eval/ui.test.mjs eval/browser.test.mjs`, `npm run typecheck`, `npm run test:changed`; ref passes both traps, each slip passes `npm test` and fails only its trap; no trap words in prompts. Human run: `node eval/setup-browser.mjs` then `node eval/run.mjs --arms sonnet-rig-on,haiku-rig-on --runs 3 --variant ui` (about $2-4).
+- **Outcome:** Unverified (plan only).
+- **Still open:** Nothing stated.
+
+## superpowers/plans/2026-11-14-w1-inner-loop-basics.md  (2026-11-14, 18153 chars)
+- **Question/problem:** W1 of `docs/proposals/2026-11-14-implementation-order.md`: model pairs by weight, agent status reports and cost, 5-launch budget, waiver requests, CI re-run on approval (G0).
+- **Evidence:** Plan only; builds on poteto N5/N6/D1/D2 and two-human-gates G0.
+- **Options considered and rejected:** none stated.
+- **Decision:** 5 tasks. T1 `S models`: `modelPair`, `models.light={build:haiku,evaluate:sonnet}`, `models.full={sonnet,opus}`, security always full.evaluate, tier>=1 escalates (`registry.ts`, `risk.ts`). T2 `scripts/agents.ts`: `agents.jsonl`, `parseReport` (`status: DONE|DONE_WITH_CONCERNS|BLOCKED`), `LAUNCH_BUDGET=5`, hooks deny sixth launch. T3 PR body `## Agents`, `S pr --draft`, report "agent cost". T4 `waive --request`, `templates/rig-approved.yml` (re-runs the rig-check job on `pull_request_review`), vendor. T5 skill/brief text (build, pr, test, briefs, readmes).
+- **Acceptance:** `models.spec.ts`, `agents.spec.ts`, `approvedwf.spec.ts`, check/pr specs; `npm test`, `npm run typecheck`. Sensitive: `sdlc.ts`/`check.ts` at 500 lines.
+- **Outcome:** unverified (W3 plan refers to the "W1 merge", first parent 7324485).
+
+## superpowers/plans/2026-11-14-w2-plan-check.md  (2026-11-14, 11616 chars)
+- **Question/problem:** W2: replace the per-change plan approval when `gates.plan: false` with a deterministic `plan-check` (G1), prove every behaviour by holdout or approved journey (N1), and require stand-ins for external dependencies (N3).
+- **Evidence:** Specs `docs/proposals/2026-11-14-two-human-gates.md` §3.1-3.2 and the inner-loop proposal §4. Without `plan-check`, `gates.plan: false` drops the contract freeze. `check.ts` and `sdlc.ts` at 500 lines, scripts cap 12000.
+- **Options considered and rejected:** flipping `gates.plan` default to false now (deferred to W5/G4); `proof` as block by default (warn until the W3 eval decides).
+- **Decision:** T1 `scripts/plancheck.ts` (`planCheck`: contracts unchanged incl. delete/rename, scope and ledger ids inside the intent, plan commit before source, existing `approvalRefusal`; fails closed at CI with no merge-base; `planChangesAfterBuild`; `S plan-check <slug> [--commit] [--json]`; wired in `pr.ts`, `check.ts`, `prbody.ts`, `UNREQUESTABLE`). T2 `scripts/proof.ts` (`unproved`, `proofFindings`, registry `proof: warn|block`, only `appState` current counts, exempt with no `app.json` and no holdout). T3 `## Integrations` table (`Dependency|Kind|Contract|Stand-in|Live switch|ADR`), rule `arch-standin` in `chartcheck.ts`, architect agent and build skill text.
+- **Acceptance:** `plancheck.spec.ts` (13 cases), `proof.spec.ts` (7), chartcheck specs (4), plus `size`, `neutrality`, `model` specs and typecheck; coordinator runs `npm test` once. New sensor ids `plan-check` (block) and `proof` in `SENSOR_NAMES`.
+- **Outcome:** The inner-loop proposal says N1, N3 implemented (W2). Commit hashes: unverified.
+
+## superpowers/plans/2026-11-14-w3-eval.md  (2026-11-14, 10490 chars)
+- **Question/problem:** W0 (trap eval set) was never built and W3 depends on it: measure rig before vs after W1+W2 and Haiku-light vs Sonnet-light by escaped defects per dollar.
+- **Evidence:** Plan only; follows `eval/variants/contract.mjs`.
+- **Options considered and rejected:** Playwright (server-rendered HTML checked over HTTP instead; Playwright arrives with React+Vite pack in W6).
+- **Decision:** 2 tasks. T1 `eval/variants/traps.mjs` on the B1-B14 shop, B15-B18 with traps route (handler not in `routes.js`), flag (`--flag=value`, unknown flag exits 2), scale (top customers on 100k orders under 2 s), uiError/uiField (503 `role="alert"`; field in `openapi.yaml`); `escaped` = npm test passed but trap failed, null on error. T2 `RIG_EVAL_PLUGIN` env (row records plugin sha7; old ref `git worktree add ../rig-pre-w1 7324485`), arms `sonnet-rig`, `sonnet-rig-light-haiku`, `sonnet-rig-light-sonnet`, report columns `escaped`, `$/escaped-free run`.
+- **Acceptance:** `eval/run.test.mjs`, `eval/report.test.mjs`, `npm run eval:dry -- --variant traps`; paid runs are the person's (W0 exit: at least 2 traps escape bare arms).
+- **Outcome:** unverified; `2026-11-14-w3b-hard-traps.md` says the W0 gate failed 2026-11-14 (bare Sonnet and Haiku caught all five traps in 6 of 6 runs), implying traps was built and run.
+
+## superpowers/plans/2026-11-14-w3b-hard-traps.md  (2026-11-14, 9223 chars)
+- **Question/problem:** The W0 exit gate failed; build harder sets that can let traps through bare arms.
+- **Evidence:** `docs/proposals/2026-11-14-implementation-order.md` Results: bare Sonnet and bare Haiku caught 5/5 traps in 6/6 runs.
+- **Options considered and rejected:** rules in a conventions doc the prompt points to (now no doc pointers); timing-luck concurrency checks (race forced through store async yield).
+- **Decision:** 2 tasks. A: `eval/variants/hard.mjs` on the shop, B15-B19: rule only in `test/integration/refund-policy.test.js` (run by `npm run test:all`, not `npm test`; 30-day refund needs `x-manager: yes`), half-up rounding copied in `src/reports/csv.js`, 20 concurrent placements for 1 unit, 200 ms with 200k orders, repeated `--status`. B: `eval/variants/brownfield.mjs` on commander.js v12.1.0 pinned by tag + sha (`eval/lib/upstream.mjs`, cache `~/.cache/rig-eval`), 4 tasks to design, hidden acceptance tests. Every naive version at least 5x over bound.
+- **Acceptance:** `eval/hard.test.mjs`, `eval/brownfield.test.mjs`, dry evals; re-gate costs ~$1.50 per variant (`--arms sonnet-bare,haiku-bare --runs 3 --cap-run 3 --cap-total 10`), passes when at least 2 traps escape across 6 runs.
+- **Outcome:** unverified (no hashes; commander sha not in the doc).
+
+## superpowers/plans/2026-11-14-w3c-rig-on.md  (2026-11-14, 5284 chars)
+- **Question/problem:** After the maintainer decided rig mode is on once rig is installed (`docs/GOAL.md`), how to measure rig-on in the eval and prove the always-on promise in the scripted e2e at $0?
+- **Evidence:** `scripts/hooks.ts:152` and `:244` run sensors with no active change; two vendor bugs in the brownfield eval (commit `023cf93`) had no integration test.
+- **Options considered and rejected:** a bare arm (measure two rig arms only); weakening a check when it finds a bug (fix harness instead).
+- **Decision:** Task A: arms `sonnet-rig-on` and `haiku-rig-on` (`on: true`, plugin loaded, plain bare prompt, `mode: 'on'`; existing rig arms are `rig-start`, no id renames) in `eval/arms.mjs`, `run.mjs`, `report.mjs`. Task B: `tests/e2e/phases/s7-rig-on.mjs` (freeform edits blocked at Stop, W1 `agents.jsonl` launch/done rows and 6th launch refused, W2 plan-check, `proof` warn, `arch-standin`) and `s8-brownfield.mjs` with fixture `tests/e2e/fixtures/brownfield-cjs/` (vendored checker `.rig/bin/package.json`, repo's own tests green after onboarding, `.tmpl` slice fix, scripted `/rig-start` change); `FLOOR` entries in `extras.mjs`.
+- **Acceptance:** eval specs for dry rig-on (`escaped 0`, no change records), stubbed session launched without `/rig-start`, same base; S8 checks must fail with `scripts/vendor.ts` and `scripts/slice.ts` at `023cf93^` and pass on HEAD (recorded in the commit message); runs `npm run e2e:scripted`.
+- **Outcome:** unverified. The inner-loop doc's P0 note says W0/W3-W4 results exist (bare caught 5/5 traps), but this plan's own commit hashes are not stated.
+
+## superpowers/plans/2026-11-14-w5-knex-brownfield.md  (2026-11-14, 14001 chars)
+- **Question/problem:** Add a `knex` eval variant (two tasks, four traps) on the brownfield machinery so rig-on has something it can fail (W5).
+- **Evidence:** Upstream `knex/knex` tag 3.1.0 sha `4ca3dd5bc28e0665c5bed55026fac2ec45489d81`; base `npm test` 1532 passing/49 pending, `test:sqlite` 386 passing/128 pending; `mock-fs` crashes on Node 26 so two requires dropped in `test/db-less-test-suite.js`. Spec `docs/superpowers/specs/2026-11-14-w5-knex-brownfield-design.md`.
+- **Options considered and rejected:** a third task T3 (`first()` with column array) only if fewer than 4 traps pass their own ref/slip specs; importing `runChild` only if no `brownfield.mjs` change.
+- **Decision:** Branch `w5-knex`, only `eval/` and `docs/` change. T1 `cloneUpstream` `lockfile`/`rebuild` options, `seedUpstream` `patch` option, `eval/variants/knex.mjs`, `base.patch`, lockfile, wiring in `setup.mjs`, `run.mjs`, `score.mjs`; T2 `notLike` (traps `caller`, `types`); T3 `emptyUpsert` (traps `rule`, `dialect`); T4 whole-variant specs and `eval/run.test.mjs` wiring. Separate check files `checks.t1.mjs`/`checks.t2.mjs` allow parallel tasks; 3 launches.
+- **Acceptance:** `eval/knex.test.mjs`: no prompt contains a `TRAP_WORDS` entry; base passes both suites and every trap fails there; each ref passes, each slip fails exactly its own trap while `npm test` passes; dry run 5/5, `escaped: 0`, `phasesDone: 2`; then `npm run test:changed`.
+- **Outcome:** unverified (no hashes).
+- **Still open:** person runs `node eval/run.mjs --arms sonnet-rig-on,haiku-rig-on --runs 3 --variant knex` (about $3-5).
+
+## superpowers/specs/2026-10-31-journey-e2e-design.md  (2026-10-31, 22701 chars)
+- **Question/problem:** The person verifies rig by hand (init, chart, approve, start, PR approve, sprint 2, then inspect in Claude Code): hours of work, and the inspection finds the bugs. Wanted: one command that does it and inspects behind the scenes.
+- **Evidence:** Measured after first live runs: init 1.5 min; `/rig-chart` 17 min ($2.66) on first PRD, 11.5 min ($1.45) on the slim one with Sonnet evaluator; two charts cannot fit 20 min.
+- **Options considered and rejected:** Keep separate e2e entry points (`test:e2e`, `test:e2e:fast` removed; `test:e2e:parallel` and `test:e2e:stacks` kept for CI, open question whether to fold in); cart PRDs and node shop replaced by Library Desk (Python/pytest); rig-vs-bare comparison left to `eval/run.mjs`.
+- **Decision:** `npm run e2e` (live, hard 20 min deadline) / `e2e:scripted` ($0, in `npm test`); stages J0-J6 (init, chart, approve, build per intent, brownfield chart, approve, build); Haiku acts, Sonnet inspector (read-only, JSON schema, no-edit diff guard) and reviewer agent approves with runner-set `SDLC_HUMAN=1`; violations to `violations.jsonl`, triage only by person in `triage.json` (fix/accept/wontfix); suite never fixes; $25 cap (a guess); `--intents N`, `--full` (60 min), `--from J4`; modes: fast = J3 from recorded J2 snapshot then J6 from J5, `e2e:record` one-time hour-plus; `npm run eval:journey` arms haiku-rig/sonnet-rig, seeded-bad snapshots validate the inspector, own baseline (>=3 runs, fail on >1 blocking item or 10 points). S4/S5 kept scripted-only; `tests/e2e/lib/*`, `assert/*` reused.
+- **Outcome:** Status line: implemented on feat/journey-e2e; first live run and snapshot recording pending. No commit hashes in doc.
+- **Still open:** Fold `parallel`/`stacks` into the journey or keep separate (recommended separate); $25 cap to tune; rubric wording left to builder; inspector may need escalation to Opus if seeded-bad checks show misses.
+
+## superpowers/specs/2026-10-31-journey-init-spike.md  (2026-10-31, 1384 chars)
+- **Question/problem:** What does `/rig:init --quick` need in an empty Python repo (journey Task 0)?
+- **Evidence:** `claude -p "/rig:init --quick"` with Haiku, acceptEdits, once on a Python skeleton, once on an empty repo. Empty repo: init defaulted to Node ESM. Skeleton (`pyproject.toml`, `src/library/__init__.py`, `tests/test_smoke.py`): detected Python, wrote the python pack's 8 sensors. No questions asked; 23 and 29 turns, $0.27 and $0.34, 1.3 and 1.4 min. Init does not commit (driver must `sb.commitAll`). Without `--settings` the workspace is untrusted: 52 allow entries ignored, `pytest` denied. Lint failed at baseline, recorded in `knownRed`.
+- **Options considered and rejected:** empty repo as the start (wrong stack).
+- **Decision:** Skeleton is required: `SKELETON` = `tests/e2e/journey/skeleton/`, committed as `chore: scaffold` before init; `INIT_PROMPT = '/rig:init --quick'`; journey passes template settings via `createSessions --settings`.
+- **Outcome:** Findings recorded; skeleton directory named as existing. Commit hash unverified.
+
+## superpowers/specs/2026-11-01-run-your-claims-design.md  (2026-11-01, 8199 chars)
+- **Question/problem:** Reviewer findings and the confirm pass are judged by reading, and the builder's account (finding "fixed", plan files, amendment B-ids) is never checked against the tree.
+- **Evidence:** Own eval: Opus raised 17 of 24 unseeded bugs vs Sonnet 6; follows pstack (`interrogate`, `show-me-your-work`) read; parked item 1 from the 2026-10-30 review.
+- **Options considered and rejected:** pstack's hand-written `decisions.tsv` (a log the agent writes is another claim); a model reviewer for item 2 (only if evals show script checks miss things); dropping findings that lack a Repro (recall already 100% on seeded cases); commit sha as C2 stamp (fixes are uncommitted until `S pr`).
+- **Decision:** Item 1: optional `Repro: <command>` on findings (existing test or temp-dir script); confirm pass runs it once, answers `reopened: reproduces` or `unrun: <why>`. Item 2: `S claims <slug>`, no model call, rules C1-C5 (path:line exists; `→ fixed` needs file hash change via `claims-stamp.json`; plan Files changed; amendment B-ids in spec; confirmed repro should pass). Output `claims.json` + PR body line. Person decided 2026-11-01: all rules suggest-only, never block. Eval gate: tools-enabled arm (`--arms clean,tools`), ship only if recall not below clean and false findings do not rise.
+- **Outcome:** unverified (status "draft for approval", approved 2026-11-01; built per the matching plan, no hashes).
+- **Still open:** whether a live tools-arm run (a few dollars) is acceptable before item 1 merges.
+
+## superpowers/specs/2026-11-04-task-router-design.md  (2026-11-04, 6409 chars)
+- **Question/problem:** A one-line bug fix or rename pays the same `/rig:start` entry cost as a feature; can routing by task type cut dollars per accepted task on small work?
+- **Evidence:** Borrowed only the routing idea from pstack poteto-mode. Plan-time revisions (2026-11-04): `scripts/lifecycle.ts` already has `TYPES = feature|bugfix|refactor|chore`; no `eval/fixtures` with hidden acceptance for bugs/refactors exists.
+- **Options considered and rejected:** model-judged gate, subagent fan-out, arenas/swarms, persona rules, a second sizing/risk system, a new `/rig:route` skill (dropped at plan time: only a quick path in `/rig:start` step 2 plus one script check), new type list, forced `light` weight for bugs, splitting `perf`/`docs`.
+- **Decision (person, 2026-11-04):** Approved. Four types (feature, bug=bugfix, refactor, other=chore/feature); auto-route new free-text requests with `--no-route` to skip; `S route-check <type> "<request>"` can only narrow toward the full path (refactor rejected on new-behaviour words, bug rejected with no symptom); `S weight` decides plan weight; one-line announcement with override; never skips approval or red-proof.
+- **Outcome:** unverified (no hashes). Measurement shipped as a free deterministic labelled-request corpus in `npm test`; live paired `routed` arm (>=5 bug, 5 refactor, 5 feature) deferred to its own spec.
+- **Still open:** word lists location, `--no-route` flag vs env var, skill text within 40 lines; keep only if no worse accepted rate and cheaper, cut after two passes with no lift.
+
+## superpowers/specs/2026-11-07-intent-map-design.md  (2026-11-07, 15317 chars)
+- **Question/problem:** Tests for a numbered behaviour can pass for a wrong function (a login that refuses everyone satisfies "token only with right password"); how to review behaviour claims deterministically.
+- **Evidence:** PDD Kit and the Microsoft Research post; on tasks through 2026-10-31 rig and bare both passed with rig ~3x cost. Oracle run 2026-11-07: `node --test eval/intent-map.test.mjs`, 5 of 5 pass.
+- **Options considered and rejected:** PDD Kit as dependency (no public installer, Verus/Rust only); CrossHair as dependency (opt-in via formal command); mandatory map for every change (one-line fix would pay for a proof); results inside the frozen map (would stale approval); no `sensors.json` built-in.
+- **Decision:** Opt-in per change `.rig/changes/<slug>/intent-map.md`: Said, Decisions, Map, Formal, Empirical, Not promised; kinds formal/empirical/not-promised. 16 rules (unmapped-said, both-ways, empirical-early/open/unrecorded, stale-scenario, formal-failed, unmutated, vacuous, prune, behaviours-drift...). Scripts record results in `intent-results.json`; `freeze.json` holds scenario hashes; receipt "evidence, not proof" in PR body as `## Intent map`. Files: `scripts/intentmap.ts`, `intentmapio.ts`, lifecycle/check/prbody/pr/registry, skills plan/build/approve; oracle `eval/intent-map.mjs` with login fixture (84-world grid, C2/C3/C7-C9, 5 mutants; E1/E2 at commit 8b8b70f).
+- **Outcome:** built and merged to main 2026-11-07 (no merge hash given).
+- **Still open:** `intent-results.json` unprotected; formal checker not hashed; mutant reading gaps; live lift arm (hidden checks "refuse everyone", "email loses") not built.
+
+## superpowers/specs/2026-11-08-intent-map-incorporations.md  (2026-11-08, 7660 chars)
+- **Question/problem:** Residue gaps in the intent map after the Verus-only PDD trial and 2026 verification literature.
+- **Evidence:** Trial at `pdd_kit_research_v1.0/trial/` (`>=`→`>` survived correctly); arXiv 2610.36328 (guarantees break under refactors); arXiv 2611.05590 (99.1% verifier acceptance, 1.9% binding).
+- **Options considered and rejected:** mental-model pictures, decision-card UI, quiz, reviewer agents, CrossHair as dependency (all stay non-goals).
+- **Decision:** Eight items: (1) adjudicated survivors (`adjudications.json`, non-bug/clause-vacuous, approver); (2) weekly `intent-recheck` on main; (3) rule `formal-targets-diff` (checker must target files in the diff); (4) `## Trusted` section, rule `trusted-unpinned`; (5) `one-way-unjustified` needs `one-way-because:`; (6) `result-unbacked`, run id in `intent-results.json` backed by `evidence/runs.jsonl`; (7) optional `## Property command` sampled tier; (8) all mutants per clause read. Order: 1 and 6, then 3, then 2/4/5, then 7/8.
+- **Outcome:** built, all eight items (plans `2026-11-08-intent-map-incorporations-wave1.md`, `-wave2-3.md`); item 2 is a step of the `rig-maintain` workflow (opt-in `RIG_INTENT_RECHECK`). No commit hashes.
+- **Still open:** lift arm decides whether the map earns its cost.
+
+## superpowers/specs/2026-11-14-u0-ui-task-design.md  (2026-11-14, 5042 chars)
+- **Question/problem:** Second half of W5: traps unit tests cannot see (a screen that passes render tests but is wrong in a browser); step U0 of the frontend proposal.
+- **Evidence:** knex merged covers backend only; exit with knex: at least 2 traps escape rig-on across both variants, else skip to W8.
+- **Options considered and rejected:** New two-part app (API plus static page): new seed, more cost.
+- **Decision:** Option 1: screen on the `hard` shop (B1-B19 built). B20 `GET /customers/<name>/orders` (404 for unknown); B21 page `/ui/customers/<name>`. Trap `error`: unknown customer must show `role="alert"` with the error text, no rows. Trap `field`: line shows product name from `GET /products` ("Green tea"), not sku. Playwright+Chromium in `~/.cache/rig-eval/playwright`; page under `/ui/`; two traps only. Files: `eval/variants/ui.mjs`, `eval/variants/ui/`, `eval/lib/browser.mjs`, `eval/ui.test.mjs`. Rig-on arms only, 3 runs, about $2-4.
+- **Outcome:** Unverified (plan above implements it; no hashes).
+- **Still open:** Third trap (loading state) only if fewer than two hold in dry run; U1-U3 deferred until a UI escape.
+
+## superpowers/specs/2026-11-14-w5-knex-brownfield-design.md  (2026-11-14, 7296 chars)
+- **Question/problem:** rig-on caught every trap on `hard` and `brownfield` (commander.js), so no signal for W6/W7; need a repo where reading is not enough. Exit: at least 2 traps escape rig-on in 3 runs, else skip to W8.
+- **Evidence:** knex 3.1.0 (sha 4ca3dd5b..., 141 lib files, 21.5k lines); on Node 26.13 `npm test` 1532 passing, `test:sqlite` 386 passing, 128 pending; `mock-fs` crashes.
+- **Options considered and rejected:** fastify 4.28.1 (its `npm test` already runs everything), yargs 17 (too small).
+- **Decision:** Variant `knex`, rig-on arms only. Base patch swaps `npm test` to the db-less unit suite and drops two requires; generated lockfile; `cloneUpstream` gains `lockfile`, `rebuild: ['sqlite3']`. T1 `notLike` (traps `caller` dialect overrides, `types` via `lint:types`), T2 `emptyUpsert` (traps `rule` skipped suite, `dialect`); T3 optional. `eval/variants/knex.mjs`, `eval/knex.test.mjs`. Run: `node eval/run.mjs --arms sonnet-rig-on,haiku-rig-on --runs 3 --variant knex` (about $3-5).
+- **Outcome:** The U0 spec states "knex (merged)"; no hashes.
+- **Still open:** Issue wording, ref short-circuit location, whether T3 is needed (builder's call).
+
+## superpowers/specs/2026-11-15-named-tests-executed-design.md  (2026-11-15, 4812 chars)
+- **Question/problem:** `traceability` only matches `B<n>` in test text; a skipped, filtered or unmatched test leaves a green suite with a "traced" behaviour. `ranNothing` covers only a zero-total `unit` run (commit 40aa00e).
+- **Evidence:** Comparison with Anthropic code-modernization plugin ("named, not run"); `check.ts:218`, `sensors.ts:274`, `sensors.ts:21-34`.
+- **Options considered and rejected:** B parse summary skip counts (cannot say which test); C mutation survivors as proxy.
+- **Decision:** Approach A, Node `node --test` only: capture TAP for the `unit` sensor, new pure `executedTests(tap)` in `scripts/sensors.ts`, join in `shipVerdicts`; each `B<n>` needs a passing test whose title names it, else `traceability` `block` ("did not run (skipped)" or "never reported"). Unreadable TAP or non-Node stack gives one `warn`. No registry change; `ranNothing`, TAMPER_PATTERNS, red-proof untouched.
+- **Outcome:** unverified (design only).
+- **Still open:** reporter mechanism (`NODE_OPTIONS=--test-reporter=tap` vs `npm test --`) to confirm; other stacks later; person should run `e2e:scripted` once.
+
+## superpowers/specs/2026-11-15-state-machine-defects-design.md  (2026-11-15, 9319 chars)
+- **Question/problem:** Fewer escaped state-machine defects (ordering, races, retries, lifecycle) with rig on.
+- **Evidence:** Talk "All Code Is Slop (Except Mine)"; pstack formal-verification skills; secondhand Sridharan summary. `/rig:app` already writes `.rig/verify/<app>/features/<feature>.md` and `scripts/app.ts:49-51` checks `entry:`. Harness about 13,500 of 15,000 lines.
+- **Options considered and rejected:** FV skills only (A, staleness by prose); FV as chart/test-plan step (C, frozen workflow); a new or code-derived feature map (overlaps W6); mechanism gate as skill-only or new sensor.
+- **Decision:** Option B chosen by maintainer: skills `/rig:model`, `/rig:model-sync`, record `.rig/models/<id>.json`, built-in `model-drift` sensor (`registry.ts:10,26`; cadence commit, blocks false), `.rig/models/**` harness-protected; `broken.*` variant required. `planCheck` (`plancheck.ts`) gate for bugfix: `## Mechanism` ("because", no hedge words) and `## Falsified by`. Feature files gain `states:`/`model:` lines. About 150 script lines; one branch (W5b), at most 3 launches. Deliberate exception to the order doc (build before an escape eval); measure after with a `state` trap, 3 runs, cut if no catch.
+- **Outcome:** Unverified (design only).
+- **Still open:** Builder confirms `sensors.ts:253-261` allows Write/Edit creation; stronger broken-variant rerun deferred; refactor equivalence check deferred.

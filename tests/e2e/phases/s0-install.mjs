@@ -5,9 +5,6 @@ import { assertOnboarding } from '../assert/onboarding.mjs'
 
 const ROUTING = 'rig is on in this repo: work from the request as usual, and its checks and guides run on every turn; /rig:start is the full workflow (spec, plan, approval), used only when the person asks for it. Use superpowers skills only when an sdlc skill names one.'
 
-// The live S0 prompt describes the project, not the feature: the shop arrives later, as its own change from the brief.
-export const SCAFFOLD_PROMPT = 'Node.js 22 ESM project named shop-app, no dependencies, tests with node --test, an npm start script that runs src/server.js. Scaffold ONLY the empty skeleton and one passing smoke test. Do not implement any shop behaviour: that arrives later as its own change. Copy nothing into scripts/; the contract tool is provided.'
-
 
 // The registry S0 declares: the unit suite, plus the built-ins every registry gets (spec §3).
 export const REGISTRY = {
