@@ -147,7 +147,7 @@ function blockedHint(slug: string): string {
   const i = intentOf(slug)
   if (!i || i.sprint === null || !i.depends.length) return ''
   const next = chartState(i.sprint).state === 'approved' ? planRows(i.sprint).filter(r => r.status === 'ready') : []
-  return `\nThe build order is in ${writePlan(i.sprint)}.${next.length ? ` Ready now: ${next.map(r => r.slug).join(', ')}.` : ''}`
+  return `\nThe build order is in ${sprintRel(i.sprint)}/plan.md.${next.length ? ` Ready now: ${next.map(r => r.slug).join(', ')}.` : ''}`
 }
 
 function cmdActivate(args: Args): void {
@@ -329,7 +329,7 @@ function cmdStartBrief(): void {
   const sp = superpowersWarning()
   if (sp) lines.push(sp)
   const ready = readyIntents()
-  const plans = sprintsKnown().filter(n => exists(prdPath(n)) && planRows(n).some(r => r.status !== 'done')).map(n => writePlan(n))
+  const plans = sprintsKnown().filter(n => exists(prdPath(n)) && planRows(n).some(r => r.status !== 'done')).map(n => `${sprintRel(n)}/plan.md`)
   if (plans.length) lines.push(`build order (waves and dependency graph): ${plans.join(', ')}`)
   lines.push(ready.length ? `ready intents:\n${ready.map(i => `  ${readyRow(i)}`).join('\n')}` : 'no intents are ready')
   out(lines.join('\n'))

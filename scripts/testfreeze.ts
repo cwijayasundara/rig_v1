@@ -2,6 +2,7 @@
 // `tests-freeze` and never rewritten. The check judges file content, not who wrote it, so a Bash write is caught like an Edit.
 import crypto from 'node:crypto'
 import fs from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { CHANGES, ROOT, SENSORS_JSON, exists, read, readJson, readJsonl, fail, now, git, dirtyFiles, checkSlug, optString, sanctionWrites, defaultBase, skillRef, type Args } from './core.ts'
 import { isTest, isSource, matchesAny, planFiles, type Finding } from './model.ts'
@@ -22,6 +23,19 @@ const frozenKind = (f: string, paths: Registry['paths']): boolean => isTest(f, p
 const changeBase = (slug: string): string => readJson<{ base?: string } | null>(path.join(CHANGES, slug, 'verify.json'), null)?.base ?? defaultBase() ?? 'HEAD'
 const specHasBehaviours = (slug: string): boolean => behaviourIds(read(path.join(CHANGES, slug, 'spec.md')), 'Behaviours').length > 0
 
+// The hand-off is red by design (no code yet), so its two commits cannot pass the commit-cadence command sensors (types, unit): a
+// commit holding only a change's tests, their support files and its freeze row skips them; ship and CI run every command on the branch.
+export function isHandoffCommit(slug: string | undefined, files: string[], paths: Registry['paths']): boolean {
+  const checker = slug ? formalChecker(slug) : undefined
+  return Boolean(slug) && files.length > 0 && files.every(f => f === `.rig/changes/${slug}/tests.freeze.jsonl` || f === checker || frozenKind(f, paths))
+}
+
+// The formal checker is the first script the map's ## Formal command names; it is frozen wherever it lives.
+const formalChecker = (slug: string): string | undefined => {
+  const map = path.join(CHANGES, slug, 'intent-map.md')
+  return exists(map) ? parseMap(read(map)).formalCommand.split(/\s+/).map(w => w.replace(/^["']|["']$/g, '').replace(/^\.\//, '')).find(w => /\.(?:py|mjs|cjs|js|ts|sh|rb)$/.test(w) && exists(path.join(ROOT, w))) : undefined
+}
+
 export function cmdTestsFreeze(args: Args): void {
   const given = args.pos[0]
   if (!given) return fail('usage: tests-freeze <slug> [--why "<text>"] [--drop <file>]...')
@@ -36,15 +50,21 @@ export function cmdTestsFreeze(args: Args): void {
   if (gone.length) return fail(`frozen test(s) missing: ${gone.join(', ')}; restore them, or let the test writer drop them on purpose: tests-freeze ${slug} --why "<reason>" ${gone.map(f => `--drop ${f}`).join(' ')}`)
   const { paths } = parseRegistry(read(path.join(ROOT, SENSORS_JSON))).registry
   const base = changeBase(slug)
-  // The formal checker is the first script the map's ## Formal command names; it is frozen wherever it lives.
-  const checker = parseMap(read(path.join(CHANGES, slug, 'intent-map.md'))).formalCommand.split(/\s+/).map(w => w.replace(/^["']|["']$/g, '').replace(/^\.\//, '')).find(w => /\.(?:py|mjs|cjs|js|ts|sh|rb)$/.test(w) && exists(path.join(ROOT, w)))
+  const checker = formalChecker(slug)
   // The implementer starts after the hand-off: source already written (uncommitted, so the ship check cannot see it) means the order was broken.
   const early = prior.length ? [] : (() => { const listed = planFiles(read(path.join(CHANGES, slug, 'plan.md'))); return listed.length ? dirtyFiles().filter(f => isSource(f, paths) && !frozenKind(f, paths) && !outsideRadius([f], listed).length) : [] })()
   if (early.length) return fail(`source written before the tests were frozen: ${early.join(', ')}; the test writer hands off first and the implementer starts after: remove or stash these files (git stash -u -- <file>), run tests-freeze ${slug}, then restore them`)
   const names = [...new Set([...(checker ? [checker] : []), ...branchDiff(base).filter(d => d.status !== 'D' && frozenKind(d.file, paths)).map(d => d.file), ...held])].filter(f => !drops.includes(f) && digest(f) !== null)
   if (!names.length && specHasBehaviours(slug)) return fail(`no test files in the diff against ${base}, but spec.md has B-numbered behaviours: write the tests first`)
   // The files go into a commit of their own, so the row's commit contains them; the row follows in a second commit.
-  const sub = (msg: string, files: string[]): boolean => !(git(['status', '--porcelain', '--', ...files]) ?? '').trim() || (git(['add', '--', ...files]) !== null && git(['commit', '-q', '-m', msg, '--', ...files]) !== null)
+  // A failing commit (the pre-commit hook blocking) shows git's own output, so the person sees what to fix.
+  const sub = (msg: string, files: string[]): boolean => {
+    if (!(git(['status', '--porcelain', '--', ...files]) ?? '').trim()) return true
+    if (git(['add', '--', ...files]) === null) return false
+    const c = spawnSync('git', ['commit', '-q', '-m', msg, '--', ...files], { cwd: ROOT, encoding: 'utf8' })
+    if (c.status !== 0) process.stderr.write(`${c.stdout}${c.stderr}`)
+    return c.status === 0
+  }
   if (names.length && !sub(`test(${slug}): freeze tests from the test writer`, names)) return fail('could not commit the frozen tests: fix the git error shown by `git commit`, then run tests-freeze again')
   const files = names.map(f => ({ path: f, sha256: digest(f) as string }))
   const row: FreezeRow = { at: now(), commit: (git(['rev-parse', 'HEAD']) ?? '').trim(), files, why, ...(drops.length ? { dropped: drops } : {}) }

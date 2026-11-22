@@ -244,7 +244,7 @@ export const chartWaivers = (n: number): ChartWaiver[] => { try { const v = JSON
 // `chart done N`: what the chart still lacks before the person's one approval. Empty means every step ran and nothing blocks.
 export function chartDone(n: number): string[] {
   const rel = (p: string): string => path.relative(ROOT, p)
-  const need = [path.join(testplanDir(n), 'plan.md'), path.join(testplanDir(n), 'cases.md'), path.join(testplanDir(n), 'data'), reviewPath(n), planPath(n), approvalMdPath(n)]
+  const need = [path.join(testplanDir(n), 'plan.md'), path.join(testplanDir(n), 'cases.md'), path.join(testplanDir(n), 'data'), reviewPath(n), planPath(n)]
   const out = need.filter(p => !exists(p)).map(p => `missing ${rel(p)}`)
   if (!intentsOf(n).length) out.push('missing intents')
   for (const f of chartFindings(n, true)) if (f.severity === 'block') out.push(`blocking [${f.rule}] ${f.message}`)

@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { loadPacks, parsePack, detectStacks, packRegistry, PACKS_DIR } from './stackpacks.ts'
+import { adaptPack } from './stackadapt.ts'
 
 const STACKS = ['node', 'angular', 'python', 'go', 'rust', 'java-maven', 'java-gradle', 'dotnet']
 
@@ -133,7 +134,7 @@ test('the python audit names the project, never the whole environment', () => {
 test('every pack names the command that runs one holdout file, with the {file} placeholder', () => {
   for (const p of loadPacks(PACKS_DIR).packs) assert.match(packRegistry(p).holdout, /\{file\}/, p.stack)
   assert.equal(JSON.parse(fs.readFileSync(path.join(PACKS_DIR, 'node.json'), 'utf8')).holdout, 'node --test {file}')
-  assert.equal(JSON.parse(fs.readFileSync(path.join(PACKS_DIR, 'python.json'), 'utf8')).holdout, 'uv run pytest -q {file}')
+  assert.equal(JSON.parse(fs.readFileSync(path.join(PACKS_DIR, 'python.json'), 'utf8')).holdout, "uv run pytest -q $(grep -qs '\\[tool\\.pytest' pyproject.toml && echo '-c pyproject.toml') {file}", 'the holdout file runs from a temp dir, so the project\'s pytest config (pythonpath) is named explicitly')
 })
 
 test('a holdout command without {file}, or not a string, is a registry error', () => {
@@ -147,4 +148,22 @@ test('compiled stacks run a holdout shell script with bash; node and angular run
   const h = (n: string): string => JSON.parse(fs.readFileSync(path.join(PACKS_DIR, `${n}.json`), 'utf8')).holdout
   for (const n of ['go', 'rust', 'dotnet', 'java-maven', 'java-gradle']) assert.equal(h(n), 'bash {file}', n)
   assert.equal(h('angular'), 'node --test {file}')
+})
+
+test('a uv python project runs its tools through uv run, so they see the project\'s own dependencies; a plain one keeps the bare tools', () => {
+  const py = loadPacks(PACKS_DIR).packs.find(p => p.stack === 'python')!
+  const cmds = (toml: string): Record<string, string> & { unit: string; lint: string; types: string; mutation: string; 'mutation-diff': string } => {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-uv-'))
+    fs.writeFileSync(path.join(d, 'pyproject.toml'), toml)
+    return Object.fromEntries((adaptPack(py, d).pack.sensors as { id: string; cmd: string }[]).map(s => [s.id, s.cmd])) as ReturnType<typeof cmds>
+  }
+  const uv = cmds('[project]\nname = "x"\n[dependency-groups]\ndev = ["pytest", "mypy", "ruff", "mutmut<3"]\n')
+  assert.match(uv.lint, /^uv run ruff check /)
+  assert.match(uv.types, /^uv run mypy /)
+  assert.equal(uv.unit, 'uv run pytest -q')
+  assert.match(uv['mutation-diff'], /uv run mutmut --version[\s\S]*uv run mutmut run[\s\S]*uv run mutmut junitxml/)
+  assert.equal(uv.mutation, 'uv run mutmut run')
+  const plain = cmds('[project]\nname = "x"\n[tool.mypy]\nstrict = true\n')
+  assert.equal(plain.unit, 'pytest -q')
+  assert.match(plain.types, /^mypy /)
 })

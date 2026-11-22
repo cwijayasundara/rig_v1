@@ -36,7 +36,8 @@ test('chart done lists every step the chart skipped and fails until the artifact
   chart1()
   const r = sdlc(repo, ['chart', 'done', '1'])
   assert.notEqual(r.code, 0)
-  for (const m of ['testplan/plan.md', 'testplan/cases.md', 'testplan/data', 'chart-review.md', 'sprint-1/plan.md', 'approval.md']) assert.match(r.stderr + r.stdout, new RegExp(`missing [^\\n]*${m.replace('.', '\\.')}`))
+  for (const m of ['testplan/plan.md', 'testplan/cases.md', 'testplan/data', 'chart-review.md', 'sprint-1/plan.md']) assert.match(r.stderr + r.stdout, new RegExp(`missing [^\\n]*${m.replace('.', '\\.')}`))
+  assert.doesNotMatch(r.stderr + r.stdout, /missing [^\n]*approval\.md/, 'approval.md is written by chart summary, which runs after chart done')
   write(repo, `${P}/sprints/sprint-1/testplan/plan.md`, '# plan\n')
   assert.doesNotMatch(sdlc(repo, ['chart', 'done', '1']).stderr, /missing [^\n]*testplan\/plan\.md/)
 })
@@ -287,6 +288,20 @@ test('approve chart-N on a rig/chart-N branch says to merge it into the trunk fi
 test('start-brief warns on a rig/chart-N branch', () => {
   gitIn(repo, 'checkout', '-qb', 'rig/chart-1')
   assert.match(sdlc(repo, ['start-brief']).stdout, /WARNING: you are on the chart branch rig\/chart-1\. Merge it into main first/)
+})
+
+test('start-brief and a refused start leave the tracked plan.md alone, so the branch can still be switched', () => {
+  cleanChart()
+  write(repo, `${P}/sprints/sprint-1/intents/beta.md`, intent(1, { depends: '[alpha]' }))
+  write(repo, `${P}/sprints/sprint-1/testplan/cases.md`, '| ID | Req | Intent | B | Level | Data | Expected |\n| TC-1 | FR-1 | alpha | B1 | unit | - | ok |\n| TC-2 | FR-1 | beta | B1 | unit | - | ok |\n')
+  write(repo, `${P}/sprints/sprint-1/implementation-plan.md`, IMPL_OK(['alpha', 'beta']))
+  assert.equal(approveChart(repo, ['approve', 'chart-1'], HUMAN).code, 0)
+  gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'chart')
+  const plan = fs.readFileSync(path.join(repo, `${P}/sprints/sprint-1/plan.md`), 'utf8')
+  fs.writeFileSync(path.join(repo, `${P}/sprints/sprint-1/plan.md`), plan.replace(/\n$/, '') + '\n<!-- as committed -->\n'); gitIn(repo, 'commit', '-qam', 'plan as committed')
+  sdlc(repo, ['start-brief'])
+  assert.match(sdlc(repo, ['new', 'beta', '--source', `${P}/sprints/sprint-1/intents/beta.md`]).stderr, /blocked by alpha/)
+  assert.equal(gitIn(repo, 'status', '--porcelain'), '')
 })
 
 test('ready lists the intents that can start and leaves out the blocked ones', () => {
@@ -664,7 +679,6 @@ test('a refused start names the build order and what is ready now', () => {
   const msg = r.stdout + r.stderr
   assert.match(msg, /blocked by alpha, beta/)
   assert.match(msg, /build order is in \.rig\/product\/sprints\/sprint-1\/plan\.md/)
-  assert.ok(fs.existsSync(path.join(repo, P, 'sprints/sprint-1/plan.md')))
 })
 
 test('the text graph lists intents on a dependency cycle instead of dropping them, and Mermaid ids avoid keywords', () => {

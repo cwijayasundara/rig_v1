@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { makeRepo, sdlc, write, gitIn, hook } from './testkit.ts'
+import { makeRepo, sdlc, write, gitIn, hook, registry } from './testkit.ts'
 
 type F = { sensor: string; severity: string; file?: string; message: string; fix?: string }
 const FREEZE = '.rig/changes/demo/tests.freeze.jsonl'
@@ -193,4 +193,61 @@ test('the formal checker named by intent-map.md ## Formal command is frozen even
 test('the stack packs list the runner config as test support, so a pack-initialised repo freezes it', () => {
   const globs = (n: string) => (JSON.parse(fs.readFileSync(path.join(import.meta.dirname, '../templates/stacks', n), 'utf8')) as { paths: { testSupport: string[] } }).paths.testSupport
   assert.ok(globs('node.json').includes('**/jest.config.*') && globs('python.json').includes('**/pytest.ini'))
+})
+
+test('the hand-off commits pass the pre-commit hook while the tests are red by design; the next commit is judged in full', () => {
+  const r = makeRepo()
+  sdlc(r, ['init'])
+  sdlc(r, ['vendor']); sdlc(r, ['hooks', 'install'])
+  gitIn(r, 'add', '.'); gitIn(r, 'commit', '-qm', 'base', '--no-verify')
+  gitIn(r, 'checkout', '-qb', 'work')
+  sdlc(r, ['new', 'demo', '--type', 'feature'])
+  write(r, '.rig/sensors.json', registry({ turn: { unit: 'echo red; exit 1' } }))
+  sdlc(r, ['sync'])
+  gitIn(r, 'add', 'CLAUDE.md'); gitIn(r, 'commit', '-qm', 'sync', '--no-verify')
+  write(r, 'tests/a.test.js', 'test one B1\n')
+  const out = sdlc(r, ['tests-freeze', 'demo'])
+  assert.equal(out.code, 0, out.stdout + out.stderr)
+  assert.equal(rows(r).length, 1)
+  assert.match(gitIn(r, 'log', '--format=%s', '-2'), /record the test freeze/)
+  // Only a tests-only commit is exempt: code still meets the red command.
+  write(r, 'src/a.js', 'export const a = 1\n'); gitIn(r, 'add', 'src/a.js')
+  assert.throws(() => gitIn(r, 'commit', '-qm', 'code'))
+  gitIn(r, 'reset', '-q', 'src/a.js'); fs.rmSync(path.join(r, 'src/a.js'))
+  // A re-freeze changes a frozen test and commits it: the hook must not block it on the very rule that names tests-freeze as the fix.
+  write(r, 'tests/a.test.js', 'test one B1 fixed\n')
+  const again = sdlc(r, ['tests-freeze', 'demo', '--why', 'B1 asserted the wrong value'])
+  assert.equal(again.code, 0, again.stdout + again.stderr)
+  assert.equal(rows(r).length, 2)
+})
+
+function redHookRepo(): string {
+  const r = makeRepo()
+  sdlc(r, ['init'])
+  sdlc(r, ['vendor']); sdlc(r, ['hooks', 'install'])
+  gitIn(r, 'add', '.'); gitIn(r, 'commit', '-qm', 'base', '--no-verify')
+  gitIn(r, 'checkout', '-qb', 'work')
+  sdlc(r, ['new', 'demo', '--type', 'feature'])
+  write(r, '.rig/sensors.json', registry({ turn: { unit: 'echo red; exit 1' } }))
+  sdlc(r, ['sync'])
+  gitIn(r, 'add', 'CLAUDE.md'); gitIn(r, 'commit', '-qm', 'sync', '--no-verify')
+  return r
+}
+
+test('the hand-off with a formal checker outside the test paths passes the hook too', () => {
+  const r = redHookRepo()
+  write(r, 'formal/check.mjs', 'console.log("{}")\n')
+  write(r, '.rig/changes/demo/intent-map.md', '# Map\n\n## Formal command\nnode formal/check.mjs\n\n## Not promised\n')
+  write(r, 'tests/a.test.js', 'test one B1\n')
+  const out = sdlc(r, ['tests-freeze', 'demo'])
+  assert.equal(out.code, 0, out.stdout + out.stderr)
+  assert.ok(rows(r)[0].files.some((f: { path: string }) => f.path === 'formal/check.mjs'))
+})
+
+test('a hand-off commit the hook blocks shows the hook\'s own output', () => {
+  const r = redHookRepo()
+  write(r, 'tests/a.test.js', 'test one B1\nconst apikey = "abcdefghijklmnop12345678"\n')
+  const out = sdlc(r, ['tests-freeze', 'demo'])
+  assert.equal(out.code, 1)
+  assert.match(out.stderr, /secrets/)
 })
