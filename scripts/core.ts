@@ -183,10 +183,22 @@ export function dirtyFiles(paths: string[] = []): string[] {
   return [...new Set([...names(['diff', '--name-only', 'HEAD']), ...names(['ls-files', '--others', '--exclude-standard'])])]
 }
 export const isTrunk = (name: string): boolean => ['main', 'master'].includes(name)
+// A change started from an approved chart branch that no one has merged yet (rig/chart-<N>) is judged against that chart: its bundle and
+// contracts are the approved baseline, not part of the change. Once the chart is merged the trunk merge-base is later and wins.
+function chartBase(head: string | null, trunkBase: string | null): string | null {
+  let best = trunkBase
+  for (const ref of (git(['for-each-ref', '--format=%(refname:short)', 'refs/heads/rig/chart-*']) ?? '').split('\n').filter(Boolean)) {
+    const sprint = /^rig\/chart-(\d+)$/.exec(ref)?.[1]
+    if (!sprint || ref === head || git(['cat-file', '-e', `${ref}:.rig/product/sprints/sprint-${sprint}/approval.json`]) === null || git(['merge-base', '--is-ancestor', ref, 'HEAD']) === null) continue
+    const tip = git(['rev-parse', ref])
+    if (tip && (best === null || git(['merge-base', '--is-ancestor', best, tip]) !== null)) best = tip
+  }
+  return best
+}
 export function defaultBase(): string | null {
   const head = git(['rev-parse', '--abbrev-ref', 'HEAD'])
   for (const ref of TRUNKS) {
-    if (git(['rev-parse', '--verify', '--quiet', ref]) && head !== ref.replace('origin/', '')) return git(['merge-base', 'HEAD', ref])
+    if (git(['rev-parse', '--verify', '--quiet', ref]) && head !== ref.replace('origin/', '')) return chartBase(head, git(['merge-base', 'HEAD', ref]))
   }
   return null
 }

@@ -37,7 +37,7 @@ import { cmdPrdMore, chartPrecheck } from './prdcmd.ts'; import { writeApprovalP
 import { parseLedger, parseIntent } from './chartcheck.ts'; import { superpowersWarning } from './superpowers.ts'
 import { ARCH_REL, intentsDir, intentRelOf, prdRel, sprintRel, prdPath, reviewPath, ledgerPath, sourcePath } from './product.ts'
 import { cmdSlice } from './slice.ts'
-import { registerContracts } from './contracts.ts'
+import { registerContracts, cmdContractsCheck } from './contracts.ts'
 import { cmdMaintain } from './maintain.ts'
 import { cmdReadiness } from './readiness.ts'
 import { cmdAutonomy, initAutonomy } from './autonomy.ts'
@@ -453,7 +453,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   superpowers: () => out(superpowersWarning() || 'superpowers: ok'),
   pr: cmdPr, carry: cmdCarry, 'plan-check': cmdPlanCheck,
   run: cmdRun,
-  verify: cmdVerify, holdout: cmdHoldout, mutscore: cmdMutscore,
+  'contracts-check': () => cmdContractsCheck(), verify: cmdVerify, holdout: cmdHoldout, mutscore: cmdMutscore,
   hook: cmdHook,
   diff: cmdDiff,
   baseline: () => cmdBaseline(),

@@ -133,7 +133,7 @@ test('the python audit names the project, never the whole environment', () => {
 test('every pack names the command that runs one holdout file, with the {file} placeholder', () => {
   for (const p of loadPacks(PACKS_DIR).packs) assert.match(packRegistry(p).holdout, /\{file\}/, p.stack)
   assert.equal(JSON.parse(fs.readFileSync(path.join(PACKS_DIR, 'node.json'), 'utf8')).holdout, 'node --test {file}')
-  assert.equal(JSON.parse(fs.readFileSync(path.join(PACKS_DIR, 'python.json'), 'utf8')).holdout, 'pytest -q {file}')
+  assert.equal(JSON.parse(fs.readFileSync(path.join(PACKS_DIR, 'python.json'), 'utf8')).holdout, 'uv run pytest -q {file}')
 })
 
 test('a holdout command without {file}, or not a string, is a registry error', () => {

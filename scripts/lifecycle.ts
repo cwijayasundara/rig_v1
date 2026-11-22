@@ -73,6 +73,10 @@ export function approvalRefusal(slug: string): string | null {
   const radius = blastRadius(read(file(slug, 'spec.md')))
   const outside = radius ? outsideRadius(planFiles(read(file(slug, 'plan.md'))), radius) : []
   if (outside.length) return `plan touches a file outside the blast radius: ${outside.join(', ')} (add it to spec.md ## Blast radius or drop it from plan.md ## Files)`
+  const plan = read(file(slug, 'plan.md'))
+  if (/signatures, no bodies:|Cite the intent's `## Design` rows/.test(section(plan, 'Interfaces'))) return 'plan.md ## Interfaces still holds the template instruction line: replace it with the real signatures and data shapes'
+  const contracts = /^none\b/i.test(section(plan, 'Contracts').trim()) ? contractFiles().filter(f => radius && !outsideRadius([f], radius).length) : []
+  if (contracts.length) return `spec.md ## Blast radius covers contract file(s) ${contracts.join(', ')} but plan.md ## Contracts says none: drop them from the blast radius, or list them under ## Contracts (approval freezes them)`
   if (!exists(file(slug, 'intent-map.md'))) return null
   const { map, findings } = check(read(file(slug, 'intent-map.md')), { phase: 'plan' })
   const spec = bullets(section(read(file(slug, 'spec.md')), 'Behaviours')).join('\n')

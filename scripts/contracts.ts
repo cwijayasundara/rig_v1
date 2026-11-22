@@ -2,8 +2,8 @@
 // approval.json), validated before they run.
 import fs from 'node:fs'
 import path from 'node:path'
-import { skillRef, SENSORS_PATH, SENSORS_JSON, exists, sanctionWrites, writeAtomic } from './core.ts'
-import { readApproval, digest } from './lifecycle.ts'
+import { skillRef, SENSORS_PATH, SENSORS_JSON, ROOT, exists, read, out, sanctionWrites, writeAtomic } from './core.ts'
+import { readApproval, digest, contractFiles } from './lifecycle.ts'
 import { contractGlobs, isRegistryShape, type Contracts } from './registry.ts'
 import { matchesAny, type Finding } from './model.ts'
 import { runCommand, type RunRow } from './runs.ts'
@@ -23,9 +23,33 @@ export function registerContracts(declared: string[]): { added: string[]; warnin
   const added = files.filter(f => !matchesAny(f, have))
   if (!added.length) return { added: [] }
   json.contracts = { covers: [], validate: '', run: '', ...(typeof json.contracts === 'object' && !Array.isArray(json.contracts) ? json.contracts : {}), files: [...have, ...added] }
+  if (!json.contracts.validate && !json.contracts.run) json.contracts.validate = VALIDATE_CMD
   writeAtomic(SENSORS_PATH, JSON.stringify(json, null, 2) + '\n')
   sanctionWrites([SENSORS_JSON])
   return { added }
+}
+
+// The default validate command once contract files are registered: each example pairs with its contract (contractProblems).
+const VALIDATE_CMD = 'S="${RIG_SDLC:-.rig/bin/sdlc.ts}"; node --disable-warning=ExperimentalWarning "$S" contracts-check'
+// An example `<dir>/examples/<name>-<status>.json` must be valid JSON whose response.status is <status>, beside a contract `<dir>/<name>.<ext>` that lists that status.
+export function contractProblems(files: string[], text: (f: string) => string = f => read(path.join(ROOT, f))): string[] {
+  const problems: string[] = []
+  for (const f of files) {
+    const m = /^(.*)\/examples\/(.+)-(\d{3})\.json$/.exec(f)
+    if (!m) continue
+    let status: unknown
+    try { status = (JSON.parse(text(f)) as { response?: { status?: unknown } }).response?.status } catch { problems.push(`${f} is not valid JSON`); continue }
+    if (String(status) !== m[3]) problems.push(`${f}: response.status is ${String(status)}, the file name says ${m[3]}`)
+    const spec = files.find(c => new RegExp(`^${m[1]}/${m[2]}\\.(?:ya?ml|json)$`).test(c))
+    if (!spec) problems.push(`${f}: no contract ${m[1]}/${m[2]}.yaml beside it`)
+    else if (!new RegExp(`^\\s*["']?${m[3]}["']?\\s*:`, 'm').test(text(spec))) problems.push(`${f}: ${spec} has no ${m[3]} response`)
+  }
+  return problems
+}
+export function cmdContractsCheck(): void {
+  const problems = contractProblems(contractFiles())
+  out(problems.length ? problems.join('\n') : 'contracts: every example matches its contract')
+  process.exitCode = problems.length ? 1 : 0
 }
 
 // The freeze in force: the contracts the change's approval recorded.

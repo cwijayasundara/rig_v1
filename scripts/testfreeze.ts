@@ -3,11 +3,12 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import { CHANGES, ROOT, SENSORS_JSON, exists, read, readJson, readJsonl, fail, now, git, checkSlug, optString, sanctionWrites, defaultBase, skillRef, type Args } from './core.ts'
-import { isTest, isSource, matchesAny, type Finding } from './model.ts'
+import { CHANGES, ROOT, SENSORS_JSON, exists, read, readJson, readJsonl, fail, now, git, dirtyFiles, checkSlug, optString, sanctionWrites, defaultBase, skillRef, type Args } from './core.ts'
+import { isTest, isSource, matchesAny, planFiles, type Finding } from './model.ts'
 import { branchDiff, rangeDiff, showAt } from './diffs.ts'
 import { parseRegistry, type Registry } from './registry.ts'
 import { behaviourIds, CONFIG_FILE, SNAPSHOT } from './sensors.ts'
+import { outsideRadius } from './lifecycle.ts'
 import { parse as parseMap } from './intentmap.ts'
 
 export type FreezeRow = { at: string; commit: string; files: { path: string; sha256: string }[]; why: string; dropped?: string[] }
@@ -37,6 +38,9 @@ export function cmdTestsFreeze(args: Args): void {
   const base = changeBase(slug)
   // The formal checker is the first script the map's ## Formal command names; it is frozen wherever it lives.
   const checker = parseMap(read(path.join(CHANGES, slug, 'intent-map.md'))).formalCommand.split(/\s+/).map(w => w.replace(/^["']|["']$/g, '').replace(/^\.\//, '')).find(w => /\.(?:py|mjs|cjs|js|ts|sh|rb)$/.test(w) && exists(path.join(ROOT, w)))
+  // The implementer starts after the hand-off: source already written (uncommitted, so the ship check cannot see it) means the order was broken.
+  const early = prior.length ? [] : (() => { const listed = planFiles(read(path.join(CHANGES, slug, 'plan.md'))); return listed.length ? dirtyFiles().filter(f => isSource(f, paths) && !frozenKind(f, paths) && !outsideRadius([f], listed).length) : [] })()
+  if (early.length) return fail(`source written before the tests were frozen: ${early.join(', ')}; the test writer hands off first and the implementer starts after: remove or stash these files (git stash -u -- <file>), run tests-freeze ${slug}, then restore them`)
   const names = [...new Set([...(checker ? [checker] : []), ...branchDiff(base).filter(d => d.status !== 'D' && frozenKind(d.file, paths)).map(d => d.file), ...held])].filter(f => !drops.includes(f) && digest(f) !== null)
   if (!names.length && specHasBehaviours(slug)) return fail(`no test files in the diff against ${base}, but spec.md has B-numbered behaviours: write the tests first`)
   // The files go into a commit of their own, so the row's commit contains them; the row follows in a second commit.

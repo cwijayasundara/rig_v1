@@ -1,7 +1,7 @@
 {
   "stack": "python",
   "markers": ["pyproject.toml", "requirements.txt", "setup.py"],
-  "holdout": "pytest -q {file}",
+  "holdout": "uv run pytest -q {file}",
   "paths": { "tests": ["**/test_*.py", "**/*_test.py", "**/tests/**"], "testSupport": ["**/conftest.py", "**/fixtures/**", "**/pytest.ini", "**/tox.ini"] },
   "contracts": { "files": [], "validate": "", "run": "" },
   "sensors": [
@@ -17,6 +17,6 @@
   ],
   "fit": [
     {"sensor":"types","unless":["mypy.ini",".mypy.ini",{"in":["pyproject.toml","setup.cfg","tox.ini","requirements.txt","requirements-dev.txt","dev-requirements.txt","Pipfile"],"match":"\\bmypy\\b"}],"drop":true,"note":"types sensor left out: no mypy config or dependency in the repo. Add [tool.mypy] to pyproject.toml, then add the sensor back (mypy .)."},
-    {"sensor":"mutation-diff","unless":[{"in":["pyproject.toml","setup.cfg","tox.ini","requirements.txt","requirements-dev.txt","dev-requirements.txt","Pipfile"],"match":"\\bmutmut\\b"}],"note":"mutation-diff blocks CI until mutmut is installed (pip install mutmut) or a person waives it."}
+    {"sensor":"mutation-diff","unless":[{"in":["pyproject.toml","setup.cfg","tox.ini","requirements.txt","requirements-dev.txt","dev-requirements.txt","Pipfile"],"match":"\\bmutmut\\b"}],"note":"mutation-diff blocks CI until mutmut 2.x is installed (add \"mutmut<3\" to the dev dependencies) or a person waives it."}
   ]
 }

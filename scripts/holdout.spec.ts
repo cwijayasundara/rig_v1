@@ -76,6 +76,22 @@ function baseWith(files: Record<string, string>): void {
   gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'chart'); gitIn(repo, 'checkout', '-qb', 'pr')
 }
 
+test('--ci leaves out the cases of a charted intent nothing has started, and runs them once its change record is in the PR tree', () => {
+  const S = '.rig/product/sprints/sprint-1'
+  write(repo, `${S}/intents/demo.md`, '# demo\n'); write(repo, `${S}/intents/later.md`, '# later\n')
+  write(repo, `${S}/testplan/cases.md`, '| ID | Requirement | Intent | Behaviour | Level | Data | Expected | Access |\n|---|---|---|---|---|---|---|---|\n| TC-1 | FR-1 | demo | B1 | holdout | - | x | - |\n| TC-2 | FR-2 | later | B1 | holdout | - | y | - |\n')
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], holdout: 'node --test {file}' }))
+  baseWith({ 'TC-1.holdout.test.js': PASS, 'TC-2.holdout.test.js': FAIL })
+  write(repo, '.rig/changes/demo/intent.md', intent('demo')); gitIn(repo, 'add', '-f', '.'); gitIn(repo, 'commit', '-qm', 'pr')
+  const r = sdlc(repo, ['holdout', '--ci', '--base', 'main'])
+  assert.equal(r.code, 0, r.stdout)
+  assert.match(r.stdout, /holdout: 1\/1 passed/)
+  write(repo, '.rig/changes/later/intent.md', intent('later')); gitIn(repo, 'add', '-f', '.'); gitIn(repo, 'commit', '-qm', 'later')
+  const again = sdlc(repo, ['holdout', '--ci', '--base', 'main'])
+  assert.equal(again.code, 1)
+  assert.match(again.stdout, /failing: TC-2/)
+})
+
 test('--ci ignores the PR: every base case runs, whatever slug or sprint the PR names', () => {
   baseWith({ 'TC-1.holdout.test.js': FAIL })
   write(repo, '.rig/changes/demo/intent.md', intent('demo').replace('sprint: 1', 'sprint: 9'))
@@ -146,6 +162,30 @@ test('--ci: a case that blanks the other base copies cannot change their verdict
   baseWith({ 'TC-1.holdout.test.js': blank, 'TC-2.holdout.test.js': 'process.exit(3)\n' })
   const r = sdlc(repo, ['holdout', '--ci', '--base', 'main'])
   assert.equal(r.stdout.trim(), 'holdout: 1/2 passed\nfailing: TC-2')
+})
+
+test('a conftest.py in the holdout dir is shared setup: copied beside each case, never counted as a case', () => {
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], holdout: 'node {file}' }))
+  write(repo, `${H}/conftest.py`, '# shared\n')
+  const needs = "const fs = require('fs'), path = require('path')\nprocess.exit(fs.existsSync(path.join(path.dirname(process.argv[1]), 'conftest.py')) ? 0 : 1)\n"
+  write(repo, `${H}/TC-1.holdout.js`, needs); write(repo, `${H}/TC-2.holdout.js`, needs)
+  const r = sdlc(repo, ['holdout', 'demo'])
+  assert.equal(r.stdout.trim(), 'holdout: 2/2 passed')
+  assert.equal(r.code, 0)
+})
+
+test('holdout and verify run only the cases whose cases.md row names the change; other intents cases are left out', () => {
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], holdout: 'node {file}' }))
+  write(repo, `${H}/TC-1.holdout.js`, 'process.exit(0)\n'); write(repo, `${H}/TC-2.holdout.js`, 'process.exit(3)\n')
+  write(repo, '.rig/product/sprints/sprint-1/testplan/cases.md', '| ID | Requirement | Intent | Behaviour | Level | Data | Expected | Access |\n|---|---|---|---|---|---|---|---|\n| TC-1 | FR-1 | demo | B1 | holdout | - | x | - |\n| TC-2 | FR-2 | other | B1 | holdout | - | y | - |\n')
+  const r = sdlc(repo, ['holdout', 'demo'])
+  assert.equal(r.stdout.trim(), 'holdout: 1/1 passed')
+  assert.equal(r.code, 0)
+  approvedChange(repo, 'demo4'); write(repo, '.rig/changes/demo4/intent.md', intent('demo4'))
+  assert.equal(sdlc(repo, ['holdout', 'demo4']).stdout.trim(), 'holdout: 1/2 passed\nfailing: TC-2', 'a slug no row names keeps every case')
+  write(repo, '.rig/product/sprints/sprint-1/testplan/cases.md', '| ID | Requirement | Intent | Behaviour | Level | Data | Expected | Access |\n|---|---|---|---|---|---|---|---|\n| TC-1 | FR-1 | demo4 | B1 | holdout | - | x | - |\n| TC-2 | FR-2 | other | B1 | holdout | - | y | - |\n')
+  sdlc(repo, ['verify', 'demo4'])
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(repo, '.rig/changes/demo4/verify.json'), 'utf8')).holdout, { passed: 1, total: 1 })
 })
 
 test('a file changed between the write and the run fails its sha256 check', () => {

@@ -234,6 +234,25 @@ test('approve refuses a plan that touches a file outside spec.md ## Blast radius
   assert.ok(!fs.existsSync(path.join(repo, '.rig/changes/demo/approval.json')))
 })
 
+test('approve refuses a plan that keeps the template instruction line under ## Interfaces', () => {
+  planned()
+  write(repo, '.rig/changes/demo/plan.md', "# Plan\n\n## Files\n- src/a.ts\n\n## Interfaces\nCite the intent's `## Design` rows; signatures, no bodies:\n- f(x)\n\n## Open questions\nnone\n")
+  const r = sdlc(repo, ['approve', 'demo', '--check'])
+  assert.equal(r.code, 1)
+  assert.match(r.stderr, /## Interfaces still holds the template instruction/)
+})
+
+test('approve refuses a blast radius that covers a contract file when the plan lists none', () => {
+  planned()
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], contracts: { files: ['docs/contracts/a.yaml'] } }))
+  write(repo, 'docs/contracts/a.yaml', 'openapi: 3\n')
+  write(repo, '.rig/changes/demo/spec.md', `${SPEC}\n## Blast radius\n- src/a.ts\n- docs/contracts/\n`)
+  write(repo, '.rig/changes/demo/plan.md', '# Plan\n\n## Files\n- src/a.ts\n\n## Contracts\nnone\n\n## Open questions\nnone\n')
+  const r = sdlc(repo, ['approve', 'demo', '--check'])
+  assert.equal(r.code, 1)
+  assert.match(r.stderr, /Blast radius covers contract file\(s\) docs\/contracts\/a\.yaml but plan\.md ## Contracts says none/)
+})
+
 test('approve --check reports the refusal without approving', () => {
   planned()
   write(repo, '.rig/changes/demo/spec.md', `${SPEC}\n## Blast radius\n- src/a.ts\n`)

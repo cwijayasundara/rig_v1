@@ -212,6 +212,8 @@ test('behaviour ids come from the named section only; a test must name each one'
   assert.deepEqual(behaviourIds(spec, 'Behaviours'), ['B1', 'B2', 'B10'])
   assert.deepEqual(missingBehaviours(['B1', 'B2', 'B10'], "test('B1 adds', ...)\n// covers B10\n"), ['B2'])
   assert.deepEqual(missingBehaviours(['B1'], "test('B11 other')"), ['B1'])
+  assert.deepEqual(missingBehaviours(['B1', 'B2'], 'def test_b1_valid_body(): ...'), ['B2'], 'a lowercase python test_b1_ name names B1')
+  assert.deepEqual(missingBehaviours(['B2'], 'a1, b2 = pair  # b2'), ['B2'], 'a bare lowercase b2 does not')
 })
 
 test('files matching fixtures skip the pattern sensors, others do not', () => {

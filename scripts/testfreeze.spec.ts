@@ -21,6 +21,16 @@ function frozenRepo(): string {
   return r
 }
 
+test('the first tests-freeze refuses while source is already written: the implementer starts after the hand-off', () => {
+  const r = frozenRepo()
+  write(r, '.rig/changes/demo/plan.md', '# Plan\n\n## Files\n- src-early.js\n')
+  fs.writeFileSync(path.join(r, 'src-early.js'), 'module.exports = 1\n')
+  const out = sdlc(r, ['tests-freeze', 'demo'])
+  assert.equal(out.code, 1)
+  assert.match(out.stderr, /source written before the tests were frozen: src-early\.js/)
+  assert.ok(!fs.existsSync(path.join(r, FREEZE)))
+})
+
 test('tests-freeze records the change\'s test files by hash, defaults the first why, and requires --why afterwards', () => {
   const r = frozenRepo()
   assert.equal(sdlc(r, ['tests-freeze', 'demo']).code, 0)

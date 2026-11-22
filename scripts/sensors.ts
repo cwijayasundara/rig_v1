@@ -272,4 +272,4 @@ export function behaviourText(text: string, heading: string, id: string): string
   return line.slice(line.search(new RegExp(`\\b${id}\\b`)) + id.length).replace(/^[\s:.\-–—)]+/, '').trim().slice(0, 80)
 }
 
-export const missingBehaviours = (ids: string[], corpus: string): string[] => ids.filter(id => !new RegExp(`(?<![A-Za-z0-9])${id}(?!\\d)`).test(corpus))
+export const missingBehaviours = (ids: string[], corpus: string): string[] => ids.filter(id => !new RegExp(`(?<![A-Za-z0-9])${id}(?!\\d)|(?<=_)${id.toLowerCase()}(?!\\d)`).test(corpus))

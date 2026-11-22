@@ -29,11 +29,14 @@ export function sprintOf(slug: string, read_: (f: string) => string = f => read(
 const sha = (b: Buffer): string => crypto.createHash('sha256').update(b).digest('hex')
 const CI_VARS = ['GITHUB_STEP_SUMMARY', 'GITHUB_OUTPUT', 'GITHUB_ENV', 'GITHUB_PATH']
 type Case = { rel: string; data: Buffer }
+// A conftest.py in the holdout dir is shared setup, not a case: it is copied beside every case and never counted or run on its own.
+const isSupport = (c: Case): boolean => path.basename(c.rel) === 'conftest.py'
 type CaseStatus = 'passed' | 'failed' | 'missing'
 // Each case runs alone from its own fresh temp dir holding only that file (read-only, sha256 checked just before the run, deleted after),
 // so code under test cannot blank or add files for a later case. Output is discarded and the CI output files are not in its env.
 // This is no isolation from the same uid: the code under test can still read its caller (see SECURITY.md).
-function caseOutcomes(cases: Case[], cmd: string, before?: (file: string) => void): { id: string; status: CaseStatus }[] {
+function caseOutcomes(all: Case[], cmd: string, before?: (file: string) => void): { id: string; status: CaseStatus }[] {
+  const support = all.filter(isSupport), cases = all.filter(c => !isSupport(c))
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !CI_VARS.includes(k)))
   return cases.map(c => {
     const id = caseId(c.rel)
@@ -41,6 +44,7 @@ function caseOutcomes(cases: Case[], cmd: string, before?: (file: string) => voi
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-holdout-')), f = path.join(dir, c.rel)
     try {
       fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, c.data); fs.chmodSync(f, 0o444)
+      for (const s of support) { const sf = path.join(dir, s.rel); fs.mkdirSync(path.dirname(sf), { recursive: true }); fs.writeFileSync(sf, s.data); fs.chmodSync(sf, 0o444) }
       before?.(f)
       const now = fs.existsSync(f) ? fs.readFileSync(f) : null
       if (!now || sha(now) !== sha(c.data)) return { id, status: 'missing' }
@@ -52,8 +56,8 @@ function caseOutcomes(cases: Case[], cmd: string, before?: (file: string) => voi
 }
 
 export function runCases(cases: Case[], cmd: string, before?: (file: string) => void): { passed: number; failing: string[] } {
-  const failing = caseOutcomes(cases, cmd, before).filter(c => c.status !== 'passed').map(c => c.id)
-  return { passed: cases.length - failing.length, failing }
+  const outcomes = caseOutcomes(cases, cmd, before), failing = outcomes.filter(c => c.status !== 'passed').map(c => c.id)
+  return { passed: outcomes.length - failing.length, failing }
 }
 
 const gitBuf = (args: string[]): Buffer | null => { try { return execFileSync('git', args, { cwd: ROOT, maxBuffer: 256 * 1024 * 1024, timeout: 120_000, stdio: ['ignore', 'pipe', 'ignore'] }) } catch { return null } }
@@ -73,11 +77,23 @@ function baseCases(base: string, files: string[]): Case[] {
 const localCases = (sprint: number): Case[] => exists(holdoutDir(sprint)) ? fs.readdirSync(holdoutDir(sprint)).filter(n => !n.startsWith('.') && fs.statSync(path.join(holdoutDir(sprint), n)).isFile()).sort().map(n => ({ rel: `${sprintRel(sprint)}/holdout/${n}`, data: fs.readFileSync(path.join(holdoutDir(sprint), n)) })) : []
 const posixShell = (cmd: string): void => { if (process.platform === 'win32' && /^bash\b/.test(cmd)) fail('holdout runs need a POSIX shell') }
 
-export function runHoldout(sprint: number, cmd: string, cases: Case[] = localCases(sprint)): HoldoutResult {
+// The cases of one change: the sprint's holdout files whose cases.md row names this intent (the other intents' cases cannot pass before
+// those intents are built). No cases.md, or a file no row names, keeps every file.
+export function holdoutFor(slug: string, sprint: number): Case[] {
+  const all = localCases(sprint), plan = path.join(ROOT, sprintRel(sprint), 'testplan', 'cases.md')
+  if (!exists(plan)) return all
+  const rows = parseCases(read(plan))
+  if (!rows.some(r => r.intent === slug)) return all
+  const mine = new Set(rows.filter(r => r.intent === slug).map(r => r.id)), known = new Set(rows.map(r => r.id))
+  return all.filter(c => isSupport(c) || !known.has(caseId(c.rel)) || mine.has(caseId(c.rel)))
+}
+
+export function runHoldout(sprint: number, cmd: string, all: Case[] = localCases(sprint)): HoldoutResult {
+  const cases = all.filter(c => !isSupport(c))
   if (!cases.length) return { sprint, passed: 0, total: 0, failing: [], none: true }
   if (!cmd) return { sprint, passed: 0, total: cases.length, failing: cases.map(c => caseId(c.rel)), none: false, error: 'holdout cases exist but .rig/sensors.json has no holdout command' }
   posixShell(cmd)
-  return { sprint, total: cases.length, ...runCases(cases, cmd), none: false }
+  return { sprint, total: cases.length, ...runCases(all, cmd), none: false }
 }
 
 export const holdoutLines = (r: HoldoutResult): string[] => r.none ? [`holdout: none for sprint ${r.sprint}`] : [`holdout: ${r.passed}/${r.total} passed`, ...(r.failing.length ? [`failing: ${r.failing.join(', ')}`] : []), ...(r.error ? [r.error] : [])]
@@ -96,14 +112,28 @@ function requiredCoverage(sprint: number, cmd: string, cases: Case[], required: 
   }
 }
 
-function baseRequirements(base: string, files: string[]): Map<number, string[]> {
+// Charted intents nothing has started on: no .rig/changes/<slug> in the PR tree. Their hidden cases cannot pass yet, so CI leaves them out; an
+// intent whose change record is in the tree (merged earlier, or this PR's own) keeps every case. No intent file at the base: nothing is left out.
+function unbuiltCases(base: string, files: string[]): Set<string> {
+  const started = new Set((gitBuf(['ls-tree', '--name-only', '-z', 'HEAD', '.rig/changes/'])?.toString() ?? '').split('\0').map(n => path.basename(n)))
+  const skip = new Set<string>()
+  for (const f of files) {
+    const m = /^(\.rig\/product\/sprints\/sprint-\d{1,4})\/intents\/([^/]+)\.md$/.exec(f)
+    if (!m || started.has(m[2] as string)) continue
+    const plan = gitBuf(['show', `${base}:${m[1]}/testplan/cases.md`])
+    for (const c of parseCases(plan?.toString() ?? '')) if (c.intent === m[2]) skip.add(`${m[1]}:${c.id}`)
+  }
+  return skip
+}
+
+function baseRequirements(base: string, files: string[], skip: Set<string>): Map<number, string[]> {
   const plans = new Map<number, string[]>()
   for (const name of files) {
     const m = /^\.rig\/product\/sprints\/sprint-(\d{1,4})\/testplan\/cases\.md$/.exec(name)
     if (!m) continue
     const data = gitBuf(['show', `${base}:${name}`])
     if (data === null) fail(`holdout --ci: cannot read ${name} at ${base}`)
-    plans.set(Number(m[1]), [...new Set(requiredHoldouts(parseCases(data.toString())).map(c => c.id))])
+    plans.set(Number(m[1]), [...new Set(requiredHoldouts(parseCases(data.toString())).map(c => c.id).filter(id => !skip.has(`${sprintRel(Number(m[1]))}:${id}`)))])
   }
   return plans
 }
@@ -114,18 +144,18 @@ export function cmdHoldout(args: Args): void {
     const slug = args.pos[0] ?? fail('usage: holdout <slug> | holdout --ci --base <ref>')
     const sprint = sprintOf(slug)
     if (sprint === null) return out(`holdout: none (${slug} has no sprint)`)
-    const r = runHoldout(sprint, parseRegistry(read(path.join(ROOT, SENSORS_JSON))).registry.holdout)
+    const r = runHoldout(sprint, parseRegistry(read(path.join(ROOT, SENSORS_JSON))).registry.holdout, holdoutFor(slug, sprint))
     out(holdoutLines(r).join('\n')); process.exitCode = r.failing.length ? 1 : 0
     return
   }
   const base = optString(args, 'base') ?? fail('holdout --ci needs --base <ref>')
   const sensors = showAt(base, SENSORS_JSON)
   const { gates, holdout: cmd } = parseRegistry(sensors ?? '{}').registry
-  const files = baseFiles(base), cases = baseCases(base, files)
-  const bySprint = (n: number): Case[] => cases.filter(c => c.rel.startsWith(`${sprintRel(n)}/holdout/`))
+  const files = baseFiles(base), skip = unbuiltCases(base, files), cases = baseCases(base, files)
+  const bySprint = (n: number): Case[] => cases.filter(c => c.rel.startsWith(`${sprintRel(n)}/holdout/`) && !skip.has(`${sprintRel(n)}:${caseId(c.rel)}`))
   const sprints = [...new Set(cases.map(c => Number(/sprint-(\d+)\//.exec(c.rel)?.[1])))]
   if (!gates.plan && gates.requireChart) {
-    const plans = baseRequirements(base, files)
+    const plans = baseRequirements(base, files, skip)
     const numbers = [...new Set([...plans.keys(), ...sprints])].sort((a, b) => a - b)
     const runs = numbers.map(n => requiredCoverage(n, cmd, bySprint(n), plans.get(n) ?? []))
     const report = runs.length ? runs.flatMap(r => r.lines).join('\n') : `holdout: no required or executable cases in ${base}`

@@ -233,3 +233,20 @@ test('CI: a PR-added change\'s waiver does not cover a file outside its plan\'s 
 test('CI: a PR-added change\'s waiver covers a file under a directory its plan lists', () => {
   assert.doesNotMatch(ciWaiver('- api/').stdout, /\[harness-tamper\]/)
 })
+
+test('contracts-check: an example must be valid JSON whose status matches its file name and its contract lists that status', () => {
+  registry({ contracts: { files: ['docs/contracts/**'] } })
+  write(repo, 'docs/contracts/a.yaml', 'responses:\n  "201":\n    description: ok\n')
+  write(repo, 'docs/contracts/examples/a-201.json', '{"response":{"status":201,"body":{}}}')
+  const ok = sdlc(repo, ['contracts-check'])
+  assert.equal(ok.code, 0, ok.stdout + ok.stderr)
+  assert.match(ok.stdout, /every example matches its contract/)
+  write(repo, 'docs/contracts/examples/a-400.json', '{"response":{"status":400}}')
+  write(repo, 'docs/contracts/examples/a-202.json', '{"response":{"status":201}}')
+  write(repo, 'docs/contracts/examples/b-201.json', '{bad')
+  const bad = sdlc(repo, ['contracts-check'])
+  assert.equal(bad.code, 1)
+  assert.match(bad.stdout, /a-400\.json: docs\/contracts\/a\.yaml has no 400 response/)
+  assert.match(bad.stdout, /a-202\.json: response\.status is 201, the file name says 202/)
+  assert.match(bad.stdout, /b-201\.json is not valid JSON/)
+})
