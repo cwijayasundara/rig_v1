@@ -152,18 +152,21 @@ test('compiled stacks run a holdout shell script with bash; node and angular run
 
 test('a uv python project runs its tools through uv run, so they see the project\'s own dependencies; a plain one keeps the bare tools', () => {
   const py = loadPacks(PACKS_DIR).packs.find(p => p.stack === 'python')!
-  const cmds = (toml: string): Record<string, string> & { unit: string; lint: string; types: string; mutation: string; 'mutation-diff': string } => {
+  const cmds = (toml: string): Record<string, string> & { unit: string; lint: string; types: string; mutation: string; 'mutation-diff': string; layers: string; audit: string } => {
     const d = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-uv-'))
     fs.writeFileSync(path.join(d, 'pyproject.toml'), toml)
     return Object.fromEntries((adaptPack(py, d).pack.sensors as { id: string; cmd: string }[]).map(s => [s.id, s.cmd])) as ReturnType<typeof cmds>
   }
-  const uv = cmds('[project]\nname = "x"\n[dependency-groups]\ndev = ["pytest", "mypy", "ruff", "mutmut<3"]\n')
+  const uv = cmds('[project]\nname = "x"\n[tool.mypy]\nstrict = true\n[tool.uv]\npackage = false\n')
   assert.match(uv.lint, /^uv run ruff check /)
   assert.match(uv.types, /^uv run mypy /)
   assert.equal(uv.unit, 'uv run pytest -q')
   assert.match(uv['mutation-diff'], /uv run mutmut --version[\s\S]*uv run mutmut run[\s\S]*uv run mutmut junitxml/)
   assert.equal(uv.mutation, 'uv run mutmut run')
-  const plain = cmds('[project]\nname = "x"\n[tool.mypy]\nstrict = true\n')
+  assert.match(uv.layers, /uv run lint-imports /)
+  assert.match(uv.audit, /uv run pip-audit -r requirements\.txt[\s\S]*uv run pip-audit \./)
+  // [dependency-groups] is PEP 735, not uv's: a brownfield repo on pdm or pip keeps its own commands.
+  const plain = cmds('[project]\nname = "x"\n[tool.mypy]\nstrict = true\n[dependency-groups]\ndev = ["pytest"]\n')
   assert.equal(plain.unit, 'pytest -q')
   assert.match(plain.types, /^mypy /)
 })

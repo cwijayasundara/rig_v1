@@ -136,3 +136,21 @@ test('the scaffold Makefile gets a types target when the stack has a types senso
   assert.match(root('skills/init/SKILL.md'), /plus a `types` target when the stack pack has a `types` sensor/)
   assert.doesNotMatch(root('templates/readme-rig.md'), /`\.rig\/\.gitignore`[^|]*\| Local gate state, never committed/)
 })
+
+test('init skill: the next step is chart then approve; the chart writes the test plan and the architect fills brief.md (2026-11-22 rig_v1_test)', () => {
+  const tpl = fs.readFileSync(path.resolve(import.meta.dirname, '../templates/readme-rig.md'), 'utf8')
+  const next = skill.slice(skill.indexOf('**Greenfield, or any repo with a PRD:**'))
+  assert.doesNotMatch(next, /\/rig:testplan/, 'the chart runs the test plan as its step 4')
+  assert.doesNotMatch(next + tpl, /put the product brief in/i, 'the architect fills brief.md at chart')
+  assert.match(next, /then `\/rig:approve chart-0`/)
+  assert.match(next, /a PRD already elsewhere in the repo[^\n]*names that path/)
+})
+
+test('init skill: a greenfield python scaffold owns its tools (dev dependency group, uv sync, uv run), so no sensor needs a global install', () => {
+  const greenfield = skill.slice(skill.indexOf('## Greenfield'), skill.indexOf('## Both'))
+  assert.match(greenfield, /\[dependency-groups\]/)
+  assert.match(greenfield, /`uv sync`/)
+  assert.match(greenfield, /`uv\.lock`/)
+  assert.match(greenfield, /never install a tool globally/)
+  assert.match(skill, /allowed-tools:[^\n]*Bash\(uv sync\*\)[^\n]*Bash\(uv run \*\)/)
+})

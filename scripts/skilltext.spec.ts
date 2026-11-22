@@ -185,3 +185,7 @@ test('init writes the rig-on routing line as CLAUDE.md first line', () => {
 test("init keeps rig's own files out of a repo-wide linter, formatter or type checker", () => {
   assert.match(text('skills/init/SKILL.md'), /add `\.rig\/` and `\.claude\/` to its ignore list/)
 })
+
+test('build skill: a dependency the tests need goes into the project manifest, never a global tool install (2026-11-22 rig_v1_test)', () => {
+  assert.match(text('skills/build/SKILL.md'), /add it to the project's manifest[^\n]*never install it globally/)
+})
