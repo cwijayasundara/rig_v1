@@ -20,7 +20,7 @@ import { cmdUpgrade } from './upgrade.ts'
 import { cmdBaseline } from './initbaseline.ts'
 import { cmdVerify, cmdHoldout } from './verify.ts'; import { cmdMutscore } from './mutscore.ts'
 import { cmdHooks, cmdCheckPush } from './githooks.ts'
-import { cmdTrailer } from './gate.ts'; import { cmdChecklist } from './checklist.ts'
+import { cmdTrailer } from './gate.ts'; import { cmdChecklist } from './checklist.ts'; import { landChart } from './chartmerge.ts'
 import { cmdPr } from './pr.ts'; import { cmdPlanCheck } from './plancheck.ts'
 import { cmdCarry } from './carry.ts'
 import { treeStamp } from './stamp.ts'
@@ -250,7 +250,7 @@ function approveChart(n: number, args: Args, seal = false): void { needPrd(n) //
   const committed = commitApproval(n, registered.length > 0 && !sensorsDirty)
   const branch = git(['branch', '--show-current']) ?? ''
   const trunk = trunkName()
-  const first = branch && !isTrunk(branch) ? `merge ${branch} into ${trunk} first, then start from ${trunk} with ` : 'engineers run `ready` to see which intents can start, then '
+  const land = !seal && committed !== null && /^rig\/chart-\d+$/.test(branch) ? landChart(branch, trunk) : null, first = land?.merged ? `merged ${branch} into ${trunk} (no remote, so no PR); engineers run \`ready\` to see which intents can start, then ` : land ? land.next : branch && !isTrunk(branch) ? `merge ${branch} into ${trunk} first, then start from ${trunk} with ` : 'engineers run `ready` to see which intents can start, then '
   out(`${seal ? `sealed chart-${n} at ${chartDigest(n).slice(0, 12)}, awaiting the independent review of the chart PR (its approval of the head commit is the decision)\n` : ''}${registered.length ? `registered ${registered.length} contract file(s) in .rig/sensors.json: ${registered.join(', ')}${sensorsDirty ? ' (sensors.json had uncommitted edits: commit it yourself)' : ''}\n` : ''}${deferred.length ? `${deferred.length} deferred review item(s) nobody has decided (chart-review.md ## Deferred); decide each before or during the build:\n${deferred.map(d => `  - ${d}`).join('\n')}\n` : ''}${reg.warning ? `warning: declared contract files were not registered (${reg.warning}); add them to contracts.files\n` : ''}${committed === null ? `warning: the approval is kept but git refused to commit it: commit it before building, with git add ${approvalRel(n)} ${sprintRel(n)}/plan.md ${ARCH_REL} .rig/product/adr && git commit -m "chore: approve chart-${n}"\n` : ''}${seal ? 'sealed' : 'approved'} chart-${n} by ${by}: ${chartFiles(n).length} file(s). Next: ${first}${skillRef('start')} ${sprintRel(n)}/intents/<slug>.md`)
 }
 

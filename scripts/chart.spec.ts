@@ -279,11 +279,32 @@ test('approve chart-N commits when several chart files are already tracked and m
   assert.equal(gitIn(repo, 'status', '--porcelain', '--', '.rig/product'), '')
   assert.equal(gitIn(repo, 'log', '-1', '--format=%s'), 'chore: approve chart-1')
 })
-test('approve chart-N on a rig/chart-N branch says to merge it into the trunk first', () => {
-  cleanChart(); gitIn(repo, 'checkout', '-qb', 'rig/chart-1')
+test('approve chart-N on a rig/chart-N branch with no remote merges it into the trunk, so /rig:start begins from main', () => {
+  cleanChart(); gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'base'); gitIn(repo, 'checkout', '-qb', 'rig/chart-1')
   const r = approveChart(repo, ['approve', 'chart-1'], HUMAN)
   assert.equal(r.code, 0, r.stderr)
-  assert.match(r.stdout, /Next: merge rig\/chart-1 into main first, then start from main with \/rig:start/)
+  assert.match(r.stdout, /Next: merged rig\/chart-1 into main \(no remote, so no PR\)/)
+  assert.equal(gitIn(repo, 'branch', '--show-current'), 'main')
+  assert.match(gitIn(repo, 'log', '-1', '--format=%s'), /^Merge rig\/chart-1: approved chart/)
+  assert.match(gitIn(repo, 'log', '--format=%s', 'main'), /chore: approve chart-1/)
+})
+
+test('approve chart-N with a remote leaves the merge to the chart PR; uncommitted work stops a local merge', () => {
+  cleanChart(); gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'base'); gitIn(repo, 'checkout', '-qb', 'rig/chart-1')
+  gitIn(repo, 'remote', 'add', 'origin', path.join(repo, 'nowhere.git'))
+  const r = approveChart(repo, ['approve', 'chart-1'], HUMAN)
+  assert.equal(r.code, 0, r.stderr)
+  assert.match(r.stdout, /Next: push rig\/chart-1, open its PR and merge it into main, then start from main with \/rig:start/)
+  assert.equal(gitIn(repo, 'branch', '--show-current'), 'rig/chart-1')
+})
+
+test('approve chart-N with no remote but uncommitted edits says to merge by hand and stays on the chart branch', () => {
+  cleanChart(); write(repo, 'README.md', 'x\n'); gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'base'); gitIn(repo, 'checkout', '-qb', 'rig/chart-1')
+  write(repo, 'README.md', 'edited\n')
+  const r = approveChart(repo, ['approve', 'chart-1'], HUMAN)
+  assert.equal(r.code, 0, r.stderr)
+  assert.match(r.stdout, /uncommitted changes, so the chart was not merged: merge rig\/chart-1 into main yourself/)
+  assert.equal(gitIn(repo, 'branch', '--show-current'), 'rig/chart-1')
 })
 test('start-brief warns on a rig/chart-N branch', () => {
   gitIn(repo, 'checkout', '-qb', 'rig/chart-1')
