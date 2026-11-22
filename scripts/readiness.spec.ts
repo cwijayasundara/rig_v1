@@ -24,6 +24,9 @@ test('readiness: fixture repos land at the levels they should as they are made r
   const repo = makeRepo()
   assert.equal(level(repo), 0, 'a bare repo with a README: rig is not initialised')
   assert.ok(failing(repo).includes('rig'))
+  // The node pack keeps lint and types only where the repo uses them (its fit rules), so the fixture is a TypeScript repo with eslint.
+  write(repo, 'tsconfig.json', '{}\n')
+  write(repo, 'package.json', JSON.stringify({ name: 'x', scripts: { test: 'node --test' }, devDependencies: { eslint: '9', typescript: '5' } }) + '\n')
   sdlc(repo, ['init', '--stack', 'node'])
   gitIn(repo, 'add', '-A')
   gitIn(repo, 'commit', '-qm', 'rig')

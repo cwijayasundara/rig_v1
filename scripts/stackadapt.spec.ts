@@ -57,7 +57,7 @@ test('python keeps types when mypy is configured or listed, drops it when the re
   const bare = py('[project]\nname = "x"\n')
   assert.ok(!ids(bare.repo).includes('types'))
   assert.match(bare.out, /types sensor left out: no mypy config or dependency/)
-  assert.match(bare.out, /mutation-diff blocks CI until mutmut is installed/)
+  assert.match(bare.out, /mutation-diff blocks CI until mutmut 2\.x is installed/)
 })
 
 test('a pack\'s fit rules are checked when it loads: a note is required, and a drop or swap names its sensor', () => {
