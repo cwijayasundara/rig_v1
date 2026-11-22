@@ -39,6 +39,12 @@ test('init --plugin removes the standalone copy an earlier init --full wrote, ke
   assert.doesNotMatch(JSON.stringify(settings(repo).hooks), /rig\/bin\/sdlc/)
 })
 
+test('the README layout table says skills and agents under .claude/ exist only after init --full', () => {
+  const tpl = fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'templates', 'readme-rig.md'), 'utf8')
+  assert.match(tpl, /`\.claude\/skills\/rig-\*\/` \|[^\n]*only after `init --full`/)
+  assert.match(tpl, /`\.claude\/agents\/rig-\*\.md` \|[^\n]*only after `init --full`/)
+})
+
 test('init --plugin twice changes nothing the second time', () => {
   const repo = makeRepo()
   sdlc(repo, ['init', '--plugin'])
