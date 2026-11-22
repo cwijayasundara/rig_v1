@@ -16,7 +16,7 @@ test('probe() skips a stack whose binary is missing', () => {
 })
 
 test('every pack the spec names has a fixture whose broken edit differs from its good edit', () => {
-  assert.deepEqual(STACKS.map(s => s.stack).sort(), ['dotnet', 'go', 'java-maven', 'node', 'rust'])
+  assert.deepEqual(STACKS.map(s => s.stack).sort(), ['dotnet', 'go', 'java-maven', 'node', 'python', 'rust'])
   for (const s of STACKS) assert.notEqual(s.broken('x'), s.good('x'), s.stack)
 })
 
@@ -25,6 +25,6 @@ import { requiredStacks } from './stacks.mjs'
 test('final review: --require names the stacks a skip must fail; all means every pack; an unknown name is refused', () => {
   assert.deepEqual(requiredStacks(undefined), [])
   assert.deepEqual(requiredStacks('go,dotnet'), ['go', 'dotnet'])
-  assert.deepEqual(requiredStacks('all').sort(), ['dotnet', 'go', 'java-maven', 'node', 'rust'])
+  assert.deepEqual(requiredStacks('all').sort(), ['dotnet', 'go', 'java-maven', 'node', 'python', 'rust'])
   assert.throws(() => requiredStacks('go,cobol'), /unknown stack: cobol/)
 })
