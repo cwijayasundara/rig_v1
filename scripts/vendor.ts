@@ -256,11 +256,46 @@ function mergeMissing(into: Record<string, unknown>, from: Record<string, unknow
   return into
 }
 
+// `init --plugin [--workflows]`: for a person who loads rig as a plugin (claude --plugin-dir). The plugin supplies skills, agents and hooks, so
+// only the checker (.rig/bin, which CI and the git hooks run), the git hooks and the settings permissions are installed, and a standalone
+// copy an earlier `init --full` left is removed: one copy of rig per repo, never both listed (rig:x and rig-x).
+const STANDALONE_PREFIXES = ['.claude/skills/rig-', '.claude/agents/rig-', '.rig/mod/']
+function removeStandaloneCopy(): string[] {
+  const lines: string[] = []
+  const m = readManifest()
+  if (m) {
+    const files: Record<string, string> = {}
+    for (const [rel, hash] of Object.entries(m.files)) {
+      const abs = path.join(ROOT, rel)
+      if (!STANDALONE_PREFIXES.some(p => rel.startsWith(p)) || !fs.existsSync(abs)) { if (!STANDALONE_PREFIXES.some(p => rel.startsWith(p))) files[rel] = hash; continue }
+      if (sha(read(abs)) !== hash) { files[rel] = hash; lines.push(`kept ${rel} (edited): delete it by hand to leave one copy`); continue }
+      fs.rmSync(abs)
+      const dir = path.dirname(abs)
+      if (rel.startsWith('.claude/') && fs.readdirSync(dir).length === 0 && path.basename(dir) !== 'skills' && path.basename(dir) !== 'agents') fs.rmdirSync(dir)
+    }
+    writeFile(MANIFEST, JSON.stringify({ ...m, files }, null, 2) + '\n', [])
+  }
+  for (const d of ['.claude/skills', '.claude/agents']) { const abs = path.join(ROOT, d); if (fs.existsSync(abs) && fs.readdirSync(abs).length === 0) fs.rmdirSync(abs) }
+  return lines
+}
+
+export function installPluginOnly(workflows: boolean): string {
+  const lines = removeStandaloneCopy()
+  cmdVendor({ pos: [], opt: {} })
+  lines.push(...finishInstall(workflows, 'full', false))
+  return lines.join('\n')
+}
+
 // `init --full [--workflows]`: the deterministic half of onboarding, so the model need not hand-copy files. Vendors the
 // standalone harness, wires the git hooks and merges templates/settings.json. The CI workflows and REVIEW.md need a
 // remote, so they are written only with --workflows, and never over a file that is already there.
 export function installStandalone(workflows: boolean, profile: Profile = 'full', dashboard = false): string {
   cmdVendor({ pos: [], opt: { standalone: true, ...(profile === 'core' ? { profile } : {}), ...(dashboard ? { dashboard: true } : {}) } })
+  return finishInstall(workflows, profile, true).join('\n')
+}
+
+// Git hooks, the settings template and (with --workflows) the CI files; shared by both install modes. Plugin-only mode registers no hooks in settings.json.
+function finishInstall(workflows: boolean, profile: Profile, standalone: boolean): string[] {
   const hooks = installHooks()
   const lines = [hooks.ok ? hooks.message : `git hooks not installed: ${hooks.message}`]
   const file = path.join(ROOT, '.claude', 'settings.json')
@@ -270,6 +305,11 @@ export function installStandalone(workflows: boolean, profile: Profile = 'full',
   const plugins = (merged.enabledPlugins ?? {}) as Record<string, boolean>
   merged.enabledPlugins = { ...plugins, 'superpowers@claude-plugins-official': true }
   const written: string[] = []
+  if (!standalone) { // the plugin's hooks.json runs the hooks; ours in settings.json would fire them twice
+    const hooksBy = (merged.hooks ?? {}) as Record<string, HookGroup[]>
+    for (const [event, groups] of Object.entries(hooksBy)) { const kept = groups.filter(g => !g.hooks.some(h => h.command.includes(SDLC_HOOK))); if (kept.length) hooksBy[event] = kept; else delete hooksBy[event] }
+    if (Object.keys(hooksBy).length) merged.hooks = hooksBy; else delete merged.hooks
+  }
   writeFile('.claude/settings.json', JSON.stringify(merged, null, 2) + '\n', written)
   lines.push('merged templates/settings.json into .claude/settings.json (existing values kept)')
   if (workflows) {
@@ -280,5 +320,5 @@ export function installStandalone(workflows: boolean, profile: Profile = 'full',
     }
   }
   sanctionWrites(written)
-  return lines.join('\n')
+  return lines
 }

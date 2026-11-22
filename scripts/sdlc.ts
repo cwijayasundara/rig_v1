@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 // rig: the deterministic core of the sdlc plugin. Zero dependencies.
-// Runs directly with Node >= 22.18 (built-in TypeScript type stripping) on macOS, Linux and Windows:
-//   node --disable-warning=ExperimentalWarning scripts/sdlc.ts <command>
+// Runs directly with Node >= 22.18 (built-in TypeScript type stripping): node --disable-warning=ExperimentalWarning scripts/sdlc.ts <command>
 // Everything the model must not judge for itself lives in these scripts: change state, approvals,
 // scope drift, sensors and hook decisions. This file is the CLI.
 import fs from 'node:fs'
@@ -16,7 +15,7 @@ import { cmdHook } from './hooks.ts'
 import { cmdCheck, cmdCheckFile, loadConfig } from './check.ts'
 import { inertSensors, isRegistryShape, type Inert } from './registry.ts'
 import { runCommand, recordRun } from './runs.ts'
-import { cmdVendor, installStandalone, older, pluginVersion } from './vendor.ts'; import { parseProfile } from './profile.ts'; import { cmdOff, cmdOn } from './off.ts'; import { weakeningLines } from './weaken.ts'
+import { cmdVendor, installPluginOnly, installStandalone, older, pluginVersion } from './vendor.ts'; import { parseProfile } from './profile.ts'; import { cmdOff, cmdOn } from './off.ts'; import { weakeningLines } from './weaken.ts'
 import { cmdUpgrade } from './upgrade.ts'
 import { cmdBaseline } from './initbaseline.ts'
 import { cmdVerify, cmdHoldout } from './verify.ts'; import { cmdMutscore } from './mutscore.ts'
@@ -75,7 +74,8 @@ function cmdInit(args: Args): void {
   }
   out(`initialised ${toPosix(path.relative(ROOT, SDLC)) || SDLC}${newRepo ? ' (ran git init: no repository was here)' : ''}`)
   if (args.opt.stack) out(declareStack(args.opt.stack))
-  if (args.opt.full) out(installStandalone(Boolean(args.opt.workflows), parseProfile(args.opt.profile), Boolean(args.opt.dashboard)))
+  if (args.opt.plugin && args.opt.full) fail('--plugin (one copy: the plugin) and --full (a standalone copy in the repo) are opposites')
+  if (args.opt.plugin || args.opt.full) out(args.opt.plugin ? installPluginOnly(Boolean(args.opt.workflows)) : installStandalone(Boolean(args.opt.workflows), parseProfile(args.opt.profile), Boolean(args.opt.dashboard)))
   if (args.opt.protect) out(protect(Boolean(args.opt.dry), undefined, Boolean(args.opt.create)).join('\n'))
   if (args.opt.enforce) {
     // risk.enforce on (never off): rig-check then wants an approval from someone other than the author on every PR. The rest of the file is kept.
@@ -441,7 +441,7 @@ function scaffoldPolicy(): string {
 
 const COMMANDS: Record<string, (args: Args) => void> = {
   stamp: () => out(treeStamp() ?? 'none'),
-  init: args => { const up = upgradePointer(); if (up) return out(up); cmdInit(args); if (args.opt.full) { const note = scaffoldPolicy(); if (note) out(note) } },
+  init: args => { const up = upgradePointer(); if (up) return out(up); cmdInit(args); if (args.opt.full || args.opt.plugin) { const note = scaffoldPolicy(); if (note) out(note) } },
   new: cmdNew,
   activate: cmdActivate,
   status: cmdStatus,
