@@ -6,7 +6,7 @@ import { parseRegistry, type Contracts, type Paths, type Registry } from './regi
 
 // A fit rule (see stackadapt.ts): `unless` probes that suppress it, `when` probes of which one must hit, and what it does to `sensor`.
 export type Probe = string | { in: string[]; match: string }
-export type FitRule = { sensor?: string; unless?: Probe[]; when?: Probe[]; drop?: boolean; cmd?: string; note: string }
+type FitRule = { sensor?: string; unless?: Probe[]; when?: Probe[]; drop?: boolean; cmd?: string; note: string }
 export type StackPack = { stack: string; markers: string[]; paths: Partial<Paths>; contracts: Contracts; holdout: string; sensors: unknown[]; fit: FitRule[] }
 export const PACKS_DIR = path.resolve(import.meta.dirname, '../templates/stacks')
 const PACK_KEYS = ['stack', 'markers', 'paths', 'contracts', 'holdout', 'sensors', 'fit']

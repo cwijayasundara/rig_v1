@@ -176,6 +176,9 @@ test('the unit sensor exiting 0 after executing no tests blocks; a normal pass a
     assert.equal(f[0]?.severity, 'block', out)
     assert.match(f[0]?.message ?? '', /ran no tests/, out)
   }
+  // cargo test prints one section per target: an empty doc-test section beside a unit section that ran is a pass (the rust stack fixture).
+  assert.deepEqual(run('unit', 'running 1 test\n.\ntest result: ok. 1 passed; 0 failed\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed'), [])
+  assert.equal(run('unit', 'running 0 tests\n\ntest result: ok. 0 passed\n\nrunning 0 tests\n\ntest result: ok. 0 passed').length, 1)
   assert.deepEqual(run('unit', '# tests 12'), [])
   assert.deepEqual(run('unit', 'Ran 3 tests in 0.1s'), [])
   assert.deepEqual(run('lint', '# tests 0'), [])

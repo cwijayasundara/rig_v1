@@ -11,7 +11,7 @@ import type { Finding } from './model.ts'
 
 export type Step = { name: string; ok: boolean; observed?: unknown }
 export type Rule = { step: string; replace: string; with: string }
-export type Diff = { id: string; step: string; before: unknown; after: unknown }
+type Diff = { id: string; step: string; before: unknown; after: unknown }
 // An approval names the new value it accepts (`after`: afterOf), so a later, different change to the same step is not covered by it.
 export type Approved = { id: string; after?: string; reason?: string; by?: string }
 export const afterOf = (d: Diff): string => crypto.createHash('sha256').update(JSON.stringify(d.after)).digest('hex').slice(0, 12)
@@ -69,7 +69,7 @@ export function approvedAt(base: string, app: string): Approved[] {
 const traceOf = (dir: string): Step[] => readJson<{ steps?: Step[] } | null>(path.join(dir, 'evidence.json'), null)?.steps ?? []
 const rulesOf = (app: string, root: string): Rule[] => { const n = readJson<{ normalize?: unknown } | null>(path.join(root, '.rig/verify', app, 'app.json'), null)?.normalize; return Array.isArray(n) ? n.filter((r): r is Rule => typeof r?.step === 'string' && typeof r?.replace === 'string' && typeof r?.with === 'string') : [] }
 
-export type DiffRun = { ok: true; diffs: Diff[]; unstable: string[]; executed: number } | { ok: false; error: string }
+type DiffRun = { ok: true; diffs: Diff[]; unstable: string[]; executed: number } | { ok: false; error: string }
 export function appDiff(app: App, base: string): DiffRun {
   const state = (n: string): string => fs.mkdtempSync(path.join(ROOT, '.rig', `diff-${n}-`))
   const dirs: string[] = []

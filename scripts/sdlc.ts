@@ -44,7 +44,7 @@ import { cmdAutonomy, initAutonomy } from './autonomy.ts'
 import { cmdRisk, cmdWeight, cmdRouteCheck, cmdModels } from './risk.ts'
 import { cmdClaims } from './claims.ts'
 import { protect } from './protect.ts'; import { cmdAudit } from './audit.ts'
-import { cmdApp, draftApps, appStates } from './app.ts'; import { cmdInterrogate } from './interrogate.ts'
+import { cmdApp, draftApps, appStates } from './app.ts'; import { cmdAppDiff } from './appdiff.ts'; import { cmdInterrogate } from './interrogate.ts'
 import { CHART_RE, conversionMapOf, intentOf, intentReady, chartFindings, chartState, writeChartApproval, PR_SEAL, chartDigest, chartReport, readyIntents, planRows, writePlan, sprintPlan, chartFiles, intentSettled, nextChart, sprintsKnown, sprintIntents, chartReview, chartOpenFindings, chartSizeText, chartDone, waiveChartFinding, changeRequirements, PRD_RE, isConverted, conversionRefusal } from './chart.ts'
 import { journey, journeyText } from './journey.ts'; import { cmdIntentRecord, cmdIntentProject, cmdIntentAdjudicate } from './intentmapio.ts'; import { cmdIntentRecheck } from './intentrecheck.ts'; import { cmdTestsFreeze } from './testfreeze.ts'
 import { TYPES, changeDir, newChange, setActive, activeSlug, isShipped, status, nextStep, changeType, approvalRefusal, approvalState, readApproval, freezeRecord, writeApproval } from './lifecycle.ts'
@@ -472,7 +472,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   report: cmdReport,
   arch: cmdArch,
   queue: cmdQueue,
-  app: cmdApp,
+  app: args => (args.pos[0] === 'diff' ? cmdAppDiff(args) : cmdApp(args)),
   slice: cmdSlice,
   maintain: cmdMaintain,
   readiness: cmdReadiness, autonomy: cmdAutonomy, audit: cmdAudit, interrogate: cmdInterrogate,

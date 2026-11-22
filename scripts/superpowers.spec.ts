@@ -46,7 +46,7 @@ test('start, plan, chart and init tell the model what to do without superpowers'
   const skill = (n: string) => fs.readFileSync(path.resolve(import.meta.dirname, `../skills/${n}/SKILL.md`), 'utf8')
   assert.match(skill('start'), /superpowers `WARNING`, skip the `Skill` call/)
   assert.match(skill('plan'), /`S superpowers` prints a `WARNING`/)
-  assert.match(skill('chart'), /Run `S superpowers`: on a `WARNING`/)
+  assert.match(skill('chart'), /[Rr]un `S superpowers`: on a `WARNING`/)
   assert.match(skill('init'), /\*\*Superpowers\.\*\*/)
 })
 

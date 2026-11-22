@@ -29,10 +29,11 @@ const RAN_NOTHING = [
   /^Tests:\s+0 total\s*$/m,
   /\[no test files\]/,
   /\bTests run: 0,/,
-  /\brunning 0 tests\b/i,
   /\bNo tests were executed\b|\bTotal tests: 0\b/i,
 ]
-export const ranNothing = (tail: string): boolean => RAN_NOTHING.some(re => re.test(tail))
+// A runner that prints "running N tests" once per target (unit, integration, doc-tests): nothing ran only when no target ran any.
+const perTargetRanNothing = (tail: string): boolean => /\brunning 0 tests\b/i.test(tail) && !/\brunning [1-9]\d* tests?\b/i.test(tail)
+export const ranNothing = (tail: string): boolean => RAN_NOTHING.some(re => re.test(tail)) || perTargetRanNothing(tail)
 
 export const SUPPRESSIONS: RegExp[] = [
   /eslint-disable/, /@ts-(?:ignore|expect-error|nocheck)\b/, /#\s*type:\s*ignore/, /#\s*noqa\b/, /pylint:\s*disable/,

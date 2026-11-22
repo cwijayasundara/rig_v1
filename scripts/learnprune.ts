@@ -7,10 +7,10 @@ import { triggeredChecks } from './checklist.ts'
 import { shippedChanges } from './learnmine.ts'
 import { read } from './core.ts'
 
-export type Activity = { id: string; kind: 'rule' | 'check'; fired: string[]; unknown?: string }
+type Activity = { id: string; kind: 'rule' | 'check'; fired: string[]; unknown?: string }
 
 // How each rule did over the window (the newest `window` shipped changes with a recoverable diff).
-export function ruleActivity(root: string, rules: Rule[], slugs: string[]): Activity[] {
+function ruleActivity(root: string, rules: Rule[], slugs: string[]): Activity[] {
   return rules.map(rule => {
     if (rule.check) return { id: rule.id, kind: 'check' as const, fired: slugs.filter(s => { const d = changeDiff(root, s); return d !== null && triggeredChecks(d, [rule]).length > 0 }) }
     const r = replayRule(root, rule, [], slugs)

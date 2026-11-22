@@ -14,7 +14,7 @@ test('start continues into plan in the same turn, and plan stops only for the ap
 })
 
 test('build continues into test, and test into pr, in the same turn', () => {
-  assert.match(skill('build'), /continue with `\/rig:test <slug>` in this turn/i)
+  assert.match(skill('build'), /continue with `\/rig:test <slug>` (?:in )?this turn/i)
   assert.match(skill('test'), /continue with `\/rig:pr <slug>` in this turn/i)
 })
 

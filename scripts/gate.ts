@@ -4,24 +4,24 @@
 // tree it judged; commit-msg turns it into a `Rig-Verified:` trailer, or `none` when no verdict matches the tree being committed.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SDLC, SENSORS_JSON, git, exists, read, type Args } from './core.ts'
+import { ROOT, SDLC, SENSORS_JSON, git, exists, read, writeAtomic, type Args } from './core.ts'
 import { parseRegistry } from './registry.ts'
 import { trunkRef } from './off.ts'
 import type { Finding } from './model.ts'
 
-export const gateMode = (): 'enforce' | 'observe' => {
+const gateMode = (): 'enforce' | 'observe' => {
   const text = git(['show', `${trunkRef()}:${SENSORS_JSON}`])
   return text !== null && parseRegistry(text).registry.risk.gate === 'observe' ? 'observe' : 'enforce'
 }
 
 const NEVER_OBSERVED = new Set(['harness-tamper', 'config'])
-export const splitObserved = (blocks: Finding[]): { held: Finding[]; observed: Finding[] } => ({
+const splitObserved = (blocks: Finding[]): { held: Finding[]; observed: Finding[] } => ({
   held: blocks.filter(f => NEVER_OBSERVED.has(f.sensor)),
   observed: blocks.filter(f => !NEVER_OBSERVED.has(f.sensor)),
 })
 
 // Local evidence for the false-positive review (.rig/gates.jsonl is ignored by git, like the other run evidence).
-export function logObserved(observed: Finding[]): void {
+function logObserved(observed: Finding[]): void {
   if (!observed.length || !exists(SDLC)) return
   const row = { at: new Date().toISOString(), tree: git(['write-tree']), would_block: observed.map(f => ({ sensor: f.sensor, file: f.file, message: f.message })) }
   fs.appendFileSync(path.join(SDLC, 'gates.jsonl'), JSON.stringify(row) + '\n')
@@ -29,9 +29,9 @@ export function logObserved(observed: Finding[]): void {
 
 const stateFile = (): string | null => { const f = git(['rev-parse', '--git-path', 'rig-gate.json']); return f ? path.resolve(ROOT, f) : null }
 
-export function writeVerdict(verdict: string): void {
+function writeVerdict(verdict: string): void {
   const file = stateFile(), tree = git(['write-tree'])
-  if (file && tree) fs.writeFileSync(file, JSON.stringify({ tree, verdict }))
+  if (file && tree) writeAtomic(file, JSON.stringify({ tree, verdict }))
 }
 
 // commit-msg: the verdict only counts for the tree it was written for, and only once.
@@ -49,7 +49,7 @@ export function cmdTrailer(args: Args): void {
 }
 
 // Observe mode at commit: demote what would block (tamper and config errors stay), log it, and return how many were let through.
-export function observeGate(all: { findings: Finding[]; blocks: Finding[] }): number {
+function observeGate(all: { findings: Finding[]; blocks: Finding[] }): number {
   if (!all.blocks.length || gateMode() !== 'observe') return 0
   const { held, observed } = splitObserved(all.blocks)
   logObserved(observed)

@@ -33,7 +33,7 @@ function pyIndex(files: string[]): Map<string, string> {
   return idx
 }
 
-export function resolveImport(from: string, spec: string, files: Set<string>, py: Map<string, string>): string | null {
+function resolveImport(from: string, spec: string, files: Set<string>, py: Map<string, string>): string | null {
   if (JS.test(from)) {
     if (!spec.startsWith('.')) return null // a package, or an alias this search cannot see
     const base = path.posix.normalize(path.posix.join(path.posix.dirname(from), spec)), stem = base.replace(/\.(?:js|jsx|mjs|cjs)$/, '')

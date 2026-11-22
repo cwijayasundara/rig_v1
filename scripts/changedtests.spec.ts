@@ -19,9 +19,9 @@ test('the plan skill has the planner find and list the existing tests a change m
 
 test('the build skill updates a listed test to the new expectation and runs the whole suite', () => {
   const build = skill('build')
-  assert.match(build, /listed test that pins behaviour this change alters is updated to the new expectation/)
+  assert.match(build, /listed test (?:that pins|pinning) behaviour this change alters is updated to the new expectation/)
   assert.match(build, /never an assertion removed or loosened/)
-  assert.match(build, /run the whole suite, not only the new tests/)
+  assert.match(build, /run the whole suite before `\/rig:test`/)
 })
 
 test('test-tamper allows changing an existing assertion\'s expected value, and still blocks removing one', () => {

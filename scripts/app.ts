@@ -6,7 +6,6 @@ import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { activeSlug } from './lifecycle.ts'
 import { ROOT, SDLC, CHANGES, PLUGIN_ROOT, ownerOrFail, out, fail, read, readJson, BUDGET_MS, exists, sha, writeAtomic, sanctionWrites, skillRef, type Args } from './core.ts'
-import { cmdAppDiff, diffFindings } from './appdiff.ts'
 import { runCommand } from './runs.ts'
 import { formatFindings, type Finding } from './model.ts'
 import type { Inert } from './registry.ts'
@@ -90,8 +89,9 @@ export function runDriver(a: App, budgetMs: number, o: { cwd?: string; stateDir?
 }
 
 // What verify, ship and CI run: every approved app's driver. A draft is skipped.
-export function journeyFindings(budgetMs: number, only?: string, ci = false, base?: string | null): Finding[] {
-  const findings: Finding[] = ci ? diffFindings(base) : []
+// The CI caller puts appdiff's diffFindings before these (appdiff imports this module, so this one cannot import it back).
+export function journeyFindings(budgetMs: number, only?: string, ci = false): Finding[] {
+  const findings: Finding[] = []
   findings.push(...appProblems().map(m => ({ sensor: 'journeys', severity: 'block' as const, message: `journeys: ${m}`, fix: 'fix or remove it in a reviewed change' })))
   let left = budgetMs
   for (const a of listApps().filter(x => !only || x.name === only)) {
@@ -138,7 +138,6 @@ export function cmdApp(args: Args): void {
     process.exitCode = r.exit === 0 ? 0 : 1
     return
   }
-  if (sub === 'diff') return cmdAppDiff(args)
   if (sub === 'approve') {
     if (process.env.SDLC_HUMAN !== '1') fail(`journey approvals are human-only: the person runs ${skillRef('approve')} app <app>`, 3)
     const a = pick(args, apps)

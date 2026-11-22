@@ -109,7 +109,7 @@ const agentsNote = (rows: AgentRow[] = []): string => {
 
 // Files in the order to read them: contracts, then source, tests, other; mechanical edits (lockfiles, snapshots, generated, renames, binaries) last. Larger first within a class.
 const MECHANICAL = /(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|Cargo\.lock|go\.sum)$|\.snap$|(^|\/)(dist|build|generated|__snapshots__)\//
-export function readOrder(diffs: FileDiff[], plan: string, paths?: Paths): string[] {
+function readOrder(diffs: FileDiff[], plan: string, paths?: Paths): string[] {
   const c = contracts(plan)
   const rank = (d: FileDiff): number => d.binary || d.oversize || d.status === 'R' || MECHANICAL.test(d.file) ? 4 : c.includes(d.file) ? 0 : isSrc(d.file, paths) ? 1 : isTest(d.file, paths ?? defaultRegistry().paths) ? 2 : 3
   const size = (d: FileDiff): number => d.added.length + d.removed.length

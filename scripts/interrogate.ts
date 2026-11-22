@@ -2,7 +2,7 @@
 // this script decides. A finding is kept only when its command fails on a clean checkout of the committed code and the failure breaks the intent.
 import fs from 'node:fs'
 import path from 'node:path'
-import { CHANGES, ROOT, checkSlug, dirtyFiles, exists, fail, out, readJsonl, type Args } from './core.ts'
+import { CHANGES, ROOT, checkSlug, dirtyFiles, exists, fail, out, readJsonl, writeAtomic, type Args } from './core.ts'
 import { runCommand } from './runs.ts'
 import { withBaseTree } from './basetree.ts'
 import { SECRETISH } from './app.ts'
@@ -48,7 +48,7 @@ function verify(slug: string): void {
   if (!reran.ok) fail(`interrogate: ${reran.error}`)
   const judged = rows.map((r, i) => ({ ...r, ...judge(r, reran.value[i]!), ...{ tail: reran.value[i]!.tail.slice(-1500), exit: reran.value[i]!.exit } }))
   const result: Result = { tree: treeStamp(), at: new Date().toISOString(), found: rows.length, reproduced: judged.filter(r => r.status === 'reproduced').length, dismissed: judged.filter(r => r.status === 'dismissed').length, rows: judged }
-  fs.mkdirSync(path.dirname(resultPath(slug)), { recursive: true }); fs.writeFileSync(resultPath(slug), JSON.stringify(result, null, 2) + '\n')
+  writeAtomic(resultPath(slug), JSON.stringify(result, null, 2) + '\n')
   out([`interrogate: ${result.found} found, ${result.reproduced} reproduced, ${result.dismissed} dismissed`, ...judged.map(r => `${r.id} ${r.status}${r.why ? ` (${r.why})` : ''}: ${r.title} [${r.adversary}; breaks ${r.breaks}]\n    ${r.cmd}`)].join('\n'))
   process.exitCode = result.reproduced ? 1 : 0
 }

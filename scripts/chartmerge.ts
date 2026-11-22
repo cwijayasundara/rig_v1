@@ -3,7 +3,7 @@
 // A repo with no origin has no PR to merge it through: the approval merges it locally. With a remote, a person merges the chart PR.
 import { git } from './core.ts'
 
-export type ChartMerge = { merged: true } | { merged: false; next: string }
+type ChartMerge = { merged: true } | { merged: false; next: string }
 
 export function landChart(branch: string, trunk: string): ChartMerge {
   if (git(['remote', 'get-url', 'origin']) !== null) return { merged: false, next: `push ${branch}, open its PR and merge it into ${trunk}, then start from ${trunk} with ` }

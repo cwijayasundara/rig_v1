@@ -254,8 +254,8 @@ export function chartDone(n: number): string[] {
 export const chartReview = (n: number): ReviewFinding[] | null => (exists(reviewPath(n)) ? parseReview(read(reviewPath(n))) : null)
 // Tier S sizes the chart to a small PRD: at most 3 FRs and 15 client rule rows, no NFR row, no roles, no external integration. L is more than 8 FRs or
 // more than 60 rows; M is the rest. The counts come from the PRD and the ledger, so `chart size` is run after `prd ledger`.
-export type ChartTier = 'S' | 'M' | 'L'
-export function chartSize(n: number, floor: ChartTier = 'S'): { tier: ChartTier; fr: number; rows: number; why: string[] } {
+type ChartTier = 'S' | 'M' | 'L'
+function chartSize(n: number, floor: ChartTier = 'S'): { tier: ChartTier; fr: number; rows: number; why: string[] } {
   const prdText = exists(prdPath(n)) ? read(prdPath(n)) : ''
   const ledger = exists(ledgerPath(n)) ? parseLedger(read(ledgerPath(n))) : []
   const fr = prdIds(prdText).filter(id => /^FR-/.test(id)).length
