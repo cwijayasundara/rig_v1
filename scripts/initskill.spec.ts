@@ -97,9 +97,11 @@ test('init skill: only brownfield runs wiki init; greenfield and Both never do (
   assert.doesNotMatch(rest, /sdlc\.ts wiki init/)
 })
 
-test('init skill: the README block comes from the vendored template, which carries the standalone /rig-x names', () => {
+test('init skill: installs plugin-only by default (one copy of rig); --full is the opt-in standalone copy', () => {
   assert.match(skill, /from `\.rig\/templates\/readme-rig\.md`/)
-  assert.match(skill, /write them as `\/rig-start`/)
+  assert.match(skill, /sdlc\.ts init --plugin`, adding `--workflows`/)
+  assert.doesNotMatch(skill, /sdlc\.ts init --full`/, 'no step runs --full by default')
+  assert.match(skill, /never combine it with the plugin/)
 })
 
 test('init skill: the 2026-10-25 shop_app --quick run gaps are closed in the text', () => {
