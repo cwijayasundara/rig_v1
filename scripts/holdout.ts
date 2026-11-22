@@ -29,14 +29,19 @@ export function sprintOf(slug: string, read_: (f: string) => string = f => read(
 const sha = (b: Buffer): string => crypto.createHash('sha256').update(b).digest('hex')
 const CI_VARS = ['GITHUB_STEP_SUMMARY', 'GITHUB_OUTPUT', 'GITHUB_ENV', 'GITHUB_PATH']
 type Case = { rel: string; data: Buffer }
-// A conftest.py in the holdout dir is shared setup, not a case: it is copied beside every case and never counted or run on its own.
-const isSupport = (c: Case): boolean => path.basename(c.rel) === 'conftest.py'
+// Shared setup is not a case: it is copied beside every case and never counted or run on its own. That is a conftest.py, and, in a dir
+// whose cases are named by id (TC-3.holdout.test.js, test_tc_3_holdout.py), every file not named that way (the QA agent's one helper file).
+const CASE_NAME = /^(?:test[_-])?tc[-_]\d+/i
+const supportIn = (all: Case[]): ((c: Case) => boolean) => {
+  const named = all.some(c => CASE_NAME.test(path.basename(c.rel)))
+  return c => path.basename(c.rel) === 'conftest.py' || (named && !CASE_NAME.test(path.basename(c.rel)))
+}
 type CaseStatus = 'passed' | 'failed' | 'missing'
 // Each case runs alone from its own fresh temp dir holding only that file (read-only, sha256 checked just before the run, deleted after),
 // so code under test cannot blank or add files for a later case. Output is discarded and the CI output files are not in its env.
 // This is no isolation from the same uid: the code under test can still read its caller (see SECURITY.md).
 function caseOutcomes(all: Case[], cmd: string, before?: (file: string) => void): { id: string; status: CaseStatus }[] {
-  const support = all.filter(isSupport), cases = all.filter(c => !isSupport(c))
+  const isSupport = supportIn(all), support = all.filter(isSupport), cases = all.filter(c => !isSupport(c))
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !CI_VARS.includes(k)))
   return cases.map(c => {
     const id = caseId(c.rel)
@@ -85,11 +90,12 @@ export function holdoutFor(slug: string, sprint: number): Case[] {
   const rows = parseCases(read(plan))
   if (!rows.some(r => r.intent === slug)) return all
   const mine = new Set(rows.filter(r => r.intent === slug).map(r => r.id)), known = new Set(rows.map(r => r.id))
+  const isSupport = supportIn(all)
   return all.filter(c => isSupport(c) || !known.has(caseId(c.rel)) || mine.has(caseId(c.rel)))
 }
 
 export function runHoldout(sprint: number, cmd: string, all: Case[] = localCases(sprint)): HoldoutResult {
-  const cases = all.filter(c => !isSupport(c))
+  const isSupport = supportIn(all), cases = all.filter(c => !isSupport(c))
   if (!cases.length) return { sprint, passed: 0, total: 0, failing: [], none: true }
   if (!cmd) return { sprint, passed: 0, total: cases.length, failing: cases.map(c => caseId(c.rel)), none: false, error: 'holdout cases exist but .rig/sensors.json has no holdout command' }
   posixShell(cmd)

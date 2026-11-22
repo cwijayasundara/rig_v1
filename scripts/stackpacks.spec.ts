@@ -161,12 +161,14 @@ test('a uv python project runs its tools through uv run, so they see the project
   assert.match(uv.lint, /^uv run ruff check /)
   assert.match(uv.types, /^uv run mypy /)
   assert.equal(uv.unit, 'uv run pytest -q')
-  assert.match(uv['mutation-diff'], /uv run mutmut --version[\s\S]*uv run mutmut run[\s\S]*uv run mutmut junitxml/)
+  assert.match(uv['mutation-diff'], /uv run mutmut version[\s\S]*uv run mutmut run[\s\S]*uv run mutmut junitxml/)
   assert.equal(uv.mutation, 'uv run mutmut run')
   assert.match(uv.layers, /uv run lint-imports /)
   assert.match(uv.audit, /uv run pip-audit -r requirements\.txt[\s\S]*uv run pip-audit \./)
   // [dependency-groups] is PEP 735, not uv's: a brownfield repo on pdm or pip keeps its own commands.
   const plain = cmds('[project]\nname = "x"\n[tool.mypy]\nstrict = true\n[dependency-groups]\ndev = ["pytest"]\n')
   assert.equal(plain.unit, 'pytest -q')
+  // mutmut 2.x has a `version` command and no --version option: the probe must not read an installed 2.5.1 as missing.
+  assert.doesNotMatch(uv['mutation-diff'] + plain['mutation-diff'], /mutmut --version/)
   assert.match(plain.types, /^mypy /)
 })

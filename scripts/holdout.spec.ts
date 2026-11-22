@@ -174,6 +174,17 @@ test('a conftest.py in the holdout dir is shared setup: copied beside each case,
   assert.equal(r.code, 0)
 })
 
+test('a helper file beside TC-named cases is shared boot code under any name: copied beside each case, never run or counted (2026-11-22 rig_v1_test: holdout_support.py failed as a case)', () => {
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], holdout: 'node {file}' }))
+  write(repo, `${H}/holdout_support.js`, 'process.exit(9)\n')
+  const needs = "const fs = require('fs'), path = require('path')\nprocess.exit(fs.existsSync(path.join(path.dirname(process.argv[1]), 'holdout_support.js')) ? 0 : 1)\n"
+  write(repo, `${H}/TC-1.holdout.js`, needs); write(repo, `${H}/test_tc_2_holdout.js`, needs)
+  write(repo, '.rig/product/sprints/sprint-1/testplan/cases.md', '| ID | Requirement | Intent | Behaviour | Level | Data | Expected | Access |\n|---|---|---|---|---|---|---|---|\n| TC-1 | FR-1 | demo | B1 | holdout | - | x | - |\n| TC-2 | FR-1 | demo | B2 | holdout | - | y | - |\n')
+  const r = sdlc(repo, ['holdout', 'demo'])
+  assert.equal(r.stdout.trim(), 'holdout: 2/2 passed')
+  assert.equal(r.code, 0)
+})
+
 test('holdout and verify run only the cases whose cases.md row names the change; other intents cases are left out', () => {
   write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], holdout: 'node {file}' }))
   write(repo, `${H}/TC-1.holdout.js`, 'process.exit(0)\n'); write(repo, `${H}/TC-2.holdout.js`, 'process.exit(3)\n')
