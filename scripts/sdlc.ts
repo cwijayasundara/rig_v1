@@ -15,7 +15,7 @@ import { cmdHook } from './hooks.ts'
 import { cmdCheck, cmdCheckFile, loadConfig } from './check.ts'
 import { inertSensors, isRegistryShape, type Inert } from './registry.ts'
 import { runCommand, recordRun } from './runs.ts'
-import { cmdVendor, installPluginOnly, installStandalone, older, pluginVersion } from './vendor.ts'; import { parseProfile } from './profile.ts'; import { cmdOff, cmdOn } from './off.ts'; import { weakeningLines } from './weaken.ts'
+import { cmdVendor, installPluginOnly, installStandalone, inventory, older, pluginVersion } from './vendor.ts'; import { parseProfile } from './profile.ts'; import { cmdOff, cmdOn } from './off.ts'; import { weakeningLines } from './weaken.ts'
 import { cmdUpgrade } from './upgrade.ts'
 import { cmdBaseline } from './initbaseline.ts'
 import { cmdVerify, cmdHoldout } from './verify.ts'; import { cmdMutscore } from './mutscore.ts'
@@ -75,7 +75,7 @@ function cmdInit(args: Args): void {
   out(`initialised ${toPosix(path.relative(ROOT, SDLC)) || SDLC}${newRepo ? ' (ran git init: no repository was here)' : ''}`)
   if (args.opt.stack) out(declareStack(args.opt.stack))
   if (args.opt.plugin && args.opt.full) fail('--plugin (one copy: the plugin) and --full (a standalone copy in the repo) are opposites')
-  if (args.opt.plugin || args.opt.full) out(args.opt.plugin ? installPluginOnly(Boolean(args.opt.workflows)) : installStandalone(Boolean(args.opt.workflows), parseProfile(args.opt.profile), Boolean(args.opt.dashboard)))
+  if (args.opt.plugin || args.opt.full) out((args.opt.plugin ? installPluginOnly(Boolean(args.opt.workflows)) : installStandalone(Boolean(args.opt.workflows), parseProfile(args.opt.profile), Boolean(args.opt.dashboard))) + '\n' + inventory())
   if (args.opt.protect) out(protect(Boolean(args.opt.dry), undefined, Boolean(args.opt.create)).join('\n'))
   if (args.opt.enforce) {
     // risk.enforce on (never off): rig-check then wants an approval from someone other than the author on every PR. The rest of the file is kept.

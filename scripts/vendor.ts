@@ -6,6 +6,7 @@ import { ROOT, SDLC, PLUGIN_ROOT, IS_VENDORED, read, out, fail, sanctionWrites, 
 import { findBlock, withBlock } from './sync.ts'
 import { HOOK_SCRIPTS, installHooks } from './githooks.ts'
 import { parseProfile, skillIn, agentIn, type Profile } from './profile.ts'
+import { BUILTIN_IDS } from './registry.ts'
 
 // Every script of the plugin except the specs and testkit, which stay behind. CI runs this copy, so it never needs the plugin; a new script ships without a list to update
 // (vendor.spec.ts checks that every module a script imports is in it).
@@ -292,6 +293,30 @@ export function installPluginOnly(workflows: boolean): string {
 export function installStandalone(workflows: boolean, profile: Profile = 'full', dashboard = false): string {
   cmdVendor({ pos: [], opt: { standalone: true, ...(profile === 'core' ? { profile } : {}), ...(dashboard ? { dashboard: true } : {}) } })
   return finishInstall(workflows, profile, true).join('\n')
+}
+
+// What an install left in the repo, counted from disk, each part with its path: a person looks for the skills, agents, hooks, sensors and
+// guides after init (2026-11-23 rig_v1_test: a plugin-only init copied none and its report named no path).
+export function inventory(): string {
+  const ls = (rel: string, keep: (n: string) => boolean): string[] => { try { return fs.readdirSync(path.join(ROOT, rel)).filter(keep).sort() } catch { return [] } }
+  const json = <T>(file: string, d: T): T => { try { return JSON.parse(read(file)) as T } catch { return d } }
+  const skills = ls('.claude/skills', n => n.startsWith('rig-')).map(n => n.slice(4))
+  const agents = ls('.claude/agents', n => n.startsWith('rig-'))
+  const events = Object.entries(json<{ hooks?: Record<string, HookGroup[]> }>(path.join(ROOT, '.claude', 'settings.json'), {}).hooks ?? {}).filter(([, g]) => g.some(x => x.hooks.some(h => h.command.includes(SDLC_HOOK)))).map(([e]) => e)
+  const registry = json<{ sensors?: { id: string; builtin?: boolean }[] } | null>(path.join(SDLC, 'sensors.json'), null)
+  const cmds = (registry?.sensors ?? []).filter(s => !s.builtin).map(s => s.id)
+  const guides = ls('.rig/guides', n => n.endsWith('.md'))
+  const row = (name: string, n: number, text: string): string => `  ${name.padEnd(8)}${String(n).padStart(3)}  ${text}`
+  const fromPlugin = 'none in this repo: the plugin supplies them (claude --plugin-dir <rig checkout>); `init --full` copies them here'
+  return [
+    'rig in this repo:',
+    row('skills', skills.length, skills.length ? `.claude/skills/rig-<name>/SKILL.md: ${skills.join(', ')}` : fromPlugin),
+    row('agents', agents.length, agents.length ? `.claude/agents/: ${agents.join(', ')}` : fromPlugin),
+    row('hooks', events.length, `${events.length ? `.claude/settings.json: ${events.join(', ')}` : 'none in .claude/settings.json: the plugin runs them'}; git hooks in .rig/githooks/: ${ls('.rig/githooks', () => true).join(', ') || 'none'}`),
+    row('sensors', cmds.length + BUILTIN_IDS.length, `${registry ? `.rig/sensors.json, ${cmds.length} command sensor(s): ${cmds.join(', ') || 'none'}` : 'no .rig/sensors.json yet (run init --stack)'}; ${BUILTIN_IDS.length} built in (.rig/bin/sensors.ts): ${BUILTIN_IDS.join(', ')}`),
+    row('guides', guides.length, `.rig/guides/: ${guides.join(', ')}; CLAUDE.md carries one guide line per sensor (sync writes it)`),
+    row('checker', ls('.rig/bin', n => n.endsWith('.ts')).length, `.rig/bin/*.ts (entry: .rig/bin/sdlc.ts); formats in .rig/templates/: ${ls('.rig/templates', () => true).length}`),
+  ].join('\n')
 }
 
 // Git hooks, the settings template and (with --workflows) the CI files; shared by both install modes. Plugin-only mode registers no hooks in settings.json.

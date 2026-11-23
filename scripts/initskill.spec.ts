@@ -97,11 +97,14 @@ test('init skill: only brownfield runs wiki init; greenfield and Both never do (
   assert.doesNotMatch(rest, /sdlc\.ts wiki init/)
 })
 
-test('init skill: installs plugin-only by default (one copy of rig); --full is the opt-in standalone copy', () => {
+test('init skill: installs the full copy by default (skills, agents, hooks and formats in the repo); --plugin is the opt-in single copy', () => {
   assert.match(skill, /from `\.rig\/templates\/readme-rig\.md`/)
-  assert.match(skill, /sdlc\.ts init --plugin`, adding `--workflows`/)
-  assert.doesNotMatch(skill, /sdlc\.ts init --full`/, 'no step runs --full by default')
-  assert.match(skill, /never combine it with the plugin/)
+  // 2026-11-23 rig_v1_test: the plugin-only default left no skill, agent or hook in the target, and the report named no path.
+  assert.match(skill, /sdlc\.ts init --full`, adding `--workflows`/)
+  assert.doesNotMatch(skill, /sdlc\.ts init --plugin`/, 'no step runs --plugin by default')
+  assert.match(skill, /prints an inventory: quote it in full/)
+  assert.match(skill, /write `\/rig-x` wherever this skill shows `\/rig:x`[^\n]*restart `claude` without `--plugin-dir`/)
+  assert.match(skill, /Map \(directories[^\n]*`\.rig\/sensors\.json`[^\n]*`\.rig\/guides\/`[^\n]*`\.claude\/skills\/rig-\*\/`/)
 })
 
 test('init skill: the 2026-10-25 shop_app --quick run gaps are closed in the text', () => {

@@ -10,7 +10,7 @@ This repo uses **rig**, a thin SDLC harness for Claude Code. Each idea (`/rig:st
  SKILLS     start · plan · build · test · pr · chart · and more    the steps
  AGENTS     architect·sonnet  evaluator·opus (reviews the chart)  model by role
  HOOKS      session-start · prompt-submit · post-edit · stop     guardrails, zero tokens
-            git: pre-commit · pre-push                           any editor or agent
+            git: pre-commit · commit-msg · pre-push              any editor or agent
  SCRIPTS    .rig/bin/sdlc.ts → check · sensors · verify · …    the deterministic brain
  EVIDENCE   .rig/product/  .rig/changes/<slug>/                 committed; read by CI
 ```
@@ -19,7 +19,7 @@ This repo uses **rig**, a thin SDLC harness for Claude Code. Each idea (`/rig:st
 - **Human gate:** a person approves each change's spec and plan with `/rig:approve <slug>`; approval freezes the contract files. A model can never approve.
 - **Order:** an intent starts only once the intents in its `depends:` have shipped.
 - **Deterministic checks decide:** the sensors in `.rig/sensors.json` (each with a command or a built-in, a cadence and one guide sentence) must pass; failures that already existed are recorded as `knownRed` so rig never blocks on debt it did not create.
-- **State lives in files:** `.rig/sensors.json` (config), `.rig/product/brief.md` (the product brief), `.rig/product/sprints/sprint-<N>/intents/` (charted intents), `.rig/maintain/proposals/` (intents proposed by Maintain), `.rig/changes/<slug>/` (intent, spec, plan, `approval.json`, `evidence/`, `verify.json`, `pr.md`), `.rig/bin/` (vendored harness), `.claude/` (hooks and settings), `CLAUDE.md` (project context for Claude).
+- **State lives in files:** `.rig/sensors.json` (config), `.rig/product/brief.md` (the product brief), `.rig/product/sprints/sprint-<N>/intents/` (charted intents), `.rig/maintain/proposals/` (intents proposed by Maintain), `.rig/changes/<slug>/` (intent, spec, plan, `approval.json`, `evidence/`, `verify.json`, `pr.md`), `.rig/bin/` (vendored harness), `.rig/guides/` (the guides), `.claude/` (settings; skills, agents and hook wiring after `init --full`), `CLAUDE.md` (project context for Claude).
 - **Local equals CI:** `rig-check` in CI runs the same checks as the git hooks.
 
 ### Layout: what rig put in this repo
@@ -32,11 +32,11 @@ Claude Code only discovers skills, agents and hooks under `.claude/`; everything
 | `.claude/agents/rig-*.md` | The architect and evaluator subagents: same, only after `init --full` | `vendor --standalone` |
 | `.claude/settings.json` | Permission rules (ask/deny protect evidence); hook wiring only after `init --full` | `init`, a person |
 | `.rig/bin/` | The vendored checker (`sdlc.ts` and its modules, `VERSION`) | `vendor --standalone` |
-| `.rig/mod/` | The journey dashboard: a band above the prompt with the sprint rail, the change rail, the next command and spend (a local plugin named `rig`) | `vendor --standalone` |
-| `.rig/githooks/` | `pre-commit` and `pre-push`, run by git via `core.hooksPath` | `hooks install` |
+| `.rig/mod/` | The journey dashboard: a band above the prompt with the sprint rail, the change rail, the next command and spend (a local plugin named `rig`); only with `init --full --dashboard` | `vendor --standalone --dashboard` |
+| `.rig/githooks/` | `pre-commit`, `commit-msg` and `pre-push`, run by git via `core.hooksPath` | `hooks install` |
 | `.rig/guides/` | Engineering, testing and contract guides injected at edit time | a person (asks first) |
-| `.rig/templates/` | Formats for intents, specs, test plans and the README block | `vendor --standalone` |
-| `.rig/sensors.json` | The sensor registry: commands, cadences, `knownRed` | a person (asks first) |
+| `.rig/templates/` | Formats for intents, specs, test plans and the README block; only after `init --full` | `vendor --standalone` |
+| `.rig/sensors.json` | The sensor registry: each command sensor's command, cadence and guide, and `knownRed`. The built-in sensors (secrets, test-tamper, size and the rest) are code in `.rig/bin/sensors.ts`; `node .rig/bin/sdlc.ts sensors` shows the state of all of them, and `CLAUDE.md` carries one guide line per sensor | a person (asks first) |
 | `.rig/product/` | The product brief, architecture and ADRs, and one folder per sprint (`sprints/sprint-N/`: PRD, intents, test plan, review, approval) | a person, `/rig:chart` |
 | `.rig/changes/<slug>/` | One folder per change: spec, plan, approval, evidence, `verify.json`, `pr.md` | the build steps |
 | `.rig/.gate` | Local gate state, never committed | rig |
@@ -53,7 +53,7 @@ Claude Code only discovers skills, agents and hooks under `.claude/`; everything
 | Waive a failing sensor with a reason | `/rig:waive <sensor> <file> <reason>` (a file or `*`, for the active change; only a person can). An agent may request one (`S waive --request <sensor> <file> <reason>`), and a person grants it by approving the PR; copy `templates/rig-approved.yml` beside `rig-check.yml` so the approval re-runs the check |
 | See where a change stands | `node .rig/bin/sdlc.ts status` |
 
-**New repo with a PRD?** Start the outer loop, not `/rig:start`. Put the PRD in `docs/prd/sprint-0/prd.md`, one folder per sprint (`docs/prd/prd-template.md` is the format; others in `.rig/templates/`; give every requirement an id like `FR-1`). Then `/rig:chart 0 @docs/prd/sprint-0/prd.md` (gap questions, intents, architecture, the product brief, ADRs, test plan and cases, an Opus review), review the branch, `/rig:approve chart-0` (a person; with no remote it merges the chart branch into main itself, otherwise merge the chart PR), and build each intent with `/rig:start .rig/product/sprints/sprint-<N>/intents/<slug>.md`. `node .rig/bin/sdlc.ts ready` lists what can start.
+**New repo with a PRD?** Start the outer loop, not `/rig:start`. Put the PRD in `docs/prd/sprint-0/prd.md`, one folder per sprint (`docs/prd/prd-template.md` is the format; after `init --full` the others are in `.rig/templates/`; give every requirement an id like `FR-1`). Then `/rig:chart 0 @docs/prd/sprint-0/prd.md` (gap questions, intents, architecture, the product brief, ADRs, test plan and cases, an Opus review), review the branch, `/rig:approve chart-0` (a person; with no remote it merges the chart branch into main itself, otherwise merge the chart PR), and build each intent with `/rig:start .rig/product/sprints/sprint-<N>/intents/<slug>.md`. `node .rig/bin/sdlc.ts ready` lists what can start.
 
 Typical flow for one change (or start from a charted intent: `/rig:start .rig/product/sprints/sprint-<N>/intents/<slug>.md`; a team charts a sprint first with `/rig:chart <N>`, and a person approves it with `/rig:approve chart-<N>`):
 
@@ -67,6 +67,6 @@ Good to know:
 - A bug starts with a failing test; a refactor starts with characterization tests; a one-liner is a chore with almost no ceremony.
 - Run the project's checks by hand with the commands in `CLAUDE.md`; `.rig/bin/sdlc.ts check` runs the gate.
 - A teammate who never opens Claude Code runs `node .rig/bin/sdlc.ts hooks install` once so the git hooks apply to them.
-- To upgrade rig, re-run `vendor --standalone` from a newer plugin checkout. Re-running `/rig:init` only replaces this section.
+- To upgrade rig, load a newer rig checkout as a plugin (`claude --plugin-dir <rig checkout>`) and run its `rig:upgrade` skill: it shows the plan, asks about files you changed and applies on a branch. Re-running `/rig:init` only replaces this section.
 - **Model versions:** agents name a model by alias (`sonnet`, `opus`), never a version. `ANTHROPIC_DEFAULT_SONNET_MODEL` and `ANTHROPIC_DEFAULT_OPUS_MODEL` in `.claude/settings.json` `env` map each alias to a release; change those two lines when a new model ships (unset, the aliases follow the newest). `models.*` in `.rig/sensors.json` name a role's family, so a bump never trips `model-role`.
 <!-- rig:end -->
