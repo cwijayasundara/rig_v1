@@ -128,6 +128,13 @@ test('a file name starting with a dash is passed as a path, not a flag', () => {
   assert.equal(commandFor(s, ['-rf', 'src/-x.ts']), 'eslint ./-rf src/-x.ts')
 })
 
+test('{files:exts} hands a sensor only the files of those kinds, and skips when there is none (ruff reads a .yaml as Python)', () => {
+  const s = cmd('lint', 'edit', 'ruff check {files:py,pyi}')
+  assert.equal(commandFor(s, ['src/a.py', 'docs/contracts/add-item.yaml', 'src/b.pyi']), 'ruff check src/a.py src/b.pyi')
+  assert.equal(commandFor(s, ['docs/contracts/add-item.yaml']), null)
+  assert.equal(commandFor(s, null), 'ruff check .')
+})
+
 test('a whole-repo run passes "." for {files}, so tools that need a path still get one', () => {
   assert.equal(commandFor(cmd('fmt', 'edit', 'prettier --check {files}'), null), 'prettier --check .')
   assert.equal(commandFor(cmd('lint', 'edit', 'eslint --files={files} --quiet'), null), 'eslint --files=. --quiet')

@@ -292,13 +292,21 @@ function changedFor(cmd: string, changed: Changed[] | null): string | null {
 }
 
 // null files: whole repo, so {files} becomes "." (tools that need a path still get one). An empty list with {files}: nothing to check, skip (null).
+// {files:py,pyi} keeps only the files of those kinds, so a linter is never handed a file it cannot read (ruff reads a .yaml as Python);
+// none of them among the files: skip (null).
+const FILES = /\{files(?::([A-Za-z0-9,]+))?\}/g
 export function commandFor(s: RegistrySensor, files: string[] | null, changed: Changed[] | null = null): string | null {
   if (!s.cmd) return null
   if (s.cmd.includes('{changed')) return changedFor(s.cmd, changed)
-  if (!s.cmd.includes('{files}')) return s.cmd
-  if (files && !files.length) return null
-  if (!files) return s.cmd.replaceAll('{files}', '.')
-  return s.cmd.replaceAll('{files}', files.map(shq).join(' '))
+  if (!s.cmd.includes('{files')) return s.cmd
+  if (!files) return s.cmd.replace(FILES, '.')
+  let empty = false
+  const text = s.cmd.replace(FILES, (_, exts: string | undefined) => {
+    const picked = files.filter(f => !exts || exts.split(',').some(k => f.endsWith(`.${k}`)))
+    if (!picked.length) empty = true
+    return picked.map(shq).join(' ')
+  })
+  return empty ? null : text
 }
 
 export function isRegistryShape(text: string): boolean {

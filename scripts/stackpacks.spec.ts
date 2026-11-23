@@ -24,6 +24,17 @@ test('every pack covers types, lint and unit, has a nightly mutation sensor, and
   }
 })
 
+test('duplication counts source only: a pack that scans the repo root names its language, and python lint takes only Python files', () => {
+  // rig_v1_test, 2026-11-23: three contract YAML files sharing a schema failed the chart commit, and ruff read an edited .yaml as Python.
+  for (const p of loadPacks(PACKS_DIR).packs) {
+    const dup = packRegistry(p).sensors.find(x => x.id === 'duplication')?.cmd ?? ''
+    if (/jscpd@\S+ \. /.test(dup)) assert.match(dup, / --format [a-z]+ /, `${p.stack} counts docs and contract files as duplicated code`)
+  }
+  const py = fs.readFileSync(path.join(PACKS_DIR, 'python.json'), 'utf8')
+  assert.equal(py.includes('{files}'), false, 'python lint is handed every edited file')
+  assert.match(py, /ruff check [^"]*\{files:py,pyi\}/)
+})
+
 test('every pack has a blocking ci mutation-diff sensor that scopes to the change and scores it with sdlc mutscore', () => {
   const TOOL: Record<string, string> = { node: 'stryker', angular: 'stryker', python: 'mutmut', go: 'go-mutesting', rust: 'cargo-mutants', dotnet: 'stryker-net', 'java-maven': 'pitest', 'java-gradle': 'pitest' }
   for (const p of loadPacks(PACKS_DIR).packs) {

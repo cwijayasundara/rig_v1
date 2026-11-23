@@ -8,6 +8,9 @@ import { coverageProblems, clientGaps } from './prdcoverage.ts'
 import { conversionMapOf, intentsOf, designFile, adrFilesOf } from './chart.ts'
 
 const MARK = /\((?:proposed|default|decided) at chart\)/i
+// A line that talks about the mark ("every choice below is (proposed at chart): ...") is not a decision, and a table cell that held
+// only the mark leaves no empty cell behind (rig_v1_test, 2026-11-23: "Every choice below is : ..." on the approval page).
+const NOUN = /\((?:proposed|default|decided) at chart\)\s*:/i
 // What rests on a value nobody at the client said: behaviours with the marker or citing a proposed line, and the design doc's and this sprint's
 // ADRs' marked decisions.
 export function proposedMore(n: number, prd: string, map: string | null): ProposedMore {
@@ -18,7 +21,7 @@ export function proposedMore(n: number, prd: string, map: string | null): Propos
     return b.proposed || via.length ? [{ where: `${i.slug}#${b.id}`, why: [b.proposed && 'marked', via.length && `cites ${via.join(', ')}`].filter(Boolean).join(', '), text: b.text }] : []
   }))
   const files = [...designFile(n), ...adrFilesOf(n)].filter(exists)
-  const decisions = files.flatMap(f => read(f).split('\n').flatMap((l, k) => MARK.test(l) ? [{ where: `${toPosix(path.relative(ROOT, f))}:${k + 1}`, text: l.replace(MARK, '').replace(/\s+([.,;])/g, '$1').replace(/^[\s>*-]+/, '').trim() }] : []))
+  const decisions = files.flatMap(f => read(f).split('\n').flatMap((l, k) => MARK.test(l) && !NOUN.test(l) ? [{ where: `${toPosix(path.relative(ROOT, f))}:${k + 1}`, text: l.replace(MARK, '').replace(/\|\s*(?=\|)/g, '').replace(/\s+([.,;])/g, '$1').replace(/^[\s>*-]+/, '').trim() }] : []))
   return { behaviours, decisions }
 }
 

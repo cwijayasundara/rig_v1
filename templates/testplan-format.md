@@ -1,6 +1,7 @@
 # Test plan (.rig/product/sprints/sprint-<N>/testplan/plan.md)
 
 <!-- Written by the QA lead from the PRD and the sprint's intents. -->
+<!-- How to write these files: with Write and Edit, read with Read, one plain command per Bash call. No cd, pipe, &&, loop, heredoc or script: an unattended run denies a compound command, and each denial costs a turn. -->
 
 ## Strategy
 

@@ -40,7 +40,9 @@ test('the page has the five sections, one ledger row per requirement with its qu
   assert.match(text, /\| AC-1\.2 \| .*source\.md:2 \| alpha \| TC-2 \| no \|/)
   assert.match(text, /\| NFR-1 \| .* \| none \| none \| no \|/)
   assert.ok(text.split('\n').length < 150)
-  assert.match(text, /## The decision\n\nOne decision covers this chart: your approving review of the pull request head commit/)
+  assert.match(text, /## The decision\n\nOne decision covers this chart: your \/rig:approve chart-1\. It records who approved and the hash of this page, and merges the chart branch into the trunk \(this repo has no remote/)
+  execFileSync('git', ['remote', 'add', 'origin', 'https://example.com/x.git'], { cwd: repo })
+  assert.match(summary(), /## The decision\n\nOne decision covers this chart: your approving review of the pull request head commit/)
   assert.match(text, /## Invariants and limits\n\n- NFR-1: ".*" prd\.md:\d+/)
 })
 
@@ -77,6 +79,14 @@ test('supplied by the agent reuses prd proposed; not covered lists open and n/a 
   assert.match(notCovered, /finding 2: second problem \(not confirmed\)/)
   assert.match(notCovered, /finding 3: third problem \(waived by Pat: accepted as is\)/)
   assert.doesNotMatch(notCovered, /first problem/)
+})
+
+test('supplied by the agent: a line that only talks about the mark is no decision, and a table row loses the cell that held the mark', () => {
+  fixture()
+  write(repo, `${P}/adr/0002-price.md`, '---\nsprint: 1\nstatus: proposed\n---\n# 0002 Price\n\nEvery choice below is (proposed at chart): nobody was asked.\n\n| Price literal | rejected | (proposed at chart) | alpha B1 |\n')
+  const text = summary()
+  assert.doesNotMatch(text, /below is :/)
+  assert.match(text, /0002-price\.md:9 \| \\?\|? ?Price literal \\\| rejected \\\| alpha B1/)
 })
 
 test('decisions: one line per ADR (title and decision sentence) and every contract an intent names', () => {

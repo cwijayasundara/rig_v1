@@ -248,7 +248,7 @@ export function runChecks(i: CheckInput): CheckResult {
   const after = i.after ?? onDisk
   const findings: Finding[] = [
     ...builtinFindings(diffs, config, i.rules, fileLines(diffs.filter(d => d.status !== 'D').map(d => d.file), after), point, i.slugs, diffs.flatMap(d => d.from ? [d.file, d.from] : [d.file]), after, i.base, i.gates?.plan ?? true, i.chartRef),
-    ...harnessTamper(diffs, { point, toolEdited: i.toolEdited, before: i.before, after }), ...(i.point === 'ci' && i.gates?.plan === false ? untrackedFindings(diffs, config.paths) : []),
+    ...harnessTamper(diffs, { point, commit: i.point === 'commit', toolEdited: i.toolEdited, before: i.before, after }), ...(i.point === 'ci' && i.gates?.plan === false ? untrackedFindings(diffs, config.paths) : []),
   ]
   // A diff whose plan the person approved is big by design: the diff-size limit warns instead of blocking.
   if (i.slugs.length && i.slugs.every(s => approvalState(s) === 'approved')) {

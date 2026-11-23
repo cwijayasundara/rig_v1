@@ -4,7 +4,7 @@ description: One-time setup of a repo for the sdlc harness. Brownfield writes a 
 argument-hint: '[--quick | --defaults] [greenfield "<stack and goal>"]'
 model: sonnet
 effort: medium
-allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Bash(git init*), Bash(git add *), Bash(git commit *), Bash(git status*), Bash(git remote*), Bash(git rev-parse*), Bash(npm test*), Bash(npm run *), Bash(node --test*), Bash(node --check *), Bash(node --version), Bash(make test*), Bash(make lint*), Bash(uv --version), Bash(uv sync*), Bash(uv run *), Read, Write, Edit, Glob, Grep, AskUserQuestion, Agent
+allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Bash(git init*), Bash(git add *), Bash(git commit *), Bash(git status*), Bash(git remote*), Bash(git rev-parse*), Bash(npm test*), Bash(npm run *), Bash(node --test*), Bash(node --check *), Bash(node --version), Bash(make test*), Bash(make lint*), Bash(uv --version), Bash(command -v *), Bash(uv sync*), Bash(uv run *), Read, Write, Edit, Glob, Grep, AskUserQuestion, Agent
 ---
 # Initialise this repo
 **Subagents:** run them in the foreground (never `run_in_background`) and wait; never end your turn while one is running. Every agent of one step goes in one message. Run each command as its own Bash call (no `cd`, pipes, redirects, `&&`, variables or heredocs); read files with Read and write them with Write (never a redirect, `printf` or heredoc); one-line commit messages — compound commands are denied in unattended runs and stall the install.

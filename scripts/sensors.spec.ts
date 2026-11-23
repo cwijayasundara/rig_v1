@@ -189,6 +189,9 @@ test('harnessTamper: the commit that adopts rig (no sensors.json or rules.json o
   assert.equal(edited[0]?.severity, 'block', 'raising a limit in an existing config still blocks')
   const atStop = harnessTamper([fd('.rig/sensors.json', ['x'], [], 'A')], { point: 'stop', toolEdited: new Set(['.rig/sensors.json']), before: () => '', after: adopted })
   assert.match(atStop[0]?.message ?? '', /size\.diffLines raised/, 'at Stop a new config is still compared with the defaults')
+  const packGlobs = (): string => J({ sensors: [], paths: { testSupport: ['**/conftest.py'] } })
+  assert.deepEqual(harnessTamper([fd('.rig/sensors.json', ['x'], [], 'A')], { point: 'stop', commit: true, before: () => '', after: packGlobs }), [], 'the init commit is not told its own config weakens the harness')
+  assert.match(harnessTamper([fd('.rig/sensors.json', ['x'], ['y'])], { point: 'stop', commit: true, before: () => J({ sensors: [] }), after: packGlobs })[0]?.message ?? '', /paths\.testSupport added/, 'a later commit that widens it still warns')
 })
 
 test('weakensRules names removed and downgraded rules only', () => {

@@ -17,6 +17,15 @@ test('chart skill: the draft is converted only when a path is given, and a missi
   assert.match(skill, /no path[^\n]*stop/i)
 })
 
+test('the QA format and the evaluator carry the one-plain-command rule (14 denied compound commands in one chart, rig_v1_test 2026-11-23)', () => {
+  assert.match(fs.readFileSync(path.resolve(import.meta.dirname, '../templates/testplan-format.md'), 'utf8'), /one plain command per Bash call\. No cd, pipe, &&, loop, heredoc or script/)
+  assert.match(fs.readFileSync(path.resolve(import.meta.dirname, '../agents/evaluator.md'), 'utf8'), /one plain command per call: no `cd`, pipe, `&&`, loop or heredoc/)
+})
+
+test('chart skill: a reopened finding gets one more fix and confirm, so a clean PRD does not end at a waiver (rig_v1_test 2026-11-23: 2 of 9 reopened)', () => {
+  assert.match(skill, /A `reopened` finding gets one more fix and confirm, briefed with its reason; never a third: `\/rig:approve chart-<N>` refuses while a finding is not confirmed/)
+})
+
 test('chart skill: argument-hint accepts any PRD path', () => {
   assert.match(skill, /argument-hint: '\[sprint number \| [^']*PRD path/)
 })

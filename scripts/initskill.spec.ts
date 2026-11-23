@@ -154,3 +154,8 @@ test('init skill: a greenfield python scaffold owns its tools (dev dependency gr
   assert.match(greenfield, /never install a tool globally/)
   assert.match(skill, /allowed-tools:[^\n]*Bash\(uv sync\*\)[^\n]*Bash\(uv run \*\)/)
 })
+
+test('init skill: the tool check it instructs (command -v) is allowed, so an unattended run can say which sensor tool is missing', () => {
+  assert.match(skill, /check each sensor's tool with `command -v`/)
+  assert.match(skill, /allowed-tools:[^\n]*Bash\(command -v \*\)/)
+})

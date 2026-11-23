@@ -238,13 +238,14 @@ export function onlyKnownRedRemoved(beforeText: string, afterText: string): bool
   }
 }
 
-export function harnessTamper(diffs: FileDiff[], o: { point: 'stop' | 'ship' | 'ci'; toolEdited?: Set<string>; before: (f: string) => string; after: (f: string) => string }): Finding[] {
+export function harnessTamper(diffs: FileDiff[], o: { point: 'stop' | 'ship' | 'ci'; commit?: boolean; toolEdited?: Set<string>; before: (f: string) => string; after: (f: string) => string }): Finding[] {
   const findings: Finding[] = []
   for (const d of diffs.filter(f => isProtected(f.file))) {
     // At local ship (pre-push), a config the base never had is the commit that adopts rig: the person pushing it declares the
     // harness on their trunk, so it gets the plain review warning, or that first push could never pass. CI still compares it,
-    // since a PR adding a config from scratch could declare no-op levels. Stop compares it as advice.
-    const adopting = o.point === 'ship' && d.status === 'A' && !o.before(d.file).trim()
+    // since a PR adding a config from scratch could declare no-op levels. Stop compares it as advice. The commit hook (judged as Stop)
+    // says nothing: the init commit otherwise warned that the pack's own globs were "added" (rig_v1_test, 2026-11-23).
+    const adopting = (o.point === 'ship' || o.commit === true) && d.status === 'A' && !o.before(d.file).trim()
     const compare = (d.file === SENSORS_JSON || d.file === RULES || d.file === RATCHET_FILE) && !adopting
     const dirs = (): Record<string, 'down' | 'up'> => Object.fromEntries(parseRegistry(o.after(SENSORS_JSON)).registry.sensors.flatMap(s => (s.ratchet ? [[s.id, s.ratchet]] : [])))
     const weaker = !compare ? [] : d.file === SENSORS_JSON ? weakensRegistry(o.before(d.file), o.after(d.file)) : d.file === RATCHET_FILE ? weakensRatchets(o.before(d.file), o.after(d.file), dirs()) : weakensRules(o.before(d.file), o.after(d.file))
