@@ -400,3 +400,16 @@ test('tier S: a fixed high finding is listed as never confirmed and the reviewer
   assert.match(notCovered, /finding 1: .*vague result.*\(tier S: fixed, never confirmed; read the fix\)/)
   assert.match(notCovered, /deferred review item: \[severity: medium\] naming nit in alpha/)
 })
+
+test('an n/a topic reads "is marked n/a (...)" and is never "is not covered"; a deferred item the fix round fixed is not listed', () => {
+  fixture()
+  write(repo, `${S}/coverage.md`, '- escalation n/a — no hand-off in this product\n')
+  write(repo, `${S}/chart-review.md`, 'verdict: approved\n## Findings\n- first problem → fixed (confirmed)\n## Deferred\n- [severity: medium] naming nit → fixed\n- [severity: medium] still open nit\n- [severity: medium] reopened nit → reopened: not done\n')
+  const text = summary()
+  assert.match(text, /escalation is marked n\/a \(no hand-off in this product\)\. Is it safe/)
+  assert.doesNotMatch(text, /n\/a[^\n]*is not covered/)
+  const notCovered = text.split('## Not covered')[1]!.split('## Decisions')[0]!
+  assert.doesNotMatch(notCovered, /naming nit/)
+  assert.match(notCovered, /deferred review item: \[severity: medium\] still open nit/)
+  assert.match(notCovered, /deferred review item: .*reopened nit/)
+})

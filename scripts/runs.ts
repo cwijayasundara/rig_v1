@@ -36,6 +36,13 @@ export function portable(text: string, root = ROOT, home = os.homedir()): string
   return swap(swap(text, root, '<repo>'), home, '~')
 }
 
+const TAIL_CHARS = 4000
+// A progress spinner rewrites one line with "\r": only what follows the last "\r" of a line is on screen. The cap keeps the END, so the last line (a ratchet reads it) survives.
+export function tailOf(text: string): string {
+  const t = text.split('\n').map(l => l.slice(l.lastIndexOf('\r') + 1)).slice(-TAIL_LINES).join('\n')
+  return t.length > TAIL_CHARS ? t.slice(-TAIL_CHARS) : t
+}
+
 export function runCommand(cmd: string, opts: { cwd?: string; timeoutMs?: number; env?: Record<string, string>; unsetEnv?: RegExp } = {}): RunRow {
   const started = Date.now()
   const timeoutMs = opts.timeoutMs ?? 600_000
@@ -51,7 +58,7 @@ export function runCommand(cmd: string, opts: { cwd?: string; timeoutMs?: number
   const text = `${r.stderr ?? ''}${r.stdout ?? ''}`.replace(/\r\n/g, '\n').trimEnd()
   const ms = Date.now() - started
   const timedOut = (r.status === TIMED_OUT && ms >= timeoutMs) || (r.error as NodeJS.ErrnoException | undefined)?.code === 'ETIMEDOUT'
-  const row: RunRow = { at: now(), cmd: maskSecrets(cmd), exit: r.status ?? TIMED_OUT, ms, tail: portable(maskSecrets(text.split('\n').slice(-TAIL_LINES).join('\n'))) }
+  const row: RunRow = { at: now(), cmd: maskSecrets(cmd), exit: r.status ?? TIMED_OUT, ms, tail: tailOf(portable(maskSecrets(text))) }
   if (opts.cwd && opts.cwd !== ROOT) row.cwd = portable(opts.cwd)
   if (timedOut) row.timedOut = true
   return row

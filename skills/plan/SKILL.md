@@ -13,7 +13,7 @@ allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_R
    - `## Files`: the files you expect to touch, all inside the spec's `## Blast radius`. Search the existing tests (Grep every test directory, also those only a separate script runs, for each name or shape this change alters) and list every existing test whose expectation this change makes wrong, with its new expectation under `## Tests`. Updating a test that pins the behaviour this spec changes is part of the change; deleting or weakening an assertion is not.
    - `## Interfaces`: signatures and data shapes, never code bodies, strict types where a requirement forbids coercion. For a change started from a charted intent, cite the intent's `## Design` rows instead of restating them, and give a test for each `### Failure behaviour` line.
    - `## Phases` (only when the plan has more than one group of files): `- [ ] Phase N: <title>` per phase, each a thin end-to-end step that crosses layers and is verifiable alone with automated checks (manual ones only where a person's judgement is needed); never "all types, then all endpoints, then the UI". Show the shape of a phase with the views in `${CLAUDE_PLUGIN_ROOT}/templates/show-me.md`.
-   - `## Tests`: one line per behaviour, giving the B-number, the test file and the level (unit, contract or end-to-end).
+   - `## Tests`: one line per behaviour, giving the B-number, the test file and the level (unit, contract or end-to-end); no line for a `[sensor: <ids>]` one.
    - `## Contracts`: contract files this change adds or edits, or `none`.
    - `## Verification`: the commands that prove it.
    - `## Decisions`.

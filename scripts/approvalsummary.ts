@@ -7,7 +7,7 @@ import { ROOT, SENSORS_PATH, git, read, exists, fail, fmList, toPosix, skillRef,
 import { section, openQuestions } from './model.ts'
 import { ARCH_REL, reviewPath, approvalMdPath, testplanDir, planPath, implPlanPath, sprintDir, sprintRel, sprintsOnDisk, holdoutDir, ledgerPath, coveragePath, prdPath, writeProductIgnore } from './product.ts'
 import { PR_SEAL, designDocOf, intentsOf, chartReview, chartWaivers, chartOpenFindings, chartState, conversionMapOf, adrFilesOf, type ApprovalAnswer } from './chart.ts'
-import { parseLedger, parseCases, requiredHoldouts } from './chartcheck.ts'
+import { parseLedger, parseCases, requiredHoldouts, SUFFIX } from './chartcheck.ts'
 import { parseMap } from './prdformat.ts'
 import { parseCoverage } from './prdcoverage.ts'
 import { proposedMore, proposedReport } from './prdcmd.ts'
@@ -53,14 +53,14 @@ export function checkQuestions(n: number): string[] {
   const more = proposedMore(n, read(prdPath(n)), conversionMapOf(n))
   const ask = (what: string, tail: string): string => `${what}. ${tail}`
   const unproven = rowsOf(n).filter(x => !x.mine.length || !x.hidden)
-  const open = [...(exists(coveragePath(n)) ? parseCoverage(read(coveragePath(n))).filter(c => c.state === 'open' || c.state === 'n/a').map(c => `${c.id} is ${c.state}${c.reason ? ` (${short(c.reason, 60)})` : ''}`) : []), ...openQuestions(read(prdPath(n))).map(q => `PRD open question "${short(q)}"`)]
+  const open = [...(exists(coveragePath(n)) ? parseCoverage(read(coveragePath(n))).filter(c => c.state === 'open' || c.state === 'n/a').map(c => `${c.id} is ${c.state === 'n/a' ? 'marked n/a' : c.state}${c.reason ? ` (${short(c.reason, 60)})` : ''}`) : []), ...openQuestions(read(prdPath(n))).map(q => `PRD open question "${short(q)}"`)]
   const proposed = [
     ...rows.filter(r => r.origin === 'proposed').map(r => ask(`${r.id} "${short(r.quote.replace(MARK, ''))}" (proposed at chart)`, WHY)),
     ...(more.behaviours ?? []).map(b => ask(`${b.where} "${short(b.text.replace(MARK, ''))}" (${b.why.includes('marked') ? 'proposed at chart' : 'unattributed'})`, WHY)),
     ...(more.decisions ?? []).map(d => ask(`${d.where} "${short(d.text)}" (proposed at chart)`, WHY))]
   const cats = [
     unproven.map(x => ask(`${x.r.id} "${short(x.r.quote)}" has ${!x.mine.length ? 'no test case' : 'no hidden case'}`, 'Which test proves it, and what would that test miss?')),
-    open.map(o => ask(`${o} is not covered`, 'Is it safe to leave out, and who decided?')),
+    open.map(o => ask(/ is marked n\/a\b/.test(o) ? o : `${o} is not covered`, 'Is it safe to leave out, and who decided?')),
     proposed,
     rows.filter(r => /^NFR-/.test(r.id) && /\d/.test(r.quote.replace(/^NFR-\d+/, ''))).map(r => ask(`${r.id} "${short(r.quote)}" sets a numeric target`, 'Is that the number the client needs, and what happens if it is missed?')),
     contracts(n).map(c => ask(`${c.slug}: ${c.text} cannot be changed cheaply once others build on it`, 'Is that the interface the client needs, and why?'))]
@@ -106,7 +106,7 @@ function outcomesAndScope(n: number): string[] {
 }
 
 // The reviewer's ## Deferred items (a tier S chart parks its medium findings there): the approver reads them here.
-const deferred = (n: number): string[] => (/^#{2,3}[ \t]+Deferred\b[^\n]*\n([\s\S]*?)(?=^#{2,3}[ \t]|(?![\s\S]))/m.exec(exists(reviewPath(n)) ? read(reviewPath(n)) : '')?.[1] ?? '').split(/\n(?=[-*]\s)/).filter(c => /^[-*]\s/.test(c)).map(c => c.replace(/^[-*]\s+/, '').replace(/\s*\n\s*/g, ' ').trim()).filter(c => c && !/^(none|nothing|no .*)\.?$/i.test(c)).map(c => `deferred review item: ${short(c, 160)}`)
+const deferred = (n: number): string[] => (/^#{2,3}[ \t]+Deferred\b[^\n]*\n([\s\S]*?)(?=^#{2,3}[ \t]|(?![\s\S]))/m.exec(exists(reviewPath(n)) ? read(reviewPath(n)) : '')?.[1] ?? '').split(/\n(?=[-*]\s)/).filter(c => /^[-*]\s/.test(c)).map(c => c.replace(/^[-*]\s+/, '').replace(/\s*\n\s*/g, ' ').trim()).filter(c => c && !/^(none|nothing|no .*)\.?$/i.test(c) && SUFFIX.exec(c)?.[1]?.startsWith('reopened') !== false).map(c => `deferred review item: ${short(c, 160)}`)
 
 function notCovered(n: number): string[] {
   const review = chartReview(n) ?? [], open = new Set((chartOpenFindings(n) ?? []).map(f => f.n)), waivers = chartWaivers(n)

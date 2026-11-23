@@ -1243,3 +1243,14 @@ test('chart precheck runs the PRD checks in one call, names each finding by its 
   assert.doesNotMatch(bad.stdout, /wrote .*requirements\.md/)
   assert.match(bad.stdout, /precheck-1: [1-9]\d* finding\(s\)/)
 })
+
+test('approval flips the sprint\'s intents from status: draft to approved, in the front matter only, and the chart stays approved', () => {
+  chart1()
+  const f = `${P}/sprints/sprint-1/intents/alpha.md`
+  write(repo, f, intent(1).replace('kind: internal\n', 'kind: internal\nstatus: draft\n') + '\nstatus: draft in prose stays\n')
+  call(`C.writeChartApproval(1, 'Pat')`)
+  const t = fs.readFileSync(path.join(repo, f), 'utf8')
+  assert.match(t, /^status: approved$/m)
+  assert.match(t, /status: draft in prose stays/)
+  assert.doesNotMatch(t, /^status: draft$/m)
+})

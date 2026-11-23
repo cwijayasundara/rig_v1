@@ -60,3 +60,12 @@ test('glob entries, prefix-less globs, rooted entries, the whole repo and case a
   assert.match(weight(change(['claude.md'])).stdout, /^weight: full/)
   assert.match(weight(change(['src/cart/', 'src/cart.ts'], { alwaysHuman: ['src/bill*/**'] })).stdout, /^weight: light/)
 })
+
+test('more than 8 B-numbered behaviours is never light; 8 stays light', () => {
+  const many = (n: number): string => `# Spec\n\n## Behaviours\n${Array.from({ length: n }, (_, i) => `- B${i + 1}: x`).join('\n')}\n\n## Blast radius\n- \`src/cart.ts\`\n`
+  const repo = change(['src/cart.ts'])
+  write(repo, '.rig/changes/cart-add/spec.md', many(8))
+  assert.match(weight(repo).stdout, /^weight: light/)
+  write(repo, '.rig/changes/cart-add/spec.md', many(9))
+  assert.match(weight(repo).stdout, /^weight: full\n- 9 behaviours, more than 8/)
+})

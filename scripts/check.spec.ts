@@ -268,6 +268,18 @@ test('ship: every behaviour needs a test that names it', () => {
   assert.match(r.stdout, /\[traceability\][\s\S]*B2 .*has no test that names it/)
 })
 
+test('ship: a behaviour cited [sensor: lint] needs no test; an unknown sensor id blocks naming it', () => {
+  featureRepo()
+  sensors({ full: { unit: 'node --test test/*.test.js', lint: 'true' } })
+  write(repo, '.rig/changes/sub/spec.md', '# Spec\n\n## Behaviours\n- B1 subtract\n- B2 lint is clean [sensor: lint]\n')
+  write(repo, 'src/sub.js', 'export const sub = (a, b) => a - b\n')
+  write(repo, 'test/sub.test.js', "import { test } from 'node:test'\nimport assert from 'node:assert'\nimport { sub } from '../src/sub.js'\ntest('B1 subtracts', () => assert.equal(sub(3, 1), 2))\n")
+  const ok = check('--at', 'ship', '--base', 'main', '--slug', 'sub').stdout
+  assert.doesNotMatch(ok, /B2 .*(has no test|cites)/)
+  write(repo, '.rig/changes/sub/spec.md', '# Spec\n\n## Behaviours\n- B1 subtract\n- B2 lint is clean [sensor: nosuch]\n')
+  assert.match(check('--at', 'ship', '--base', 'main', '--slug', 'sub').stdout, /B2 cites \[sensor: nosuch\][\s\S]*B2 .*has no test that names it/)
+})
+
 test('sdlc run does not inherit NODE_TEST_CONTEXT: a failing node --test records a non-zero exit', () => {
   sdlc(repo, ['new', 'rn', '--type', 'chore'])
   write(repo, 'test/bad.test.js', "import { test } from 'node:test'\nimport assert from 'node:assert'\ntest('bad', () => assert.equal(1, 2))\n")
@@ -467,6 +479,9 @@ test('a big diff blocks in CI unless the person approved the change plan; then i
   sdlc(repo, ['approve', 'big-change'], { env: { SDLC_HUMAN: '1' } })
   gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'approved')
   assert.deepEqual(size(), ['warn'])
+  const fix = (JSON.parse(sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--json']).stdout) as { findings: { sensor: string; file?: string; fix?: string }[] }).findings.find(f => f.sensor === 'size' && !f.file)?.fix
+  assert.match(fix ?? '', /the plan is approved, so nothing to do unless the person wants/)
+  assert.doesNotMatch(fix ?? '', /or the person approves the plan/)
 })
 
 test('CI waivers apply only to changes the PR adds, to any file of that change', () => {

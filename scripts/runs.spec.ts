@@ -1,7 +1,7 @@
 // runs.ts: recorded evidence is committed with the change, so it must not carry the machine's own paths.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { portable, runCommand } from './runs.ts'
+import { portable, runCommand, tailOf } from './runs.ts'
 
 test('portable swaps the repo root and the home directory for stable names', () => {
   const text = '/Users/pat/work/shop/src/a.py:3: error\n/Users/pat/.cache/x\nok /Users/pat/work/shop'
@@ -22,4 +22,14 @@ test('a recorded command is masked like its output', () => {
   const row = runCommand(`echo ${key}`) // runs in sh and in cmd.exe alike
   assert.equal(row.cmd, '[masked by sdlc]')
   assert.equal(row.exit, 0)
+})
+
+// rig_v1_test 2026-11-23: mutmut's spinner rewrote one line with "\r", so two ledger rows held a 210 KB tail.
+test('the tail keeps only what follows the last carriage return of a line, caps its size at the end, and keeps the last line', () => {
+  const spin = Array.from({ length: 5000 }, (_, i) => `frame ${i}`).join('\r')
+  const t = tailOf(`start\n${spin}\n100 passed`)
+  assert.equal(t, 'start\nframe 4999\n100 passed')
+  const long = tailOf(Array.from({ length: 30 }, (_, i) => `line ${i} ${'x'.repeat(300)}`).join('\n') + '\n0.93')
+  assert.ok(long.length <= 4000, 'capped')
+  assert.ok(long.endsWith('\n0.93'), 'the end, and the last line, survive')
 })

@@ -13,6 +13,7 @@ import { parseRegistry } from './registry.ts'
 import { caseId } from './holdout.ts'
 import { PRODUCT, stripGenerated, carriedIds, ARCH_REL, archPath, prdPath, intentsDir, testplanDir, holdoutDir, approvalPath, approvalMdPath, sprintDir, sprintsOnDisk, intentRel, planPath, implPlanPath, sprintRel, ledgerPath, coveragePath, waiversPath, reviewPath, sourcePath, conversionPath, conversionReviewPath, writeProductIgnore } from './product.ts'
 import { contractProblems } from './contracts.ts'
+import { holdoutRouteProblems } from './holdoutroutes.ts'
 import { designIntents, sharedScopeProblems, architectureProblems, implementationPlanProblems, accessProblems, parseAccess, parseIntent, parseCases, requiredHoldouts, parkedDecisions, prdIds, traceReport, ledgerProblems, parseLedger, parentOf, parseReview, openFindings, type ReviewFinding, type ChartWaiver, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
 
 const SHARED_DIRS = ['adr'].map(d => `${toPosix(path.relative(ROOT, path.join(PRODUCT, d)))}/`)
@@ -149,8 +150,17 @@ function acceptAdrs(n: number): void {
   })
   if (ids.length && exists(archPath)) fs.writeFileSync(archPath, read(archPath).replace(new RegExp(`^(\\|\\s*(?:\\[(?:${ids.join('|')})\\]\\([^)]*\\)|(?:${ids.join('|')}))\\s*\\|.*\\|\\s*)proposed(\\s*\\|\\s*${n}\\s*\\|\\s*)$`, 'gm'), '$1accepted$2'))
 }
+// Approval also marks the sprint's intents approved (the template starts them at `status: draft`), so none reads draft beside "Chart: approved".
+function approveIntents(n: number): void {
+  if (!exists(intentsDir(n))) return
+  for (const f of fs.readdirSync(intentsDir(n)).filter(x => x.endsWith('.md'))) {
+    const file = path.join(intentsDir(n), f), text = read(file), head = /^---\r?\n[\s\S]*?\r?\n---/.exec(text)?.[0] ?? ''
+    const next = head.replace(/^status:\s*["']?draft["']?[ \t]*$/m, 'status: approved')
+    if (next !== head) fs.writeFileSync(file, next + text.slice(head.length))
+  }
+}
 export function writeChartApproval(n: number, by: string, answers: ApprovalAnswer[] = []): void {
-  acceptAdrs(n)
+  acceptAdrs(n); approveIntents(n)
   fs.rmSync(approvalPath(n), { force: true }); fs.rmSync(path.join(sprintDir(n), 'answers.pending.json'), { force: true }) // the page is hashed in every new row; the answers are spent
   const row: Row = { by, at: now(), digest: chartDigest(n), files: manifest(chartFiles(n)), answers }
   fs.mkdirSync(sprintDir(n), { recursive: true }); writeProductIgnore()
@@ -203,6 +213,11 @@ export function chartFindings(n: number, withCases: boolean): ChartFinding[] {
         if (!available.has(c.id)) found.push({ rule: 'holdout-missing', severity: 'block', where: c.id, message: `${c.id} has no non-empty holdout file under ${sprintRel(n)}/holdout` })
       }
     }
+  }
+  if (cases) { // a holdout test may call only the routes of its case's intent and that intent's depends
+    const intents = intentsOf(n), contracts: Record<string, string> = {}
+    for (const f of intents.flatMap(i => i.contractFiles)) if (!escapes(f) && exists(path.join(ROOT, f))) contracts[f] = read(path.join(ROOT, f))
+    found.push(...holdoutRouteProblems({ intents, cases, contracts, files: walk(holdoutDir(n)).filter(f => fs.lstatSync(f).isFile()).map(f => ({ name: f, id: caseId(f), text: read(f) })) }))
   }
   // A sprint approved before the ledger existed is not made to grow one; any sprint never approved is.
   const prd = read(prdPath(n))

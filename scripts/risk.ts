@@ -5,7 +5,7 @@ import { CHANGES, ROOT, SENSORS_JSON, AUTONOMY_JSON, read, readJson, out, fail, 
 import { repoDependents } from './dependents.ts'
 import { section, bullets, matchesAny, blastRadius, type FileDiff } from './model.ts'
 import { parseRegistry, type Registry } from './registry.ts'
-import { isProtected, PROTECTED, sizeCounted } from './sensors.ts'
+import { isProtected, PROTECTED, sizeCounted, behaviourIds } from './sensors.ts'
 import { parseAccess, type AccessRule } from './chartcheck.ts'
 import { branchDiff } from './diffs.ts'
 import { activeSlug } from './lifecycle.ts'
@@ -110,7 +110,9 @@ const GLOB = /[*?[{]/
 const literal = (g: string): string => g.slice(0, GLOB.test(g) ? g.search(GLOB) : g.length)
 // A file entry is judged by its path; a directory, a glob or the whole repo ('') by overlap with each glob's literal part, so
 // `src/` holds `src/billing/**` and `**/migrations/**`. Case is folded: over-flagging only plans more carefully.
-function predictWeight(i: { slug: string; radius: string[]; access: AccessRule[]; risk: Registry['risk']; asked: boolean }): Weight {
+// More than this many B-numbered behaviours is too much for a light build (one real run: 17 behaviours, four Haiku launches, one BLOCKED).
+const LIGHT_MAX_BEHAVIOURS = 8
+function predictWeight(i: { slug: string; radius: string[]; access: AccessRule[]; risk: Registry['risk']; asked: boolean; behaviours?: number }): Weight {
   const globs = [...PROTECTED, ...i.risk.alwaysHuman, '.github/workflows/**'].map(g => g.toLowerCase())
   const hits = (raw: string): boolean => {
     const e = raw.toLowerCase().replace(/^(\.\/|\/)+/, '').replace(/^\.$/, '')
@@ -120,6 +122,7 @@ function predictWeight(i: { slug: string; radius: string[]; access: AccessRule[]
   }
   const reasons = [
     ...(i.asked ? ['the person asked for full'] : []),
+    ...((i.behaviours ?? 0) > LIGHT_MAX_BEHAVIOURS ? [`${i.behaviours} behaviours, more than ${LIGHT_MAX_BEHAVIOURS}: too many for a light build`] : []),
     ...i.radius.filter(hits).map(e => `always-human path in the blast radius: ${e}`),
     ...i.access.filter(a => a.intent === i.slug).map(a => `access: ${a.intent} builds "${a.action}"`),
   ]
@@ -127,9 +130,9 @@ function predictWeight(i: { slug: string; radius: string[]; access: AccessRule[]
 }
 
 function weightOf(slug: string): Weight {
-  const radius = blastRadius(read(path.join(CHANGES, slug, 'spec.md'))) ?? []
+  const spec = read(path.join(CHANGES, slug, 'spec.md')), radius = blastRadius(spec) ?? []
   const asked = frontmatter(read(path.join(CHANGES, slug, 'intent.md'))).data.weight === 'full'
-  return predictWeight({ slug, radius, access: parseAccess(read(archPath)), risk: parseRegistry(read(path.join(ROOT, SENSORS_JSON))).registry.risk, asked })
+  return predictWeight({ slug, radius, access: parseAccess(read(archPath)), risk: parseRegistry(read(path.join(ROOT, SENSORS_JSON))).registry.risk, asked, behaviours: behaviourIds(spec, 'Behaviours').length })
 }
 export function cmdWeight(args: Args): void {
   const slug = args.pos[0] ? checkSlug(args.pos[0]) : activeSlug()

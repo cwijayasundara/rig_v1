@@ -8,7 +8,7 @@ import { waiverLive, UNREQUESTABLE,
 import { parseRules, formatFindings, warnLines, matchesAny, isTest, isSource, ghPages, revertLabelledPrs, planFiles, type FileDiff, type Finding, type Rule } from './model.ts'
 import { withoutFixtures, testTamper, suppressions, layering, size, secretsInDiff, rulesSensor, harnessTamper, isProtected, behaviourIds, behaviourText, missingBehaviours, ranNothing } from './sensors.ts'
 import { readBaseline, snapshot, turnDiff, fileDiff, branchDiff, showAt, fileLines, stagedDiff, showStaged } from './diffs.ts'
-import { runCommand, recordRun, normCmd } from './runs.ts'
+import { runCommand, recordRun, normCmd } from './runs.ts'; import { sensorCites } from './sensorcite.ts'
 import { withBaseTree } from './basetree.ts'
 import { activeSlug, approvalState, changeType, unapprovedBuild } from './lifecycle.ts'
 import { approvedLayers } from './arch.ts'; import { planCheck, untrackedFindings } from './plancheck.ts'; import { proofFindings } from './proof.ts'
@@ -214,8 +214,8 @@ function shipVerdicts(slug: string, config: Registry, diffs: FileDiff[], base: s
   const state = approvalState(slug)
   if (planGate && state !== 'approved') findings.push({ sensor: 'plan-gate', severity: 'block', message: `${slug}: the plan is ${state === 'missing' ? 'not approved' : 'changed since it was approved'}`, fix: `a person reviews spec.md and plan.md and runs ${skillRef('approve')} ${slug}` })
   const spec = read(path.join(dir, 'spec.md'))
-  const ids = behaviourIds(spec, 'Behaviours')
-  for (const id of missingBehaviours(ids, ids.length ? testCorpus(config, diffs) : '')) {
+  const ids = behaviourIds(spec, 'Behaviours'), sc = sensorCites(spec, config.sensors, ids); findings.push(...sc.findings)
+  for (const id of missingBehaviours(sc.rest, ids.length ? testCorpus(config, diffs) : '')) {
     const what = behaviourText(spec, 'Behaviours', id)
     findings.push({ sensor: 'traceability', severity: 'block', message: `${id}${what ? ` (${what})` : ''} has no test that names it`, fix: `add a test whose name or comment says ${id} and proves it` })
   }
@@ -252,7 +252,7 @@ export function runChecks(i: CheckInput): CheckResult {
   ]
   // A diff whose plan the person approved is big by design: the diff-size limit warns instead of blocking.
   if (i.slugs.length && i.slugs.every(s => approvalState(s) === 'approved')) {
-    for (const f of findings) if (f.sensor === 'size' && !f.file) f.severity = 'warn'
+    for (const f of findings) if (f.sensor === 'size' && !f.file) { f.severity = 'warn'; f.fix = 'the plan is approved, so nothing to do unless the person wants this split into smaller changes' }
   }
   for (const slug of i.slugs) findings.push(...freezeFindings(slug, i.point, i.base, config), ...(i.point === 'ci' && i.gates?.plan === false ? planCheck(slug, { base: i.base ?? null, ci: true, chartRef: i.chartRef }) : []), ...(i.point === 'ship' || i.point === 'ci' ? proofFindings(slug, config, i.point === 'ci' ? i.base : null) : []))
   if (point !== 'stop') for (const slug of i.slugs) findings.push(...shipVerdicts(slug, config, diffs, i.base, i.budgetMs, i.gates?.plan ?? true))

@@ -2,10 +2,13 @@
 // call; the pr skill adds the part that takes judgement (special things to note, the change outline) as pr-outline.md.
 import { section, blastRadius, bullets, type FileDiff } from './model.ts'
 import { defaultRegistry, type Paths } from './registry.ts'
-import { clean } from './core.ts'
+import { clean, ROOT, SENSORS_JSON, read } from './core.ts'
 import type { Risk } from './risk.ts'
 import type { RunRow } from './runs.ts'
 import { behaviourIds, missingBehaviours } from './sensors.ts'
+import { sensorCites } from './sensorcite.ts'
+import { parseRegistry, type RegistrySensor } from './registry.ts'
+import path from 'node:path'
 import { parseFindings, type ClaimRow } from './claims.ts'
 import { parseLedger } from './chartcheck.ts'
 import type { FreezeRow } from './testfreeze.ts'
@@ -14,7 +17,7 @@ import { outsideRadius, type Dependents } from './dependents.ts'
 import { isTest } from './model.ts'
 import type { AgentRow } from './agents.ts'
 
-type PrBodyInput = { interrogate?: { line: string; reproduced: string[] }; dependents?: Dependents; links?: string[]; differential?: { line: string; unapproved: string[] }; paths?: Paths; requirements?: string; claims?: ClaimRow[]; intent: string; spec: string; plan: string; verify: { pass: boolean; tree: string | null; blocks: string[]; from?: string; holdout?: { passed: number; total: number } } | null; outline: string; review: string; risk: Risk; amendments?: string; runs?: RunRow[]; tests?: string; intentMap?: string; freeze?: FreezeRow[]; changes?: FileDiff[]; agents?: AgentRow[]; draft?: string; planChanges?: string[]; chart?: string; waivers?: string[]; proof?: { ids: string[]; exempt: string | null } }
+type PrBodyInput = { interrogate?: { line: string; reproduced: string[] }; dependents?: Dependents; links?: string[]; differential?: { line: string; unapproved: string[] }; paths?: Paths; requirements?: string; claims?: ClaimRow[]; intent: string; spec: string; plan: string; verify: { pass: boolean; tree: string | null; blocks: string[]; from?: string; holdout?: { passed: number; total: number } } | null; outline: string; review: string; risk: Risk; amendments?: string; runs?: RunRow[]; tests?: string; intentMap?: string; freeze?: FreezeRow[]; changes?: FileDiff[]; agents?: AgentRow[]; draft?: string; planChanges?: string[]; chart?: string; waivers?: string[]; proof?: { ids: string[]; exempt: string | null }; sensors?: RegistrySensor[] }
 
 const firstSentence = (text: string): string => /^[\s\S]*?[.!?](?=\s|$)/.exec(text.trim())?.[0].replace(/\s+/g, ' ') ?? text.trim().replace(/\s+/g, ' ')
 
@@ -69,11 +72,13 @@ function headChecks(runs: RunRow[]): string {
 const mutationNote = (runs: RunRow[]): string => { const t = runs.findLast(x => x.sensor === 'mutation-diff' && x.source === 'ship' && !x.cwd)?.tail ?? '', m = /mutation: (\d+)\/(\d+) killed on changed lines \(score ([\d.]+)/.exec(t); return m ? `Mutation: ${m[1]}/${m[2]} on changed lines (score ${m[3]})` : /mutation: no mutants on changed lines/.test(t) ? 'Mutation: no mutants on changed lines' : '' }
 
 // The behaviours no test the change adds or edits names, by the traceability sensor's own rule.
-function behaviourTests(spec: string, tests: string | undefined): string {
+// A behaviour cited [sensor: ...] (sensorcite.ts) is traced by those sensors; the registry is read from disk when the caller gives none.
+function behaviourTests(spec: string, tests: string | undefined, sensors?: RegistrySensor[]): string {
   const ids = behaviourIds(spec, 'Behaviours')
   if (!ids.length || tests === undefined) return ''
-  const none = missingBehaviours(ids, tests)
-  return none.length ? `No test this change adds or edits names ${none.join(', ')}: check those behaviours by hand.` : `Every behaviour (${ids.join(', ')}) is named by a test this change adds or edits.`
+  const traced = sensorCites(spec, sensors ?? parseRegistry(read(path.join(ROOT, SENSORS_JSON))).registry.sensors).traced
+  const none = missingBehaviours(ids.filter(id => !traced.includes(id)), tests)
+  return none.length ? `No test this change adds or edits names ${none.join(', ')}: check those behaviours by hand.` : `Every behaviour (${ids.join(', ')}) is named by a test this change adds or edits${traced.length ? ` or traced by a blocking sensor (${traced.join(', ')})` : ''}.`
 }
 
 // Suggestions only (claims.ts): how many findings carry a Repro, and each row that asks for a second look.
@@ -178,7 +183,7 @@ export function prBody(i: PrBodyInput): string {
     `## Risk\n\n${i.risk.reasons.length ? `Tier ${i.risk.tier}\n\n${i.risk.reasons.map(r => `- ${r}`).join('\n')}` : 'Tier 0: none of the signals'}`,
     `## How to revert\n\n${revert(i.plan)}`,
     `## What the checks would miss\n\n${would.join('\n') || 'nothing the reviewer named'}`,
-    `## Evidence\n\n${[evidence, baseProof(runs), headChecks(runs), mutationNote(runs), behaviourTests(i.spec, i.tests), frozenNote(i.freeze), claimsNote(i.review, i.claims), proposedNote(i.spec, i.requirements)].filter(Boolean).join('\n\n')}`,
+    `## Evidence\n\n${[evidence, baseProof(runs), headChecks(runs), mutationNote(runs), behaviourTests(i.spec, i.tests, i.sensors), frozenNote(i.freeze), claimsNote(i.review, i.claims), proposedNote(i.spec, i.requirements)].filter(Boolean).join('\n\n')}`,
     `## Check before approving\n\nAnswer these in your approving review, one line each (\`Q1: <answer>\`, 10+ characters; CI checks they are there; a sample of merged changes is audited):\n\n${checkQuestions(i.changes ?? [], i.spec, i.paths).join('\n')}`,
     agentsNote(i.agents),
     i.intentMap?.trim() ? `## Intent map\n\n${i.intentMap.trim()}` : '',

@@ -36,7 +36,7 @@ touches: []
 
 ## Behaviours
 
-<!-- - B1 (FR-3): one observable behaviour, stated from outside the system. The parentheses cite an FR-n or NFR-n id, then the requirements.md ids the behaviour serves, e.g. (FR-4, AC-4.1) or (FR-4, DR-2), keeping every number, limit and "never" of those rows; an acceptance-criterion id may follow it (FR-3, AC-3.1) but never stands alone. -->
+<!-- - B1 (FR-3): one observable behaviour, stated from outside the system. The parentheses cite an FR-n or NFR-n id, then the requirements.md ids the behaviour serves, e.g. (FR-4, AC-4.1) or (FR-4, DR-2), keeping every number, limit and "never" of those rows; an acceptance-criterion id may follow it (FR-3, AC-3.1) but never stands alone. A behaviour that only says a check the sensors already run stays clean ends with [sensor: <ids>], such as [sensor: lint, types], instead of a test. -->
 
 ### Failure behaviour
 
