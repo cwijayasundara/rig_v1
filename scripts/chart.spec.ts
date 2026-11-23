@@ -730,7 +730,7 @@ test('the text graph lists intents on a dependency cycle instead of dropping the
 
 test('an unapproved chart is named in Next up, and a refused start lists no ready intent then', () => {
   planRepo()
-  assert.match(sdlc(repo, ['chart', 'plan', '1', '--print']).stdout, /chart-1 is missing: a person runs `\/rig:approve chart-1`/)
+  assert.match(sdlc(repo, ['chart', 'plan', '1', '--print']).stdout, /chart-1 is not approved yet: a person runs `\/rig:approve chart-1`/)
   const r = sdlc(repo, ['new', 'gamma', '--source', `${P}/sprints/sprint-1/intents/gamma.md`])
   assert.doesNotMatch(r.stdout + r.stderr, /Ready now/)
 })
@@ -1209,10 +1209,21 @@ test('chart size: 3 FRs and 14 client rule rows with no NFR is tier S; an NFR ro
   write(repo, `${SP}/prd.md`, frs(3, '## Integrations and constraints\n\n- Node 22, no third-party dependencies\n\n')); write(repo, `${SP}/requirements.md`, rows(14))
   assert.match(size(), /^tier S/) // a negated constraint is not an integration
   write(repo, `${SP}/prd.md`, frs(3, '## Integrations and constraints\n\n- webhook to billing\n\n')); assert.match(size(), /^tier M.*external integration/)
-  write(repo, `${SP}/prd.md`, frs(3)); write(repo, `${SP}/requirements.md`, rows(16))
-  assert.match(size(), /^tier M.*16 client rule rows/)
+  write(repo, `${SP}/prd.md`, frs(3)); write(repo, `${SP}/requirements.md`, rows(20)); assert.match(size(), /^tier S: 3 FR\(s\), 20 client rule row/)
+  write(repo, `${SP}/requirements.md`, rows(21))
+  assert.match(size(), /^tier M.*21 client rule rows/)
   write(repo, `${SP}/requirements.md`, rows(14)); assert.match(size('--tier', 'L'), /^tier L/)
   write(repo, `${SP}/prd.md`, frs(9)); assert.match(size('--tier', 'M'), /^tier L/)
+})
+
+test('chart size: a quality or correctness NFR does not lift tier S; a performance NFR or one whose category cannot be read does', () => {
+  const nfr = (row: string): string => frs(3, `| ID | Category | Requirement |\n|---|---|---|\n${row}\n\n`)
+  write(repo, `${SP}/requirements.md`, rows(5))
+  write(repo, `${SP}/prd.md`, nfr('| NFR-2 | quality | lint and types are clean | x |')); assert.match(size(), /^tier S/)
+  write(repo, `${SP}/prd.md`, nfr('| NFR-2 | Correctness | totals are exact | x |')); assert.match(size(), /^tier S/)
+  write(repo, `${SP}/requirements.md`, rows(5, '- NFR-2 [rule] prd.md:6 "lint and types are clean"\n')); assert.match(size(), /^tier S/) // its ledger row does not lift it either
+  write(repo, `${SP}/prd.md`, nfr('| NFR-2 | performance | p95 under 200 ms | x |')); assert.match(size(), /^tier M.*an NFR row/)
+  write(repo, `${SP}/prd.md`, nfr('| NFR-2 |')); assert.match(size(), /^tier M.*an NFR row/)
 })
 
 test('tier S: a bare "→ fixed" closes a high finding but a critical one still needs the confirm pass', () => {

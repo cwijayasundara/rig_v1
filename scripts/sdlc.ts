@@ -33,7 +33,7 @@ import { cmdArch, layerState, layerStateText } from './arch.ts'
 import { cmdQueue, conflictsFor } from './queue.ts'
 import { intentScope } from './scope.ts'
 import { prdFormatProblems, prdLedger, conversionProblems } from './prdformat.ts'
-import { cmdPrdMore, chartPrecheck } from './prdcmd.ts'; import { writeApprovalPage, approvalPage, approvalGate } from './approvalsummary.ts'
+import { cmdPrdMore, chartPrecheck } from './prdcmd.ts'; import { cmdChartMark, cmdWhoami } from './chartmark.ts'; import { writeApprovalPage, approvalPage, approvalGate } from './approvalsummary.ts'
 import { parseLedger, parseIntent } from './chartcheck.ts'; import { superpowersWarning } from './superpowers.ts'
 import { ARCH_REL, intentsDir, intentRelOf, prdRel, sprintRel, prdPath, reviewPath, ledgerPath, sourcePath } from './product.ts'
 import { cmdSlice } from './slice.ts'
@@ -273,7 +273,7 @@ function cmdChart(args: Args): void {
     const next = nextChart()
     return out(args.opt.json ? JSON.stringify(next) : `${next.sprint === null ? 'sprint: ask' : `sprint ${next.sprint}`}${next.prd ? ` ${next.prd}` : ''} (${next.why})${next.candidates.length > 1 ? `\n${next.candidates.map(c => `  sprint ${c.sprint}: ${c.prd}`).join('\n')}` : ''}`)
   }
-  if ((sub !== 'check' && sub !== 'report' && sub !== 'plan' && sub !== 'summary' && sub !== 'seal' && sub !== 'size' && sub !== 'precheck' && sub !== 'done') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: chart next [--json] | chart (check [--cases] [--json] | report | plan [--print] | summary | seal | size [--tier M|L] | precheck | done) <sprint number>')
+  if (sub === 'finding' || sub === 'answer') return cmdChartMark(sub, args.pos.slice(1), args.opt); if ((sub !== 'check' && sub !== 'report' && sub !== 'plan' && sub !== 'summary' && sub !== 'seal' && sub !== 'size' && sub !== 'precheck' && sub !== 'done') || !/^\d{1,4}$/.test(num ?? '')) fail('usage: chart next [--json] | chart (finding <N> <numbers> <fixed|confirmed|reopened> [why] | answer <N> <intent|architecture> <Qn> <answer> [--proposed] | check [--cases] [--json] | report | plan [--print] | summary | seal | size [--tier M|L] | precheck | done) <sprint number>')
   const n = Number(num); needPrd(n)
   if (sub === 'size' || sub === 'precheck') return sub === 'size' ? out(chartSizeText(n, args.opt.tier)) : chartPrecheck(n)
   if (sub === 'done') { const left = chartDone(n); return left.length ? fail(`chart-${n} is not done:\n${left.map(l => `  ${l}`).join('\n')}\nRun the missing steps of ${skillRef('chart')} ${n}`) : out(`chart-${n} is done. Next: review the branch, then ${skillRef('approve')} chart-${n}`) }
@@ -476,7 +476,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   slice: cmdSlice,
   maintain: cmdMaintain,
   readiness: cmdReadiness, autonomy: cmdAutonomy, audit: cmdAudit, interrogate: cmdInterrogate,
-  risk: cmdRisk,
+  risk: cmdRisk, whoami: cmdWhoami,
   claims: cmdClaims,
   weight: cmdWeight, models: cmdModels, 'route-check': cmdRouteCheck, 'intent-record': cmdIntentRecord, 'intent-adjudicate': cmdIntentAdjudicate, off: cmdOff, on: cmdOn,
   'intent-recheck': cmdIntentRecheck, 'tests-freeze': cmdTestsFreeze, 'intent-project': cmdIntentProject,

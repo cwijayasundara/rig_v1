@@ -5,8 +5,8 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import { ROOT, SENSORS_PATH, git, read, exists, fail, fmList, toPosix, skillRef, writeAtomic, type HookInput} from './core.ts'
 import { section, openQuestions } from './model.ts'
-import { reviewPath, approvalMdPath, sprintDir, sprintRel, sprintsOnDisk, holdoutDir, ledgerPath, coveragePath, prdPath, writeProductIgnore } from './product.ts'
-import { PR_SEAL, intentsOf, chartReview, chartWaivers, chartOpenFindings, chartState, conversionMapOf, adrFilesOf, type ApprovalAnswer } from './chart.ts'
+import { ARCH_REL, reviewPath, approvalMdPath, testplanDir, planPath, implPlanPath, sprintDir, sprintRel, sprintsOnDisk, holdoutDir, ledgerPath, coveragePath, prdPath, writeProductIgnore } from './product.ts'
+import { PR_SEAL, designDocOf, intentsOf, chartReview, chartWaivers, chartOpenFindings, chartState, conversionMapOf, adrFilesOf, type ApprovalAnswer } from './chart.ts'
 import { parseLedger, parseCases, requiredHoldouts } from './chartcheck.ts'
 import { parseMap } from './prdformat.ts'
 import { parseCoverage } from './prdcoverage.ts'
@@ -69,14 +69,23 @@ export function checkQuestions(n: number): string[] {
 }
 
 function acceptance(n: number): string[] {
-  const rows = rowsOf(n).map(x => ({ cells: [x.r.id, `"${short(x.r.quote)}" prd.md:${x.r.line}${x.src}`, x.slugs.join(', ') || 'none', x.mine.join(', ') || 'none', x.hidden ? 'yes' : 'no'] }))
+  const rows = rowsOf(n).map(x => ({ cells: [x.r.id, `"${x.r.quote}" prd.md:${x.r.line}${x.src}`, x.slugs.join(', ') || 'none', x.mine.join(', ') || 'none', x.hidden ? 'yes' : 'no'] }))
   return table(['id', 'PRD quote', 'intents', 'test cases', 'hidden case'], rows.map(r => r.cells), r => r.slice(2).some(c => c === 'none' || c === 'no'))
 }
 
 // The NFR rows: limits that must hold in every change built on this chart, with the PRD line they come from. Nothing when the PRD has none.
 function invariants(n: number): string[] {
   const rows = rowsOf(n).filter(x => x.r.id.startsWith('NFR-'))
-  return rows.length ? ['## Invariants and limits', '', ...list(rows.map(x => `${x.r.id}: "${short(x.r.quote)}" prd.md:${x.r.line}`), ''), ''] : []
+  return rows.length ? ['## Invariants and limits', '', ...list(rows.map(x => `${x.r.id}: "${x.r.quote}" prd.md:${x.r.line}`), ''), ''] : []
+}
+
+// What the person approves: the sprint's intents, then each part of the bundle with its path and a count read from disk.
+function approving(n: number): string[] {
+  const rel = (p: string): string => toPosix(path.relative(ROOT, p)), intents = intentsOf(n), sub = (d: string): number => (exists(d) ? fs.readdirSync(d, { recursive: true, withFileTypes: true }).filter(e => e.isFile()).length : 0)
+  const part = (what: string, p: string, count = ''): string => `- ${what}: ${rel(p)}${exists(p) ? count : ' (missing)'}`
+  const cases = path.join(testplanDir(n), 'cases.md'), design = designDocOf(n), nContracts = new Set(intents.flatMap(i => i.contractFiles)).size
+  return ['## What you are approving', '', ...table(['intent', 'requirements', 'days', 'depends on'], intents.map(i => [i.slug, i.prd.join(', ') || 'none', String(i.estimateDays ?? '?'), i.depends.join(', ') || '-'])), '',
+    part('test plan', path.join(testplanDir(n), 'plan.md')), part('test cases', cases, `, ${exists(cases) ? parseCases(read(cases)).length : 0} cases`), part('test data', path.join(testplanDir(n), 'data'), `, ${sub(path.join(testplanDir(n), 'data'))} files`), part('holdout tests', holdoutDir(n), `, ${exists(holdoutDir(n)) ? fs.readdirSync(holdoutDir(n)).filter(f => /^TC-\d+$/.test(caseId(f))).length : 0} test files`), part('architecture', path.join(ROOT, ARCH_REL)), `- ADRs of this sprint: ${adrFilesOf(n).length}`, `- contracts the intents name: ${nContracts}`, part('build order', planPath(n)), part('tasks and lanes', implPlanPath(n)), ...(design ? [part('design doc', path.join(ROOT, design))] : []), '']
 }
 
 function criticalCases(n: number): string[] {
@@ -102,8 +111,11 @@ const deferred = (n: number): string[] => (/^#{2,3}[ \t]+Deferred\b[^\n]*\n([\s\
 function notCovered(n: number): string[] {
   const review = chartReview(n) ?? [], open = new Set((chartOpenFindings(n) ?? []).map(f => f.n)), waivers = chartWaivers(n)
   const coverage = exists(coveragePath(n)) ? parseCoverage(read(coveragePath(n))).filter(c => c.state === 'open' || c.state === 'n/a') : []
+  // n/a rows with no "by" and the same reason are one bullet naming all their topics; open rows and rows with a "by" stay one per line.
+  const merged = new Map<string, string[]>(), lines: string[] = []
+  for (const c of coverage) { const tail = `${c.state}${c.by ? ` by ${c.by}` : ''}${c.reason ? ` — ${c.reason}` : ''}`; if (c.state !== 'n/a' || c.by) { lines.push(`${c.id}: ${tail}`); continue }; const ids = merged.get(tail); if (ids) ids.push(c.id); else { merged.set(tail, [c.id]); lines.push(`\0${tail}`) } }
   return list([
-    ...coverage.map(c => `${c.id}: ${c.state}${c.by ? ` by ${c.by}` : ''}${c.reason ? ` — ${c.reason}` : ''}`),
+    ...lines.map(l => (l.startsWith('\0') ? `${merged.get(l.slice(1))!.join(', ')}: ${l.slice(1)}` : l)),
     ...openQuestions(read(prdPath(n))).map(q => `PRD open question: ${q}`),
     ...review.filter(f => f.status !== 'confirmed').flatMap(f => {
       const w = waivers.find(x => x.finding === f.n && x.text_sha === f.sha)
@@ -129,14 +141,15 @@ export function approvalPage(n: number): string {
     '## The decision', '', git(['remote', 'get-url', 'origin']) !== null
       ? 'One decision covers this chart: your approving review of the pull request head commit. It records who approved and which commit, and CI ties it to the chart seal. Any later push to the chart needs a new review.'
       : `One decision covers this chart: your ${skillRef('approve')} chart-${n}. It records who approved and the hash of this page, and merges the chart branch into the trunk (this repo has no remote, so there is no pull request). Any later edit to the chart needs a new approval.`, '',
-    ...outcomesAndScope(n),
+    ...approving(n),
+    '## Supplied by the agent', '', ...(proposed.length > MAX_ROWS ? [...proposed.slice(0, MAX_ROWS), `... ${proposed.length - MAX_ROWS} more line(s): run \`prd proposed ${n}\``] : proposed), '',
+    '## Look at first', '', 'Nothing to answer: these are the points most worth a look before you decide approve or not approved.', '', ...qs.map(q => `- ${q}`), '',
     ...invariants(n),
     '## Acceptance criteria', '', ...acceptance(n), '',
     ...criticalCases(n),
-    '## Supplied by the agent', '', ...(proposed.length > MAX_ROWS ? [...proposed.slice(0, MAX_ROWS), `... ${proposed.length - MAX_ROWS} more line(s): run \`prd proposed ${n}\``] : proposed), '',
     '## Not covered', '', ...notCovered(n), '',
     '## Decisions', '', ...decisions(n), '',
-    '## Look at first', '', 'Nothing to answer: these are the points most worth a look before you decide approve or not approved.', '', ...qs.map(q => `- ${q}`), ''].join('\n')
+    ...outcomesAndScope(n)].join('\n')
 }
 export function writeApprovalPage(n: number): string {
   fs.mkdirSync(sprintDir(n), { recursive: true }); writeProductIgnore()

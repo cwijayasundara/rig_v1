@@ -15,9 +15,9 @@ The brief says "review the chart bundle for sprint N"; you review the sprint cha
 - **coverage:** an acceptance criterion or scenario no behaviour or case asserts; an NFR with no case that could fail
 - **duplication:** one behaviour stated in two intents, or two intents that contradict
 - **concerns:** a gap, risk or owner decision parked in a section the check does not block on (for example "Risks and notes") that needs a person's answer
-- **answers:** an answer given at chart that is missing from the PRD, or a PRD "Open questions: none" while an intent has one
+- **answers:** an answer given at chart that is missing from the PRD, or a PRD "Open questions: none" while an intent has one. Not a finding: a design answer (how the sprint splits, an approach) recorded in the design doc and not in `prd.md`, where it never goes; and a `(proposed at chart)` value that `prd.md` does not list, since `prd proposed` lists them at the gate
 - **sequence:** a dependency order that cannot be built, a walking skeleton that is not minimal, a lane in `implementation-plan.md` that leaves an engineer idle while work they could take waits, or a task list that puts code before the test that proves it
-- **cases:** a test case with a vague expected result, or data that does not exercise the boundary it names
+- **cases:** a test case with a vague expected result, data that does not exercise the boundary it names, or data that cannot hold the spelling its case tests (parsed JSON for `8.0`, `1e1` or `NaN`, where `testplan-format.md` asks for a raw body)
 - **weakened:** a behaviour, ADR or case that cites a ledger row but drops or loosens one of its constraints (a number, a limit, a start value, "never", "only", "every", "unique"); quote the row and the line side by side. The reference case: the row "an integer id starting at 1, never reused" cited by a behaviour that says only "an integer id".
 - **ledger:** a `context` row that a test could assert, or an `out-of-scope` row whose reason does not hold
 

@@ -37,6 +37,31 @@ test('chart skill: asks nothing unless --ask; each question is answered as "you 
   assert.ok(skill.indexOf(rule) < skill.indexOf('1. **Which sprint, which PRD.**'), 'the rule comes before step 1')
 })
 
+// rig_v1_test 2026-11-23, sprint 0 of a 3-endpoint API: the review's 8 findings and the bookkeeping after them took longer than the first pass.
+const tpl = (f: string): string => fs.readFileSync(path.resolve(import.meta.dirname, '..', f), 'utf8')
+test('testplan format: a case about how a value is written keeps raw request bodies (8.0 was stored as 8)', () => {
+  assert.match(tpl('templates/testplan-format.md'), /depends on how a value is written[^\n]*`8\.0` against `8`[^\n]*raw string in its data file[^\n]*parsed JSON cannot hold the spelling/)
+  assert.match(tpl('agents/evaluator.md'), /data that cannot hold the spelling its case tests/)
+})
+test('architect: a read path with every write, a test file per intent, citations follow a move, none with a reason', () => {
+  const a = tpl('agents/architect.md')
+  assert.match(a, /\*\*A read path with every write\.\*\*[^\n]*owns that read path[^\n]*or depends on the intent that does, never an intent built later/)
+  assert.match(a, /\*\*A test file per intent\.\*\*[^\n]*`tests\/test_<slug>\.py`[^\n]*a shared file forces both into one lane/)
+  assert.match(a, /\*\*Citations follow a move\.\*\*[^\n]*search the other intents, `implementation-plan\.md`[^\n]*before you reply/)
+  assert.match(a, /writes `none: <reason>` under `### Failure behaviour`/)
+  assert.match(tpl('templates/intent-format.md'), /write `none: <reason>`/)
+})
+test('evaluator: a design answer kept out of prd.md and an unlisted proposed value are not findings (findings 7 and 8 were both)', () => {
+  assert.match(tpl('agents/evaluator.md'), /Not a finding: a design answer[^\n]*not in `prd\.md`, where it never goes[^\n]*`prd proposed` lists them at the gate/)
+})
+test('chart skill: findings and answers are recorded by commands, never by rewriting the files by hand', () => {
+  assert.match(skill, /run `S chart finding <N> <numbers> fixed` for what the round fixed/)
+  assert.match(skill, /`S chart answer <N> <slug\|architecture> <Qn> "<answer>" \[--proposed\]`/)
+  assert.match(skill, /<who>: `S whoami`/)
+  assert.match(tpl('templates/intent-format.md'), /moves to `## Resolved`[^\n]*`sdlc\.ts chart answer <N> <slug> Q1 "<answer>"`/)
+  assert.match(skill, /at most 3 FRs and 20 client rule rows, no NFR but quality or correctness/)
+})
+
 test('chart skill: argument-hint accepts any PRD path', () => {
   assert.match(skill, /argument-hint: '\[sprint number \| [^']*PRD path/)
 })
@@ -165,8 +190,8 @@ test('testplan format: import checks forbid modules instead of listing "only", a
 // 2026-10-25 shop_app chart: after a fix round that fixed all five findings, chart-review.md still said `changes-needed`, and a
 // finding the reviewer gave to QA alone left the architect's intent line contradicting the fixed case.
 test('chart skill: the fix round marks findings fixed and rewrites the verdict, and routes a finding by the files it cites', () => {
-  assert.match(skill, /append ` → fixed` to each finding line/)
-  assert.match(skill, /Set line 1 to `verdict: pass` only when every item under `## Findings` is confirmed; leave `changes-needed` otherwise/)
+  assert.match(skill, /run `S chart finding <N> <numbers> fixed` for what the round fixed/)
+  assert.match(skill, /Record each answer: `S chart finding <N> <numbers> confirmed` or `reopened "<why>"` \(it sets `verdict:`\)/)
   assert.match(skill, /a finding citing files of both goes to both/)
 })
 
@@ -237,8 +262,8 @@ test('QA cites ledger ids in the Requirement column and gives every rule and ans
 test('chart step 5 confirms the fixes once, and only a confirmed fix or a person\'s waiver closes a finding', () => {
   const step5 = skill.slice(skill.indexOf('5. **Review.**'), skill.indexOf('6. **Plan view.**'))
   assert.match(step5, /confirm the fixes for sprint <N>/)
-  assert.match(step5, /→ fixed \(confirmed\)/)
-  assert.match(step5, /→ reopened: <why>/)
+  assert.match(step5, /`S chart finding <N> <numbers> confirmed`/)
+  assert.match(step5, /`reopened "<why>"`/)
   assert.match(step5, /waive chart-<N> <finding number> <reason>/)
   assert.match(skill.slice(skill.indexOf('8. ')), /waive chart-<N>/)
 })

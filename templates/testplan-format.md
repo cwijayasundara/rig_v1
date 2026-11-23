@@ -9,7 +9,7 @@
 
 ## Environments and data
 
-<!-- Where tests run. Test data is synthetic, never real personal data; files live under .rig/product/sprints/sprint-<N>/testplan/data/. -->
+<!-- Where tests run. Test data is synthetic, never real personal data; files live under .rig/product/sprints/sprint-<N>/testplan/data/. A case that depends on how a value is written, not only on its value (`8.0` against `8`, `8.500`, `1e1`, `NaN`, a duplicate key, a body that is not valid JSON), keeps each request body as a raw string in its data file (`{"raw": ["{\"quantity\":8.0}"]}`): parsed JSON cannot hold the spelling, so `8.0` would be stored as `8` and the case would test nothing. Data exercises the boundary its case names: a case about inner spaces has an inner space, and "no upper limit" has a value past 2**64. -->
 
 ## Entry and exit criteria
 

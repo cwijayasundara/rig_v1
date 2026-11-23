@@ -255,7 +255,7 @@ export function chartDone(n: number): string[] {
   return out
 }
 export const chartReview = (n: number): ReviewFinding[] | null => (exists(reviewPath(n)) ? parseReview(read(reviewPath(n))) : null)
-// Tier S sizes the chart to a small PRD: at most 3 FRs and 15 client rule rows, no NFR row, no roles, no external integration. L is more than 8 FRs or
+// Tier S sizes the chart to a small PRD: at most 3 FRs and 20 client rule rows, no NFR row (a quality or correctness NFR, e.g. "lint and types are clean", does not count), no roles, no external integration. L is more than 8 FRs or
 // more than 60 rows; M is the rest. The counts come from the PRD and the ledger, so `chart size` is run after `prd ledger`.
 type ChartTier = 'S' | 'M' | 'L'
 function chartSize(n: number, floor: ChartTier = 'S'): { tier: ChartTier; fr: number; rows: number; why: string[] } {
@@ -263,10 +263,12 @@ function chartSize(n: number, floor: ChartTier = 'S'): { tier: ChartTier; fr: nu
   const ledger = exists(ledgerPath(n)) ? parseLedger(read(ledgerPath(n))) : []
   const fr = prdIds(prdText).filter(id => /^FR-/.test(id)).length
   const rows = ledger.filter(r => r.origin === 'client' && r.kind !== 'context' && !/^NFR-/.test(r.id)).length
-  const nfr = ledger.some(r => /^NFR-/.test(r.id)) || /^\|\s*NFR-\d+\s*\|/m.test(prdText)
+  const cats = new Map([...prdText.matchAll(/^\|\s*(NFR-\d+)\s*\|([^|\n]*)/gm)].map(m => [m[1]!, m[2]!.trim().toLowerCase()])) // "| NFR-2 | quality | ..." : the category is the second cell
+  const lifts = (id: string): boolean => !['quality', 'correctness'].includes(cats.get(id) ?? '') // a category that cannot be read still lifts
+  const nfr = ledger.some(r => /^NFR-/.test(r.id) && lifts(r.id.replace(/^(NFR-\d+).*/, '$1'))) || [...cats.keys()].some(lifts)
   const roles = /^#{2,4}\s+(Access|Roles|Actors|Permissions)\b/im.test(prdText)
   const external = section(prdText, 'Integrations and constraints').split('\n').some(l => !/\b(no|not|without|never|none)\b/i.test(l) && /\b(external|third-party|webhook|payment|oauth|smtp)\b/i.test(l)) // "no third-party dependencies" is a constraint, not an integration
-  const why = [fr > 3 && `${fr} FRs`, rows > 15 && `${rows} client rule rows`, nfr && 'an NFR row', roles && 'roles', external && 'an external integration'].filter((x): x is string => Boolean(x))
+  const why = [fr > 3 && `${fr} FRs`, rows > 20 && `${rows} client rule rows`, nfr && 'an NFR row', roles && 'roles', external && 'an external integration'].filter((x): x is string => Boolean(x))
   const computed: ChartTier = fr > 8 || rows > 60 ? 'L' : why.length ? 'M' : 'S'
   const tier = (['S', 'M', 'L'] as const)[Math.max(['S', 'M', 'L'].indexOf(computed), ['S', 'M', 'L'].indexOf(floor))]!
   return { tier, fr, rows, why }

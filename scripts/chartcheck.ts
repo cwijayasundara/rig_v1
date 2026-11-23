@@ -7,7 +7,7 @@ import { openQuestions, section } from './model.ts'
 export type Behaviour = { id: string; reqs: string[]; rules: string[]; text: string; proposed: boolean } // rules: ledger ids (FR-4.2, G-1) or AC aliases
 export type Intent = {
   slug: string; sprint: number | null; prd: string[]; depends: string[]; estimateDays: number | null; kind: 'boundary' | 'internal' | null
-  behaviours: Behaviour[]; contractFiles: string[]; exampleFiles: string[]; openQuestions: string[]
+  behaviours: Behaviour[]; contractFiles: string[]; exampleFiles: string[]; openQuestions: string[]; failureNone: boolean
   failures: string[]; design: number // B-numbers under `### Failure behaviour`; `## Design` table rows
   owner: string // who builds it: a person fills it in when the sprint is allocated; empty until then
   scope: string[] // the repo files the intent writes (frontmatter `scope:`)
@@ -70,6 +70,7 @@ export function parseIntent(slug: string, raw: string): Intent {
     slug, sprint: whole(data.sprint), prd: listField(text, 'prd'), depends: listField(text, 'depends'), estimateDays: whole(data.estimate_days),
     kind: data.kind === 'boundary' || data.kind === 'internal' ? data.kind : null,
     behaviours: parseBehaviours(text), contractFiles: files('Contract'), exampleFiles: files('Example'), openQuestions: openQuestions(text),
+    failureNone: /^\s*(?:[-*]\s+)?none\b[\s:.,;—–-]*[^\s:.,;—–-]/im.test(section(text, 'Behaviours').split(/^###\s+Failure behaviour\s*$/m)[1] ?? ''), // "none: <reason>" says there is nothing to fail; a bare "none" does not
     failures: [...(section(text, 'Behaviours').split(/^###\s+Failure behaviour\s*$/m)[1] ?? '').matchAll(/^\s*[-*]\s+(B\d+)/gm)].map(m => m[1]!),
     design: Math.max(0, section(text, 'Design').split('\n').filter(l => /^\s*\|/.test(l) && !/^\s*\|[\s|:-]*$/.test(l)).length - 1),
     owner: (data.owner ?? '').replace(/(^|\s)#.*$/, '').trim().replace(/^["']|["']$/g, ''), // a `# ...` comment is not a name
@@ -86,12 +87,11 @@ export function sharedScopeProblems(mine: Intent[], all: Intent[]): ChartFinding
     (deps.get(from) ?? []).some(d => d === to || (!seen.has(d) && (seen.add(d), reaches(d, to, seen))))
   const found: ChartFinding[] = []
   mine.forEach((a, x) => mine.slice(x + 1).forEach(b => {
-    for (const f of [...new Set(a.scope)].filter(f => b.scope.includes(f))) {
-      const ordered = reaches(a.slug, b.slug) || reaches(b.slug, a.slug)
-      found.push(ordered
-        ? { rule: 'scope-shared', severity: 'report', where: b.slug, message: `${f} is in the scope of ${a.slug} and ${b.slug}; they are built in order, so the later one edits what the earlier one wrote` }
-        : { rule: 'scope-shared', severity: 'block', where: b.slug, message: `${f} is in the scope of ${a.slug} and ${b.slug}, which can be built at the same time: give the file to one intent, or make one depend on the other` })
-    }
+    const files = [...new Set(a.scope)].filter(f => b.scope.includes(f))
+    if (!files.length) return
+    if (reaches(a.slug, b.slug) || reaches(b.slug, a.slug)) { // one report per pair, however many files they share
+      found.push({ rule: 'scope-shared', severity: 'report', where: b.slug, message: `${files.join(', ')} ${files.length > 1 ? 'are' : 'is'} in the scope of ${a.slug} and ${b.slug}; they are built in order, so the later one edits what the earlier one wrote` })
+    } else for (const f of files) found.push({ rule: 'scope-shared', severity: 'block', where: b.slug, message: `${f} is in the scope of ${a.slug} and ${b.slug}, which can be built at the same time: give the file to one intent, or make one depend on the other` })
   }))
   return found
 }
@@ -237,7 +237,7 @@ export function ledgerProblems(i: { prd: string; ledger: string | null; intents:
 // a bare `→ fixed` is the coordinator's own claim, and a person's waiver pins the finding's text, so a rewritten finding is open again.
 export type ReviewFinding = { n: number; text: string; sha: string; status: 'confirmed' | 'reopened' | 'claimed' | 'open' }
 export type ChartWaiver = { finding: number; text_sha: string; by: string; at: string; reason: string }
-const SUFFIX = /\s*→\s*(fixed \(confirmed\)|reopened:.*|fixed)\s*$/
+export const SUFFIX = /\s*→\s*(fixed \(confirmed\)|reopened:.*|fixed)\s*$/
 export function parseReview(text: string): ReviewFinding[] {
   return section(text.replace(/\r\n/g, '\n'), 'Findings').split('\n').filter(l => /^[-*]\s+\S|^\d+[.)]\s+\S/.test(l)).map((l, i) => {
     const m = SUFFIX.exec(l)
@@ -276,7 +276,7 @@ export function traceReport(i: { prd: string; intents: Intent[]; others?: Intent
     const cited = [...t.prd, ...t.behaviours.flatMap(b => b.reqs)]
     for (const id of new Set(cited)) if (!defined.has(id)) add('unknown-id', t.slug, `${t.slug} cites ${id}, which the PRD does not define`)
     if (t.estimateDays === null || t.estimateDays > MAX_DAYS || t.estimateDays < 1) add('estimate', t.slug, `${t.slug} needs estimate_days of 1 or ${MAX_DAYS} (split anything larger)`)
-    if (t.kind === 'boundary' && !t.failures.length) add('failure-behaviour', t.slug, `${t.slug} is a boundary intent with no ### Failure behaviour: state its timeouts and error responses as behaviours`, 'report')
+    if (t.kind === 'boundary' && !t.failures.length && !t.failureNone) add('failure-behaviour', t.slug, `${t.slug} is a boundary intent with no ### Failure behaviour: state its timeouts and error responses as behaviours`, 'report')
     if (t.kind === 'boundary' && (!t.contractFiles.length || !t.exampleFiles.length)) add('boundary-contract', t.slug, `${t.slug} is a boundary intent: name a Contract: file and an Example: file under ## Interfaces`)
     for (const f of [...t.contractFiles, ...t.exampleFiles]) {
       if (escapes(f)) add('contract-path', t.slug, `${t.slug} names ${f}, which is outside the repo`)

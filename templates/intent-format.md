@@ -40,12 +40,14 @@ touches: []
 
 ### Failure behaviour
 
-<!-- What happens when a dependency is slow, down or returns garbage, or a caller sends too much: each a B-number with exact statuses, headers and numbers, for example "- B4 (NFR-2): a store call that takes over 2 s (the timeout default) answers 503 with Retry-After: 5". kind: internal with no such case: write none. -->
+<!-- What happens when a dependency is slow, down or returns garbage, or a caller sends too much: each a B-number with exact statuses, headers and numbers, for example "- B4 (NFR-2): a store call that takes over 2 s (the timeout default) answers 503 with Retry-After: 5". With no such case write `none: <reason>` (a bare `none` is reported for a boundary intent). -->
 
 ## Tests required
 
 <!-- Per behaviour: the level (unit, contract, end-to-end) and the file that will hold it. -->
 
 ## Open questions
+
+<!-- `- Q1: <question>. Recommended answer: <answer>` per question, or none. An answered question moves to `## Resolved` at the end of the file as `- Q1: <answer> (confirmed at chart by <who>)` or `(proposed at chart)`: `sdlc.ts chart answer <N> <slug> Q1 "<answer>"` does both. -->
 
 none

@@ -21,6 +21,8 @@ Fill `.rig/product/brief.md` too (at most 60 lines): Context and intent, Non-goa
 
 Cite only requirement ids the PRD defines; an intent no requirement asks for does not get written. Put every open question in `## Open questions` with your recommended answer and return it in your reply under "Open questions"; the caller asks the person and records each answer in the sprint PRD, so never settle a question only inside `architecture.md`.
 
+Three rules a review otherwise has to catch. **A read path with every write.** A behaviour that says something is stored, or that nothing is stored, can only be tested through a way to read it back: the intent that states it owns that read path (the route, query or command) or depends on the intent that does, never an intent built later. **A test file per intent.** Give each intent its own test files, named for it (`tests/test_<slug>.py`, `<slug>.test.ts`); two intents list the same test file in `scope:` only when the later one must change the earlier one's tests, because a shared file forces both into one lane. **Citations follow a move.** When a fix round moves, renumbers or removes a behaviour, search the other intents, `implementation-plan.md`, the ADRs and the contracts for its B-number and correct every citation before you reply. A `kind: boundary` intent with no failure case writes `none: <reason>` under `### Failure behaviour`, never a bare `none`.
+
 On a re-chart keep a generated `## Added during the change` section of an intent, and the sprint's `carried/` files, verbatim.
 
 Reply in 15 lines or fewer: the intents written (slug, requirements, days, dependencies), the lanes, the architecture changes, and the open questions.
