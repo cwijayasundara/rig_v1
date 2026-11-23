@@ -21,7 +21,7 @@ const coreRepo = (): string => {
 
 test('vendor --standalone --profile core writes only the core skills and agents', () => {
   const repo = coreRepo()
-  assert.deepEqual(dirs(repo, '.claude/skills'), CORE_SKILLS.map(s => `rig-${s}`).sort())
+  assert.deepEqual(dirs(repo, '.claude/commands/rig'), CORE_SKILLS.map(s => `${s}.md`).sort())
   assert.deepEqual(dirs(repo, '.claude/agents'), ['rig-evaluator.md'])
   assert.equal(fs.existsSync(path.join(repo, '.rig/mod')), false)
   const settings = json(repo, '.claude/settings.json')
@@ -41,8 +41,8 @@ test('plain --standalone is unchanged and records no profile key', () => {
   const repo = makeRepo()
   sdlc(repo, ['init'])
   assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
-  const all = fs.readdirSync(path.join(ROOT, 'skills')).filter(s => s !== 'upgrade').map(s => `rig-${s}`).sort()
-  assert.deepEqual(dirs(repo, '.claude/skills'), all)
+  const all = fs.readdirSync(path.join(ROOT, 'skills')).filter(s => s !== 'upgrade').map(s => `${s}.md`).sort()
+  assert.deepEqual(dirs(repo, '.claude/commands/rig'), all)
   assert.equal(json(repo, '.rig/bin/MANIFEST.json').profile, undefined)
 })
 
@@ -50,13 +50,13 @@ test('switching full to core removes untouched off skills and keeps an edited on
   const repo = makeRepo()
   sdlc(repo, ['init'])
   assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
-  fs.appendFileSync(path.join(repo, '.claude/skills/rig-wiki/SKILL.md'), '\nmy note\n')
+  fs.appendFileSync(path.join(repo, '.claude/commands/rig/wiki.md'), '\nmy note\n')
   const r = sdlc(repo, ['vendor', '--standalone', '--profile', 'core'])
   assert.equal(r.code, 0, r.stderr)
-  assert.equal(fs.existsSync(path.join(repo, '.claude/skills/rig-chart')), false)
+  assert.equal(fs.existsSync(path.join(repo, '.claude/commands/rig/chart.md')), false)
   assert.equal(fs.existsSync(path.join(repo, '.claude/agents/rig-architect.md')), false)
-  assert.equal(fs.existsSync(path.join(repo, '.claude/skills/rig-wiki/SKILL.md')), true)
-  assert.match(r.stdout, /kept \.claude\/skills\/rig-wiki\/SKILL\.md \(edited\)/)
+  assert.equal(fs.existsSync(path.join(repo, '.claude/commands/rig/wiki.md')), true)
+  assert.match(r.stdout, /kept \.claude\/commands\/rig\/wiki\.md \(edited\)/)
 })
 
 test('bad profile values fail', () => {
@@ -76,7 +76,7 @@ test('no core skill or core README names an off command', () => {
   const off = new RegExp(`/rig[:-](${OFF_COMMANDS.join('|')})\\b`)
   assert.equal(off.test('/rig:approve'), false)
   const named = [...harnessFiles(true, 'core')]
-    .filter(([rel]) => rel.endsWith('SKILL.md') || rel === '.rig/templates/readme-rig.md')
+    .filter(([rel]) => rel.startsWith('.claude/commands/rig/') || rel === '.rig/templates/readme-rig.md')
     .filter(([, text]) => off.test(text)).map(([rel, text]) => `${rel}: ${text.match(off)?.[0]}`)
   assert.deepEqual(named, [])
 })
@@ -84,8 +84,8 @@ test('no core skill or core README names an off command', () => {
 test('the core README block is the core template', () => {
   const text = fs.readFileSync(path.join(coreRepo(), '.rig/templates/readme-rig.md'), 'utf8')
   assert.match(text, /<!-- rig:begin/)
-  assert.match(text, /\/rig-start/)
-  assert.doesNotMatch(text, /\/rig-chart|\.rig\/product\//)
+  assert.match(text, /\/rig:start/)
+  assert.doesNotMatch(text, /\/rig:chart|\.rig\/product\//)
 })
 
 test('full vendors no core template', () => {
@@ -106,25 +106,25 @@ test('upgrade on a core repo keeps it core', () => {
   write(repo, '.rig/sensors.json', registry({ turn: { x: 'true' }, extra: { stack: 'node' } }))
   gitIn(repo, 'add', '-A')
   gitIn(repo, 'commit', '-qm', 'vendor core')
-  const off = Object.entries(upgradePlan(repo)).filter(([rel]) => /rig-(chart|wiki|testplan|arch|app|autonomy|init)\/|rig-architect|\.rig\/mod\//.test(rel))
+  const off = Object.entries(upgradePlan(repo)).filter(([rel]) => /rig-(chart|wiki|testplan|arch|app|autonomy|init)\.md|rig-architect|\.rig\/mod\//.test(rel))
   assert.deepEqual(off, [])
-  write(repo, '.claude/skills/rig-start/SKILL.md', 'old\n')
+  write(repo, '.claude/commands/rig/start.md', 'old\n')
   const m = json(repo, '.rig/bin/MANIFEST.json')
-  m.files['.claude/skills/rig-start/SKILL.md'] = sha('old\n')
+  m.files['.claude/commands/rig/start.md'] = sha('old\n')
   write(repo, '.rig/bin/MANIFEST.json', JSON.stringify(m, null, 2) + '\n')
   gitIn(repo, 'add', '-A')
   gitIn(repo, 'commit', '-qm', 'lag')
   const r = sdlc(repo, ['upgrade', '--apply'])
   assert.equal(r.code, 0, r.stderr)
   assert.equal(json(repo, '.rig/bin/MANIFEST.json').profile, 'core')
-  assert.deepEqual(dirs(repo, '.claude/skills'), CORE_SKILLS.map(s => `rig-${s}`).sort())
+  assert.deepEqual(dirs(repo, '.claude/commands/rig'), CORE_SKILLS.map(s => `${s}.md`).sort())
 })
 
 test('upgrade on a pre-profile manifest stays full', () => {
   const repo = makeRepo()
   sdlc(repo, ['init'])
   assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
-  const deletes = Object.entries(upgradePlan(repo)).filter(([rel, v]) => v === 'delete' && rel.startsWith('.claude/skills/'))
+  const deletes = Object.entries(upgradePlan(repo)).filter(([rel, v]) => v === 'delete' && rel.startsWith('.claude/commands/rig/'))
   assert.deepEqual(deletes, [])
 })
 
@@ -132,7 +132,7 @@ test('init --full --profile core vendors core and skips the maintain workflow', 
   const repo = makeRepo()
   const r = sdlc(repo, ['init', '--full', '--workflows', '--profile', 'core'])
   assert.equal(r.code, 0, r.stderr)
-  assert.deepEqual(dirs(repo, '.claude/skills').filter(d => d.startsWith('rig-')), CORE_SKILLS.map(s => `rig-${s}`).sort())
+  assert.deepEqual(dirs(repo, '.claude/commands/rig'), CORE_SKILLS.map(s => `${s}.md`).sort())
   assert.equal(fs.existsSync(path.join(repo, '.github/workflows/rig-check.yml')), true)
   assert.equal(fs.existsSync(path.join(repo, '.github/workflows/rig-maintain.yml')), false)
 })
@@ -140,16 +140,16 @@ test('init --full --profile core vendors core and skips the maintain workflow', 
 test('a re-vendor without --profile keeps a core repo core, and --profile full switches back', () => {
   const repo = coreRepo()
   assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
-  assert.deepEqual(dirs(repo, '.claude/skills'), CORE_SKILLS.map(s => `rig-${s}`).sort())
+  assert.deepEqual(dirs(repo, '.claude/commands/rig'), CORE_SKILLS.map(s => `${s}.md`).sort())
   assert.equal(json(repo, '.rig/bin/MANIFEST.json').profile, 'core')
   assert.equal(sdlc(repo, ['vendor']).code, 0)
   assert.equal(json(repo, '.rig/bin/MANIFEST.json').profile, 'core', 'a plain vendor keeps the profile')
   assert.equal(sdlc(repo, ['vendor', '--standalone', '--profile', 'full']).code, 0)
-  assert.equal(fs.existsSync(path.join(repo, '.claude/skills/rig-chart/SKILL.md')), true)
+  assert.equal(fs.existsSync(path.join(repo, '.claude/commands/rig/chart.md')), true)
   assert.equal(json(repo, '.rig/bin/MANIFEST.json').profile, undefined)
 })
 
-test('learn mine, which core /rig-learn runs, names no off command', () => {
+test('learn mine, which core /rig:learn runs, names no off command', () => {
   const src = fs.readFileSync(path.join(ROOT, 'scripts/learnmine.ts'), 'utf8')
   assert.doesNotMatch(src, new RegExp(`skillRef\\('(${OFF_COMMANDS.join('|')})'\\)`))
 })
@@ -164,6 +164,6 @@ test('switching to core replaces a full README block with the core one and keeps
   const readme = fs.readFileSync(path.join(repo, 'README.md'), 'utf8')
   assert.match(readme, /^# Shop\n\nmine\n\n<!-- rig:begin/)
   assert.match(readme, /Development with rig \(core\)/)
-  assert.doesNotMatch(readme, /\/rig-chart/)
+  assert.doesNotMatch(readme, /\/rig:chart/)
   assert.match(readme, /<!-- rig:end -->\n\nafter\n$/)
 })

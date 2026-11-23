@@ -430,13 +430,13 @@ test('rig-on dry run leaves no change records under .rig/changes', async () => {
   assert.equal(fs.existsSync(dir) ? fs.readdirSync(dir).length : 0, 0)
 })
 
-test('rig-on live session is launched with the plugin and without /rig-start', async () => {
+test('rig-on live session is launched with the plugin and without /rig:start', async () => {
   const calls = []
   const out = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-eval-on-'))
   await runOne(ARMS.find(a => a.id === 'sonnet-rig-on'), 1, { dry: false, out, capRunUsd: 6, variant: 'hard', sessionsFactory: () => ({ sessions: [], run: (...a) => { calls.push(a); throw new Error('stop') } }) })
   assert.equal(calls.length, 1)
   assert.equal(calls[0][2]?.withPlugin, true)
-  assert.doesNotMatch(calls[0][1], /rig-start|rig:start/)
+  assert.doesNotMatch(calls[0][1], /rig:start|rig:start/)
   assert.match(calls[0][1], /B15/)
 })
 

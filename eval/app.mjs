@@ -1,4 +1,4 @@
-// The journeys eval (harness readiness 2.1): given a small app and a person's three journeys, does a live /rig-app session write a driver that
+// The journeys eval (harness readiness 2.1): given a small app and a person's three journeys, does a live /rig:app session write a driver that
 // (1) is valid and runs green on the working app, (2) is approved by a person's `app approve`, and (3) fails when the app is broken?
 // Two seeded breaks: the server stops reading request bodies (every unit test stays green: the failure only the running app shows) and the
 // checkout total is off by one cent (an end-state assertion). Scored by running the driver, never by a model.
@@ -14,7 +14,7 @@ import { totals } from '../tests/e2e/assert/process.mjs'
 import { resultsAllowed, nextRunAllowed, EVAL_ALLOW, arg, readJsonl } from './lib/cli.mjs'
 
 const FX = path.resolve(import.meta.dirname, '../tests/e2e/fixtures/journeys')
-export const PROMPT = '/rig-app journeys-shop. The person confirms these three journeys, so do not ask: (1) a shopper sees the two products at GET /products; (2) a shopper adds 2 of TEA-001 with POST /cart; (3) POST /checkout then totals 900 cents. The app starts with `npm start` and prints `listening on <port>`. Write the app definition, the driver and the feature map, run the driver with `app run`, then stop for the person to approve it. In this unattended session run each command as its own Bash call (no cd, pipes, redirects, && or ;).'
+export const PROMPT = '/rig:app journeys-shop. The person confirms these three journeys, so do not ask: (1) a shopper sees the two products at GET /products; (2) a shopper adds 2 of TEA-001 with POST /cart; (3) POST /checkout then totals 900 cents. The app starts with `npm start` and prints `listening on <port>`. Write the app definition, the driver and the feature map, run the driver with `app run`, then stop for the person to approve it. In this unattended session run each command as its own Bash call (no cd, pipes, redirects, && or ;).'
 export const BREAKS = {
   'body-ignored': { file: 'src/server.js', from: 'body: raw ? JSON.parse(raw) : {}', to: 'body: {}', unitStaysGreen: true },
   'total-off-by-one': { file: 'src/shop.js', from: 'n + qty * PRODUCTS.find(x => x.sku === sku).priceCents', to: 'n + qty * PRODUCTS.find(x => x.sku === sku).priceCents + 1', unitStaysGreen: false },
@@ -60,7 +60,7 @@ export function summarize(rows) {
 
 export function renderMarkdown(rows, { date, files }) {
   const s = summarize(rows), x = v => `${v}/${s.runs}`
-  return [`# Eval results ${date}: /rig-app on a fixture app`, '',
+  return [`# Eval results ${date}: /rig:app on a fixture app`, '',
     `Question: given three confirmed journeys, does a live session write a driver that runs green, gets approved, and fails when the app breaks? Source: ${files.join(', ')}. Scored by running the driver on the good app and on two seeded breaks (one keeps every unit test green).`, '',
     '| runs | wrote a valid app | runs green | approved | fails on break 1 (unit-green) | fails on break 2 (total off by 1c) | USD |', '|---|---|---|---|---|---|---|',
     `| ${s.runs} | ${x(s.wrote)} | ${x(s.runsGreen)} | ${x(s.approved)} | ${x(s.caughtBodyIgnored)} | ${x(s.caughtTotal)} | $${s.usd.toFixed(2)} |`, ''].join('\n')

@@ -70,7 +70,7 @@ export async function runOne(arm, n, { dry, out, capRunUsd, failAt, seed = null,
       base = await setupRig(sb, arm, { dry, variant })
       settled = sb.git('rev-parse', 'HEAD')
       row.phasesDone = 0
-      // rig-on: rig is installed and onboarded exactly as for rig-start, but the session gets the bare prompt with the plugin loaded: no phases, no /rig-start.
+      // rig-on: rig is installed and onboarded exactly as for rig-start, but the session gets the bare prompt with the plugin loaded: no phases, no /rig:start.
       if (arm.on) {
         if (dry) dryBare(sb, { variant, base: false })
         if (failAt) throw new Error(`injected failure at ${failAt}`)

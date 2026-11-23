@@ -86,18 +86,18 @@ export function journeyDriver({ sb, sessions, answersDir = ANSWERS, reviewer = n
     },
 
     async chart(sprint, prd) {
-      sessions.run(`J-chart-${sprint}`, `/rig-chart ${sprint} @${prd}`)
+      sessions.run(`J-chart-${sprint}`, `/rig:chart ${sprint} @${prd}`)
       for (let i = 0; ; i++) {
         const p = pending(sprint)
         if (p.kind === 'none') break
         if (i === MAX_CONTINUATIONS) throw new Error(`stuck-on-input: chart ${sprint} still ${p.kind}${p.detail ? ` (${p.detail})` : ''} after ${MAX_CONTINUATIONS} continuations`)
         if (p.kind === 'findings') {
-          sessions.run(`J-chart-${sprint}-cont${i + 1}`, `/rig-chart ${sprint}\nThe chart check still reports blocking findings: ${p.detail}.\nFix each one: add test cases that cover an untested requirement or rule, or remove a requirement the PRD does not state. Add no new requirements. Then run the chart check again.`, { cont: true })
+          sessions.run(`J-chart-${sprint}-cont${i + 1}`, `/rig:chart ${sprint}\nThe chart check still reports blocking findings: ${p.detail}.\nFix each one: add test cases that cover an untested requirement or rule, or remove a requirement the PRD does not state. Add no new requirements. Then run the chart check again.`, { cont: true })
           continue
         }
         const a = p.kind === 'questions' ? answers() : ''
         if (p.kind === 'questions' && !a) throw new Error(`stuck-on-input: chart ${sprint} asks (${p.detail}) and journey/answers has no answer`)
-        sessions.run(`J-chart-${sprint}-cont${i + 1}`, `/rig-chart ${sprint}${a ? `\nThe person answers your open questions:\n${a}` : '\nContinue where you stopped and finish the chart.'}`, { cont: true })
+        sessions.run(`J-chart-${sprint}-cont${i + 1}`, `/rig:chart ${sprint}${a ? `\nThe person answers your open questions:\n${a}` : '\nContinue where you stopped and finish the chart.'}`, { cont: true })
       }
       landOnMain(sb)
     },
@@ -112,7 +112,7 @@ export function journeyDriver({ sb, sessions, answersDir = ANSWERS, reviewer = n
 
     async startIntent(intentPath) {
       const slug = path.basename(intentPath, '.md')
-      live = liveDriverFor({ id: `J-${slug}`, prompt: `/rig-start ${intentPath}` })
+      live = liveDriverFor({ id: `J-${slug}`, prompt: `/rig:start ${intentPath}` })
       return live.begin()
     },
 
@@ -122,7 +122,7 @@ export function journeyDriver({ sb, sessions, answersDir = ANSWERS, reviewer = n
       const planFiles = [`.rig/changes/${slug}/spec.md`, `.rig/changes/${slug}/plan.md`]
       let d = await decide(`plan-${slug}`, planFiles)
       for (let n = 1; d.decision !== 'approve' && n <= MAX_REVISIONS; n++) {
-        sessions.run(`J-${slug}-revise${n}`, `/rig-plan ${slug}. The reviewer rejected the plan: ${d.reasons.join('; ')}\nRevise spec.md and plan.md to fix exactly these points and add nothing else, then stop for approval.`, { cont: true })
+        sessions.run(`J-${slug}-revise${n}`, `/rig:plan ${slug}. The reviewer rejected the plan: ${d.reasons.join('; ')}\nRevise spec.md and plan.md to fix exactly these points and add nothing else, then stop for approval.`, { cont: true })
         d = await decide(`plan-${slug}`, planFiles)
       }
       if (d.decision !== 'approve') throw new Error(`reviewer rejected the plan: ${d.reasons.join('; ')}`)

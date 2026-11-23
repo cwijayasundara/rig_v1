@@ -37,7 +37,7 @@ export function applyAblation(sb, id) {
     else reg.sensors = [...(reg.sensors ?? []), { id: name, builtin: true, enabled: false }]
     sb.write(file, JSON.stringify(reg, null, 2) + '\n')
     sb.sdlc(['sync'])
-  } else if (kind === 'skill') fs.rmSync(sb.file(`.claude/skills/rig-${name}`), { recursive: true, force: true })
+  } else if (kind === 'skill') fs.rmSync(sb.file(`.claude/commands/rig/${name}.md`), { force: true })
   else if (kind === 'agent') fs.rmSync(sb.file(`.claude/agents/rig-${name}.md`), { force: true })
   else if (kind === 'hook') {
     const file = '.claude/settings.json'

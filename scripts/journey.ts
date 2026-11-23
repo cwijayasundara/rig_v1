@@ -10,7 +10,7 @@ import { queueNext } from './queue.ts'
 import { chartState, readyIntents, sprintIntents, sprintsKnown } from './chart.ts'
 import { testplanDir, prdHint, prdsInDocs, intentRel, prdPath } from './product.ts'
 
-// The command a person types: /rig:<name> from the plugin, /rig-<name> (the skill's folder, never /rig:<name>) from a standalone copy.
+// The command a person types: /rig:<name>, from the plugin or from the repo's own copy (.claude/commands/rig/).
 const k = skillRef
 
 type StepState = 'done' | 'current' | 'gate' | 'todo'

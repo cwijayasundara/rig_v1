@@ -28,7 +28,7 @@ Claude Code only discovers skills, agents and hooks under `.claude/`; everything
 
 | Path | What it is | Who changes it |
 |---|---|---|
-| `.claude/skills/rig-*/` | The slash commands (`/rig:start`, `/rig:plan`, …): present only after `init --full` (a standalone copy); with `init --plugin` they come from the plugin and none are here | `vendor --standalone` (upgrade) |
+| `.claude/commands/rig/` | The slash commands (`/rig:start`, `/rig:plan`, …): present only after `init --full` (a standalone copy); with `init --plugin` they come from the plugin and none are here | `vendor --standalone` (upgrade) |
 | `.claude/agents/rig-*.md` | The architect and evaluator subagents: same, only after `init --full` | `vendor --standalone` |
 | `.claude/settings.json` | Permission rules (ask/deny protect evidence); hook wiring only after `init --full` | `init`, a person |
 | `.rig/bin/` | The vendored checker (`sdlc.ts` and its modules, `VERSION`) | `vendor --standalone` |
@@ -46,7 +46,7 @@ Claude Code only discovers skills, agents and hooks under `.claude/`; everything
 
 | You want to | Run |
 |---|---|
-| Plan a whole sprint from a PRD (greenfield or brownfield) | write `docs/prd/sprint-0/prd.md` (one folder per sprint), then `/rig:chart 0 @docs/prd/sprint-0/prd.md` (gap questions, intents, architecture, test plan, review) |
+| Plan a whole sprint from a PRD (greenfield or brownfield) | write `docs/prd/sprint-0/prd.md` (one folder per sprint), then `/rig:chart 0 @docs/prd/sprint-0/prd.md` (it asks nothing unless you add `--ask`: intents, architecture, test plan, review) |
 | Start a change | `/rig:start "<what you want>"` |
 | Continue a change | `/rig:start <slug>` (it picks up at the first missing step) |
 | Approve a change | `/rig:approve <slug>`; only a person can |

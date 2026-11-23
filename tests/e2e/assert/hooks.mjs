@@ -1,4 +1,4 @@
-// The git hooks, exercised the way a person or another editor meets them (with hooks on, unlike /rig-pr's --no-verify).
+// The git hooks, exercised the way a person or another editor meets them (with hooks on, unlike /rig:pr's --no-verify).
 import crypto from 'node:crypto'
 
 // A staged secret must be refused at commit. The secret is made at run time, so none is ever committed to the plugin.
@@ -20,7 +20,7 @@ export async function assertPreCommitRefusesSecret(c, sb) {
   }
 }
 
-// /rig-pr pushes sdlc/<slug> with --no-verify, and re-pushing an up-to-date ref runs no hook, so push to a fresh ref.
+// /rig:pr pushes sdlc/<slug> with --no-verify, and re-pushing an up-to-date ref runs no hook, so push to a fresh ref.
 export async function assertPrePushPasses(c, sb, slug) {
   const r = sb.run('git', ['push', 'origin', `HEAD:refs/heads/prepush-${slug}`])
   const said = (r.stdout + r.stderr).trim()

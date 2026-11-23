@@ -6,7 +6,7 @@ const fx = rel => path.join(import.meta.dirname, '../fixtures/remove', rel)
 
 export const PHASE = {
   id: 'S3', slug: 'cart-remove', type: 'feature', title: 'Delete an item from the cart',
-  prompt: '/rig-start A feature: let a shopper delete a whole line from the cart (brief behaviours B5–B6), as Cart.remove and DELETE /cart/<sku>; edit the existing files, do not rewrite them; add DELETE /cart/{sku} and its examples to the HTTP contract in api/openapi.yaml and contracts/examples/ before approval.',
+  prompt: '/rig:start A feature: let a shopper delete a whole line from the cart (brief behaviours B5–B6), as Cart.remove and DELETE /cart/<sku>; edit the existing files, do not rewrite them; add DELETE /cart/{sku} and its examples to the HTTP contract in api/openapi.yaml and contracts/examples/ before approval.',
   intent: {
     problem: 'A shopper who adds the wrong item cannot take it out.',
     outcome: 'B5–B6 of the brief hold and the earlier behaviour is unchanged.',

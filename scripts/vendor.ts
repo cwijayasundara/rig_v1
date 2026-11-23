@@ -15,11 +15,11 @@ export const VENDORED = (fs.existsSync(path.join(PLUGIN_ROOT, 'scripts')) ? fs.r
 const SDLC_HOOK = '.rig/bin/sdlc.ts'
 type HookGroup = { matcher?: string; hooks: { type: string; command: string; timeout?: number; async?: boolean }[] }
 
-// Plugin references rewritten for a project copy: script paths, /rig:x skills, rig:x agents and the skill's name.
+// Plugin references rewritten for a project copy: script paths, rig:x agents and the agent's name. A command keeps /rig:x: the repo's copy is
+// .claude/commands/rig/<name>.md, which Claude Code registers as /rig:<name>, and its name comes from the path, so the name: line goes.
 const AGENTS = ['architect', 'evaluator'] // agents/*.md; removed.spec.ts pins the set
 
-// A vendored skill is registered under its folder name, so `/rig:start` becomes `/rig-start` (the 2026-10-16 pilot's init events);
-// an agent takes a hyphen (`rig-architect`).
+// An agent takes a hyphen (`rig-architect`).
 function forProject(text: string, kind: 'skill' | 'agent' = 'skill'): string {
   return text
     .replaceAll('"${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts"', SDLC_HOOK) // the human skills quote the plugin path; the project path needs no quotes
@@ -27,8 +27,7 @@ function forProject(text: string, kind: 'skill' | 'agent' = 'skill'): string {
     .replaceAll('<plugin>/scripts/sdlc.ts', SDLC_HOOK)
     .replaceAll('${CLAUDE_PLUGIN_ROOT}/templates/', '.rig/templates/')
     .replace(new RegExp(`(?<![/\\w])rig:(${AGENTS.join('|')})\\b`, 'g'), 'rig-$1')
-    .replace(/\/rig:([a-z]+)\b/g, '/rig-$1')
-    .replace(/^name: (?!rig[-:])(\S+)$/m, kind === 'skill' ? 'name: rig:$1' : 'name: rig-$1')
+    .replace(/^name: (?!rig[-:])(\S+)\r?\n/m, (_m, n: string) => (kind === 'skill' ? '' : `name: rig-${n}\n`))
 }
 
 function writeFile(rel: string, text: string, written: string[]): void {
@@ -77,7 +76,7 @@ export const pluginVersion = (): string => (JSON.parse(read(path.join(PLUGIN_ROO
 function dashboardFiles(files: Map<string, string>): void {
   const version = pluginVersion()
   const json = (v: object): string => JSON.stringify(v, null, 2) + '\n'
-  files.set('.rig/mod/hooks/dashboard.tsx', vendoredCommands(read(path.join(PLUGIN_ROOT, 'hooks', 'dashboard.tsx'))))
+  files.set('.rig/mod/hooks/dashboard.tsx', read(path.join(PLUGIN_ROOT, 'hooks', 'dashboard.tsx')))
   files.set('.rig/mod/hooks/hooks.json', json({ modules: ['./dashboard.tsx'] }))
   files.set('.rig/mod/.claude-plugin/plugin.json', json({ name: 'rig', version, types: './types/index.d.ts' }))
   files.set('.rig/mod/types/index.d.ts', read(path.join(PLUGIN_ROOT, 'types', 'index.d.ts')))
@@ -112,7 +111,7 @@ export function harnessFiles(standalone: boolean, profile: Profile = 'full', das
   for (const name of fs.readdirSync(path.join(PLUGIN_ROOT, 'skills'))) {
     if (name === 'upgrade' || !skillIn(profile, name)) continue // upgrade runs only from the plugin (upgradeGates refuses a vendored copy)
     const src = path.join(PLUGIN_ROOT, 'skills', name, 'SKILL.md')
-    if (fs.existsSync(src)) files.set(`.claude/skills/rig-${name}/SKILL.md`, forProject(read(src)))
+    if (fs.existsSync(src)) files.set(`.claude/commands/rig/${name}.md`, forProject(read(src)))
   }
   for (const file of fs.readdirSync(path.join(PLUGIN_ROOT, 'agents')).filter(f => f.endsWith('.md') && agentIn(profile, f))) {
     files.set(`.claude/agents/rig-${file}`, forProject(read(path.join(PLUGIN_ROOT, 'agents', file)), 'agent'))
@@ -121,7 +120,7 @@ export function harnessFiles(standalone: boolean, profile: Profile = 'full', das
   for (const file of (fs.readdirSync(templates, { recursive: true }) as string[]).filter(f => fs.statSync(path.join(templates, f)).isFile()).sort()) {
     if (file === README_CORE) continue // core's README block is written under the usual name below
     const text = read(path.join(templates, file === README_TEMPLATE && profile === 'core' ? README_CORE : file))
-    files.set(`.rig/templates/${file}`, file === README_TEMPLATE ? vendoredCommands(text) : text)
+    files.set(`.rig/templates/${file}`, text)
   }
   if (dashboard) dashboardFiles(files)
   return files
@@ -139,40 +138,41 @@ export function mergeProjectFiles(written: string[], profile: Profile = 'full', 
 const README_TEMPLATE = 'readme-rig.md'
 const README_CORE = 'readme-rig-core.md'
 const README_BLOCK = /<!-- rig:begin[\s\S]*?<!-- rig:end -->/
-const vendoredCommands = (text: string): string => text.replace(/\/rig:([a-z]+)\b/g, '/rig-$1')
+// A repo vendored before the commands moved to .claude/commands/rig/ carries /rig-<skill> in CLAUDE.md, the README block and the PRD docs; a re-vendor
+// repairs them to /rig:<skill>. Only real skill names match, so /rig-check, /rig-approved.yml, rig-evaluator and temp paths stay as they are.
+const SKILL_NAMES = (fs.existsSync(path.join(PLUGIN_ROOT, 'skills')) ? fs.readdirSync(path.join(PLUGIN_ROOT, 'skills')) : []).sort((x, y) => y.length - x.length)
+const OLD_SPELLING = new RegExp(`(?<![\\w./-])/rig-(${SKILL_NAMES.join('|')})(?![\\w-])`, 'g')
+const repairedCommands = (text: string): string => text.replace(OLD_SPELLING, '/rig:$1')
 
-// CLAUDE.md's routing line and guides block are written while the plugin's /rig:x names are live; a standalone copy answers to /rig-x
-// (the folder name), so what a model reads agrees with the session-start hook and `status`. Only the routing line and the guides block
-// are touched; the block is re-hashed so the vendored `sync` finds it current, unless it was edited by hand (then `sync` reports it).
-// The pre-0.12 routing line (either spelling) migrates to the rig-on line, in the installed spelling.
+// CLAUDE.md's routing line and guides block name /rig:start. The pre-0.12 routing line and the old /rig-start spelling migrate to the rig-on line.
+// The guides block is re-hashed so the vendored `sync` finds it current, unless it was edited by hand (then `sync` reports it).
 const OLD_ROUTING = /sdlc routes all work in this repo: start with \/rig[:-]start; use superpowers skills only when an sdlc skill names one\./
 const NEW_ROUTING = 'rig is on in this repo: work from the request as usual, and its checks and guides run on every turn; /rig:start is the full workflow (spec, plan, approval), used only when the person asks for it. Use superpowers skills only when an sdlc skill names one.'
-const NEW_ROUTING_VENDORED = NEW_ROUTING.replace('/rig:start', '/rig-start')
+const OLD_ROUTING_SPELLING = NEW_ROUTING.replace('/rig:start', '/rig-start')
 function routeClaudeMd(written: string[]): void {
   const file = 'CLAUDE.md'
   const text = read(path.join(ROOT, file))
-  let routed = text.replace(OLD_ROUTING, NEW_ROUTING_VENDORED).replace(NEW_ROUTING, NEW_ROUTING_VENDORED)
+  let routed = text.replace(OLD_ROUTING, NEW_ROUTING).replace(OLD_ROUTING_SPELLING, NEW_ROUTING)
   const block = findBlock(routed)
-  if (block && sha(block.lines.join('\n')) === block.hash) routed = withBlock(routed, block.lines.map(vendoredCommands))
+  if (block && sha(block.lines.join('\n')) === block.hash) routed = withBlock(routed, block.lines.map(repairedCommands))
   if (routed !== text) writeFile(file, routed, written)
 }
 
-// The README's rig block (from templates/readme-rig.md) tells a person which commands to type; in a standalone copy those are /rig-x
-// (2026-10-25 shop_app run: the block said /rig:start, which does not exist there). Text outside the markers is never touched.
+// The README's rig block (from templates/readme-rig.md) names /rig:x; a repo vendored earlier says /rig-x there. Core replaces the whole block
+// (a full one names /rig:chart, /rig:wiki and the rest); text outside the markers is never touched.
 function routeReadme(written: string[], profile: Profile): void {
   const file = 'README.md'
   const text = read(path.join(ROOT, file))
-  // Core replaces the whole block (a full one names /rig-chart, /rig-wiki and the rest); the text outside it is kept.
-  const core = vendoredCommands(read(path.join(PLUGIN_ROOT, 'templates', README_CORE))).trimEnd()
-  const routed = text.replace(README_BLOCK, block => profile === 'core' ? core : vendoredCommands(block))
+  const core = read(path.join(PLUGIN_ROOT, 'templates', README_CORE)).trimEnd()
+  const routed = text.replace(README_BLOCK, block => profile === 'core' ? core : repairedCommands(block))
   if (routed !== text) writeFile(file, routed, written)
 }
 
-// init --stack writes these two before init --full vendors, so they still name /rig:chart; a person's PRDs are never touched.
+// init --stack writes these two; an older one may still name /rig-chart. A person's PRDs are never touched.
 function routePrdDocs(written: string[]): void {
   for (const file of ['docs/prd/README.md', 'docs/prd/prd-template.md']) {
     const text = read(path.join(ROOT, file))
-    const routed = vendoredCommands(text)
+    const routed = repairedCommands(text)
     if (routed !== text) writeFile(file, routed, written)
   }
 }
@@ -218,7 +218,7 @@ export function cmdVendor(args: Args): void {
   writeFile(MANIFEST, JSON.stringify({ version: next, ...(profile === 'core' ? { profile } : {}), files: hashes }, null, 2) + '\n', written)
   sanctionWrites(written)
   out(standalone
-    ? `vendored sdlc ${next} standalone: .rig/bin, .claude/skills/rig-*, .claude/agents/rig-*, hooks in .claude/settings.json. Commit .rig/ and .claude/; re-run from the plugin to upgrade.${args.opt.dashboard ? ` The dashboard needs Claude Code's experimental Code Mode: CLAUDE_CODE_EXPERIMENTAL_CODE_MODE=1 is set in .claude/settings.local.json (yours, not the team's); restart Claude Code.` : ''}`
+    ? `vendored sdlc ${next} standalone: .rig/bin, .claude/commands/rig/*.md (typed /rig:<name>), .claude/agents/rig-*, hooks in .claude/settings.json. Commit .rig/ and .claude/; re-run from the plugin to upgrade.${args.opt.dashboard ? ` The dashboard needs Claude Code's experimental Code Mode: CLAUDE_CODE_EXPERIMENTAL_CODE_MODE=1 is set in .claude/settings.local.json (yours, not the team's); restart Claude Code.` : ''}`
     : `vendored sdlc ${next} into ${path.relative(ROOT, path.join(SDLC, 'bin'))} (${VENDORED.length} files). Commit it; CI runs the base branch's copy.`)
 }
 
@@ -228,6 +228,14 @@ function enableCodeMode(): void {
   let local: { env?: Record<string, string> } = {}
   try { local = JSON.parse(read(path.join(ROOT, rel)) || '{}') } catch { fail(`${rel} is not plain JSON; fix it first so --dashboard can set CLAUDE_CODE_EXPERIMENTAL_CODE_MODE`) }
   writeFile(rel, JSON.stringify({ ...local, env: { ...local.env, CLAUDE_CODE_EXPERIMENTAL_CODE_MODE: '1' } }, null, 2) + '\n', [])
+}
+
+// Removes a folder an install emptied, and its parents under .claude/ that this left empty (skills/rig-x, skills, commands/rig, commands).
+const PRUNABLE = ['.claude/skills', '.claude/commands/rig', '.claude/commands']
+function pruneEmpty(dir: string): void {
+  const rel = (d: string): string => path.relative(ROOT, d).split(path.sep).join('/')
+  const prunable = (r: string): boolean => PRUNABLE.includes(r) || /^\.claude\/skills\/rig-[^/]+$/.test(r)
+  for (let d = dir; prunable(rel(d)) && fs.existsSync(d) && !fs.readdirSync(d).length; d = path.dirname(d)) fs.rmdirSync(d)
 }
 
 // Harness files an earlier vendor wrote that this one does not (full -> core): untouched ones go, edited ones stay and keep
@@ -240,7 +248,7 @@ function dropStale(files: Map<string, string>): Record<string, string> {
     if (sha(read(abs)) !== hash) { kept[rel] = hash; out(`kept ${rel} (edited)`); continue }
     fs.rmSync(abs)
     const dir = path.dirname(abs)
-    if (rel.startsWith('.claude/skills/rig-') && !fs.readdirSync(dir).length) fs.rmdirSync(dir)
+    pruneEmpty(dir)
   }
   return kept
 }
@@ -259,8 +267,8 @@ function mergeMissing(into: Record<string, unknown>, from: Record<string, unknow
 
 // `init --plugin [--workflows]`: for a person who loads rig as a plugin (claude --plugin-dir). The plugin supplies skills, agents and hooks, so
 // only the checker (.rig/bin, which CI and the git hooks run), the git hooks and the settings permissions are installed, and a standalone
-// copy an earlier `init --full` left is removed: one copy of rig per repo, never both listed (rig:x and rig-x).
-const STANDALONE_PREFIXES = ['.claude/skills/rig-', '.claude/agents/rig-', '.rig/mod/']
+// copy an earlier `init --full` left is removed: one copy of rig per repo, never both loaded.
+const STANDALONE_PREFIXES = ['.claude/commands/rig/', '.claude/skills/rig-', '.claude/agents/rig-', '.rig/mod/']
 function removeStandaloneCopy(): string[] {
   const lines: string[] = []
   const m = readManifest()
@@ -271,12 +279,11 @@ function removeStandaloneCopy(): string[] {
       if (!STANDALONE_PREFIXES.some(p => rel.startsWith(p)) || !fs.existsSync(abs)) { if (!STANDALONE_PREFIXES.some(p => rel.startsWith(p))) files[rel] = hash; continue }
       if (sha(read(abs)) !== hash) { files[rel] = hash; lines.push(`kept ${rel} (edited): delete it by hand to leave one copy`); continue }
       fs.rmSync(abs)
-      const dir = path.dirname(abs)
-      if (rel.startsWith('.claude/') && fs.readdirSync(dir).length === 0 && path.basename(dir) !== 'skills' && path.basename(dir) !== 'agents') fs.rmdirSync(dir)
+      pruneEmpty(path.dirname(abs))
     }
     writeFile(MANIFEST, JSON.stringify({ ...m, files }, null, 2) + '\n', [])
   }
-  for (const d of ['.claude/skills', '.claude/agents']) { const abs = path.join(ROOT, d); if (fs.existsSync(abs) && fs.readdirSync(abs).length === 0) fs.rmdirSync(abs) }
+  for (const d of ['.claude/skills', '.claude/commands/rig', '.claude/commands', '.claude/agents']) { const abs = path.join(ROOT, d); if (fs.existsSync(abs) && fs.readdirSync(abs).length === 0) fs.rmdirSync(abs) }
   return lines
 }
 
@@ -300,7 +307,7 @@ export function installStandalone(workflows: boolean, profile: Profile = 'full',
 export function inventory(): string {
   const ls = (rel: string, keep: (n: string) => boolean): string[] => { try { return fs.readdirSync(path.join(ROOT, rel)).filter(keep).sort() } catch { return [] } }
   const json = <T>(file: string, d: T): T => { try { return JSON.parse(read(file)) as T } catch { return d } }
-  const skills = ls('.claude/skills', n => n.startsWith('rig-')).map(n => n.slice(4))
+  const skills = ls('.claude/commands/rig', n => n.endsWith('.md')).map(n => n.slice(0, -3))
   const agents = ls('.claude/agents', n => n.startsWith('rig-'))
   const events = Object.entries(json<{ hooks?: Record<string, HookGroup[]> }>(path.join(ROOT, '.claude', 'settings.json'), {}).hooks ?? {}).filter(([, g]) => g.some(x => x.hooks.some(h => h.command.includes(SDLC_HOOK)))).map(([e]) => e)
   const registry = json<{ sensors?: { id: string; builtin?: boolean }[] } | null>(path.join(SDLC, 'sensors.json'), null)
@@ -310,7 +317,7 @@ export function inventory(): string {
   const fromPlugin = 'none in this repo: the plugin supplies them (claude --plugin-dir <rig checkout>); `init --full` copies them here'
   return [
     'rig in this repo:',
-    row('skills', skills.length, skills.length ? `.claude/skills/rig-<name>/SKILL.md: ${skills.join(', ')}` : fromPlugin),
+    row('skills', skills.length, skills.length ? `.claude/commands/rig/<name>.md (typed /rig:<name>): ${skills.join(', ')}` : fromPlugin),
     row('agents', agents.length, agents.length ? `.claude/agents/: ${agents.join(', ')}` : fromPlugin),
     row('hooks', events.length, `${events.length ? `.claude/settings.json: ${events.join(', ')}` : 'none in .claude/settings.json: the plugin runs them'}; git hooks in .rig/githooks/: ${ls('.rig/githooks', () => true).join(', ') || 'none'}`),
     row('sensors', cmds.length + BUILTIN_IDS.length, `${registry ? `.rig/sensors.json, ${cmds.length} command sensor(s): ${cmds.join(', ') || 'none'}` : 'no .rig/sensors.json yet (run init --stack)'}; ${BUILTIN_IDS.length} built in (.rig/bin/sensors.ts): ${BUILTIN_IDS.join(', ')}`),

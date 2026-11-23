@@ -46,21 +46,21 @@ const phase = (id, slug, title, behaviour, prompt, problem, impl, contracts) => 
 
 export const PHASE_S15 = phase('S15', 'order-receipt', 'A receipt for an order',
   { id: 'B15', text: 'GET /orders/<id>/receipt answers the order as a plain-text receipt.', test: 'receipt.test.js' },
-  `/rig-start A feature: a receipt for an order (brief behaviour B15): GET /orders/<id>/receipt answers the receipt as text, as the brief says. ${POINTERS} Edit the existing files, do not rewrite them.`,
+  `/rig:start A feature: a receipt for an order (brief behaviour B15): GET /orders/<id>/receipt answers the receipt as text, as the brief says. ${POINTERS} Edit the existing files, do not rewrite them.`,
   'An order cannot be handed to a customer as a receipt.',
   [f(FX, 'src/http/receipt.js'), f(S15, 'src/http/routes.js')], [f(S15, 'api/openapi.yaml'), f(FX, 'contracts/examples/13-receipt-unknown.json')])
 export const PHASE_S16 = phase('S16', 'orders-export', 'Export the orders as CSV',
   { id: 'B16', text: 'node bin/shop.mjs export --since <date> --format csv prints the orders from that date as CSV.', test: 'cli.test.js' },
-  `/rig-start A feature: export the orders from the shop command line (brief behaviour B16): \`node bin/shop.mjs export --since <date> --format csv\`. ${POINTERS} Edit the existing files, do not rewrite them.`,
+  `/rig:start A feature: export the orders from the shop command line (brief behaviour B16): \`node bin/shop.mjs export --since <date> --format csv\`. ${POINTERS} Edit the existing files, do not rewrite them.`,
   'The orders cannot be taken out of the shop for the accountant.', [f(FX, 'bin/shop.mjs')], [])
 export const PHASE_S17 = phase('S17', 'top-customers', 'The top customers by spend',
   { id: 'B17', text: 'GET /reports/top-customers?limit=N lists the customers with the highest total spend.', test: 'top-customers.test.js' },
-  `/rig-start A feature: the top customers by spend (brief behaviour B17): GET /reports/top-customers?limit=N, as the brief says. ${POINTERS} Edit the existing files, do not rewrite them.`,
+  `/rig:start A feature: the top customers by spend (brief behaviour B17): GET /reports/top-customers?limit=N, as the brief says. ${POINTERS} Edit the existing files, do not rewrite them.`,
   'There is no way to see who spends the most.',
   [f(FX, 'src/http/reports.js'), f(S17, 'src/http/routes.js')], [f(S17, 'api/openapi.yaml'), f(FX, 'contracts/examples/14-top-customers.json')])
 export const PHASE_S18 = phase('S18', 'orders-page', 'The orders page',
   { id: 'B18', text: 'GET /orders/view is an HTML table of the orders with a status label.', test: 'orders-page.test.js' },
-  `/rig-start A feature: a page that lists the orders (brief behaviour B18): GET /orders/view, as the brief says. ${POINTERS} Edit the existing files, do not rewrite them.`,
+  `/rig:start A feature: a page that lists the orders (brief behaviour B18): GET /orders/view, as the brief says. ${POINTERS} Edit the existing files, do not rewrite them.`,
   'The orders can only be read as JSON.',
   [f(FX, 'src/http/orders-page.js'), f(FX, 'src/http/routes.js')], [f(FX, 'api/openapi.yaml'), f(FX, 'contracts/examples/15-orders-view.json')])
 

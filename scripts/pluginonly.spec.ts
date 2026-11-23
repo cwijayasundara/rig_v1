@@ -15,6 +15,7 @@ test('init --plugin installs the checker and permissions but no skills, agents o
   const r = sdlc(repo, ['init', '--plugin'])
   assert.equal(r.code, 0, r.stderr)
   assert.ok(has(repo, '.rig/bin/sdlc.ts'))
+  assert.equal(has(repo, '.claude/commands'), false)
   assert.equal(has(repo, '.claude/skills/rig-start'), false)
   assert.equal(has(repo, '.claude/agents'), false)
   assert.equal(settings(repo).hooks, undefined)
@@ -24,16 +25,16 @@ test('init --plugin installs the checker and permissions but no skills, agents o
 test('init --plugin removes the standalone copy an earlier init --full wrote, keeps edited files and the project\'s own hooks', () => {
   const repo = makeRepo()
   sdlc(repo, ['init', '--full'])
-  assert.ok(has(repo, '.claude/skills/rig-start/SKILL.md'))
-  write(repo, '.claude/skills/rig-chart/SKILL.md', 'mine\n')
+  assert.ok(has(repo, '.claude/commands/rig/start.md'))
+  write(repo, '.claude/commands/rig/chart.md', 'mine\n')
   const s = settings(repo); s.hooks.Stop = [...s.hooks.Stop, { hooks: [{ type: 'command', command: 'echo mine' }] }]
   write(repo, '.claude/settings.json', JSON.stringify(s))
   const r = sdlc(repo, ['init', '--plugin'])
   assert.equal(r.code, 0, r.stderr)
-  assert.equal(has(repo, '.claude/skills/rig-start'), false)
+  assert.equal(has(repo, '.claude/commands/rig/start.md'), false)
   assert.equal(has(repo, '.claude/agents/rig-evaluator.md'), false)
-  assert.equal(has(repo, '.claude/skills/rig-chart/SKILL.md'), true, 'an edited file stays')
-  assert.match(r.stdout, /kept .claude\/skills\/rig-chart\/SKILL.md/)
+  assert.equal(has(repo, '.claude/commands/rig/chart.md'), true, 'an edited file stays')
+  assert.match(r.stdout, /kept .claude\/commands\/rig\/chart.md/)
   assert.deepEqual(Object.keys(settings(repo).hooks), ['Stop'])
   assert.equal(settings(repo).hooks.Stop[0].hooks[0].command, 'echo mine')
   assert.doesNotMatch(JSON.stringify(settings(repo).hooks), /rig\/bin\/sdlc/)
@@ -41,7 +42,7 @@ test('init --plugin removes the standalone copy an earlier init --full wrote, ke
 
 test('the README layout table says skills and agents under .claude/ exist only after init --full', () => {
   const tpl = fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'templates', 'readme-rig.md'), 'utf8')
-  assert.match(tpl, /`\.claude\/skills\/rig-\*\/` \|[^\n]*only after `init --full`/)
+  assert.match(tpl, /`\.claude\/commands\/rig\/` \|[^\n]*only after `init --full`/)
   assert.match(tpl, /`\.claude\/agents\/rig-\*\.md` \|[^\n]*only after `init --full`/)
 })
 

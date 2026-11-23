@@ -44,7 +44,7 @@ test('a session that wrote nothing scores as not written, and the seeded breaks 
 })
 
 test('the prompt gives the person\'s three journeys and the run contract, and the table reads the rows', () => {
-  assert.match(PROMPT, /^\/rig-app journeys-shop\./)
+  assert.match(PROMPT, /^\/rig:app journeys-shop\./)
   assert.match(PROMPT, /GET \/products[\s\S]*POST \/cart[\s\S]*900 cents/)
   const rows = [{ wrote: true, runsGreen: true, approved: true, caught: { 'body-ignored': true, 'total-off-by-one': false }, usd: 0.5 }, { failed: true }]
   const s = summarize(rows)

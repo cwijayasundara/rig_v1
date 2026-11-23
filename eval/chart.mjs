@@ -79,11 +79,11 @@ export async function runChartOne(arm, n, { dry, out, capRunUsd, key = KEY }) {
     sb.commitAll('docs: sprint 1 requirements')
     if (dry) writeFixture(sb)
     else {
-      sessions.run('chart', '/rig-chart 1', { withPlugin: false })
+      sessions.run('chart', '/rig:chart 1', { withPlugin: false })
       // A converted PRD stops the chart for a person's approval; the eval plays the person, as S6 does for the chart.
       if (/^(missing|stale)/.test(sb.sdlc(['prd', 'status', '1']).stdout)) {
         sb.sdlc(['approve', 'prd-1', '--by', 'eval'], { human: true })
-        sessions.run('chart-after-prd', '/rig-chart 1', { withPlugin: false })
+        sessions.run('chart-after-prd', '/rig:chart 1', { withPlugin: false })
       }
     }
     findings = JSON.parse(sb.sdlc(['chart', 'check', '1', '--cases', '--json']).stdout || '[]')

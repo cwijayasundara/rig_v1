@@ -56,7 +56,7 @@ test('chart with no intents written yet continues once, then passes', async () =
   const d = journeyDriver({ sb: w.sb, sessions: w.sessions, answersDir })
   await d.chart(1, 'docs/prd/p.md')
   assert.equal(w.runs.length, 2)
-  assert.match(w.runs[0].prompt, /^\/rig-chart 1 @docs\/prd\/p\.md/)
+  assert.match(w.runs[0].prompt, /^\/rig:chart 1 @docs\/prd\/p\.md/)
 })
 
 test('approveChart runs sdlc approve chart-N as a human and throws on refusal', async () => {

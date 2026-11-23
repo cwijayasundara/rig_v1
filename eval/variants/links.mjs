@@ -22,10 +22,10 @@ export function briefFor(base) {
     .replace('B5–B6: unit tests in test/remove.test.js.', 'B5–B6: unit tests in test/remove.test.js. B7: unit tests in test/links.test.js.')
 }
 
-// The rig arms' third change, S7: the same text a person would give /rig-start; the dry run plays it from the fixtures.
+// The rig arms' third change, S7: the same text a person would give /rig:start; the dry run plays it from the fixtures.
 export const PHASE = {
   id: 'S7', slug: 'product-links', type: 'feature', title: 'Product pages and order-line links',
-  prompt: '/rig-start A feature: product pages and links (brief behaviour B7): GET /products/<sku> serves one product (404 when unknown), and every order line from checkout carries `href`, the path of its product page, built by the same function the route uses; edit the existing files, do not rewrite them; add the new route and its examples to the HTTP contract in api/openapi.yaml and contracts/examples/ before approval.',
+  prompt: '/rig:start A feature: product pages and links (brief behaviour B7): GET /products/<sku> serves one product (404 when unknown), and every order line from checkout carries `href`, the path of its product page, built by the same function the route uses; edit the existing files, do not rewrite them; add the new route and its examples to the HTTP contract in api/openapi.yaml and contracts/examples/ before approval.',
   intent: { problem: 'A shopper cannot open a product on its own, and an order does not link back to what was bought.', outcome: 'B7 of the brief holds and the earlier behaviour is unchanged.', nonGoals: 'Product search, images, persistence.' },
   spec: '# Spec: product pages and links\n\n## Behaviours\n- B7: GET /products/<sku> serves one product (404 when unknown); every order line from checkout carries the href of its product page.\n\n## Out of scope\n- Search.\n\n## Open questions\nnone\n',
   plan: '# Plan: product pages and links\n\n## Files\n- src/catalog/products.js\n- src/orders/orders.js\n- src/http/handler.js\n- test/links.test.js\n\n## Tests\n- B7: test/links.test.js (unit)\n\n## Contracts\n- api/openapi.yaml (adds GET /products/{sku})\n- contracts/examples/06-get-product.json, 07-unknown-product.json\n\n## Verification\n- npm test\n\n## Open questions\nnone\n',

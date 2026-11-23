@@ -10,7 +10,7 @@ This repo uses **rig-core**: each change (`/rig:start <idea>`) becomes a gated, 
 
 | Path | What it is | Who changes it |
 |---|---|---|
-| `.claude/skills/rig-*/` | The slash commands below | `vendor --standalone --profile core` |
+| `.claude/commands/rig/` | The slash commands below | `vendor --standalone --profile core` |
 | `.claude/agents/rig-evaluator.md` | The plan reviewer | `vendor --standalone --profile core` |
 | `.claude/settings.json` | Hook wiring and permission rules | `init --full`, a person |
 | `.rig/bin/`, `.rig/githooks/`, `.rig/templates/` | The vendored checker, git hooks and formats | `vendor --standalone --profile core` |

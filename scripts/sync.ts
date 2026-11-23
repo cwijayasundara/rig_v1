@@ -2,7 +2,7 @@
 // checks that keep guides, sensors and the brief's behaviours in step. Text outside the block is the team's and never touched.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SENSORS_PATH, CHANGES, read, exists, sha, git, out, fail, sanctionWrites, frontmatter, listChanges, type Args } from './core.ts'
+import { ROOT, hasOwnCopy, SENSORS_PATH, CHANGES, read, exists, sha, git, out, fail, sanctionWrites, frontmatter, listChanges, type Args } from './core.ts'
 import { parseIntent, intentSpecProblems } from './chartcheck.ts'
 import { intentRelOf } from './product.ts'
 import { parseRegistry, isRegistryShape, type Registry } from './registry.ts'
@@ -79,16 +79,16 @@ export function writeSync(registry: Registry): string {
   return `CLAUDE.md guides block written: ${renderLines(registry).length} sensor guide(s)`
 }
 
-// A standalone copy answers to /rig-start; a model may write CLAUDE.md after vendoring (2026-10-31 e2e), so sync repairs the routing line.
+// A standalone copy answers to /rig:start; a model may write CLAUDE.md after vendoring (2026-10-31 e2e), so sync repairs the routing line.
 const OLD_ROUTING = /sdlc routes all work in this repo: start with \/rig[:-]start; use superpowers skills only when an sdlc skill names one\./
-const NEW_ROUTING = 'rig is on in this repo: work from the request as usual, and its checks and guides run on every turn; /rig:start is the full workflow (spec, plan, approval), used only when the person asks for it. Use superpowers skills only when an sdlc skill names one.' // plugin-only: the spelling the plugin writes
-const NEW_ROUTING_VENDORED = NEW_ROUTING.replace('/rig:start', '/rig-start') // plugin-only: the spelling the plugin writes
+const NEW_ROUTING = 'rig is on in this repo: work from the request as usual, and its checks and guides run on every turn; /rig:start is the full workflow (spec, plan, approval), used only when the person asks for it. Use superpowers skills only when an sdlc skill names one.' // plugin-only: the spelling both layouts answer to
+const OLD_ROUTING_SPELLING = NEW_ROUTING.replace('/rig:start', '/rig-start') // plugin-only: what a repo vendored before the commands moved carries
 function standaloneRouting(): string {
   const file = path.join(ROOT, CLAUDE_MD)
-  const before = exists(path.join(ROOT, '.claude/skills/rig-start/SKILL.md')) ? read(file) : ''
-  const after = before.replace(OLD_ROUTING, NEW_ROUTING_VENDORED).replace(NEW_ROUTING, NEW_ROUTING_VENDORED) // plugin-only spelling /rig:start, and the pre-0.12 line, become the rig-on line in /rig-start
+  const before = hasOwnCopy() ? read(file) : ''
+  const after = before.replace(OLD_ROUTING, NEW_ROUTING).replace(OLD_ROUTING_SPELLING, NEW_ROUTING) // the pre-0.12 line and the old /rig-start spelling become the rig-on line naming /rig:start
   if (after === before) return ''
-  sanctionWrites([CLAUDE_MD]); fs.writeFileSync(file, after); return '\nCLAUDE.md routing line names /rig-start (standalone copy)'
+  sanctionWrites([CLAUDE_MD]); fs.writeFileSync(file, after); return '\nCLAUDE.md routing line names /rig:start' // plugin-only: fixed text
 }
 
 // Other agent tools read AGENTS.md, not CLAUDE.md. One source: a short pointer to CLAUDE.md, written only when the repo has no AGENTS.md of its own.

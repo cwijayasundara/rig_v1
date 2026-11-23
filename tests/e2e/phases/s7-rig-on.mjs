@@ -34,7 +34,7 @@ function settle(sb, files) {
 async function freeform(c, sb) {
   const before = changes(sb)
   const ctx = parsed(hook(sb, 'session-start', { model: 'claude-sonnet-5-5', source: 'startup' })).hookSpecificOutput?.additionalContext ?? ''
-  await c.check('S7: SessionStart prints "No active change" and names /rig-start with rig on', () => (/No active change/.test(ctx) && /\/rig-start/.test(ctx)) || ctx.split('\n').slice(0, 4).join(' | '))
+  await c.check('S7: SessionStart prints "No active change" and names /rig:start with rig on', () => (/No active change/.test(ctx) && /\/rig:start/.test(ctx)) || ctx.split('\n').slice(0, 4).join(' | '))
 
   const leak = turn(sb, 'add a key', { 'src/s7-leak.js': secret() })
   await c.check('S7: a freeform edit that writes a secret is blocked by the Stop gate with no change active', () => (leak.out.decision === 'block' && leak.blocked.includes('secrets')) || `decision ${leak.out.decision}; fired ${leak.blocked.join(', ') || 'none'}`)
@@ -58,11 +58,11 @@ async function freeform(c, sb) {
   await c.check('S7: carried warnings are shown once, not every prompt', () => !/the last turn left/.test(again.hookSpecificOutput?.additionalContext ?? '') || 'shown twice')
   settle(sb, ['src/catalog/products.js'])
 
-  // The start nudge: /rig-start from a main thread on another model than the repo builds on names the switch.
+  // The start nudge: /rig:start from a main thread on another model than the repo builds on names the switch.
   const transcript = path.join(sb.logs, 's7-transcript.jsonl')
   fs.writeFileSync(transcript, `${JSON.stringify({ type: 'assistant', message: { model: 'claude-opus-5-5', usage: { input_tokens: 1000 } } })}\n`)
-  const nudge = parsed(hook(sb, 'prompt-submit', { prompt: '/rig-start add a thing', transcript_path: transcript }))
-  await c.check('S7: UserPromptSubmit prints the start nudge for /rig-start on the wrong model', () => /^rig: .*\/model /.test(nudge.systemMessage ?? '') || JSON.stringify(nudge).slice(0, 160))
+  const nudge = parsed(hook(sb, 'prompt-submit', { prompt: '/rig:start add a thing', transcript_path: transcript }))
+  await c.check('S7: UserPromptSubmit prints the start nudge for /rig:start on the wrong model', () => /^rig: .*\/model /.test(nudge.systemMessage ?? '') || JSON.stringify(nudge).slice(0, 160))
   settle(sb, [])
   await c.check('S7: the freeform turns opened no change record and left the tree clean', () => (JSON.stringify(changes(sb)) === JSON.stringify(before) && sb.git('status', '--porcelain') === '') || `changes ${changes(sb)}; status ${sb.git('status', '--porcelain')}`)
 }

@@ -41,12 +41,12 @@ const contractFiles = (dir, names) => [{ src: path.join(dir, 'api/openapi.yaml')
 
 export const PHASE_S13 = phase('S13', 'orders-read-api', 'Read the orders over HTTP',
   { id: 'B13', text: 'GET /orders pages newest first with a cursor, GET /orders/<id> has a version and an etag, errors are problem documents, every response has a request id.', test: 'orders-api.test.js' },
-  `/rig-start A feature: read the orders over HTTP (brief behaviour B13): GET /orders and GET /orders/<id>, with problem-document errors, 405 with allow, an etag and 304, and a request id; ${TAIL}`,
+  `/rig:start A feature: read the orders over HTTP (brief behaviour B13): GET /orders and GET /orders/<id>, with problem-document errors, 405 with allow, an etag and 304, and a request id; ${TAIL}`,
   'An order can be placed but not looked at over HTTP.', 'orders-api.test.js', f => (f.endsWith('handler.js') ? STAGE : FX),
   contractFiles(STAGE, ['08-list-orders.json', '09-get-order.json', '10-unknown-order.json', '11-orders-wrong-method.json']))
 export const PHASE_S14 = phase('S14', 'orders-cancel-api', 'Cancel an order over HTTP',
   { id: 'B14', text: 'POST /orders/<id>/cancel needs if-match, answers 404, 428, 412 and 409 in that order, and honours an idempotency key.', test: 'cancel-api.test.js' },
-  `/rig-start A feature: cancel an order over HTTP (brief behaviour B14): POST /orders/<id>/cancel with if-match and an optional idempotency-key; ${TAIL}`,
+  `/rig:start A feature: cancel an order over HTTP (brief behaviour B14): POST /orders/<id>/cancel with if-match and an optional idempotency-key; ${TAIL}`,
   'An order can be cancelled in code but not over HTTP, and a retry could cancel twice.', 'cancel-api.test.js', () => FX,
   contractFiles(FX, ['12-cancel-needs-if-match.json']))
 for (const ph of [PHASE_S13, PHASE_S14]) ph.acceptance = 'contract'

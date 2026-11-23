@@ -6,7 +6,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { makeRepo, sdlc, write } from './testkit.ts'
-import { VENDORED } from './vendor.ts'
+import { VENDORED, MANIFEST } from './vendor.ts'
+import { findBlock, withBlock } from './sync.ts'
 
 const walk = (dir: string): string[] =>
   fs.existsSync(dir)
@@ -22,24 +23,26 @@ const vendored = (repo: string, args: string[], input?: string, human = '') => {
   return { code: r.status, stdout: r.stdout, stderr: r.stderr }
 }
 
-test('vendor --standalone writes project skills, agents and hooks with no plugin references left', () => {
+test('vendor --standalone writes project commands (.claude/commands/rig), agents and hooks with no plugin references left', () => {
   const repo = makeRepo()
   sdlc(repo, ['init'])
   write(repo, '.claude/settings.json', JSON.stringify({ model: 'claude-sonnet-5-5', hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo mine' }] }] } }))
   assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
-  const skills = walk(path.join(repo, '.claude/skills')).filter(f => f.endsWith('SKILL.md'))
+  const skills = walk(path.join(repo, '.claude/commands/rig')).filter(f => f.endsWith('.md'))
   const agents = walk(path.join(repo, '.claude/agents'))
-  assert.ok(skills.some(f => f.endsWith('rig-start/SKILL.md')) && skills.length === 16, `${skills.length} skills`)
-  for (const s of ['start', 'plan', 'approve', 'waive', 'autonomy', 'chart', 'testplan']) assert.ok(skills.some(f => f.endsWith(`rig-${s}/SKILL.md`)), `rig-${s} is vendored`)
-  assert.ok(!fs.existsSync(path.join(repo, '.claude/skills/rig-upgrade')), 'the upgrade skill runs only from the plugin, so it is not vendored')
+  assert.ok(skills.some(f => f.endsWith('rig/start.md')) && skills.length === 16, `${skills.length} skills`)
+  for (const s of ['start', 'plan', 'approve', 'waive', 'autonomy', 'chart', 'testplan']) assert.ok(skills.some(f => f.endsWith(`rig/${s}.md`)), `/rig:${s} is vendored`)
+  assert.ok(!fs.existsSync(path.join(repo, '.claude/commands/rig/upgrade.md')), 'the upgrade skill runs only from the plugin, so it is not vendored')
   assert.deepEqual(agents.map(f => path.basename(f)), ['rig-architect.md', 'rig-evaluator.md'], 'the architect and the evaluator are the agents')
   for (const f of [...skills, ...agents]) {
     const text = fs.readFileSync(f, 'utf8')
     assert.doesNotMatch(text, /CLAUDE_PLUGIN_ROOT|<plugin>\/scripts|(?<![/\w])rig:(?:architect|evaluator|implementer|researcher|reviewer|scout)\b/, path.relative(repo, f))
-    assert.match(text, f.includes('/agents/') ? /^name: rig-/m : /^name: rig:[a-z]/m, path.relative(repo, f))
-    assert.doesNotMatch(text, /\/rig:[a-z]/, `${path.relative(repo, f)}: a vendored skill is invoked by its folder name, /rig-<name>`)
+    if (f.includes('/agents/')) assert.match(text, /^name: rig-/m, path.relative(repo, f))
+    else assert.doesNotMatch(text, /^name:/m, `${path.relative(repo, f)}: the path names the command, so it has no name: line`)
+    assert.doesNotMatch(text, /\/rig-(app|approve|arch|autonomy|build|chart|init|learn|plan|pr|rule|start|test|testplan|upgrade|waive|wiki)\b/, `${path.relative(repo, f)}: a command is typed /rig:<name>`)
   }
   assert.ok(fs.existsSync(path.join(repo, '.rig/templates/rig-check.yml')), 'templates copied')
+  assert.equal(fs.existsSync(path.join(repo, '.claude/skills')), false, 'no .claude/skills/rig-* folder: those register as /rig-<name>')
   const settings = JSON.parse(fs.readFileSync(path.join(repo, '.claude/settings.json'), 'utf8'))
   assert.equal(settings.model, 'claude-sonnet-5-5', 'other settings kept')
   const stop = JSON.stringify(settings.hooks.Stop)
@@ -50,16 +53,16 @@ test('vendor --standalone writes project skills, agents and hooks with no plugin
   assert.equal(again.hooks.Stop.length, settings.hooks.Stop.length, 're-running replaces sdlc hooks instead of duplicating them')
 })
 
-test('vendor --standalone rewrites the CLAUDE.md routing line to the vendored command and leaves the rest alone', () => {
+test('vendor --standalone keeps the CLAUDE.md routing line at /rig:start and leaves the rest alone', () => {
   const repo = makeRepo()
   sdlc(repo, ['init'])
   const claude = '# App\n\nrig is on in this repo: work from the request as usual, and its checks and guides run on every turn; /rig:start is the full workflow (spec, plan, approval), used only when the person asks for it. Use superpowers skills only when an sdlc skill names one.\n\nSee /rig:plan notes.\n'
   write(repo, 'CLAUDE.md', claude)
   assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
-  assert.equal(fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8'), claude.replace('/rig:start is', '/rig-start is'))
+  assert.equal(fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8'), claude)
 })
 
-test('a CLAUDE.md written after vendoring still gets the /rig-start routing line when sync runs (2026-10-31 e2e: Haiku wrote CLAUDE.md after init --full)', () => {
+test('a CLAUDE.md written after vendoring still names /rig:start in the routing line when sync runs (2026-10-31 e2e: Haiku wrote CLAUDE.md after init --full)', () => {
   const repo = makeRepo()
   sdlc(repo, ['init'])
   write(repo, '.rig/sensors.json', JSON.stringify({ stack: 'x', paths: { tests: ['**/*.test.ts'] }, sensors: [] }))
@@ -68,16 +71,16 @@ test('a CLAUDE.md written after vendoring still gets the /rig-start routing line
   write(repo, 'CLAUDE.md', claude)
   assert.equal(vendored(repo, ['sync']).code, 0)
   const after = fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8')
-  assert.match(after, /\/rig-start is the full workflow/)
+  assert.match(after, /\/rig:start is the full workflow/)
   assert.match(after, /See \/rig:plan notes\./, 'only the routing line is rewritten')
 })
 
-test('vendor --standalone migrates the old routing line (/rig:start spelling) to the rig-on line in the /rig-start spelling', () => {
+test('vendor --standalone migrates the old routing line (/rig:start spelling) to the rig-on line, still /rig:start', () => {
   const repo = makeRepo()
   sdlc(repo, ['init'])
   write(repo, 'CLAUDE.md', '# App\n\nsdlc routes all work in this repo: start with /rig:start; use superpowers skills only when an sdlc skill names one.\n\nSee /rig:plan notes.\n')
   assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
-  assert.equal(fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8'), '# App\n\nrig is on in this repo: work from the request as usual, and its checks and guides run on every turn; /rig-start is the full workflow (spec, plan, approval), used only when the person asks for it. Use superpowers skills only when an sdlc skill names one.\n\nSee /rig:plan notes.\n')
+  assert.equal(fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8'), '# App\n\nrig is on in this repo: work from the request as usual, and its checks and guides run on every turn; /rig:start is the full workflow (spec, plan, approval), used only when the person asks for it. Use superpowers skills only when an sdlc skill names one.\n\nSee /rig:plan notes.\n')
 })
 
 test('a plugin install keeps the /rig:start routing line when sync runs', () => {
@@ -89,33 +92,33 @@ test('a plugin install keeps the /rig:start routing line when sync runs', () => 
   assert.match(fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8'), /\/rig:start is the full workflow/)
 })
 
-test('vendor --standalone names the vendored /rig-x commands in the README rig block and its template, and leaves the rest alone', () => {
-  // 2026-10-25 shop_app run: CLAUDE.md said /rig-start but the README block said /rig:start, which a standalone copy does not answer to.
+test('vendor --standalone repairs an old /rig-x README rig block to /rig:x, never touches text outside it, and copies the template as is', () => {
+  // A repo vendored before the commands moved to .claude/commands/rig/ carries /rig-x in its README block; the repo's copy answers to /rig:x.
   const repo = makeRepo()
   sdlc(repo, ['init'])
-  const block = '<!-- rig:begin (written by /rig:init) -->\nStart with `/rig:start "<idea>"`, then `/rig:approve <slug>`.\n<!-- rig:end -->'
-  write(repo, 'README.md', `# App\n\nRun /rig:start outside the block.\n\n${block}\n`)
+  const block = '<!-- rig:begin (written by /rig:init) -->\nStart with `/rig-start "<idea>"`, then `/rig-approve <slug>`; see /rig-approved.yml and /tmp/rig-app-1.\n<!-- rig:end -->'
+  write(repo, 'README.md', `# App\n\nRun /rig-start outside the block.\n\n${block}\n`)
   assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
   const readme = fs.readFileSync(path.join(repo, 'README.md'), 'utf8')
-  assert.match(readme, /Run \/rig:start outside the block/, 'text outside the markers is untouched')
-  assert.match(readme, /Start with `\/rig-start "<idea>"`, then `\/rig-approve <slug>`/)
-  assert.doesNotMatch(readme.slice(readme.indexOf('<!-- rig:begin')), /\/rig:[a-z]/)
+  assert.match(readme, /Run \/rig-start outside the block/, 'text outside the markers is untouched')
+  assert.match(readme, /Start with `\/rig:start "<idea>"`, then `\/rig:approve <slug>`; see \/rig-approved\.yml and \/tmp\/rig-app-1\./, 'only real skill names change')
+  assert.doesNotMatch(readme.slice(readme.indexOf('<!-- rig:begin')), /\/rig-(start|approve)\b/)
   const tpl = fs.readFileSync(path.join(repo, '.rig/templates/readme-rig.md'), 'utf8')
-  assert.match(tpl, /\/rig-start/)
-  assert.doesNotMatch(tpl, /\/rig:[a-z]/)
+  assert.match(tpl, /\/rig:start/)
+  assert.doesNotMatch(tpl, /\/rig-(start|approve|chart)\b/)
 })
 
-test('vendor --standalone names the /rig-x commands in the docs/prd README and template init wrote', () => {
-  // init --stack writes docs/prd/ before init --full vendors, so its copies still say /rig:chart until vendor routes them.
+test('vendor --standalone repairs /rig-x to /rig:x in the docs/prd README and template an older init wrote', () => {
+  // An older init wrote /rig-chart into docs/prd/; vendor repairs it.
   const repo = makeRepo()
   sdlc(repo, ['init'])
-  write(repo, 'docs/prd/README.md', 'Run `/rig:chart <n> @docs/prd/sprint-<n>/prd.md`.\n')
-  write(repo, 'docs/prd/prd-template.md', 'converted by /rig:chart\n')
+  write(repo, 'docs/prd/README.md', 'Run `/rig-chart <n> @docs/prd/sprint-<n>/prd.md`.\n')
+  write(repo, 'docs/prd/prd-template.md', 'converted by /rig-chart\n')
   assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
   for (const f of ['docs/prd/README.md', 'docs/prd/prd-template.md']) {
     const text = fs.readFileSync(path.join(repo, f), 'utf8')
-    assert.match(text, /\/rig-chart/, f)
-    assert.doesNotMatch(text, /\/rig:[a-z]/, f)
+    assert.match(text, /\/rig:chart/, f)
+    assert.doesNotMatch(text, /\/rig-chart/, f)
   }
 })
 
@@ -124,9 +127,9 @@ test('the vendored copy points its skills at .rig/bin and the session start name
   sdlc(repo, ['init'])
   sdlc(repo, ['vendor', '--standalone'])
   vendored(repo, ['new', 'small-thing', '--type', 'chore'])
-  // A vendored skill is registered under its folder name, so the vendored checker names it /rig-start (2026-10-16 pilot).
-  assert.match(vendored(repo, ['status']).stdout, /next: \/rig-start small-thing/)
-  const skill = fs.readFileSync(path.join(repo, '.claude/skills/rig-plan/SKILL.md'), 'utf8')
+  // The repo's copy of a command is typed /rig:x, so the vendored checker names it so.
+  assert.match(vendored(repo, ['status']).stdout, /next: \/rig:start small-thing/)
+  const skill = fs.readFileSync(path.join(repo, '.claude/commands/rig/plan.md'), 'utf8')
   assert.match(skill, /\.rig\/bin\/sdlc\.ts/)
   assert.doesNotMatch(skill, /CLAUDE_PLUGIN_ROOT/)
   const ctx = JSON.parse(vendored(repo, ['hook', 'session-start'], '{}').stdout).hookSpecificOutput.additionalContext as string
@@ -139,7 +142,7 @@ test('standalone ships human-only /rig:approve and /rig:waive skills the model c
   sdlc(repo, ['init'])
   assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
   for (const cmd of ['approve', 'waive']) {
-    const skill = fs.readFileSync(path.join(repo, `.claude/skills/rig-${cmd}/SKILL.md`), 'utf8')
+    const skill = fs.readFileSync(path.join(repo, `.claude/commands/rig/${cmd}.md`), 'utf8')
     assert.match(skill, /^disable-model-invocation: true$/m)
     assert.ok(skill.includes(`allowed-tools: Bash(${humanCommand(cmd)} *)`), `${cmd}: the grant covers exactly the injected command`)
     assert.ok(skill.includes(`!\`${humanCommand(cmd)} '$ARGUMENTS'${cmd === 'approve' ? ' --ask' : ''} 2>&1 || true\``), `${cmd}: arguments are single-quoted, never globbed`)
@@ -147,10 +150,10 @@ test('standalone ships human-only /rig:approve and /rig:waive skills the model c
   // The vendored human skills are the plugin's own text with project paths, never a second copy that can drift.
   for (const cmd of ['approve', 'waive', 'autonomy']) {
     const plugin = fs.readFileSync(path.join(import.meta.dirname, '..', 'skills', cmd, 'SKILL.md'), 'utf8')
-    const skill = fs.readFileSync(path.join(repo, `.claude/skills/rig-${cmd}/SKILL.md`), 'utf8')
+    const skill = fs.readFileSync(path.join(repo, `.claude/commands/rig/${cmd}.md`), 'utf8')
     const field = (text: string, key: string) => new RegExp(`^${key}: (.*)$`, 'm').exec(text)?.[1]
     for (const key of ['description', 'argument-hint']) assert.equal(field(skill, key), field(plugin, key), `${cmd}: ${key}`)
-    assert.equal(skill.split('---\n').slice(2).join('---\n'), plugin.split('---\n').slice(2).join('---\n').replaceAll('"${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts"', '.rig/bin/sdlc.ts').replaceAll('/rig:', '/rig-'), `${cmd}: body`)
+    assert.equal(skill.split('---\n').slice(2).join('---\n'), plugin.split('---\n').slice(2).join('---\n').replaceAll('"${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts"', '.rig/bin/sdlc.ts'), `${cmd}: body`)
   }
 })
 
@@ -205,9 +208,9 @@ test('the settings template is portable: no personal plugins, absolute paths or 
 test('standalone vendoring ships the v0.4 skills and REVIEW.md template', () => {
   const repo = makeRepo()
   sdlc(repo, ['vendor', '--standalone'])
-  for (const s of ['rig-test', 'rig-pr', 'rig-build'])
-    assert.ok(fs.existsSync(path.join(repo, `.claude/skills/${s}/SKILL.md`)), s)
-  assert.ok(!fs.existsSync(path.join(repo, '.claude/skills/rig-verify/SKILL.md')), 'old names are gone')
+  for (const s of ['test', 'pr', 'build'])
+    assert.ok(fs.existsSync(path.join(repo, `.claude/commands/rig/${s}.md`)), s)
+  assert.ok(!fs.existsSync(path.join(repo, '.claude/commands/rig/verify.md')), 'old names are gone')
   assert.ok(fs.existsSync(path.join(repo, '.rig/templates/REVIEW.md')))
 })
 
@@ -224,20 +227,20 @@ test('standalone vendoring with --dashboard installs the journey dashboard as th
   const settings = JSON.parse(fs.readFileSync(path.join(repo, '.claude/settings.json'), 'utf8'))
   assert.deepEqual(settings.enabledPlugins, { 'x@mine': true, 'rig@rig-local': true })
   assert.deepEqual(Object.keys(settings.extraKnownMarketplaces).sort(), ['mine', 'rig-local'])
-  for (const cmd of ['approve', 'waive']) assert.doesNotMatch(fs.readFileSync(path.join(repo, `.claude/skills/rig-${cmd}/SKILL.md`), 'utf8'), /CLAUDE_PLUGIN_ROOT/)
+  for (const cmd of ['approve', 'waive']) assert.doesNotMatch(fs.readFileSync(path.join(repo, `.claude/commands/rig/${cmd}.md`), 'utf8'), /CLAUDE_PLUGIN_ROOT/)
 })
 
-test('the vendored journey prints /rig-<name>, the command a standalone copy answers to, never the plugin spelling /rig:<name>', () => {
-  // cbe4be4 (2026-10-18) printed /rig:<name> here; every standalone transcript since resolves /rig-<name> and never /rig:<name>.
+test('the vendored journey prints /rig:<name>, the command a standalone copy answers to, never /rig-<name>', () => {
+  // The repo's copy is .claude/commands/rig/<name>.md, which Claude Code registers as /rig:<name>.
   const repo = makeRepo()
   sdlc(repo, ['init'])
   write(repo, '.rig/sensors.json', JSON.stringify({ stack: 'x', paths: { tests: ['**/*.test.ts'] }, sensors: [] }))
   assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
   sdlc(repo, ['new', 'add-x', '--type', 'feature'])
   const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', '.rig/bin/sdlc.ts', 'status', '--journey'], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repo } })
-  assert.match(r.stdout, /\/rig-init/)
-  assert.match(r.stdout, /next: \/rig-start add-x/)
-  assert.doesNotMatch(r.stdout, /\/rig:[a-z]/)
+  assert.match(r.stdout, /\/rig:init/)
+  assert.match(r.stdout, /next: \/rig:start add-x/)
+  assert.doesNotMatch(r.stdout, /\/rig-(init|start)\b/)
 })
 
 test('every script names a skill through skillRef, never a hard-coded /rig:<name> (2026-10-25 shop_app: readiness told a standalone repo to run /rig:chart)', () => {
@@ -252,26 +255,30 @@ test('every script names a skill through skillRef, never a hard-coded /rig:<name
   assert.deepEqual(hits, [])
 })
 
-test('a standalone copy prints /rig-<name> in readiness, refusals and the dashboard, and rewrites the CLAUDE.md guides block', () => {
+test('a standalone copy prints /rig:<name> in readiness, refusals and the dashboard, and repairs an old /rig-<name> guides block', () => {
   const repo = makeRepo()
   sdlc(repo, ['init'])
   write(repo, '.rig/sensors.json', JSON.stringify({ stack: 'x', paths: { tests: ['**/*.test.ts'] }, sensors: [] }))
   assert.equal(sdlc(repo, ['sync']).code, 0)
-  assert.match(fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8'), /the \/rig:pr reviewer/, 'the plugin copy writes the plugin spelling')
+  assert.match(fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8'), /the \/rig:pr reviewer/, 'the plugin copy writes /rig:x')
+  // A repo vendored earlier carries the old spelling, hash intact: vendor repairs it and re-hashes.
+  const old = fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8')
+  write(repo, 'CLAUDE.md', withBlock(old, findBlock(old)!.lines.map(l => l.replace('/rig:pr', '/rig-pr'))))
+  assert.match(fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8'), /the \/rig-pr reviewer/)
   assert.equal(sdlc(repo, ['vendor', '--standalone', '--dashboard']).code, 0)
   const claude = fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8')
-  assert.match(claude, /the \/rig-pr reviewer/)
-  assert.doesNotMatch(claude, /\/rig:[a-z]/)
+  assert.match(claude, /the \/rig:pr reviewer/)
+  assert.doesNotMatch(claude, /\/rig-(pr|start)\b/)
   assert.match(vendored(repo, ['sync']).stdout, /guides block is up to date/, 'the re-hashed block is what the vendored sync writes')
   const ready = vendored(repo, ['readiness'])
-  assert.match(ready.stdout, /\/rig-chart/)
-  assert.doesNotMatch(ready.stdout + ready.stderr, /\/rig:[a-z]/)
+  assert.match(ready.stdout, /\/rig:chart/)
+  assert.doesNotMatch(ready.stdout + ready.stderr, /\/rig-(app|approve|arch|chart|init|plan|start|test|wiki)\b/)
   const refused = vendored(repo, ['approve', 'x'])
   assert.equal(refused.code, 3)
-  assert.match(refused.stderr + refused.stdout, /the person runs \/rig-approve <slug>/)
+  assert.match(refused.stderr + refused.stdout, /the person runs \/rig:approve <slug>/)
   const dash = fs.readFileSync(path.join(repo, '.rig/mod/hooks/dashboard.tsx'), 'utf8')
-  assert.match(dash, /\/rig-init/)
-  assert.doesNotMatch(dash, /\/rig:[a-z]/)
+  assert.match(dash, /\/rig:init/)
+  assert.doesNotMatch(dash, /\/rig-init/)
 })
 
 test('vendoring leaves a hand-edited guides block alone, so sync still reports the edit', () => {
@@ -433,7 +440,7 @@ test('vendor --standalone writes a manifest of the harness files', () => {
   assert.equal(m.version, fs.readFileSync(path.join(repo, '.rig/bin/VERSION'), 'utf8').trim())
   const sha = (f: string): string => crypto.createHash('sha256').update(fs.readFileSync(path.join(repo, f), 'utf8')).digest('hex').slice(0, 16)
   assert.equal(m.files['.rig/bin/sdlc.ts'], sha('.rig/bin/sdlc.ts'))
-  for (const f of ['.claude/skills/rig-start/SKILL.md', '.rig/mod/hooks/dashboard.tsx', '.rig/githooks/pre-commit']) assert.equal(m.files[f], sha(f), f)
+  for (const f of ['.claude/commands/rig/start.md', '.rig/mod/hooks/dashboard.tsx', '.rig/githooks/pre-commit']) assert.equal(m.files[f], sha(f), f)
   for (const f of ['.claude/settings.json', 'CLAUDE.md', 'README.md', '.claude-plugin/marketplace.json', '.rig/bin/MANIFEST.json']) assert.ok(!(f in m.files), `${f} is not hashed`)
   if (process.platform !== 'win32') assert.equal(fs.statSync(path.join(repo, '.rig/githooks/pre-commit')).mode & 0o777, 0o755)
 })
@@ -475,7 +482,7 @@ test('a plain vendor after vendor --standalone keeps the standalone manifest ent
   const file = path.join(repo, '.rig/bin/MANIFEST.json')
   const first = fs.readFileSync(file, 'utf8')
   const keys = Object.keys(JSON.parse(first).files)
-  assert.ok(keys.some(k => k.startsWith('.claude/skills/rig-')) && keys.some(k => k.startsWith('.claude/agents/rig-')))
+  assert.ok(keys.some(k => k.startsWith('.claude/commands/rig/')) && keys.some(k => k.startsWith('.claude/agents/rig-')))
   assert.equal(sdlc(repo, ['vendor']).code, 0)
   assert.equal(Object.keys(JSON.parse(fs.readFileSync(file, 'utf8')).files).length, keys.length)
   assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
@@ -501,4 +508,54 @@ test('no vendored template is a file a test runner collects: slice files end in 
   const collected = tpl.filter(f => /(\.test|\.spec)\.[cm]?[jt]sx?$|(^|\/)test_[^/]*\.py$|_test\.(go|py)$/.test(f))
   assert.deepEqual(collected, [])
   assert.ok(tpl.filter(f => f.includes('/slices/') && f.includes('/files/')).every(f => f.endsWith('.tmpl')))
+})
+
+// A repo's own copy of the commands is .claude/commands/rig/<name>.md: Claude Code registers that as /rig:<name>, the plugin's spelling.
+const SKILL_NAMES_RE = /\/rig-(app|approve|arch|autonomy|build|chart|init|learn|plan|pr|rule|start|test|testplan|upgrade|waive|wiki)\b/
+
+test('vendor --standalone writes .claude/commands/rig/<name>.md, no .claude/skills/rig-* folder, no /rig-<skill> and no name: line', () => {
+  const repo = makeRepo()
+  sdlc(repo, ['init'])
+  assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
+  assert.ok(fs.existsSync(path.join(repo, '.claude/commands/rig/start.md')))
+  assert.deepEqual(walk(path.join(repo, '.claude/skills')).filter(f => f.includes('/rig-')), [])
+  const files = [...walk(path.join(repo, '.claude')), ...walk(path.join(repo, '.rig/templates')), ...walk(path.join(repo, '.rig/mod'))]
+  for (const f of files) assert.doesNotMatch(fs.readFileSync(f, 'utf8'), SKILL_NAMES_RE, `${path.relative(repo, f)} names /rig-<skill>`)
+  for (const f of walk(path.join(repo, '.claude/commands/rig'))) assert.doesNotMatch(fs.readFileSync(f, 'utf8'), /^name:/m, `${path.relative(repo, f)} has a name: line`)
+})
+
+test('a repo holding the old layout is repaired by vendor --standalone: unedited old files gone, an edited one kept, /rig:start everywhere', () => {
+  const repo = makeRepo()
+  sdlc(repo, ['init'])
+  assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
+  // Rebuild what an earlier vendor left: skill folders under .claude/skills, hashed in the manifest, and /rig-start in CLAUDE.md and the README block.
+  const manifestFile = path.join(repo, MANIFEST)
+  const m = JSON.parse(fs.readFileSync(manifestFile, 'utf8')) as { files: Record<string, string> }
+  for (const rel of Object.keys(m.files).filter(k => k.startsWith('.claude/commands/rig/'))) { delete m.files[rel]; fs.rmSync(path.join(repo, rel)) }
+  const oldFiles: Record<string, string> = { '.claude/skills/rig-start/SKILL.md': 'old start\n', '.claude/skills/rig-plan/SKILL.md': 'old plan\n' }
+  for (const [rel, text] of Object.entries(oldFiles)) { write(repo, rel, text); m.files[rel] = crypto.createHash('sha256').update(text).digest('hex').slice(0, 16) }
+  fs.writeFileSync(manifestFile, JSON.stringify(m, null, 2) + '\n')
+  write(repo, '.claude/skills/rig-plan/SKILL.md', 'old plan, edited by the team\n')
+  write(repo, 'CLAUDE.md', '# App\n\nrig is on in this repo: work from the request as usual, and its checks and guides run on every turn; /rig-start is the full workflow (spec, plan, approval), used only when the person asks for it. Use superpowers skills only when an sdlc skill names one.\n')
+  write(repo, 'README.md', '# App\n\n<!-- rig:begin -->\nStart with `/rig-start "<idea>"`.\n<!-- rig:end -->\n')
+  const r = sdlc(repo, ['vendor', '--standalone'])
+  assert.equal(r.code, 0, r.stderr)
+  assert.equal(fs.existsSync(path.join(repo, '.claude/skills/rig-start')), false, 'the unedited old file and its folder are gone')
+  assert.equal(fs.readFileSync(path.join(repo, '.claude/skills/rig-plan/SKILL.md'), 'utf8'), 'old plan, edited by the team\n', 'an edited old file is kept')
+  assert.match(r.stdout, /kept \.claude\/skills\/rig-plan\/SKILL\.md \(edited\)/)
+  assert.ok(fs.existsSync(path.join(repo, '.claude/commands/rig/start.md')))
+  assert.match(fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8'), /; \/rig:start is the full workflow/)
+  assert.match(fs.readFileSync(path.join(repo, 'README.md'), 'utf8'), /Start with `\/rig:start "<idea>"`/)
+})
+
+test('skillRef is /rig:<name> whichever layout is on disk: status --journey prints /rig:init, never /rig-init', () => {
+  for (const layout of ['new', 'old']) {
+    const repo = makeRepo()
+    sdlc(repo, ['init'])
+    if (layout === 'new') write(repo, '.claude/commands/rig/start.md', 'x\n')
+    else write(repo, '.claude/skills/rig-start/SKILL.md', 'x\n')
+    const r = sdlc(repo, ['status', '--journey'])
+    assert.match(r.stdout, /\/rig:init/, layout)
+    assert.doesNotMatch(r.stdout + r.stderr, SKILL_NAMES_RE, layout)
+  }
 })

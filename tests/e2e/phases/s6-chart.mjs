@@ -19,7 +19,7 @@ export function writeFixture(sb) {
   }
 }
 
-// The person's side of the gate: get the page sha (--ask), then pick "Approve chart-N" through the AskUserQuestion hook, as /rig-approve does.
+// The person's side of the gate: get the page sha (--ask), then pick "Approve chart-N" through the AskUserQuestion hook, as /rig:approve does.
 function answerChart(sb, n) {
   const asked = sb.sdlc(['approve', `chart-${n}`, '--ask'], { human: true }), sha = /page sha ([0-9a-f]{64})/.exec(asked.stderr)?.[1]
   if (!sha) return

@@ -44,7 +44,7 @@ guides/      contracts, engineering, testing: injected on first touch of a match
 ```
 
 - **Skills, not commands.** Plugin agents ignore `hooks`, `mcpServers` and `permissionMode`, so an agent's limits are its `tools:` list; there are no per-agent gates.
-- **Standalone by default.** `vendor --standalone` copies skills, agents, hooks and scripts into the repo (`.claude/skills/rig-*`, `.claude/agents/rig-*`, `.rig/bin`), so a repo never depends on the plugin and a cloud session runs it as is. `/rig-approve`, `/rig-waive` and `/rig-autonomy` are vendored skills with `disable-model-invocation` and a pinned `!` command; `$ARGUMENTS` is single-quoted because it is substituted raw.
+- **Standalone by default.** `vendor --standalone` copies skills, agents, hooks and scripts into the repo (`.claude/commands/rig/`, `.claude/agents/rig-*`, `.rig/bin`), so a repo never depends on the plugin and a cloud session runs it as is. `/rig:approve`, `/rig:waive` and `/rig:autonomy` are vendored commands with `disable-model-invocation` and a pinned `!` command; `$ARGUMENTS` is single-quoted because it is substituted raw.
 - **Artifacts live in `.rig/`, not `.claude/`.** Claude Code protects `.claude/`: writes there prompt, or are denied in `-p`, and allow rules cannot change that.
 
 ## 4. The change lifecycle
@@ -106,7 +106,7 @@ Open: command sensors at commit and push see the working tree rather than the in
 
 ## 10. Open items
 
-- `/rig-approve` has not been tried in a cloud session.
+- `/rig:approve` has not been tried in a cloud session.
 - The git hooks have not been trialled live; the live trials predate them.
 - Whether `autoCompactWindow` is honoured from project settings.
 - Windows is supported through Git for Windows bash (sensor commands run there); CI runs `windows-latest`.

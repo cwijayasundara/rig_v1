@@ -12,18 +12,18 @@ const names = (dir, ext = '') => fs.readdirSync(path.join(PLUGIN, dir)).filter(f
 export async function assertOnboarding(c, sb, { lane, modules = [], testCmd = ['npm', 'test', '--silent'] }) {
   const claudeMd = sb.read('CLAUDE.md')
   await c.check('CLAUDE.md exists, at most 120 lines', () => (claudeMd !== '' && claudeMd.split('\n').length <= 120) || `${claudeMd.split('\n').length} lines`)
-  // init --full rewrites the line to the vendored command, /rig-start, the one the session-start hook and status name.
-  await c.check('CLAUDE.md routes work to /rig-start', () =>
-    /rig is on in this repo: .*\/rig-start is the full workflow/.test(claudeMd) || 'routing line missing or names another start command')
+  // The repo's copy of the commands is typed /rig:x, the one the session-start hook and status name.
+  await c.check('CLAUDE.md routes work to /rig:start', () =>
+    /rig is on in this repo: .*\/rig:start is the full workflow/.test(claudeMd) || 'routing line missing or names another start command')
 
   const reg = (() => { try { return JSON.parse(sb.read('.rig/sensors.json')) } catch { return {} } })()
   await c.check('sensors.json is a registry with a unit sensor', () => (Array.isArray(reg.sensors) && reg.sensors.some(s => s.id === 'unit' && /test/.test(s.cmd ?? ''))) || JSON.stringify(reg))
   await c.check('sync --check is clean: CLAUDE.md carries the guides block', () => { const r = sb.sdlc(['sync', '--check']); return r.status === 0 || r.stdout.trim().split('\n').slice(0, 3).join(' | ') })
   await c.check('status reads the registry with no config error', () => { const r = sb.sdlc(['status', '--json']); return (r.status === 0 && !/config/.test(r.stderr)) || r.stderr.trim() })
 
-  await c.check('standalone skills: every plugin skill, approve and waive included', () => {
-    const want = names('skills').filter(n => n !== 'upgrade').map(n => `rig-${n}`) // upgrade runs only from the plugin
-    const missing = want.filter(n => !sb.exists(`.claude/skills/${n}/SKILL.md`))
+  await c.check('standalone commands (.claude/commands/rig): every plugin skill, approve and waive included', () => {
+    const want = names('skills').filter(n => n !== 'upgrade').map(n => n) // upgrade runs only from the plugin
+    const missing = want.filter(n => !sb.exists(`.claude/commands/rig/${n}.md`))
     return missing.length === 0 || `missing: ${missing.join(', ')}`
   })
   await c.check('standalone agents: every plugin agent', () => {

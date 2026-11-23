@@ -50,23 +50,23 @@ const EDIT = 'Edit the existing files, do not rewrite them.'
 
 export const PHASE_S15 = phase('S15', 'order-refund', 'Refund an order',
   { id: 'B15', text: 'POST /orders/<id>/refund refunds an order.', test: 'refund.test.js' },
-  `/rig-start A feature: refund an order (brief behaviour B15): POST /orders/<id>/refund, as the brief says. ${EDIT}`,
+  `/rig:start A feature: refund an order (brief behaviour B15): POST /orders/<id>/refund, as the brief says. ${EDIT}`,
   'An order cannot be refunded.', [f(S15, 'src/http/handler.js'), f(S15, 'src/orders/orders.js')])
 export const PHASE_S16 = phase('S16', 'half-up-prices', 'Prices round half up',
   { id: 'B16', text: 'Prices round half up to the cent everywhere they are shown.', test: 'money.test.js' },
-  `/rig-start A fix: prices round half up to the cent everywhere they are shown (brief behaviour B16). ${EDIT}`,
+  `/rig:start A fix: prices round half up to the cent everywhere they are shown (brief behaviour B16). ${EDIT}`,
   'A price of 1.005 dollars is shown as 1.00.', [f(FX, 'src/money.js'), f(FX, 'src/reports/csv.js')])
 export const PHASE_S17 = phase('S17', 'place-order', 'Place an order for a SKU',
   { id: 'B17', text: 'POST /orders/place places an order and reserves the stock; with too little left it is 409.', test: 'place-order.test.js' },
-  `/rig-start A feature: place an order for a SKU (brief behaviour B17): POST /orders/place, as the brief says. ${EDIT}`,
+  `/rig:start A feature: place an order for a SKU (brief behaviour B17): POST /orders/place, as the brief says. ${EDIT}`,
   'An order cannot be placed for a SKU directly.', [f(S17, 'src/http/handler.js'), f(S17, 'src/orders/orders.js')])
 export const PHASE_S18 = phase('S18', 'orders-paging', 'Page the orders',
   { id: 'B18', text: `GET /orders?page=N lists 20 orders a page, newest first, under ${BOUND_MS} ms with 200 000 orders.`, test: 'orders-page.test.js' },
-  `/rig-start A feature: page the orders (brief behaviour B18): GET /orders?page=N, as the brief says. ${EDIT}`,
+  `/rig:start A feature: page the orders (brief behaviour B18): GET /orders?page=N, as the brief says. ${EDIT}`,
   'The orders can only be listed by cursor.', [f(FX, 'src/http/handler.js'), f(FX, 'src/orders/orders.js')])
 export const PHASE_S19 = phase('S19', 'export-status', 'Export by status',
   { id: 'B19', text: 'export --status <s> prints only the orders with that status, and may be given more than once.', test: 'export-status.test.js' },
-  `/rig-start A feature: export the orders with a status (brief behaviour B19): \`node bin/shop.mjs export --status <s>\`, as the brief says. ${EDIT}`,
+  `/rig:start A feature: export the orders with a status (brief behaviour B19): \`node bin/shop.mjs export --status <s>\`, as the brief says. ${EDIT}`,
   'The export cannot be narrowed to one status.', [f(FX, 'bin/shop.mjs')])
 
 // What a perfect bare session leaves behind for B15-B19 (the dry run): the reference files.

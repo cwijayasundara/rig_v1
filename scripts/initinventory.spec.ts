@@ -50,14 +50,14 @@ test('the README block names all three git hooks, says where the sensors are and
 test('init --full prints an inventory that matches what is on disk: skills, agents, hooks, sensors and guides with their paths', () => {
   const { repo, stdout } = installed('--full')
   const count = (name: string): number => Number(new RegExp(`^  ${name}\\s+(\\d+)  `, 'm').exec(stdout)?.[1] ?? -1)
-  const skills = fs.readdirSync(path.join(repo, '.claude/skills')).filter(n => n.startsWith('rig-'))
+  const skills = fs.readdirSync(path.join(repo, '.claude/commands/rig')).filter(n => n.endsWith('.md'))
   assert.ok(skills.length >= 10)
   assert.equal(count('skills'), skills.length)
   assert.equal(count('agents'), fs.readdirSync(path.join(repo, '.claude/agents')).length)
   assert.equal(count('guides'), fs.readdirSync(path.join(repo, '.rig/guides')).length)
   const registry = JSON.parse(fs.readFileSync(path.join(repo, '.rig/sensors.json'), 'utf8')) as { sensors: { id: string }[] }
   assert.equal(count('sensors'), registry.sensors.length + 10, 'command sensors plus the ten built in')
-  assert.match(stdout, /skills +\d+  \.claude\/skills\/rig-<name>\/SKILL\.md: [^\n]*\bstart\b/)
+  assert.match(stdout, /skills +\d+  \.claude\/commands\/rig\/<name>\.md \(typed \/rig:<name>\): [^\n]*\bstart\b/)
   assert.match(stdout, /agents +2  \.claude\/agents\/: rig-architect\.md, rig-evaluator\.md/)
   assert.match(stdout, /hooks +\d+  \.claude\/settings\.json: [^\n]*Stop[^\n]*git hooks in \.rig\/githooks\/: commit-msg, pre-commit, pre-push/)
   assert.match(stdout, /sensors +\d+  \.rig\/sensors\.json, \d+ command sensor\(s\): [^\n]*\bunit\b[^\n]*10 built in \(\.rig\/bin\/sensors\.ts\): secrets/)

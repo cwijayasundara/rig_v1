@@ -37,16 +37,16 @@ test('a session that reports its cost is counted at that cost, and the next budg
 
 import { liveDriver } from './live.mjs'
 
-test('begin(): when /rig-start ends before creating a change, it continues with the skill invocation itself (plain text loses the skill\'s allowed tools)', async () => {
+test('begin(): when /rig:start ends before creating a change, it continues with the skill invocation itself (plain text loses the skill\'s allowed tools)', async () => {
   const prompts = []
   const sb = {
     run: (cmd, args) => { prompts.push({ prompt: args[1], cont: args.includes('--continue') }); return { status: 0, stdout: result(0.1), stderr: '' } },
     sdlc: () => ({ status: 0, stdout: JSON.stringify({ active: prompts.length >= 3 ? 'c' : null }), stderr: '' }),
   }
   const sessions = createSessions({ sb, out: out(), capUsd: 6 })
-  const slug = await liveDriver(sb, { id: 'PX', prompt: '/rig-start do the thing' }, { sessions }).begin()
+  const slug = await liveDriver(sb, { id: 'PX', prompt: '/rig:start do the thing' }, { sessions }).begin()
   assert.equal(slug, 'c')
-  assert.deepEqual(prompts.map(p => p.prompt), ['/rig-start do the thing', '/rig-start do the thing', '/rig-start do the thing'])
+  assert.deepEqual(prompts.map(p => p.prompt), ['/rig:start do the thing', '/rig:start do the thing', '/rig:start do the thing'])
   assert.deepEqual(prompts.map(p => p.cont), [false, true, true])
 })
 
@@ -63,17 +63,17 @@ test('headless sessions carry the template allow rules and env on --settings: -p
   assert.ok(inline.permissions.allow.some(r => r.startsWith('Bash(node ') && r.includes('sdlc.ts')))
 })
 
-test('final review: build() retries with /rig-build when the first turn stops short of review; /rig-start never builds', async () => {
+test('final review: build() retries with /rig:build when the first turn stops short of review; /rig:start never builds', async () => {
   const prompts = []
   const sb = {
     run: (cmd, args) => { prompts.push({ prompt: args[1], cont: args.includes('--continue') }); return { status: 0, stdout: result(0.1), stderr: '' } },
     sdlc: () => ({ status: 0, stdout: JSON.stringify({ changes: [{ slug: 'c', status: 'build' }] }), stderr: '' }),
   }
   const sessions = createSessions({ sb, out: out(), capUsd: 6 })
-  const d = liveDriver(sb, { id: 'PX', prompt: '/rig-start x' }, { sessions })
+  const d = liveDriver(sb, { id: 'PX', prompt: '/rig:start x' }, { sessions })
   await d.plan('c')
   await d.build('c')
-  assert.deepEqual(prompts.map(p => p.prompt.split(' ')[0]), ['/rig-plan', '/rig-build', '/rig-build'])
+  assert.deepEqual(prompts.map(p => p.prompt.split(' ')[0]), ['/rig:plan', '/rig:build', '/rig:build'])
   assert.ok(prompts.every(p => p.cont))
 })
 
@@ -115,7 +115,7 @@ test('answer(): the person\'s reply tells the model to take its recommended defa
   const d = liveDriver({ sdlc: () => ({ stdout: '{}' }) }, { id: 'S3' }, { sessions })
   await d.answer('c', 'resolve the open question(s) first\n  - spec.md: which file?')
   assert.equal(prompts.length, 1)
-  assert.equal(prompts[0].prompt.split(' ')[0], '/rig-plan', 'the skill invocation itself, so its allowed tools apply')
+  assert.equal(prompts[0].prompt.split(' ')[0], '/rig:plan', 'the skill invocation itself, so its allowed tools apply')
   assert.match(prompts[0].prompt, /recommend[\s\S]*## Decisions[\s\S]*## Open questions[\s\S]*none/)
   assert.match(prompts[0].prompt, /which file\?/)
   assert.equal(prompts[0].o.cont, true)
@@ -231,7 +231,7 @@ test('a result with no modelUsage: its cost is still a running total, but its us
   assert.deepEqual([totals(s.sessions).inputTokens, totals(s.sessions).outputTokens], [400, 40])
 })
 
-// A person types /rig:plan only when there is no plan yet. /rig-start carries on into the plan in the same turn when it can, and the
+// A person types /rig:plan only when there is no plan yet. /rig:start carries on into the plan in the same turn when it can, and the
 // plan skill writes plan.md and the evaluator's plan-review.md; a separate plan session after that does nothing but cost a start-up.
 const planSb = (files, weight = 'light') => {
   const prompts = []
@@ -241,22 +241,22 @@ const planned = ['plan.md', 'plan-review.md']
 
 test('plan(): no session when start already wrote plan.md and the evaluator\'s plan-review.md', async () => {
   const sb = planSb(Object.fromEntries(planned.map(f => [`.rig/changes/c/${f}`, 'x'])))
-  await liveDriver(sb, { id: 'PX', prompt: '/rig-start x' }, { sessions: createSessions({ sb, out: out(), capUsd: 6 }) }).plan('c')
+  await liveDriver(sb, { id: 'PX', prompt: '/rig:start x' }, { sessions: createSessions({ sb, out: out(), capUsd: 6 }) }).plan('c')
   assert.deepEqual(sb.prompts, [])
 })
 
 // A light plan with no contracts gets no evaluator pass (skills/plan step 5), so it never has a plan-review.md; it is still a finished plan.
 test('plan(): no session for a light plan with no contracts and no plan-review.md', async () => {
   const sb = planSb({ '.rig/changes/c/plan.md': '# Plan\n\n## Contracts\nnone\n' })
-  await liveDriver(sb, { id: 'PX', prompt: '/rig-start x' }, { sessions: createSessions({ sb, out: out(), capUsd: 6 }) }).plan('c')
+  await liveDriver(sb, { id: 'PX', prompt: '/rig:start x' }, { sessions: createSessions({ sb, out: out(), capUsd: 6 }) }).plan('c')
   assert.deepEqual(sb.prompts, [])
 })
 
 test('plan(): a session when plan.md is missing, or a full or contract plan was written but never reviewed', async () => {
   for (const sb of [planSb({}), planSb({ '.rig/changes/c/plan.md': 'x' }, 'full'), planSb({ '.rig/changes/c/plan.md': '# Plan\n\n## Contracts\n- api/openapi.yaml\n' })]) {
-    await liveDriver(sb, { id: 'PX', prompt: '/rig-start x' }, { sessions: createSessions({ sb, out: out(), capUsd: 6 }) }).plan('c')
+    await liveDriver(sb, { id: 'PX', prompt: '/rig:start x' }, { sessions: createSessions({ sb, out: out(), capUsd: 6 }) }).plan('c')
     assert.equal(sb.prompts.length, 1)
-    assert.match(sb.prompts[0], /^\/rig-plan c\./)
+    assert.match(sb.prompts[0], /^\/rig:plan c\./)
   }
 })
 

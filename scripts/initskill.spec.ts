@@ -30,7 +30,7 @@ test('init skill: writes rig docs into README.md between markers, brownfield in 
   assert.match(tpl, /### Architecture/)
   assert.match(tpl, /### User guide/)
   assert.match(tpl, /### Layout/)
-  for (const dir of ['.claude/skills/', '.claude/agents/', '.rig/bin/', '.rig/mod/', '.rig/githooks/', '.rig/guides/', '.rig/templates/', '.rig/product/', '.rig/changes/']) assert.ok(tpl.includes(`| \`${dir}`), `layout map lists ${dir}`)
+  for (const dir of ['.claude/commands/rig/', '.claude/agents/', '.rig/bin/', '.rig/mod/', '.rig/githooks/', '.rig/guides/', '.rig/templates/', '.rig/product/', '.rig/changes/']) assert.ok(tpl.includes(`| \`${dir}`), `layout map lists ${dir}`)
   assert.doesNotMatch(tpl, /\{\{P\}\}|\/rig-(start|next|approve|waive|status)\b/, 'skills are /rig:x in every install mode')
   assert.doesNotMatch(tpl, /\{\{BRAIN\}\}/)
 })
@@ -103,8 +103,8 @@ test('init skill: installs the full copy by default (skills, agents, hooks and f
   assert.match(skill, /sdlc\.ts init --full`, adding `--workflows`/)
   assert.doesNotMatch(skill, /sdlc\.ts init --plugin`/, 'no step runs --plugin by default')
   assert.match(skill, /prints an inventory: quote it in full/)
-  assert.match(skill, /write `\/rig-x` wherever this skill shows `\/rig:x`[^\n]*restart `claude` without `--plugin-dir`/)
-  assert.match(skill, /Map \(directories[^\n]*`\.rig\/sensors\.json`[^\n]*`\.rig\/guides\/`[^\n]*`\.claude\/skills\/rig-\*\/`/)
+  assert.match(skill, /in `\.claude\/commands\/rig\/` and is typed `\/rig:x`/)
+  assert.match(skill, /Map \(directories[^\n]*`\.rig\/sensors\.json`[^\n]*`\.rig\/guides\/`[^\n]*`\.claude\/commands\/rig\/`/)
 })
 
 test('init skill: the 2026-10-25 shop_app --quick run gaps are closed in the text', () => {

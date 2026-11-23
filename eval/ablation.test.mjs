@@ -35,11 +35,11 @@ function rigSandbox() {
 
 test('applyAblation removes exactly the named component from an installed rig: a sensor is disabled, a skill, an agent and a hook event are gone', async () => {
   const sb = await rigSandbox()
-  assert.ok(sb.exists('.claude/skills/rig-wiki/SKILL.md') && sb.exists('.claude/agents/rig-evaluator.md'))
+  assert.ok(sb.exists('.claude/commands/rig/wiki.md') && sb.exists('.claude/agents/rig-evaluator.md'))
   const hooksBefore = Object.keys(JSON.parse(sb.read('.claude/settings.json')).hooks ?? {})
   assert.ok(hooksBefore.includes('Stop'), 'the vendored settings carry the hook events')
   applyAblation(sb, 'skill:wiki')
-  assert.ok(!sb.exists('.claude/skills/rig-wiki') && sb.exists('.claude/skills/rig-rule/SKILL.md'), 'only that skill')
+  assert.ok(!sb.exists('.claude/commands/rig/wiki.md') && sb.exists('.claude/commands/rig/rule.md'), 'only that skill')
   applyAblation(sb, 'agent:evaluator')
   assert.ok(!sb.exists('.claude/agents/rig-evaluator.md') && sb.exists('.claude/agents/rig-architect.md'))
   applyAblation(sb, 'hook:Stop')

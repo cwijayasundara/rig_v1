@@ -54,7 +54,7 @@ const files = (step, keep) => filesOf(step).filter(keep).map(f => ({ src: path.j
 
 const phase = (id, step, slug, title, behaviour, issue, problem) => {
   const impl = filesOf(step).filter(f => !f.startsWith('test/'))
-  const p = stateOf(id, slug, title, behaviour, `/rig-start A feature, as the issue below states it. ${EDIT} Put its tests in test/${behaviour.test}.\n\n${issue}`, { problem }, [], impl, `feat: ${title.toLowerCase()}`)
+  const p = stateOf(id, slug, title, behaviour, `/rig:start A feature, as the issue below states it. ${EDIT} Put its tests in test/${behaviour.test}.\n\n${issue}`, { problem }, [], impl, `feat: ${title.toLowerCase()}`)
   Object.defineProperties(p, { tests: { enumerable: true, get: () => files(step, f => f.startsWith('test/')) }, impl: { enumerable: true, get: () => files(step, f => !f.startsWith('test/')) } })
   return Object.assign(p, { contracts: [], acceptance: 'ui' })
 }

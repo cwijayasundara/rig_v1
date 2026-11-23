@@ -26,6 +26,17 @@ test('chart skill: a reopened finding gets one more fix and confirm, so a clean 
   assert.match(skill, /A `reopened` finding gets one more fix and confirm, briefed with its reason; never a third: `\/rig:approve chart-<N>` refuses while a finding is not confirmed/)
 })
 
+// rig_v1_test 2026-11-23: one chart stopped the person three times (which sprint, two design choices, one edge case) before the
+// one review they expected, /rig:approve chart-N. Questions are now opt-in.
+test('chart skill: asks nothing unless --ask; each question is answered as "you decide" and shown at the one gate', () => {
+  assert.match(skill, /argument-hint: '[^']*\[--ask\]/)
+  const rule = skill.split('\n').find(l => l.startsWith('**No questions unless `--ask`.**')) ?? ''
+  assert.match(rule, /Without `--ask`, never call `AskUserQuestion` or `superpowers:brainstorming`/)
+  assert.match(rule, /every question below as "you decide" \(your recommendation, `\(proposed at chart\)`\)/)
+  assert.match(rule, /PRD's `sprint:` beat a number given[^\n]*commit init's output as the base[^\n]*stop only when no PRD is found/)
+  assert.ok(skill.indexOf(rule) < skill.indexOf('1. **Which sprint, which PRD.**'), 'the rule comes before step 1')
+})
+
 test('chart skill: argument-hint accepts any PRD path', () => {
   assert.match(skill, /argument-hint: '\[sprint number \| [^']*PRD path/)
 })

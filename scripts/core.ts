@@ -224,10 +224,11 @@ export function scanSecrets(file: string): string[] {
 }
 
 export const PLUGIN_ROOT = path.resolve(import.meta.dirname, '..')
-// A standalone repo runs its own copy from .rig/bin: its skills and agents are registered as rig-<name>, the plugin's skills as /rig:<name>.
+// A standalone repo runs its own copy from .rig/bin: its commands are .claude/commands/rig/<name>.md (typed /rig:<name>, like the plugin's), its agents rig-<name>.
 export const IS_VENDORED = path.basename(import.meta.dirname) === 'bin'
-// A repo with the standalone skills answers to /rig-x even when the plugin's script runs there (2026-10-25 shop_app plan.md).
-export const skillRef = (name: string): string => (exists(path.join(ROOT, '.claude/skills/rig-start/SKILL.md')) ? `/rig-${name}` : `/rig:${name}`)
+// A repo's own copy of the commands answers to /rig:x, the same as the plugin; the old layout (.claude/skills/rig-start/) counts as a copy too.
+export const hasOwnCopy = (): boolean => exists(path.join(ROOT, '.claude/commands/rig/start.md')) || exists(path.join(ROOT, '.claude/skills/rig-start/SKILL.md'))
+export const skillRef = (name: string): string => `/rig:${name}`
 // Managed settings (the platform team's, which no engineer can edit): the OS file plus managed-settings.d/ drop-ins in name order.
 // Objects merge, arrays concatenate, later scalars win. RIG_MANAGED_DIR overrides the directory (tests). Server-managed settings are not visible here.
 const MANAGED_DIR = process.env.RIG_MANAGED_DIR || (process.platform === 'darwin' ? '/Library/Application Support/ClaudeCode'
@@ -346,7 +347,7 @@ export function ownerOrFail(args: Args, what: string): string {
 export const clean = (v: unknown): string => String(v).replace(/[\u0000-\u001f\u007f\u2028\u2029]/g, ' ').replace(/`/g, "'").replace(/[<>]/g, '_').replace(/"/g, "'").slice(0, 200)
 
 // Where the harness may write or delete: a manifest key outside this namespace (or outside the repo) is never trusted.
-const HARNESS_PREFIXES = ['.rig/bin/', '.rig/githooks/', '.rig/templates/', '.rig/mod/', '.claude/skills/rig-', '.claude/agents/rig-']
+const HARNESS_PREFIXES = ['.rig/bin/', '.rig/githooks/', '.rig/templates/', '.rig/mod/', '.claude/commands/rig/', '.claude/skills/rig-', '.claude/agents/rig-']
 export function isHarnessPath(rel: string): boolean {
   if (!rel || path.isAbsolute(rel) || rel.split(/[\\/]/).includes('..')) return false
   const abs = path.resolve(ROOT, rel)

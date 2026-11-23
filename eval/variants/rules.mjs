@@ -38,7 +38,7 @@ export const stateOf = (id, slug, title, behaviour, prompt, files, tests, impl, 
 
 export const PHASE_S8 = stateOf('S8', 'order-rules', 'Order rules: stock, line limit and the large-order discount',
   { id: 'B8', text: 'checkout refuses an order over the stock or with a line over 10, gives 10% off an order of 5000 cents or more, and takes sold quantities out of stock.', test: 'rules.test.js' },
-  '/rig-start A feature: order rules (brief behaviour B8): the catalog takes an optional `stock`, and checkout applies the stock check, then the per-line limit of 10, then the 10% discount on an order of 5000 cents or more (see the brief for the exact messages and edge cases); edit the existing files, do not rewrite them; the HTTP contract does not change.',
+  '/rig:start A feature: order rules (brief behaviour B8): the catalog takes an optional `stock`, and checkout applies the stock check, then the per-line limit of 10, then the 10% discount on an order of 5000 cents or more (see the brief for the exact messages and edge cases); edit the existing files, do not rewrite them; the HTTP contract does not change.',
   { problem: 'An order can ask for more than is in stock, any quantity, and large orders earn nothing.' },
   [{ src: S8_TEST, dest: 'test/rules.test.js' }], ['src/catalog/products.js', 'src/orders/orders.js'], 'feat(orders): stock check, line limit and large-order discount')
 PHASE_S8.acceptance = 'rules'
@@ -46,7 +46,7 @@ PHASE_S8.acceptance = 'rules'
 // S9 replaces the builder's old re-add test in test/shop.test.js with the updated one: the brief changed, so the test must.
 export const PHASE_S9 = stateOf('S9', 'cart-replace', 'Re-adding a SKU replaces its quantity',
   { id: 'B9', text: 'adding a SKU already in the cart replaces its quantity, still one line per SKU.', test: 'rules.test.js' },
-  '/rig-start A change of an earlier rule (brief behaviour B9): adding a SKU that is already in the cart now replaces its quantity instead of adding to it, so the earlier test of the old rule in test/shop.test.js must be updated to the new rule; edit the existing files, do not rewrite them; the HTTP contract does not change.',
+  '/rig:start A change of an earlier rule (brief behaviour B9): adding a SKU that is already in the cart now replaces its quantity instead of adding to it, so the earlier test of the old rule in test/shop.test.js must be updated to the new rule; edit the existing files, do not rewrite them; the HTTP contract does not change.',
   { problem: 'Adding an item again adds to its quantity, but a shopper re-adding a line means to set it.' },
   [{ src: fx('test/shop.test.js'), dest: 'test/shop.test.js' }, { src: fx('test/rules.test.js'), dest: 'test/rules.test.js' }], ['src/cart/cart.js'], 'feat(cart): re-adding a SKU replaces its quantity')
 PHASE_S9.acceptance = 'rules'

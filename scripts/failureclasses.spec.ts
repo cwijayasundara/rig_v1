@@ -10,7 +10,7 @@ const read = (rel: string): string => fs.readFileSync(path.join(ROOT, rel), 'utf
 
 test('the core start skill walks the edge-case list from the vendored templates', () => {
   const core = harnessFiles(true, 'core')
-  assert.ok(core.get('.claude/skills/rig-start/SKILL.md')?.includes('.rig/templates/edge-cases.md'))
+  assert.ok(core.get('.claude/commands/rig/start.md')?.includes('.rig/templates/edge-cases.md'))
   assert.ok(core.has('.rig/templates/edge-cases.md'))
 })
 

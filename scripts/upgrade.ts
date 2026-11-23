@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { ROOT, SDLC, SENSORS_PATH, IS_VENDORED, PLUGIN_ROOT, skillRef, exists, read, out, fail, sha, git, sanctionWrites, ensureGitignore, gitignoreMissing, isHarnessPath, writeAtomic, type Args} from './core.ts'
+import { ROOT, SDLC, SENSORS_PATH, IS_VENDORED, PLUGIN_ROOT, skillRef, hasOwnCopy, exists, read, out, fail, sha, git, sanctionWrites, ensureGitignore, gitignoreMissing, isHarnessPath, writeAtomic, type Args} from './core.ts'
 import { isObject } from './model.ts'
 import { isRegistryShape } from './registry.ts'
 import { loadPacks, PACKS_DIR } from './stackpacks.ts'
@@ -77,7 +77,7 @@ const WORKFLOW = '.github/workflows/rig-check.yml'
 function buildPlan(): Plan {
   const from = read(path.join(SDLC, 'bin', 'VERSION')).trim()
   const to = pluginVersion()
-  const standalone = exists(path.join(ROOT, '.claude/skills/rig-start/SKILL.md'))
+  const standalone = hasOwnCopy()
   const raw = readManifest()
   const ignoredManifestKeys = Object.keys(raw?.files ?? {}).filter(rel => !isHarnessPath(rel))
   const manifest = raw && { ...raw, files: Object.fromEntries(Object.entries(raw.files ?? {}).filter(([rel]) => isHarnessPath(rel))) }

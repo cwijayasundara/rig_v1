@@ -58,7 +58,7 @@ const restore = (sb, files) => {
 // --- the CommonJS package ---------------------------------------------------------------------------------------------------------------
 const REFUND = {
   id: 'S8', slug: 'ledger-refund', type: 'feature', title: 'Refund part of an account balance',
-  prompt: '/rig-start A feature: Ledger.refund(account, amount); edit the existing lib/ledger.js, do not rewrite it; put its tests in test/refund.test.js.',
+  prompt: '/rig:start A feature: Ledger.refund(account, amount); edit the existing lib/ledger.js, do not rewrite it; put its tests in test/refund.test.js.',
   intent: { problem: 'A ledger cannot reverse an entry.', outcome: 'B1-B2 hold and the existing tests still pass.', nonGoals: 'Refunds across accounts.' },
   spec: '# Spec: refund\n\n## Behaviours\n- B1: a refund reverses part of an account balance.\n- B2: a refund above the balance, or not positive, is refused.\n\n## Out of scope\n- Refunds across accounts.\n\n## Open questions\nnone\n',
   plan: '# Plan: refund\n\n## Files\n- lib/ledger.js\n- test/refund.test.js\n\n## Tests\n- B1-B2: test/refund.test.js (unit)\n\n## Contracts\nnone\n\n## Verification\n- npm test\n\n## Open questions\nnone\n',
@@ -104,7 +104,7 @@ async function cjs(out) {
   sb.run('rm', ['-f', sb.file('lib/leak.js'), sb.file('.rig/unresolved.json')])
   hook(sb, 'prompt-submit', { prompt: 'settle' }); hook(sb, 'stop')
 
-  // One scripted /rig-start change on the existing code, to ship.
+  // One scripted /rig:start change on the existing code, to ship.
   const driver = scriptedDriver(sb, REFUND)
   const { slug, notes } = await runChange(sb, REFUND, driver)
   for (const n of notes) await c.check(n.title, () => n.ok || n.why)

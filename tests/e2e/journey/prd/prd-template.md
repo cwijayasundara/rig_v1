@@ -8,7 +8,7 @@ owner: <product owner>
 
 <!-- Written for a coding agent. Prose is welcome in Context, Goals and Scenarios; every rule goes in Functional requirements,
 Data rules or Non-functional requirements as its own numbered line with exact values, because rig traces those lines, one by
-one, to intents, tests and the code review, and nothing else. A PRD in another shape is converted into this one by /rig-chart,
+one, to intents, tests and the code review, and nothing else. A PRD in another shape is converted into this one by /rig:chart,
 and a person approves the conversion. Ids are stable across sprints. `node <rig>/scripts/sdlc.ts prd check <N>` checks it. -->
 
 ## Context and problem

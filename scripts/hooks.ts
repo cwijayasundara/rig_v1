@@ -189,7 +189,7 @@ function summarize(findings: Finding[]): GateSummary {
   return { at: now(), blocks: findings.filter(f => f.severity === 'block').length, warns: warns.length, bySensor, warnRows: warns.slice(0, 5).map(warnRow) }
 }
 
-// The person typed /rig:approve <target> (or /rig-approve): a hook sees only what the person typed, never a model's tool call, so this is
+// The person typed /rig:approve <target> (the old /rig-approve spelling is still read): a hook sees only what the person typed, never a model's tool call, so this is
 // as human-only as the skill, and it works in a session that started before the skill was installed. A bare command is left to the
 // skill, which asks what to approve; approving here first would make its Cancel undo nothing. The model is told to carry on with
 // /rig:build, so the build starts without a second command.
@@ -349,9 +349,9 @@ function runsOwnHook(name: string): boolean {
 // Hooks rig no longer registers (spec §7): a settings file vendored before step 4a may still call them.
 const RETIRED_HOOKS = ['subagent-start', 'subagent-stop', 'skill-failed']
 
-// This copy of the hook runs only when the plugin is loaded, and it steps aside only when the project carries its own: both installs are live,
-// so every skill is listed twice (/rig:x and /rig-x) and the plugin shares its name with the dashboard mod. Say so once per session.
-const DOUBLE_INSTALL = 'rig is installed twice here: both the plugin and a standalone copy (.claude/skills/rig-*) are active, so each skill is listed under two names (rig:x and rig-x). Tell the person to keep one: start claude without --plugin-dir (or disable the plugin) to use the standalone copy, or remove the standalone copy to use the plugin.'
+// This copy of the hook runs only when the plugin is loaded, and it steps aside only when the project carries its own: both installs are live.
+// A command is one /rig:x (the repo's copy runs), the agents are listed twice (rig:x and rig-x), and the plugin shares its name with the dashboard mod. Say so once per session.
+const DOUBLE_INSTALL = 'rig is installed twice here: both the plugin and the repo\'s own copy (.claude/commands/rig/) are loaded. Each /rig:x command runs from the repo\'s copy, and so do the hooks; the agents are listed under two names (rig:x and rig-x). Tell the person to keep one: start claude without --plugin-dir (or disable the plugin) to use the standalone copy, or remove the standalone copy to use the plugin.' // plugin-only: fixed text
 
 export function cmdHook(args: Args): void {
   if (RETIRED_HOOKS.includes(args.pos[0] ?? '')) return

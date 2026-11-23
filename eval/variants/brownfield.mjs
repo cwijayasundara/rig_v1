@@ -57,7 +57,7 @@ const phase = (n, slug, task) => {
   const [title, ...rest] = ISSUES[task].split('\n\n')
   const p = {
     id: `K${n}`, slug, type: 'feature', title: title.trim(),
-    prompt: `/rig-start A feature, as the issue below states it. Edit the existing files, do not rewrite them. Put its jest tests in ${TRAP_TEST[task]}.\n\n${ISSUES[task]}`,
+    prompt: `/rig:start A feature, as the issue below states it. Edit the existing files, do not rewrite them. Put its jest tests in ${TRAP_TEST[task]}.\n\n${ISSUES[task]}`,
     intent: { problem: rest[0].trim(), outcome: `K${n} holds as the issue says and the upstream tests still pass.`, nonGoals: 'Anything the issue does not ask for.' },
     spec: `# Spec: ${title.trim()}\n\n## Behaviours\n- K${n}: ${title.trim()}\n\n## Out of scope\n- Anything the issue does not ask for.\n\n## Open questions\nnone\n`,
     plan: `# Plan: ${title.trim()}\n\n## Files\n${filesOf(task).map(f => `- ${f}`).join('\n')}\n\n## Tests\n- K${n}: ${TRAP_TEST[task]} (unit)\n\n## Contracts\nnone\n\n## Verification\n- npm test\n\n## Open questions\nnone\n`,
@@ -77,7 +77,7 @@ export function setupBare(sb, { dry = false } = {}) {
 }
 
 // Onboarding of an existing repo: the base is upstream's tree; rig is initialised on top, with the unit sensor on upstream's own suite. Upstream is green, so
-// the baseline's knownRed stays empty. (The brief lane of the shop variants does not apply: each task is its own /rig-start change.)
+// the baseline's knownRed stays empty. (The brief lane of the shop variants does not apply: each task is its own /rig:start change.)
 export const CLAUDE_MD = '# commander.js\n\nrig is on in this repo: work from the request as usual, and its checks and guides run on every turn; /rig:start is the full workflow (spec, plan, approval), used only when the person asks for it. Use superpowers skills only when an sdlc skill names one.\n\n## Map\n- lib/ the library: command.js, option.js, argument.js, help.js, suggestSimilar.js, error.js\n- tests/ jest tests, one file per feature\n'
 export async function setupRig(sb, { dry = false, registry = {} } = {}) {
   sb.isolate(dry ? [] : installedPlugins())

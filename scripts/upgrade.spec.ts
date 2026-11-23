@@ -41,7 +41,7 @@ test('dry run on a fresh vendor reports everything noop and no branch', () => {
 
 test('a locally edited skill with unchanged upstream is keep', () => {
   const repo = vendored()
-  const rel = '.claude/skills/rig-start/SKILL.md'
+  const rel = '.claude/commands/rig/start.md'
   fs.appendFileSync(path.join(repo, rel), '\nteam note\n')
   const p = plan(repo)
   assert.equal(p.files[rel], 'keep')
@@ -118,7 +118,7 @@ test('--diff prints the diff for one file', () => {
 })
 
 // --apply: a vendored, committed project whose copies lag the plugin. Disk text + manifest hash = "installed an older version".
-const SKILL = '.claude/skills/rig-start/SKILL.md'
+const SKILL = '.claude/commands/rig/start.md'
 const CORE = '.rig/bin/core.ts'
 const SENSORS = registry({ turn: { x: 'true' }, extra: { stack: 'node' } })
 const committed = (): string => {
@@ -441,7 +441,7 @@ test('apply leaves one commit on chore/rig-upgrade-*, without .rig-new files (sh
   assert.equal(r.code, 0, r.stderr)
   assert.match(gitIn(repo, 'rev-parse', '--abbrev-ref', 'HEAD').trim(), /^chore\/rig-upgrade-/)
   assert.match(gitIn(repo, 'log', '-1', '--format=%s'), /^chore: rig upgrade .* → /)
-  assert.match(gitIn(repo, 'show', '--name-only', '--format=', 'HEAD'), /\.claude\/skills\/rig-/)
+  assert.match(gitIn(repo, 'show', '--name-only', '--format=', 'HEAD'), /\.claude\/commands\/rig\//)
   assert.doesNotMatch(gitIn(repo, 'show', '--name-only', '--format=', 'HEAD'), /\.rig-new/)
 })
 

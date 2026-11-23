@@ -66,7 +66,7 @@ const phase = (n, slug, task) => {
   const [title, ...rest] = ISSUES[task].split('\n\n')
   const p = {
     id: `N${n}`, slug, type: 'feature', title: title.trim(),
-    prompt: `/rig-start A feature, as the issue below states it. Edit the existing files, do not rewrite them. Put its mocha tests in ${TRAP_TEST[task]}.\n\n${ISSUES[task]}`,
+    prompt: `/rig:start A feature, as the issue below states it. Edit the existing files, do not rewrite them. Put its mocha tests in ${TRAP_TEST[task]}.\n\n${ISSUES[task]}`,
     intent: { problem: (rest[0] ?? title).trim(), outcome: `N${n} holds as the issue says and the upstream tests still pass.`, nonGoals: 'Anything the issue does not ask for.' },
     spec: `# Spec: ${title.trim()}\n\n## Behaviours\n- N${n}: ${title.trim()}\n\n## Out of scope\n- Anything the issue does not ask for.\n\n## Open questions\nnone\n`,
     contracts: [], commit: `feat: ${title.trim().split(':')[0].toLowerCase()}`, acceptance: 'brownfield',

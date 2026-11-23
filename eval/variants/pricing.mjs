@@ -37,15 +37,15 @@ const TAIL = 'see the brief for the exact rules, messages and edge cases; edit t
 
 export const PHASE_S10 = phase('S10', 'tax-shipping', 'Tax, shipping and the split discount',
   { id: 'B10', text: 'checkout splits the discount across lines, adds per-line tax and shipping, and reports payableCents; totalCents does not change.', test: 'pricing.test.js' },
-  `/rig-start A feature: tax and shipping (brief behaviour B10): products may be non-taxable or digital, the discount is split across the lines, and an order carries shippingCents, taxCents and payableCents; ${TAIL}`,
+  `/rig:start A feature: tax and shipping (brief behaviour B10): products may be non-taxable or digital, the discount is split across the lines, and an order carries shippingCents, taxCents and payableCents; ${TAIL}`,
   'An order has no tax or shipping, and a discount is only an order-level number.', 'pricing.test.js')
 export const PHASE_S11 = phase('S11', 'coupons', 'FIVEOFF and SHIPFREE coupons, once per customer',
   { id: 'B11', text: 'FIVEOFF and SHIPFREE work, each once per customer; a failed order uses none up.', test: 'coupons.test.js' },
-  `/rig-start A feature: coupons (brief behaviour B11): FIVEOFF and SHIPFREE, a customer on checkout, each code once per customer; ${TAIL}`,
+  `/rig:start A feature: coupons (brief behaviour B11): FIVEOFF and SHIPFREE, a customer on checkout, each code once per customer; ${TAIL}`,
   'The only codes are percentages and any can be used again and again.', 'coupons.test.js')
 export const PHASE_S12 = phase('S12', 'order-cancel', 'Order ids, cancel and the order list',
   { id: 'B12', text: 'orders get ids, cancelOrder puts stock and the coupon back, and listOrders is newest first.', test: 'cancel.test.js' },
-  `/rig-start A feature: cancelling orders (brief behaviour B12): orders get ids and a status, cancelOrder puts the stock and the coupon use back, listOrders lists newest first; ${TAIL}`,
+  `/rig:start A feature: cancelling orders (brief behaviour B12): orders get ids and a status, cancelOrder puts the stock and the coupon use back, listOrders lists newest first; ${TAIL}`,
   'A placed order cannot be undone, and nothing lists the orders.', 'cancel.test.js')
 for (const ph of [PHASE_S10, PHASE_S11, PHASE_S12]) ph.acceptance = 'pricing'
 
