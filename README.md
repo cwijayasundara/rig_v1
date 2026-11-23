@@ -521,6 +521,25 @@ npm run test:e2e:python -- --out DIR # run in an empty directory of your choice
 
 Its sandbox is a git repository of its own under `tests/e2e/out/python-journey/`, which is ignored.
 
+### Live test of both loops (on demand, costs money)
+
+`npm run test:e2e:live` (`tests/e2e/loops-live.mjs`) runs rig with the real model the way a person does, on the same Python project and the same two PRDs as the test above (`tests/e2e/fixtures/python-journey/scaffold/docs/prd/`):
+
+| Field | Starts from | Outer loop (live) | Inner loop (live) |
+|---|---|---|---|
+| greenfield | an initialised uv scaffold | the sprint 0 PRD is charted | one intent is built from `/rig:start` to a PR |
+| brownfield | the recorded app with sprint 0 built | the sprint 1 PRD is charted on that code | one intent is built from `/rig:start` to a PR |
+
+The outer loop runs as a Claude Code `/goal` with the line `sdlc.ts chart goal <N> --print` gives; a stand-in then approves the chart; the inner loop uses the same driver as `npm run e2e`. It asserts what real runs tripped on: `chart goal <N>` is MET, the person was asked nothing, only `/rig:<name>` is named, at most 6 subagent launches and 8 review findings per chart, a chart changes no source file and stops unapproved on `rig/chart-<N>`, and the built change is in review, verifies and passes the whole suite.
+
+```bash
+npm run test:e2e:live                                         # both fields, both loops: up to $40 and about two hours
+npm run test:e2e:live -- --fields greenfield --loops outer    # one chart: up to $8, about 20 minutes
+npm run test:e2e:live -- --loops inner                        # builds from the recorded charts instead of live ones
+```
+
+Caps: `--cap-outer` (8) and `--cap-inner` (12) dollars per field; budgets: `--max-launches`, `--max-findings`, `--minutes-outer`. Repos, session transcripts and `summary.json` stay under `tests/e2e/out/loops-live/`. It also runs from the `eval` workflow's manual trigger (job `loops`). Needs uv, network and a signed-in `claude`.
+
 ### End-to-end acceptance test
 
 `tests/e2e/` is the one integration test. It scaffolds a throwaway repo, installs the harness into it, and plays the person who approves. Its phases:

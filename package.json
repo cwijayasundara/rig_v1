@@ -16,6 +16,7 @@
     "test:e2e:parallel": "node tests/e2e/parallel.mjs",
     "test:e2e:stacks": "node tests/e2e/stacks.mjs",
     "test:e2e:python": "node tests/e2e/python-journey.mjs",
+    "test:e2e:live": "node tests/e2e/loops-live.mjs",
     "eval": "node eval/run.mjs",
     "eval:dry": "node eval/run.mjs --dry --runs 1",
     "test:e2e:unit": "node --test tests/e2e/lib/*.test.mjs tests/e2e/driver/*.test.mjs tests/e2e/assert/*.test.mjs tests/e2e/journey/*.test.mjs eval/*.test.mjs",

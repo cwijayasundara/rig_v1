@@ -1,4 +1,5 @@
-// The whole harness on a real Python repo, on demand: node tests/e2e/python-journey.mjs [--out DIR] [--keep] [--wiki]
+// The whole harness on a real Python repo, on demand: node tests/e2e/python-journey.mjs [--out DIR] [--keep] [--wiki] [--until init|chart-0|sprint-0|chart-1]
+// --until stops after that stage and keeps the sandbox: the live loop test (loops-live.mjs) starts its model sessions from there.
 // Outside npm test (uv, network downloads, about 5 minutes, no model cost). It replays one recorded project through every deterministic
 // step a person's run takes, with the real tools and the repo's own git hooks, and no remote (the solo-developer case):
 //   greenfield: init on a uv scaffold, chart sprint 0, approve, then add-item, get-item and list-items from start to pr and merge;
@@ -20,6 +21,8 @@ const stamp = new Date().toISOString().replace(/[:.]/g, '-')
 const dir = path.resolve(arg('out', path.join(HERE, 'out', 'python-journey', stamp)))
 const c = new Checks('python journey')
 const WIKI = process.argv.includes('--wiki')
+const UNTIL = arg('until', '')
+const stage = name => { if (UNTIL !== name) return; c.print(); console.log(`\nsandbox: ${dir} (stopped after ${name})`); process.exit(c.failed.length ? 1 : 0) }
 
 if (spawnSync('uv', ['--version'], { encoding: 'utf8' }).status !== 0) { console.log('SKIP  python journey: uv not found'); process.exit(process.argv.includes('--require') ? 1 : 0) }
 fs.mkdirSync(dir, { recursive: true })
@@ -115,9 +118,11 @@ await step('init: the baseline has no known-red sensor', S(['baseline']), /known
 await step('init: --plugin vendors the checker and wires the git hooks', S(['init', '--plugin']), /git hooks installed/)
 git('add', '-A')
 await step('init: the init commit passes the commit hook', git('commit', '-m', 'chore: rig init scaffold'), /rig init scaffold/)
+stage('init')
 
 // Greenfield: sprint 0, three intents built in dependency order.
 await chart(0, { examples: 'docs/contracts/examples/add-item-400.json' })
+stage('chart-0')
 await intent('add-item', 0, { expectFail: 'tests/test_add_item.py tests/test_store.py', message: 'feat(add-item): POST /items with strict validation and 400 errors' })
 await intent('get-item', 0, { expectFail: 'tests/test_get_item.py', message: 'feat(get-item): GET /items/{id}' })
 await intent('list-items', 0, {
@@ -130,9 +135,11 @@ await intent('list-items', 0, {
   },
 })
 await c.check('greenfield: no sprint 0 intent is left to start', () => /no intents are ready/.test(S(['ready']).out) || tail(S(['ready']).out))
+stage('sprint-0')
 
 // Brownfield: sprint 1 charted on the built app, one intent.
 await chart(1, { examples: 'docs/contracts/examples/remove-item-404.json' })
+stage('chart-1')
 await intent('remove-item', 1, { expectFail: 'tests/test_remove_item.py tests/test_store.py', message: 'feat(remove-item): DELETE /items/{id}' })
 await c.check('brownfield: nothing is left to start and the tree is clean', () => (/no intents are ready/.test(S(['ready']).out) && !git('status', '--porcelain', '--untracked-files=no').out.trim()) || tail(git('status', '--short').out))
 

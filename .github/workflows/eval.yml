@@ -49,3 +49,30 @@ jobs:
         with:
           name: paired-eval
           path: ${{ runner.temp }}/paired.jsonl
+  loops:
+    # Both loops with the real model, greenfield and brownfield (tests/e2e/loops-live.mjs). Manual only: it can spend up to 40 dollars.
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: dry
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18'
+      - uses: astral-sh/setup-uv@v5
+      - run: npm ci || npm install
+      - run: npm install -g @anthropic-ai/claude-code
+      - name: Live loops (costs money; capped at 20 dollars a field)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: node tests/e2e/loops-live.mjs --out "$RUNNER_TEMP/loops"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: live-loops
+          path: |
+            ${{ runner.temp }}/loops/summary.json
+            ${{ runner.temp }}/loops/*/logs
