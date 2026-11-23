@@ -2,10 +2,10 @@
 
 `/rig:chart` reads the client's `source.md` (never `prd.md`) and writes `coverage.md`, one row per topic below. A topic is **covered**
 when the source says something a test could assert about it, in the client's own words; a topic the source never mentions is
-**absent**, and an absent topic is never filled from imagination: a person answers it, it stays `open` (the client is asked, and
-approval waits), or it does not apply (`n/a`, with the reason).
+**absent**, and an absent topic is never filled from imagination: a person answers it, it does not apply (`n/a`, with the reason), or, when nobody is asked, the agent writes its assumption as
+`proposed` (shown at the approval, which does not wait). `open` is only for a topic a person takes back to the client: approval waits.
 
-Rows: `- <id> covered source.md:<line> "<quote>"` | `- <id> answered <AC/DR/NFR ids>` | `- <id> open` | `- <id> n/a[ by <who>] — <reason>`.
+Rows: `- <id> covered source.md:<line> "<quote>"` | `- <id> answered <AC/DR/NFR ids>` | `- <id> open` | `- <id> proposed — <assumption>` | `- <id> n/a[ by <who>] — <reason>`.
 A table row is quoted as its cells joined by " | "; a fenced sample counts as said.
 `answered` points at criteria a person confirmed; the agent's own `(proposed at chart)` value is not an answer.
 

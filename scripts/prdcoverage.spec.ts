@@ -53,6 +53,16 @@ test('coverage-reason: n/a needs a reason; "by <who>" is optional', () => {
   assert.deepEqual(parseCoverage('- security n/a by Dana — local only\n- rollout n/a — none\n'), [{ id: 'security', state: 'n/a', by: 'Dana', reason: 'local only' }, { id: 'rollout', state: 'n/a', reason: 'none' }])
 })
 
+// rig_v1_test sprint 0, 2026-11-23: a chart that asks nobody left rollout open, and its own approval then refused it.
+test('a proposed row carries the assumption and never blocks; without one it is coverage-reason; client-gaps lists it to confirm', () => {
+  const assumed = FULL.replace('- escalation open', '- escalation proposed — nobody is handed anything: errors go back to the caller').replace('- ground-truth open', '- ground-truth n/a — no model')
+  assert.deepEqual(rules(assumed), [])
+  assert.deepEqual(rules(assumed.replace(' — nobody is handed anything: errors go back to the caller', '')), ['coverage-reason'])
+  assert.deepEqual(parseCoverage('- rollout proposed — run by hand with uvicorn\n'), [{ id: 'rollout', state: 'proposed', reason: 'run by hand with uvicorn' }])
+  assert.match(clientGaps(assumed), /Nothing is missing\.\n\nThe PRD does not say the following either, so rig assumed it[^\n]*\n\n- \*\*Escalation and hand-off\*\* \(escalation\): nobody is handed anything/)
+  assert.match(coverageProblems({ source: SOURCE, prd: PRD(), coverage: FULL }).map(f => f.message).join('\n'), /With nobody to ask, write the row as `escalation proposed — <your assumption>`/)
+})
+
 test('clientGaps lists the open topics in the chart order, and says so when nothing is missing', () => {
   const text = clientGaps(FULL)
   assert.ok(text.indexOf('Escalation and hand-off') < text.indexOf('Ground truth and sample data'))

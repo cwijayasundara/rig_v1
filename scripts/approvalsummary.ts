@@ -53,7 +53,7 @@ export function checkQuestions(n: number): string[] {
   const more = proposedMore(n, read(prdPath(n)), conversionMapOf(n))
   const ask = (what: string, tail: string): string => `${what}. ${tail}`
   const unproven = rowsOf(n).filter(x => !x.mine.length || !x.hidden)
-  const open = [...(exists(coveragePath(n)) ? parseCoverage(read(coveragePath(n))).filter(c => c.state === 'open' || c.state === 'n/a').map(c => `${c.id} is ${c.state === 'n/a' ? 'marked n/a' : c.state}${c.reason ? ` (${short(c.reason, 60)})` : ''}`) : []), ...openQuestions(read(prdPath(n))).map(q => `PRD open question "${short(q)}"`)]
+  const open = [...(exists(coveragePath(n)) ? parseCoverage(read(coveragePath(n))).filter(c => c.state !== 'covered' && c.state !== 'answered').map(c => `${c.id} is ${c.state === 'n/a' ? 'marked n/a' : c.state === 'proposed' ? 'the agent\'s assumption' : c.state}${c.reason ? ` (${short(c.reason, 60)})` : ''}`) : []), ...openQuestions(read(prdPath(n))).map(q => `PRD open question "${short(q)}"`)]
   const proposed = [
     ...rows.filter(r => r.origin === 'proposed').map(r => ask(`${r.id} "${short(r.quote.replace(MARK, ''))}" (proposed at chart)`, WHY)),
     ...(more.behaviours ?? []).map(b => ask(`${b.where} "${short(b.text.replace(MARK, ''))}" (${b.why.includes('marked') ? 'proposed at chart' : 'unattributed'})`, WHY)),
@@ -110,7 +110,7 @@ const deferred = (n: number): string[] => (/^#{2,3}[ \t]+Deferred\b[^\n]*\n([\s\
 
 function notCovered(n: number): string[] {
   const review = chartReview(n) ?? [], open = new Set((chartOpenFindings(n) ?? []).map(f => f.n)), waivers = chartWaivers(n)
-  const coverage = exists(coveragePath(n)) ? parseCoverage(read(coveragePath(n))).filter(c => c.state === 'open' || c.state === 'n/a') : []
+  const coverage = exists(coveragePath(n)) ? parseCoverage(read(coveragePath(n))).filter(c => c.state !== 'covered' && c.state !== 'answered') : []
   // n/a rows with no "by" and the same reason are one bullet naming all their topics; open rows and rows with a "by" stay one per line.
   const merged = new Map<string, string[]>(), lines: string[] = []
   for (const c of coverage) { const tail = `${c.state}${c.by ? ` by ${c.by}` : ''}${c.reason ? ` — ${c.reason}` : ''}`; if (c.state !== 'n/a' || c.by) { lines.push(`${c.id}: ${tail}`); continue }; const ids = merged.get(tail); if (ids) ids.push(c.id); else { merged.set(tail, [c.id]); lines.push(`\0${tail}`) } }
