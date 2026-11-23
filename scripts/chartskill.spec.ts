@@ -428,3 +428,16 @@ test('conversion.md ids are comma-separated, and one chart precheck call replace
   assert.match(step1, /\*\*Check the conversion\.\*\* For a converted PRD, run `S chart precheck <N>`/)
   assert.doesNotMatch(step1, /run `S prd check <N> --json` and `S prd map <N> --json`/)
 })
+
+test('chart skill: the gap pass marks what the PRD itself calls proposed, before the ledger freezes prd.md (rig_v1_test 2026-11-23: approval stopped at a finding only a person could fix)', () => {
+  const gap = fs.readFileSync(path.resolve(import.meta.dirname, '../skills/chart/SKILL.md'), 'utf8').split('\n').find(l => l.includes('**Gap pass'))!
+  assert.match(gap, /`## Decisions` bullet the PRD itself calls proposed or unconfirmed: mark it and each AC, DR or NFR stating its value `\(proposed at chart\)` before the ledger; `S prd ledger` lists any left\.[^\n]*\*\*prd\.md is frozen at the ledger\*\*/)
+})
+
+test('chart skill: a review finding that only asks for a marker on a prd.md line is fixed by the chart, not handed to a person (rig_v1_test 2026-11-23: /rig:approve chart-0 refused)', () => {
+  const sk = fs.readFileSync(path.resolve(import.meta.dirname, '../skills/chart/SKILL.md'), 'utf8')
+  const review = sk.split('\n').find(l => l.startsWith('5. **Review.**'))!
+  assert.match(review, /only asks for a marker on a `prd\.md` line is yours[^\n]*never a person's: add `\(proposed at chart\)` to that line, changing no other word, rerun `S prd ledger <N>`, and it counts as fixed/)
+  assert.match(sk, /Never edit the PRD to make a finding go away, here or in step 5 \(step 5's marker rule aside\)/)
+  assert.match(sk, /only a person's answer or a missing marker \(step 5\) changes prd\.md/)
+})

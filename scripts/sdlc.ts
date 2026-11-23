@@ -32,7 +32,7 @@ import { cmdReport } from './report.ts'
 import { cmdArch, layerState, layerStateText } from './arch.ts'
 import { cmdQueue, conflictsFor } from './queue.ts'
 import { intentScope } from './scope.ts'
-import { prdFormatProblems, prdLedger, conversionProblems } from './prdformat.ts'
+import { prdFormatProblems, prdDecisionProblems, prdLedger, conversionProblems } from './prdformat.ts'
 import { cmdPrdMore, chartPrecheck } from './prdcmd.ts'; import { cmdChartMark, cmdWhoami } from './chartmark.ts'; import { writeApprovalPage, approvalPage, approvalGate } from './approvalsummary.ts'
 import { parseLedger, parseIntent } from './chartcheck.ts'; import { superpowersWarning } from './superpowers.ts'
 import { ARCH_REL, intentsDir, intentRelOf, prdRel, sprintRel, prdPath, reviewPath, ledgerPath, sourcePath } from './product.ts'
@@ -303,7 +303,7 @@ function cmdPrd(args: Args): void {
     const format = prdFormatProblems(read(prdPath(n)))
     if (format.length) fail(`prd.md is not in format, so no ledger can be generated: run \`prd check ${n}\``)
     fs.writeFileSync(ledgerPath(n), prdLedger(read(prdPath(n)), conversionMapOf(n)))
-    return out(`wrote ${sprintRel(n)}/requirements.md: ${parseLedger(read(ledgerPath(n))).length} row(s) from prd.md`)
+    return out([`wrote ${sprintRel(n)}/requirements.md: ${parseLedger(read(ledgerPath(n))).length} row(s) from prd.md`, ...prdDecisionProblems(read(prdPath(n))).map(f => `[${f.rule}] ${f.where}: ${f.message}`)].join('\n'))
   }
   if (sub === 'map' && !exists(sourcePath(n))) fail(`sprint ${n} has no source.md: nothing was converted`)
   const found = sub === 'map' ? conversionProblems({ source: read(sourcePath(n)), prd: read(prdPath(n)), map: conversionMapOf(n) }) : prdFormatProblems(read(prdPath(n)))

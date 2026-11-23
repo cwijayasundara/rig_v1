@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { prdFormatProblems, prdCriteria, prdLedger, prdOrigins, prdProposed, conversionProblems, parseMap } from './prdformat.ts'
+import { prdFormatProblems, prdDecisionProblems, prdCriteria, prdLedger, prdOrigins, prdProposed, conversionProblems, parseMap } from './prdformat.ts'
 import { parseLedger, ledgerProblems, parseIntent, parentOf } from './chartcheck.ts'
 
 const ROOT = path.resolve(import.meta.dirname, '..')
@@ -250,4 +250,23 @@ test('a line with both markers is confirmed; an out-of-scope line is confirmed, 
 test('a legacy "(answered at chart)" keeps the quote an old ledger holds: the space before the marker stays', () => {
   const prd = PRD().replace('give it the next id', 'give it the next id (answered at chart).')
   assert.match(prdLedger(prd), /"WHEN an item is added THE SYSTEM SHALL give it the next id \."/)
+})
+
+// rig_v1_test sprint 0, 2026-11-23: the PRD's own Decisions said "(proposed)" for the UUID4 id, the Decimal price and 400-not-422, the criteria
+// carried no marker, so the ledger called them the client's and approval stopped at a review finding nobody but a person could fix.
+const dec = (bullets: string): string => PRD().replace('## Open questions', `## Decisions\n\n${bullets}\n## Open questions`)
+test('decision-unmarked: a Decisions bullet that calls a value proposed or unconfirmed, with no chart marker, is named by line', () => {
+  const real = fs.readFileSync(path.join(ROOT, 'tests/e2e/fixtures/python-journey/scaffold/docs/prd/sprint-0/prd.md'), 'utf8')
+  assert.deepEqual(prdDecisionProblems(real).map(f => [f.rule, f.severity, f.where]), [141, 142, 143, 144].map(n => ['decision-unmarked', 'report', `prd.md:${n}`]))
+  assert.match(prdDecisionProblems(real)[0]!.message, /\(proposed at chart\)[^\n]*AC, DR or NFR[^\n]*confirmed at chart by[^\n]*prd ledger/)
+  assert.deepEqual(prdFormatProblems(real), [], 'it is a report at the ledger, never a format finding: the PRD still needs no conversion')
+  for (const w of ['(proposed)', 'assumed, the client has not answered', 'not yet confirmed by the client', 'unconfirmed', 'to be confirmed', "author's choice"]) assert.equal(prdDecisionProblems(dec(`- 2026-11-23: ids are UUID4 — ${w}\n`)).length, 1, w)
+  const wrapped = dec('- 2026-11-23: ids are UUID4 strings\n  (proposed; the original said only "an id")\n- 2026-11-23: list order is insertion order — the client said so\n')
+  assert.deepEqual(prdDecisionProblems(wrapped).map(f => f.where), [`prd.md:${wrapped.split('\n').indexOf('- 2026-11-23: ids are UUID4 strings') + 1}`])
+})
+
+test('decision-unmarked: a marked bullet, a bullet that claims nothing, a comment and the same words outside Decisions are not findings', () => {
+  assert.deepEqual(prdDecisionProblems(dec('- 2026-11-23: ids are UUID4 strings (proposed at chart)\n- price has 2 decimals, proposed by the author (confirmed at chart by Dana)\n- list order is insertion order\n<!-- - an example (proposed) -->\n')), [])
+  assert.deepEqual(prdDecisionProblems(PRD({ data: '- DR-1: Each proposed item id is an integer starting at 1.\n' })), [])
+  assert.deepEqual(prdDecisionProblems(fs.readFileSync(path.join(ROOT, 'templates/prd-format.md'), 'utf8')), [])
 })
