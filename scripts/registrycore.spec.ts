@@ -103,7 +103,7 @@ test('a failing contract run is reported as the contracts sensor', () => {
 })
 
 test('a waiver row cannot clear plan-gate, even a hand-written one', () => {
-  commit(registry({}))
+  commit(registry({ extra: { gates: { plan: true } } }))
   sdlc(repo, ['new', 'demo', '--type', 'chore'])
   write(repo, '.rig/changes/demo/spec.md', '# Spec\n\n## Behaviours\n- none\n')
   write(repo, '.rig/changes/demo/plan.md', '# Plan\n')
@@ -112,7 +112,7 @@ test('a waiver row cannot clear plan-gate, even a hand-written one', () => {
 })
 
 test('a requested waiver cannot clear plan-gate either', () => {
-  commit(registry({}))
+  commit(registry({ extra: { gates: { plan: true } } }))
   sdlc(repo, ['new', 'demo', '--type', 'chore'])
   write(repo, '.rig/changes/demo/spec.md', '# Spec\n\n## Behaviours\n- none\n')
   write(repo, '.rig/changes/demo/plan.md', '# Plan\n')

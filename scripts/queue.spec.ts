@@ -14,7 +14,7 @@ const HUMAN = { SDLC_HUMAN: '1' }
 // A sprint-0 chart approved with three intents; the design doc lists c-three before a-one and lists b-two last.
 function chartedRepo(): string {
   const repo = makeRepo()
-  write(repo, '.rig/sensors.json', JSON.stringify({ stack: 'x', paths: { tests: ['**/*.test.ts'] }, sensors: [{ id: 'unit', cmd: 'true', cadence: 'commit', blocks: true, guide: 'run the tests' }] }))
+  write(repo, '.rig/sensors.json', JSON.stringify({ gates: { plan: true }, stack: 'x', paths: { tests: ['**/*.test.ts'] }, sensors: [{ id: 'unit', cmd: 'true', cadence: 'commit', blocks: true, guide: 'run the tests' }] }))
   write(repo, '.rig/product/sprints/sprint-0/prd.md', PRD)
   for (const s of ['a-one', 'b-two', 'c-three']) write(repo, `.rig/product/sprints/sprint-0/intents/${s}.md`, INTENT)
   write(repo, '.rig/product/sprints/sprint-0/testplan/cases.md', CASES)
@@ -60,6 +60,7 @@ test('the approve command is safe to paste: paths are quoted, and it carries the
 test('queue: a plan waiting for approval is listed for the person with the command, a change at spec is the model\'s, and a shared file is flagged', () => {
   const repo = makeRepo()
   sdlc(repo, ['init'])
+  write(repo, '.rig/sensors.json', JSON.stringify({ gates: { plan: true } }))
   gitIn(repo, 'add', '.')
   gitIn(repo, 'commit', '-qm', 'rig')
   const wtA = path.join(path.dirname(repo), `${path.basename(repo)}-wt-a`)

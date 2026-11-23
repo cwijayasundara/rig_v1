@@ -96,7 +96,7 @@ function proposedNote(spec: string, requirements: string | undefined): string {
   const rows = bullets(section(spec, 'Behaviours')).flatMap(l => {
     const id = /\bB\d+\b/.exec(l)?.[0]
     const via = proposed.filter(r => new RegExp(`\\b${r.id.replace(/[.]/g, '\\.')}\\b`).test(l) || (r.alias !== null && new RegExp(`\\b${r.alias.replace(/[.]/g, '\\.')}\\b`).test(l))).map(r => r.alias ?? r.id)
-    return id && (/\((?:proposed|default|decided) at chart\)/i.test(l) || via.length) ? [`${id}${via.length ? ` (cites ${via.join(', ')})` : ' (marked)'}`] : []
+    return id && (/\((?:proposed|default|decided) at (?:chart|start)\)/i.test(l) || via.length) ? [`${id}${via.length ? ` (cites ${via.join(', ')})` : ' (marked)'}`] : []
   })
   return rows.length ? `Rests on values nobody at the client said: ${rows.join(', ')}. Ask the owner to confirm them before merging.` : ''
 }

@@ -3,8 +3,8 @@
 
 This repo uses **rig-core**: each change (`/rig:start <idea>`) becomes a gated, tested, reviewed PR. Deterministic scripts check every step, locally and in CI, and every approval is a person's.
 
-- **Lifecycle of one change:** intent and spec (behaviours B1, B2, …) → plan → a person approves (`approval.json`) → build test-first → test (`verify.json`) → PR → one review. The type (feature, bugfix, refactor, chore) decides only how new tests are proved against the base.
-- **Human gate:** only a person can run `/rig:approve <slug>`, and approval freezes the contract files.
+- **Lifecycle of one change:** intent and spec (behaviours B1, B2, …) → plan (checked by `plan-check`) → build test-first → test (`verify.json`) → PR → one review. The type (feature, bugfix, refactor, chore) decides only how new tests are proved against the base.
+- **Human gate:** the PR. `"gates": {"plan": true}` in `.rig/sensors.json` adds a per-change approval before the build; only a person can run `/rig:approve <slug>`.
 - **The floor:** the sensors in `.rig/sensors.json`, secret and test-tamper checks, the git hooks and `rig-check` plus `ai-review` in CI. Failures that already existed are `knownRed`, so rig never blocks on debt it did not create.
 - **Local equals CI:** `rig-check` runs the same checks as the git hooks.
 

@@ -52,7 +52,7 @@ function forcePushFindings(): Finding[] {
   } catch { return [unread] }
 }
 
-// A PR that changes source with no .rig/changes/<slug>/ has no plan to check: with gates.plan false nobody approves it either.
+// A PR that changes source with no .rig/changes/<slug>/ has no plan to check. Blocks only under gates.requireChart: otherwise it is explored work, tier 1 at CI, and the PR's person reviews it.
 export function untrackedFindings(diffs: FileDiff[], paths: Paths): Finding[] {
   if (diffs.some(d => d.file.startsWith('.rig/changes/'))) return []
   return diffs.some(d => [d.file, ...(d.from ? [d.from] : [])].some(f => isSource(f, paths))) ? [block('source changed with no change record: a change needs .rig/changes/<slug>/ and a plan commit (S plan-check <slug> --commit)', 'start the change (S new <slug>), write spec.md and plan.md, and commit them first')] : []

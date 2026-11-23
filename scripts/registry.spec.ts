@@ -268,6 +268,13 @@ test('a command sensor cannot take an intent-map rule id', () => {
   assert.ok(errors.some(e => /vacuous/.test(e)), errors.join('\n'))
 })
 
+test('gates.plan defaults to false: the PR is the one human gate of a change', () => {
+  const g = (v: unknown) => JSON.stringify({ sensors: [], gates: v })
+  assert.equal(parseRegistry('{}').registry.gates.plan, false)
+  assert.equal(parseRegistry(g({ plan: true })).registry.gates.plan, true)
+  assert.match(weakensRegistry(g({ plan: true }), g({ plan: false })).join(), /gates.plan turned off/)
+})
+
 test('gates.testWriter parses as a boolean (default false) and turning it off is a weakening', () => {
   const g = (v: unknown) => JSON.stringify({ sensors: [], gates: v })
   assert.equal(parseRegistry('{}').registry.gates.testWriter, false)

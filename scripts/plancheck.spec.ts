@@ -233,12 +233,15 @@ test('CI: a PR widening the scope and ledger of the charted intent still blocks'
   assert.match(o, /scope change: lib\/other\.js is outside intent demo/); assert.match(o, /scope change: FR-9 is outside intent demo/)
 })
 
-test('CI: source changed with no change record blocks when gates.plan is false', () => {
-  write(repo, '.rig/sensors.json', registry({ extra: { gates: { plan: false } } })); gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'cfg')
+test('CI: source changed with no change record blocks under gates.requireChart; without it the PR is left to its reviewer', () => {
+  write(repo, '.rig/sensors.json', registry({ extra: { gates: { plan: false, requireChart: true } } })); gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'cfg')
   gitIn(repo, 'checkout', '-q', '-b', 'feature'); write(repo, 'src/x.js', 'export {}\n'); gitIn(repo, 'add', 'src'); gitIn(repo, 'commit', '-qm', 'code')
   assert.match(ciWith().stdout, /\[plan-check\]\n[^\n]*source changed with no change record: a change needs \.rig\/changes\/<slug>\/ and a plan commit \(S plan-check <slug> --commit\)/)
   gitIn(repo, 'checkout', '-q', 'main'); gitIn(repo, 'checkout', '-q', '-b', 'docs'); write(repo, '.rig/notes.md', 'x\n'); gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'rig only')
   assert.doesNotMatch(ciWith().stdout, /source changed with no change record/)
+  gitIn(repo, 'checkout', '-q', 'main'); write(repo, '.rig/sensors.json', registry({ extra: { gates: { plan: false } } })); gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'no requireChart')
+  gitIn(repo, 'checkout', '-q', '-b', 'explored'); write(repo, 'src/y.js', 'export {}\n'); gitIn(repo, 'add', 'src'); gitIn(repo, 'commit', '-qm', 'code')
+  assert.doesNotMatch(ciWith().stdout, /source changed with no change record/, 'the default (plan gate off, no requireChart) leaves explored work to the PR reviewer')
 })
 
 const seal = () => {

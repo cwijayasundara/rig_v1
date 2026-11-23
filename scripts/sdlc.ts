@@ -94,7 +94,7 @@ function cmdInit(args: Args): void {
 }
 
 // Tells /rig:start whether the charted intent leaves anything to ask (F2 of the 2026-10-29 feedback proposal).
-const settledLine = (slug: string): string => { const s = intentSettled(slug); return s.settled ? `settled: yes (the intent answers everything ${skillRef('start')} would ask)` : `settled: no (${s.why.join('; ')})` }
+const settledLine = (slug: string): string => { const s = intentSettled(slug); return `${s.settled ? `settled: yes (the intent answers everything ${skillRef('start')} would ask)` : `settled: no (${s.why.join('; ')})`}\nasks: ${loadConfig().registry.gates.plan ? `a person answers what is open, and approves the plan with ${skillRef('approve')} ${slug}` : 'none (the PR is the one human review: take your recommended answer to each, marked (proposed at start))'}` }
 
 function cmdNew(args: Args): void {
   const slug = args.pos[0] ?? ''

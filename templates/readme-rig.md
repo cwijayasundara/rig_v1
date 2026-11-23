@@ -15,8 +15,8 @@ This repo uses **rig**, a thin SDLC harness for Claude Code. Each idea (`/rig:st
  EVIDENCE   .rig/product/  .rig/changes/<slug>/                 committed; read by CI
 ```
 
-- **Lifecycle of one change:** intent and spec (behaviours B1, B2, …) → plan → a person approves (`approval.json`) → build test-first → test (`verify.json`: every commit and ci sensor, the contracts, a test per behaviour) → PR → review. The type (feature, bugfix, refactor, chore) decides only how new tests are proved against the base.
-- **Human gate:** a person approves each change's spec and plan with `/rig:approve <slug>`; approval freezes the contract files. A model can never approve.
+- **Lifecycle of one change:** intent and spec (behaviours B1, B2, …) → plan (checked by `plan-check`) → build test-first → test (`verify.json`: every commit and ci sensor, the contracts, a test per behaviour) → PR → review. The type (feature, bugfix, refactor, chore) decides only how new tests are proved against the base.
+- **Human gate:** the PR. Nothing between a charted intent and its PR waits for a person; a sprint's chart is approved once with `/rig:approve chart-<N>`. `"gates": {"plan": true}` in `.rig/sensors.json` adds a per-change approval of spec and plan (`/rig:approve <slug>`). A model can never approve.
 - **Order:** an intent starts only once the intents in its `depends:` have shipped.
 - **Deterministic checks decide:** the sensors in `.rig/sensors.json` (each with a command or a built-in, a cadence and one guide sentence) must pass; failures that already existed are recorded as `knownRed` so rig never blocks on debt it did not create.
 - **State lives in files:** `.rig/sensors.json` (config), `.rig/product/brief.md` (the product brief), `.rig/product/sprints/sprint-<N>/intents/` (charted intents), `.rig/maintain/proposals/` (intents proposed by Maintain), `.rig/changes/<slug>/` (intent, spec, plan, `approval.json`, `evidence/`, `verify.json`, `pr.md`), `.rig/bin/` (vendored harness), `.rig/guides/` (the guides), `.claude/` (settings; skills, agents and hook wiring after `init --full`), `CLAUDE.md` (project context for Claude).
@@ -58,8 +58,8 @@ Claude Code only discovers skills, agents and hooks under `.claude/`; everything
 Typical flow for one change (or start from a charted intent: `/rig:start .rig/product/sprints/sprint-<N>/intents/<slug>.md`; a team charts a sprint first with `/rig:chart <N>`, and a person approves it with `/rig:approve chart-<N>`):
 
 1. `/rig:start "add user signup"`, then `/rig:plan`. Read `spec.md` and `plan.md` in `.rig/changes/<slug>/`.
-2. Approve with `/rig:approve <slug>`.
-3. `/rig:build <slug>` builds, tests and opens the PR. Review it, then merge as usual.
+2. It carries on by itself: build, tests and the PR (with `gates.plan: true` it stops first for `/rig:approve <slug>`).
+3. Review the PR, then merge as usual.
 4. Commit `.rig/`, `.claude/` and `CLAUDE.md`; they are the evidence CI reads.
 
 Good to know:

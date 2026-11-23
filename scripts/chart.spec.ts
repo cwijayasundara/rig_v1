@@ -390,7 +390,7 @@ test('new --source says whether the intent is settled, and what is missing when 
 test('activate prints the settled line again, so a resumed charted change is not questioned afresh', () => {
   startable()
   assert.equal(sdlc(repo, ['new', 'alpha', '--source', SRC]).code, 0)
-  assert.match(sdlc(repo, ['activate', 'alpha']).stdout, /settled: no \(no non-goals\)/)
+  assert.match(sdlc(repo, ['activate', 'alpha']).stdout, /settled: no \(no non-goals\)\nasks: none \(the PR is the one human review: take your recommended answer to each, marked \(proposed at start\)\)/)
 })
 
 test('new --source: non-goals, cited behaviours and nothing open or carried is settled; a carried item is not', () => {

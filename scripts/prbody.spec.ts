@@ -164,6 +164,7 @@ test('the evidence names behaviours that cite a proposed ledger row or carry the
   const note = (spec3: string, req?: string): string => prBody({ intent, spec: spec3, plan, verify, outline: '', review: '', risk, ...(req === undefined ? {} : { requirements: req }) })
   assert.match(note(spec2, requirements), /Rests on values nobody at the client said: B2 \(cites AC-1\.2\), B3 \(marked\)\. Ask the owner/)
   assert.doesNotMatch(note(spec2, requirements.replace(', proposed', '')), /B2 \(cites/)
+  assert.match(note(spec2.replace('(proposed at chart)', '(proposed at start)'), requirements), /B3 \(marked\)/, 'an answer the agent took at start, with no person asked, is listed for the PR reviewer')
   assert.doesNotMatch(note(spec), /Rests on/)
   assert.doesNotMatch(note(spec, requirements), /Rests on/)
 })

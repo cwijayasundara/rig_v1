@@ -127,6 +127,8 @@ const planned = (slug = 'demo') => {
   sdlc(repo, ['new', slug, '--type', 'feature'])
   write(repo, `.rig/changes/${slug}/spec.md`, SPEC)
   write(repo, `.rig/changes/${slug}/plan.md`, PLAN)
+  const cfg = path.join(repo, '.rig/sensors.json')
+  write(repo, '.rig/sensors.json', JSON.stringify({ ...(fs.existsSync(cfg) ? JSON.parse(fs.readFileSync(cfg, 'utf8')) : {}), gates: { plan: true } }))
 }
 const statusOf = (slug = 'demo') => (JSON.parse(sdlc(repo, ['status', '--json']).stdout) as { changes: { slug: string; status: string }[] }).changes.find(c => c.slug === slug)?.status
 
@@ -142,6 +144,12 @@ test('cli: new, approve, verify and status walk one change; verify.json written 
   assert.equal(v.code, 0, v.stdout + v.stderr)
   assert.equal(JSON.parse(fs.readFileSync(path.join(repo, '.rig/changes/demo/verify.json'), 'utf8')).pass, true)
   assert.equal(statusOf(), 'pr', 'writing verify.json under .rig does not make it stale')
+})
+
+test('a repo with no gates key reports build, not approve, once spec.md and plan.md exist', () => {
+  planned()
+  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [] }))
+  assert.equal(statusOf(), 'build')
 })
 
 test('cli: verify blocks a planned change that is not approved, with a plan-gate finding', () => {

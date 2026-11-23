@@ -1,5 +1,6 @@
-// The inner loop runs on its own between the two places a person acts (owner, 2026-10-18): start runs through to the plan,
-// a person approves, then build runs through code, verify, PR, one review and the fix of its findings.
+// The inner loop runs on its own to the one place a person acts, the PR (owner, 2026-11-23): start runs through the plan, plan-check
+// stands in for the approval, then build runs through code, verify, PR, one review and the fix of its findings. A repo that sets
+// gates.plan true keeps the per-change approval between plan and build (owner, 2026-10-18).
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
@@ -11,6 +12,15 @@ test('start continues into plan in the same turn, and plan stops only for the ap
   assert.match(skill('start'), /continue with `\/rig:plan <slug>` in this turn/i)
   assert.doesNotMatch(skill('start'), /End with `Next: \/rig:plan/)
   assert.match(skill('plan'), /Next: \/rig:approve <slug> \(a person\), then \/rig:build <slug>/)
+})
+
+test('by default nothing between a charted intent and its PR waits for a person', () => {
+  const s = skill('start'), p = skill('plan'), t = skill('test')
+  assert.match(s, /\*\*`asks: none`\*\*[^\n]*overrides step 2 for a charted intent: no `AskUserQuestion` or `superpowers:brainstorming`/)
+  assert.match(s, /decide each `settled: no` reason yourself[^\n]*`\(proposed at start\)`; the PR lists them/)
+  assert.match(p, /Status `build` \(the default[^\n]*do not stop; run `S plan-check <slug> --commit`[^\n]*continue with `\/rig:build <slug>` in this turn/)
+  assert.match(p, /Status `approve` \(`gates\.plan: true`\): never approve yourself/)
+  assert.match(t, /S waive --request holdout[^\n]*never end with options for the person/)
 })
 
 test('build continues into test, and test into pr, in the same turn', () => {

@@ -11,7 +11,7 @@ import { openQuestions } from './model.ts'
 import { pathToFileURL } from 'node:url'
 
 let repo: string
-beforeEach(() => { repo = makeRepo(); sdlc(repo, ['init']); write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [] })) })
+beforeEach(() => { repo = makeRepo(); sdlc(repo, ['init']); write(repo, '.rig/sensors.json', JSON.stringify({ gates: { plan: true }, sensors: [] })) })
 const SP = '.rig/product/sprints/sprint-1'
 const HUMAN = { env: { SDLC_HUMAN: '1' } }
 const rd = (rel: string): string => fs.readFileSync(path.join(repo, rel), 'utf8')

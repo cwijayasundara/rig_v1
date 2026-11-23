@@ -7,7 +7,7 @@ import os from 'node:os'
 import { makeRepo, sdlc, write, gitIn, approvedChange, verified, ARCH_OK, IMPL_OK, approveChart } from './testkit.ts'
 
 let repo: string
-beforeEach(() => { repo = makeRepo(); sdlc(repo, ['init']); write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [] })) })
+beforeEach(() => { repo = makeRepo(); sdlc(repo, ['init']); write(repo, '.rig/sensors.json', JSON.stringify({ gates: { plan: true }, sensors: [] })) })
 const pr = () => sdlc(repo, ['pr', 'demo', '--message', 'feat: demo'])
 
 test('pr refuses a change whose plan is not approved', () => {
@@ -48,7 +48,7 @@ test('a second pr with nothing new to commit names the existing pr.md', () => {
 const shipReady = () => { approvedChange(repo, 'demo'); write(repo, 'test/a.test.js', '// B1\n'); verified(repo, 'demo') }
 
 test('pr refuses when a frozen contract under .rig changed after verify', () => {
-  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], contracts: { files: ['.rig/contracts/**'] } }))
+  write(repo, '.rig/sensors.json', JSON.stringify({ gates: { plan: true }, sensors: [], contracts: { files: ['.rig/contracts/**'] } }))
   write(repo, '.rig/contracts/api.yaml', 'openapi: 3.1.0\n')
   gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'cfg')
   shipReady()
@@ -283,7 +283,7 @@ const blockedRow = (at: string): string => [{ kind: 'launch', id: 'a', agent: 'x
 test('a BLOCKED agent row makes pr fail until --draft; --draft still keeps the plan-approval refusal', () => {
   sdlc(repo, ['new', 'demo'])
   assert.match(sdlc(repo, ['pr', 'demo', '--draft', '--message', 'feat: demo']).stderr, /plan is not approved/)
-  repo = makeRepo(); sdlc(repo, ['init']); write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [] }))
+  repo = makeRepo(); sdlc(repo, ['init']); write(repo, '.rig/sensors.json', JSON.stringify({ gates: { plan: true }, sensors: [] }))
   approvedChange(repo, 'demo')
   write(repo, 'test/a.test.js', '// B1\n')
   write(repo, '.rig/changes/demo/evidence/agents.jsonl', blockedRow('n'))
@@ -325,7 +325,7 @@ test('a draft scans what it commits for secrets and commits nothing on a hit; a 
 })
 
 test('a requested harness-tamper waiver row does not clear the frozen-contract refusal', () => {
-  write(repo, '.rig/sensors.json', JSON.stringify({ sensors: [], contracts: { files: ['.rig/contracts/**'] } }))
+  write(repo, '.rig/sensors.json', JSON.stringify({ gates: { plan: true }, sensors: [], contracts: { files: ['.rig/contracts/**'] } }))
   write(repo, '.rig/contracts/api.yaml', 'openapi: 3.1.0\n')
   gitIn(repo, 'add', '.'); gitIn(repo, 'commit', '-qm', 'cfg')
   shipReady()

@@ -42,7 +42,7 @@ type CheckInput = {
   ratchet?: boolean
   ratchetWrite?: RatchetWrite // tighten .rig/ratchets.json: never at CI or against another ref's config
   after?: (file: string) => string // the text being judged; defaults to the working tree (commit passes the index)
-  gates?: { plan: boolean }; chartRef?: string // the plan gate (absent: on); the base ref scoping an unattended change
+  gates?: Partial<Registry['gates']>; chartRef?: string // plan gate (absent: on); base ref
   contracts?: boolean // run the contract commands (validate, then run); absent: at ship and ci only
   drifted?: boolean // the diff is not the working tree (a push of other commits), so {changed} sensors, run on disk, skip
 }
@@ -248,7 +248,7 @@ export function runChecks(i: CheckInput): CheckResult {
   const after = i.after ?? onDisk
   const findings: Finding[] = [
     ...builtinFindings(diffs, config, i.rules, fileLines(diffs.filter(d => d.status !== 'D').map(d => d.file), after), point, i.slugs, diffs.flatMap(d => d.from ? [d.file, d.from] : [d.file]), after, i.base, i.gates?.plan ?? true, i.chartRef),
-    ...harnessTamper(diffs, { point, commit: i.point === 'commit', toolEdited: i.toolEdited, before: i.before, after }), ...(i.point === 'ci' && i.gates?.plan === false ? untrackedFindings(diffs, config.paths) : []),
+    ...harnessTamper(diffs, { point, commit: i.point === 'commit', toolEdited: i.toolEdited, before: i.before, after }), ...(i.point === 'ci' && i.gates?.plan === false && i.gates.requireChart ? untrackedFindings(diffs, config.paths) : []),
   ]
   // A diff whose plan the person approved is big by design: the diff-size limit warns instead of blocking.
   if (i.slugs.length && i.slugs.every(s => approvalState(s) === 'approved')) {

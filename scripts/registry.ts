@@ -52,7 +52,7 @@ function builtinSensor(id: BuiltinId): RegistrySensor {
 export function defaultRegistry(): Registry {
   return {
     stack: null,
-    gates: { plan: true, requireChart: false, testWriter: false },
+    gates: { plan: false, requireChart: false, testWriter: false },
     humanApproval: { selfApprovers: [], trusted: [], everyTier: false },
     risk: { enforce: false, gate: 'enforce', alwaysHuman: [], maxLines: 400, hardCap: false, window: 20, maxRevertRate: 0.1 },
     contracts: { files: [], covers: [], validate: '', run: '' },
