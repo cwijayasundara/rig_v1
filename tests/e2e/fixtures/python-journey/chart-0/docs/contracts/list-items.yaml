@@ -1,0 +1,8 @@
+# Contract: GET /items (FR-3).
+get:
+  path: /items
+  responses:
+    "200":
+      description: every item in the cart, in insertion order, oldest first; [] for an empty cart
+      body: array of { id: string, name: string, price: number, quantity: integer }
+      example: docs/contracts/examples/list-items-200.json

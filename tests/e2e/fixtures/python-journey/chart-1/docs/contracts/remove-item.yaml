@@ -1,0 +1,14 @@
+# Contract: DELETE /items/{id} (FR-1). Wire format fixed by ADR-0001 and ADR-0002.
+delete:
+  path: /items/{id}
+  parameters:
+    id: string, matched by exact equality against the stored item ids
+  responses:
+    "204":
+      description: item removed
+      body: none (empty)
+    "404":
+      description: no item has this id (any string, including one that is not a UUID)
+      body: { detail: "Item not found" }
+      example: docs/contracts/examples/remove-item-404.json
+  never: status 400 or 422

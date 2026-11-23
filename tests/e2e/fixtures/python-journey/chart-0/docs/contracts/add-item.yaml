@@ -1,0 +1,20 @@
+# Contract: POST /items (FR-1). Wire format fixed by ADR-0001 and ADR-0002.
+post:
+  path: /items
+  request:
+    content-type: application/json
+    body:
+      name: string, required, non-empty
+      price: number, required, >= 0 (JSON number; booleans, strings, NaN and Infinity are rejected)
+      quantity: integer, required, >= 1 (JSON integer; 2.0 and "2" are rejected)
+      other keys: ignored (an "id" sent by the client is ignored)
+  responses:
+    "201":
+      description: item stored
+      body: { id: string (UUID4, server-generated, unique), name: string, price: number, quantity: integer }
+      example: docs/contracts/examples/add-item-201.json
+    "400":
+      description: rejected, nothing stored
+      body: { detail: "<field>: <reason>", field is name, price, quantity or body }
+      example: docs/contracts/examples/add-item-400.json
+  never: status 422

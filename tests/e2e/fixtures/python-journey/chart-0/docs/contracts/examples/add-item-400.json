@@ -1,0 +1,17 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/items",
+    "body": {
+      "name": "Coffee beans",
+      "price": -1,
+      "quantity": 2
+    }
+  },
+  "response": {
+    "status": 400,
+    "body": {
+      "detail": "price: must be a number >= 0"
+    }
+  }
+}

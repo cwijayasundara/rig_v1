@@ -1,0 +1,55 @@
+{
+  "items": [
+    {
+      "name": "Coffee beans",
+      "price": 8.5,
+      "quantity": 2
+    },
+    {
+      "name": "Tea bags",
+      "price": 0,
+      "quantity": 1
+    },
+    {
+      "name": "Oat milk",
+      "price": 3.25,
+      "quantity": 12
+    }
+  ],
+  "invalid": {
+    "missing_name": {
+      "price": 8.5,
+      "quantity": 2
+    },
+    "empty_name": {
+      "name": "",
+      "price": 8.5,
+      "quantity": 2
+    },
+    "negative_price": {
+      "name": "Coffee beans",
+      "price": -1,
+      "quantity": 2
+    },
+    "string_price": {
+      "name": "Coffee beans",
+      "price": "8.5",
+      "quantity": 2
+    },
+    "zero_quantity": {
+      "name": "Coffee beans",
+      "price": 8.5,
+      "quantity": 0
+    },
+    "float_quantity": {
+      "name": "Coffee beans",
+      "price": 8.5,
+      "quantity": 2.0
+    },
+    "non_string_name": {
+      "name": 123,
+      "price": 8.5,
+      "quantity": 2
+    }
+  }
+}

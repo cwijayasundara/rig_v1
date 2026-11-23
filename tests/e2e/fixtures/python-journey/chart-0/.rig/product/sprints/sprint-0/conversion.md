@@ -1,0 +1,40 @@
+# Conversion of source.md, sprint 0
+
+- context source.md:4 "A lightweight shopping cart application that allows users to add items to a cart, retrieve a specific item by its ID, and view all items currently in the cart." — overview prose, kept in Context
+- FR-1 source.md:8 "Add a new item to the shopping cart."
+- FR-2 source.md:9 "View a single item using its unique `id`."
+- FR-3 source.md:10 "View all items in the shopping cart."
+- context source.md:13 "User authentication or multi-user carts." — non-goal
+- context source.md:14 "Updating or deleting items." — non-goal
+- context source.md:15 "Checkout, payments, taxes, or discounts." — non-goal
+- context source.md:16 "Persistent database storage (in-memory storage is acceptable for v1)." — non-goal
+- DR-1 source.md:23 "`id` | string | Yes (auto-generated) | Unique identifier for the item"
+- DR-2 source.md:24 "`name` | string | Yes | Name of the item (non-empty)"
+- DR-3 source.md:25 "`price` | number | Yes | Unit price of the item (`>= 0`)"
+- DR-4 source.md:26 "`quantity` | integer | Yes | Quantity of the item (`>= 1`)"
+- FR-1 source.md:31 "**Description:** Allows a user to add a new item to the cart."
+- context source.md:32 "**Input:** `name`, `price`, `quantity`" — input list, the fields are in AC-1.1
+- context source.md:33 "**Behavior:**" — label
+- AC-1.1, AC-1.2, AC-1.3, AC-1.4 source.md:34 "Validate that `name` is a non-empty string, `price >= 0`, and `quantity >= 1`."
+- AC-1.1, DR-1 source.md:35 "Generate a unique `id` for the item and store it in the cart."
+- AC-1.1 source.md:36 "Return the created item (including its `id`)."
+- AC-1.2, AC-1.3, AC-1.4 source.md:37 "**Error Handling:** Return a validation error (e.g., `400 Bad Request`) if any required field is missing or invalid."
+- FR-2 source.md:40 "**Description:** Retrieves a single item from the cart using its `id`."
+- context source.md:41 "**Input:** `id`" — input list, in AC-2.1
+- context source.md:42 "**Behavior:**" — label
+- AC-2.1 source.md:43 "Look up the item matching `id`."
+- AC-2.1 source.md:44 "Return the item details if found."
+- AC-2.2 source.md:45 "**Error Handling:** Return a not-found error (e.g., `404 Not Found`) if no item matches the given `id`."
+- FR-3 source.md:48 "**Description:** Retrieves all items currently in the cart."
+- context source.md:49 "**Input:** None" — no input
+- context source.md:50 "**Behavior:**" — label
+- AC-3.1 source.md:51 "Return a list of all items in the cart."
+- AC-3.2 source.md:52 "Return an empty list (`[]`) if the cart has no items."
+- AC-1.1 source.md:55 "`POST /items` — Add a new item (`201 Created`)"
+- AC-2.1, AC-2.2 source.md:56 "`GET /items/:id` — View a single item by ID (`200 OK` / `404 Not Found`)"
+- AC-3.1 source.md:57 "`GET /items` — View all items (`200 OK`)"
+- AC-1.1 source.md:60 "Adding a valid item stores it and returns the item with a unique `id`."
+- AC-1.2, AC-1.3, AC-1.4 source.md:61 "Adding an item with invalid or missing fields is rejected with a clear error message."
+- AC-2.1 source.md:62 "Requesting an existing item by `id` returns the exact item."
+- AC-2.2 source.md:63 "Requesting a non-existent `id` returns a not-found error."
+- AC-3.1, AC-3.2 source.md:64 "Requesting all items returns every added item, or an empty list when the cart is empty."

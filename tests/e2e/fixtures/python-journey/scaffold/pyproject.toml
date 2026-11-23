@@ -1,0 +1,22 @@
+[project]
+name = "shopping-cart"
+version = "0.1.0"
+description = "Lightweight in-memory shopping cart API"
+requires-python = ">=3.12"
+dependencies = ["fastapi>=0.110", "uvicorn>=0.29"]
+
+[dependency-groups]
+dev = ["pytest", "httpx", "ruff", "mypy", "mutmut<3", "import-linter", "pip-audit"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+extend-exclude = [".rig", ".claude"]
+
+[tool.mypy]
+files = ["src"]

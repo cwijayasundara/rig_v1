@@ -1,0 +1,23 @@
+{
+  "items": [
+    {
+      "name": "Coffee beans",
+      "price": 8.5,
+      "quantity": 2
+    },
+    {
+      "name": "Tea bags",
+      "price": 0,
+      "quantity": 1
+    },
+    {
+      "name": "Oat milk",
+      "price": 3.25,
+      "quantity": 12
+    }
+  ],
+  "unknown_ids": [
+    "does-not-exist",
+    "00000000-0000-4000-8000-000000000000"
+  ]
+}

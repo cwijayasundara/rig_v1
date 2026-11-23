@@ -1,0 +1,15 @@
+# Contract: GET /items/{id} (FR-2). Wire format fixed by ADR-0001 and ADR-0002.
+get:
+  path: /items/{id}
+  parameters:
+    id: string, matched by exact equality against the stored item ids
+  responses:
+    "200":
+      description: exactly the stored item
+      body: { id: string, name: string, price: number, quantity: integer }
+      example: docs/contracts/examples/get-item-200.json
+    "404":
+      description: no item has this id (any string, including one that is not a UUID)
+      body: { detail: "Item not found" }
+      example: docs/contracts/examples/get-item-404.json
+  never: status 400 or 422

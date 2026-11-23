@@ -1,0 +1,12 @@
+{
+  "request": {
+    "method": "DELETE",
+    "path": "/items/does-not-exist"
+  },
+  "response": {
+    "status": 404,
+    "body": {
+      "detail": "Item not found"
+    }
+  }
+}

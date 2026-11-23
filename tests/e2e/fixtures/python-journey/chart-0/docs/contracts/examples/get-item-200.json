@@ -1,0 +1,15 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/items/3f2b8c1e-5a47-4d0e-9b6a-1c2d3e4f5a6b"
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "id": "3f2b8c1e-5a47-4d0e-9b6a-1c2d3e4f5a6b",
+      "name": "Coffee beans",
+      "price": 8.5,
+      "quantity": 2
+    }
+  }
+}

@@ -486,8 +486,29 @@ Work on rig itself is routed by superpowers, not by rig; see [CLAUDE.md](CLAUDE.
 ```bash
 npm run typecheck                            # scripts only (what CI runs)
 npm test                                     # spec files, e2e unit tests, scripted e2e
+npm run test:e2e:python                      # on demand: the end-to-end test of the harness (below); not part of npm test
 claude plugin validate .claude-plugin/plugin.json
 ```
+
+### End-to-end test of the harness (on demand)
+
+`npm run test:e2e:python` (`tests/e2e/python-journey.mjs`) is the end-to-end test of the harness. Run it when you need it, for example after a change to a script, a stack pack, a hook or a template, and before a release. It is not part of `npm test` or CI: it needs `uv` and the network, and takes about 3 minutes. It costs no model usage.
+
+It replays one recorded Python project (a FastAPI shopping cart) through every deterministic step of a person's run, with the real tools (ruff, mypy, pytest, mutmut), the repo's own git hooks and no remote:
+
+- **Init:** a uv scaffold, `init --stack` (every sensor through `uv run`), a baseline with no known-red sensor, the hooks, the init commit.
+- **Greenfield:** chart sprint 0, the approval (which merges `rig/chart-0` into `main`), then `add-item`, `get-item` and `list-items`, each from start through approve, failing tests, `tests-freeze`, code, verify (sensors, mutation score, hidden cases), pr and merge.
+- **Brownfield:** chart sprint 1 (remove an item) on the built app, the approval, then `remove-item` through the same steps.
+
+The artefacts a model would write (charts, specs, plans, tests, code) are fixtures in `tests/e2e/fixtures/python-journey/`, taken from a live run; the person's approvals are played by the script. So it proves the scripts, packs, hooks and gates work together on a real repo, and it does not exercise the skill text: a live model following the skills is `npm run e2e`.
+
+```bash
+npm run test:e2e:python              # prints PASS or FAIL per step and exits non-zero on a failure
+npm run test:e2e:python -- --keep    # keep the sandbox after a pass (a failing run always keeps it and prints its path)
+npm run test:e2e:python -- --out DIR # run in an empty directory of your choice
+```
+
+Its sandbox is a git repository of its own under `tests/e2e/out/python-journey/`, which is ignored.
 
 ### End-to-end acceptance test
 

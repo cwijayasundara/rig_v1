@@ -1,0 +1,23 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/items"
+  },
+  "response": {
+    "status": 200,
+    "body": [
+      {
+        "id": "3f2b8c1e-5a47-4d0e-9b6a-1c2d3e4f5a6b",
+        "name": "Coffee beans",
+        "price": 8.5,
+        "quantity": 2
+      },
+      {
+        "id": "9a1d7e20-4c3b-4f68-8e15-0b7a6c5d4e3f",
+        "name": "Filter papers",
+        "price": 3,
+        "quantity": 1
+      }
+    ]
+  }
+}

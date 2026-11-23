@@ -1,0 +1,16 @@
+# Requirements (generated from prd.md by rig: never edit)
+
+- AC-1.1 [rule] prd.md:37 "WHEN POST /items is called with a non-empty string name, a number price >= 0 and an integer quantity >= 1 THE SYSTEM SHALL store the item and respond 201 Created with the item as JSON, including a generated unique id"
+- AC-1.2 [rule] prd.md:38 "WHEN POST /items is called with name missing or not a non-empty string THE SYSTEM SHALL respond 400 Bad Request with a clear error message and store nothing"
+- AC-1.3 [rule] prd.md:39 "WHEN POST /items is called with price missing, not a number or below 0 THE SYSTEM SHALL respond 400 Bad Request with a clear error message and store nothing"
+- AC-1.4 [rule] prd.md:40 "WHEN POST /items is called with quantity missing, not an integer or below 1 THE SYSTEM SHALL respond 400 Bad Request with a clear error message and store nothing"
+- AC-1.5 [answer] prd.md:41 "WHEN POST /items is rejected THE SYSTEM SHALL respond with the body {"detail": "<message>"} where the message names the invalid field"
+- AC-2.1 [rule] prd.md:49 "Given an item in the cart, when GET /items/{id} is called with its id, then the system responds 200 OK with exactly that item"
+- AC-2.2 [answer] prd.md:50 "WHEN GET /items/{id} is called with an id no item has THE SYSTEM SHALL respond 404 Not Found with the body {"detail": "Item not found"}"
+- AC-3.1 [rule] prd.md:58 "Given items in the cart, when GET /items is called, then the system responds 200 OK with a JSON list of every added item"
+- AC-3.2 [rule] prd.md:59 "Given an empty cart, when GET /items is called, then the system responds 200 OK with []"
+- AC-3.3 [answer] prd.md:60 "WHEN GET /items is called THE SYSTEM SHALL list the items in insertion order, oldest first"
+- DR-1 [rule] prd.md:64 "Each item has an id: a string the system generates, unique among items in the cart."
+- DR-2 [rule] prd.md:65 "name is a required non-empty string."
+- DR-3 [rule] prd.md:66 "price is a required number >= 0 (the unit price)."
+- DR-4 [rule] prd.md:67 "quantity is a required integer >= 1."
