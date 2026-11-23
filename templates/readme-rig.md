@@ -46,7 +46,7 @@ Claude Code only discovers skills, agents and hooks under `.claude/`; everything
 
 | You want to | Run |
 |---|---|
-| Plan a whole sprint from a PRD (greenfield or brownfield) | write `docs/prd/sprint-0/prd.md` (one folder per sprint), then `/rig:chart 0 @docs/prd/sprint-0/prd.md` (it asks nothing unless you add `--ask`: intents, architecture, test plan, review) |
+| Plan a whole sprint from a PRD (greenfield or brownfield) | write `docs/prd/sprint-0/prd.md` (one folder per sprint), then `/rig:chart 0 @docs/prd/sprint-0/prd.md` (it asks nothing unless you add `--ask`: intents, architecture, test plan, review). To let it run until every output exists, paste the `/goal` line that `node .rig/bin/sdlc.ts chart goal 0 --print --prd docs/prd/sprint-0/prd.md` prints |
 | Start a change | `/rig:start "<what you want>"` |
 | Continue a change | `/rig:start <slug>` (it picks up at the first missing step) |
 | Approve a change | `/rig:approve <slug>`; only a person can |

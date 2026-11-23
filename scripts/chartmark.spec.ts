@@ -87,3 +87,20 @@ test('whoami prints the identity, or exits 1 with a hint when there is none', ()
   const none = sdlc(repo, ['whoami'], { env: { USER: 'root', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' } })
   assert.equal(none.code, 1); assert.match(none.stderr, /git config user\.name/)
 })
+
+// The outer loop as a Claude Code /goal (2026-11-23): its evaluator reads only the transcript, so the chart needs one command that prints
+// every output and a last line to judge, and the person needs the /goal line to type.
+test('chart goal lists every output of the chart, fails with NOT MET while one is missing, and --print gives the /goal line', () => {
+  const r = sdlc(repo, ['chart', 'goal', '1'])
+  assert.equal(r.code, 1)
+  for (const what of ['PRD', 'requirements ledger', 'coverage list', 'intents', 'architecture', 'implementation plan', 'build order', 'test plan', 'test cases', 'test data', 'checks and review', 'approval page', 'committed']) assert.match(r.stdout, new RegExp(`^  ✗ ${what}: `, 'm'), what)
+  assert.match(r.stdout.trim(), /\nchart-1 goal: NOT MET \(\d+ of \d+ lines fail\)$/)
+  write(repo, `${SP}/prd.md`, '# PRD\n')
+  assert.match(sdlc(repo, ['chart', 'goal', '1']).stdout, /^  ✓ PRD: \.rig\/product\/sprints\/sprint-1\/prd\.md$/m)
+  const line = sdlc(repo, ['chart', 'goal', '1', '--print', '--prd', 'docs/prd/sprint-1/prd.md']).stdout.trim()
+  assert.match(line, /^\/goal Chart sprint 1 with rig: invoke the rig:chart skill with the arguments "1 @docs\/prd\/sprint-1\/prd\.md"/)
+  assert.match(line, /sdlc\.ts chart goal 1`, run after your last change, is shown in this conversation and its last line is "chart-1 goal: MET"/)
+  assert.match(line, /never run \/rig:approve[^\n]*or after 60 turns\.$/)
+  assert.ok(line.length <= 4000 && !line.includes('\n'), 'one line, within the /goal limit of 4,000 characters')
+  assert.equal(sdlc(repo, ['chart', 'goal', 'x']).code, 1)
+})
