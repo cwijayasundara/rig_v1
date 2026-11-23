@@ -2,9 +2,8 @@
 // `tests-freeze` and never rewritten. The check judges file content, not who wrote it, so a Bash write is caught like an Edit.
 import crypto from 'node:crypto'
 import fs from 'node:fs'
-import { spawnSync } from 'node:child_process'
 import path from 'node:path'
-import { CHANGES, ROOT, SENSORS_JSON, exists, read, readJson, readJsonl, fail, now, git, dirtyFiles, checkSlug, optString, sanctionWrites, defaultBase, skillRef, type Args } from './core.ts'
+import { CHANGES, ROOT, SENSORS_JSON, exists, read, readJson, readJsonl, fail, now, git, dirtyFiles, checkSlug, optString, sanctionWrites, commitShown, defaultBase, skillRef, type Args } from './core.ts'
 import { isTest, isSource, matchesAny, planFiles, type Finding } from './model.ts'
 import { branchDiff, rangeDiff, showAt } from './diffs.ts'
 import { parseRegistry, type Registry } from './registry.ts'
@@ -61,9 +60,7 @@ export function cmdTestsFreeze(args: Args): void {
   const sub = (msg: string, files: string[]): boolean => {
     if (!(git(['status', '--porcelain', '--', ...files]) ?? '').trim()) return true
     if (git(['add', '--', ...files]) === null) return false
-    const c = spawnSync('git', ['commit', '-q', '-m', msg, '--', ...files], { cwd: ROOT, encoding: 'utf8' })
-    if (c.status !== 0) process.stderr.write(`${c.stdout}${c.stderr}`)
-    return c.status === 0
+    return commitShown(['-q', '-m', msg, '--', ...files])
   }
   if (names.length && !sub(`test(${slug}): freeze tests from the test writer`, names)) return fail('could not commit the frozen tests: fix the git error shown by `git commit`, then run tests-freeze again')
   const files = names.map(f => ({ path: f, sha256: digest(f) as string }))

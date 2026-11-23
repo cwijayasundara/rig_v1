@@ -228,6 +228,20 @@ const cleanChart = (): void => {
   write(repo, `${P}/sprints/sprint-1/testplan/cases.md`, '| ID | Req | Intent | B | Level | Data | Expected |\n| TC-1 | FR-1 | alpha | B1 | unit | - | ok |\n')
 }
 
+test('chart check blocks a contract example that does not match its contract, so it is found at chart and not at the approval commit (2026-11-23 remove-item walk)', () => {
+  chart1()
+  write(repo, `${P}/sprints/sprint-1/intents/alpha.md`, intent(1, { iface: 'Contract: docs/contracts/remove.yaml\nExample: docs/contracts/examples/remove-404.json\n' }))
+  write(repo, 'docs/contracts/remove.yaml', 'responses:\n  "404":\n    description: not found\n')
+  write(repo, 'docs/contracts/examples/remove-404.json', '{"detail": "Item not found"}\n')
+  const rules = (): { rule: string; severity: string; message: string }[] => JSON.parse(sdlc(repo, ['chart', 'check', '1', '--json']).stdout)
+  const bad = rules().filter(f => f.rule === 'contract-example')
+  assert.equal(bad.length, 1)
+  assert.equal(bad[0]?.severity, 'block')
+  assert.match(bad[0]?.message ?? '', /remove-404\.json: response\.status is undefined, the file name says 404/)
+  write(repo, 'docs/contracts/examples/remove-404.json', '{"request": {"method": "DELETE", "path": "/items/x"}, "response": {"status": 404, "body": {"detail": "Item not found"}}}\n')
+  assert.deepEqual(rules().filter(f => f.rule === 'contract-example'), [])
+})
+
 test('chart check prints findings, as JSON on request, and fails only when the PRD is missing', () => {
   chart1()
   const r = sdlc(repo, ['chart', 'check', '1', '--cases', '--json'])

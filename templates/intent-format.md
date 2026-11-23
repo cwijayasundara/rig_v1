@@ -32,7 +32,7 @@ touches: []
 
 ## Interfaces
 
-<!-- kind: boundary (adds or changes an HTTP, message or downstream interface): one line each, `Contract: <file>` and `Example: <file>`, with exact statuses, headers and numbers in the contract. kind: internal: write none. -->
+<!-- kind: boundary (adds or changes an HTTP, message or downstream interface): one line each, `Contract: <file>` and `Example: <file>`, with exact statuses, headers and numbers in the contract. An example file is `<dir>/examples/<name>-<status>.json` beside its contract `<dir>/<name>.yaml`: JSON with a `request` and a `response` whose `status` is that number, a status the contract lists (`chart check` blocks a mismatch). kind: internal: write none. -->
 
 ## Behaviours
 

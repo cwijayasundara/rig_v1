@@ -32,7 +32,7 @@ export function registerContracts(declared: string[]): { added: string[]; warnin
 // The default validate command once contract files are registered: each example pairs with its contract (contractProblems).
 const VALIDATE_CMD = 'S="${RIG_SDLC:-.rig/bin/sdlc.ts}"; node --disable-warning=ExperimentalWarning "$S" contracts-check'
 // An example `<dir>/examples/<name>-<status>.json` must be valid JSON whose response.status is <status>, beside a contract `<dir>/<name>.<ext>` that lists that status.
-function contractProblems(files: string[], text: (f: string) => string = f => read(path.join(ROOT, f))): string[] {
+export function contractProblems(files: string[], text: (f: string) => string = f => read(path.join(ROOT, f))): string[] {
   const problems: string[] = []
   for (const f of files) {
     const m = /^(.*)\/examples\/(.+)-(\d{3})\.json$/.exec(f)

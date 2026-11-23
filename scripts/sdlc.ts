@@ -7,7 +7,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { waiverLive, UNREQUESTABLE, whoami, ownerOrFail,
   ROOT, SDLC, CHANGES, SLUG_RE, SOFT_HOOK_FAILURE, exists, read, now, defaultBase, isTrunk, trunkName, toPosix, out, fail, git, parseArgs, optString, listChanges, ageDays, dirtyFiles, readUnresolved, checkSlug,
-  WAIVERS, readJsonl, writeAtomic, type Waiver, ensureGitignore, PLUGIN_ROOT, IS_VENDORED, skillRef, sanctionWrites, readGate, type Args,
+  WAIVERS, readJsonl, writeAtomic, type Waiver, ensureGitignore, commitShown, PLUGIN_ROOT, IS_VENDORED, skillRef, sanctionWrites, readGate, type Args,
 } from './core.ts'
 import { formatFindings, SENSOR_NAMES } from './model.ts'
 import { readBaseline, branchDiff, turnDiff, type Snapshot } from './diffs.ts'
@@ -264,7 +264,7 @@ function commitApproval(n: number, sensors = false): boolean | null {
   const dirty = dirtyFiles(want)
   if (!dirty.length) return false
   if (git(['add', '--', ...dirty]) === null) return null
-  return git(['commit', '-q', '-m', `chore: approve chart-${n}`, '--', ...dirty]) === null ? null : true
+  return commitShown(['-q', '-m', `chore: approve chart-${n}`, '--', ...dirty]) ? true : null
 }
 
 function cmdChart(args: Args): void {

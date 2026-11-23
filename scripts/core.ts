@@ -3,7 +3,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { isObject, SECRET_PATTERNS, type Finding } from './model.ts'
 
 // ---------- types ----------
@@ -85,6 +85,12 @@ export function gitIn(cwd: string, args: string[], trim = true): string | null {
   }
 }
 export const git = (args: string[]): string | null => gitIn(ROOT, args)
+// A commit a person or a skill has to act on: when git or its hook refuses, the refusal is shown, not swallowed.
+export function commitShown(args: string[]): boolean {
+  const c = spawnSync('git', ['commit', ...args], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+  if (c.status !== 0) process.stderr.write(`${c.stdout ?? ''}${c.stderr ?? ''}`)
+  return c.status === 0
+}
 
 const fmTidy = (s: string): string => s.trim().replace(/^["']|["']$/g, '').replace(/^(\.\/)+/, '').replace(/\/+$/, '')
 const fmInline = (v: string): string[] => v.trim().replace(/\s+#.*$/, '').replace(/^\[|\]$/g, '').split(',').map(fmTidy).filter(Boolean)

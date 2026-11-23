@@ -143,6 +143,9 @@ test('planFiles takes every path on a bullet, and a bare line only when the path
   assert.deepEqual(f('src/a.py (new)'), ['src/a.py'])
   assert.deepEqual(f('`models.py` gets the Item class only.'), [])
   assert.deepEqual(f('- src/server.ts: bump to 1.2'), ['src/server.ts'], 'a version number is not a path')
+  // An HTTP route in the description is not a repo file (2026-11-23 remove-item walk: approve --check refused "/items/{id}").
+  assert.deepEqual(f('- src/cart/routes/remove_item.py: new route module, DELETE /items/{id}'), ['src/cart/routes/remove_item.py'])
+  assert.deepEqual(f('- src/api.py: serves /items and /items/{item_id}/tags'), ['src/api.py'])
 })
 
 test('openQuestions ignores HTML comments', () => {

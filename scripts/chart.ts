@@ -12,6 +12,7 @@ import { coverageProblems } from './prdcoverage.ts'
 import { parseRegistry } from './registry.ts'
 import { caseId } from './holdout.ts'
 import { PRODUCT, stripGenerated, carriedIds, ARCH_REL, archPath, prdPath, intentsDir, testplanDir, holdoutDir, approvalPath, approvalMdPath, sprintDir, sprintsOnDisk, intentRel, planPath, implPlanPath, sprintRel, ledgerPath, coveragePath, waiversPath, reviewPath, sourcePath, conversionPath, conversionReviewPath, writeProductIgnore } from './product.ts'
+import { contractProblems } from './contracts.ts'
 import { designIntents, sharedScopeProblems, architectureProblems, implementationPlanProblems, accessProblems, parseAccess, parseIntent, parseCases, requiredHoldouts, parkedDecisions, prdIds, traceReport, ledgerProblems, parseLedger, parentOf, parseReview, openFindings, type ReviewFinding, type ChartWaiver, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
 
 const SHARED_DIRS = ['adr'].map(d => `${toPosix(path.relative(ROOT, path.join(PRODUCT, d)))}/`)
@@ -187,6 +188,8 @@ export function chartFindings(n: number, withCases: boolean): ChartFinding[] {
     prd: read(prdPath(n)), intents: intentsOf(n), others: allIntents().filter(i => i.sprint !== n), repoExists: p => exists(path.join(ROOT, p)), cases,
     exists: p => exists(path.join(testplan, p)),
   })
+  // The approval commit runs contracts-check on these files: a mismatch is found here, while the architect can still fix it.
+  for (const i of intentsOf(n)) for (const p of contractProblems([...i.contractFiles, ...i.exampleFiles].filter(f => exists(path.join(ROOT, f))))) found.push({ rule: 'contract-example', severity: 'block', where: i.slug, message: p })
   if (cases) {
     const { gates, holdout } = parseRegistry(read(SENSORS_PATH)).registry
     if (!gates.plan && gates.requireChart) {
