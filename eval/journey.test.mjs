@@ -45,6 +45,7 @@ test('the gate needs minRuns and fails on a pass-share drop or extra blocking it
 test('checkBadCases reports a case whose expected violation is not raised', async () => {
   const root = tmp()
   fs.cpSync(path.join(REC, 'bad/chart-missing-ac'), path.join(root, 'bad/chart-missing-ac'), { recursive: true })
+  fs.cpSync(path.join(REC, 'synthetic'), path.join(root, 'synthetic'), { recursive: true }) // a bad set holds only what differs from it
   fs.writeFileSync(path.join(root, 'bad/chart-missing-ac/expected.json'), JSON.stringify({ violation: 'J1.99' }))
   const r = await checkBadCases({ recordedRoot: root, out: tmp() })
   assert.deepEqual(r.missed, ['chart-missing-ac'])

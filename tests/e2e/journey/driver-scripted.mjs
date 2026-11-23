@@ -21,6 +21,9 @@ export function recordStage({ sb, stage, verdicts, decision, recordedDir, snapsh
 
 // driver, inspector, reviewer and stages for runJourney, all replaying `recordedDir`.
 export function scriptedKit({ sb, recordedDir }) {
+  // A seeded-bad set (it has expected.json) holds only the files that differ from the synthetic set beside `bad/`: the rest are read from there.
+  const base = fs.existsSync(path.join(recordedDir, 'expected.json')) ? path.resolve(recordedDir, '../../synthetic') : null
+  const at = rel => (base && !fs.existsSync(path.join(recordedDir, rel)) ? path.join(base, rel) : path.join(recordedDir, rel))
   const unpack = stage => { unpackSnapshot({ dir: sb.dir, recordedDir, stage }) }
   let sprint = 1
   const driver = {
@@ -34,12 +37,12 @@ export function scriptedKit({ sb, recordedDir }) {
   const inspector = {
     inspect: ({ sb: s, stage, rubric, context }) => inspect({
       sb: s, stage, rubric, context,
-      launch: async () => ({ text: fs.existsSync(path.join(recordedDir, 'verdicts', `${stage}.json`)) ? fs.readFileSync(path.join(recordedDir, 'verdicts', `${stage}.json`), 'utf8') : '', costUsd: 0 }),
+      launch: async () => ({ text: fs.existsSync(at(`verdicts/${stage}.json`)) ? fs.readFileSync(at(`verdicts/${stage}.json`), 'utf8') : '', costUsd: 0 }),
     }),
   }
-  const decisions = readJson(path.join(recordedDir, 'decisions.json')) ?? {}
+  const decisions = readJson(at('decisions.json')) ?? {}
   const reviewer = { review: async ({ stage }) => ({ decision: decisions[stage] ?? 'approve', reasons: decisions[stage] === 'reject' ? ['recorded reject'] : [], costUsd: 0 }) }
-  const gates = readJson(path.join(recordedDir, 'gates.json'))
+  const gates = readJson(at('gates.json'))
   const stages = gates
     ? STAGES.map(s => ({ ...s, gate: async c => { await c.check(`${s.id} gate (replayed)`, () => gates[s.id] === 'pass' || 'recorded gate failed') } }))
     : STAGES

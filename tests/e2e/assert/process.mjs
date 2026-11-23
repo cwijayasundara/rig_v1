@@ -6,7 +6,7 @@ import fs from 'node:fs'
 export const SLEEP_GAP_MS = 5 * 60_000
 // Blended USD per token (input, cache and output together), read off the 2026-10-30 `rules` run's completed sessions. Used only to price
 // a session that was killed before it printed a result; the figure is an estimate and the session is marked `estimated`.
-export const USD_PER_TOKEN = { haiku: 5e-8, sonnet: 9e-7, opus: 1.7e-6 }
+const USD_PER_TOKEN = { haiku: 5e-8, sonnet: 9e-7, opus: 1.7e-6 }
 const rateOf = model => USD_PER_TOKEN[Object.keys(USD_PER_TOKEN).find(k => String(model).includes(k))] ?? USD_PER_TOKEN.opus
 
 export function readSession(file) {

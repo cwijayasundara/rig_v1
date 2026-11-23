@@ -1,10 +1,10 @@
 // The journey as data: each stage acts through the driver, then a deterministic gate, then the inspector's rubric.
 import { gateInit, gateChart, gateApproved, gateBuilt } from './gates.mjs'
 
-export const PRDS = { 1: 'docs/prd/sprint-1-library-desk.md', 2: 'docs/prd/sprint-2-library-desk-changes.md' }
+const PRDS = { 1: 'docs/prd/sprint-1-library-desk.md', 2: 'docs/prd/sprint-2-library-desk-changes.md' }
 export const intentPath = (sprint, slug) => `.rig/product/sprints/sprint-${sprint}/intents/${slug}.md`
 // What a change may touch. The inspector judges scope beyond this.
-export const ALLOWED = ['src/**', 'tests/**', 'pyproject.toml', '.rig/**', 'docs/**']
+const ALLOWED = ['src/**', 'tests/**', 'pyproject.toml', '.rig/**', 'docs/**']
 
 const chart = (id, sprint) => ({
   id, sprint, title: `chart sprint ${sprint}`, rubric: id,

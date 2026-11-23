@@ -7,7 +7,7 @@ import { claudeJson } from '../../../eval/lib/cli.mjs'
 export const INSPECTOR_MODEL = 'claude-sonnet-5-5'
 // --tools names what exists (a pattern there switches Bash off, as the first live run showed); --allowedTools narrows Bash to these commands.
 export const INSPECTOR_TOOLS = 'Read,Grep,Glob,Bash'
-export const INSPECTOR_ALLOWED = 'Read,Grep,Glob,Bash(git *),Bash(pytest *),Bash(cat *)'
+const INSPECTOR_ALLOWED = 'Read,Grep,Glob,Bash(git *),Bash(pytest *),Bash(cat *)'
 
 // '- J1.3 [block] text' lines. The rubric, not the inspector, sets each item's severity.
 export function parseRubric(text) {
