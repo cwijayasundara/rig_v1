@@ -6,9 +6,10 @@ import { isObject } from './model.ts'
 // `paths` scopes a page's sources: repo-relative files or directory prefixes (ending in `/`). Without it the page sees every source file.
 export type WikiPage = { title: string; purpose: string; parent?: string; notes?: string[]; paths?: string[] }
 export type WikiConfig = { pages: WikiPage[] }
-type PageState = { builtAt: string; hashes: Record<string, string> }
+// `sources`: the files a page with `paths` was built from, so a file added under those paths later makes the page stale.
+type PageState = { builtAt: string; hashes: Record<string, string>; sources?: string[] }
 export type WikiState = { pages: Record<string, PageState> }
-type Stale = { page: string; cite: string; why: 'changed' | 'missing' | 'unresolved' }
+type Stale = { page: string; cite: string; why: 'changed' | 'missing' | 'unresolved' | 'new' }
 
 const MAX_PAGES = 30
 

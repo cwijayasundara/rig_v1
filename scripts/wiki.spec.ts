@@ -235,3 +235,56 @@ test('index.md links only the pages that exist and names the ones that were not 
   assert.doesNotMatch(index, /beta\.md/)
   assert.match(index, /- Beta \(not built yet\): The b module\./)
 })
+
+// rig_v1_test 2026-11-23: sync ran inside `pr`, where a missing claude must never stop the ship.
+test('sync never throws: a runner that fails is a warning and exit 0', () => {
+  const repo = repoWithSources()
+  const r = cmd(repo, ['sync'], () => { throw new Error('claude not found: install Claude Code') })
+  assert.equal(r.code, 0)
+  assert.match(r.text, /^warning: .*claude not found/s)
+})
+
+test('a new source file under a page\'s paths makes that page stale once, and sync rebuilds it', () => {
+  const repo = repoWithSources()
+  const { run, calls } = fake()
+  write(repo, '.rig/wiki.json', JSON.stringify({ pages: [{ title: 'Alpha', purpose: 'The src folder.', paths: ['src/'] }] }))
+  assert.equal(cmd(repo, ['build'], run).code, 0)
+  assert.match(cmd(repo, ['status'], run).text, /wiki: fresh/)
+  write(repo, 'src/c.ts', 'export function k(): number {\n  return 3\n}\n')
+  assert.match(cmd(repo, ['status'], run).text, /alpha: src\/c\.ts \(new\)/)
+  calls.length = 0
+  assert.equal(cmd(repo, ['sync'], run).code, 0)
+  assert.ok(calls.some(c => c.role === 'write' && /Page title: Alpha/.test(c.prompt) && /### src\/c\.ts/.test(c.prompt)))
+  assert.match(cmd(repo, ['status'], run).text, /wiki: fresh/)
+  calls.length = 0
+  cmd(repo, ['sync'], run)
+  assert.equal(calls.length, 0, 'a page that saw the file is not rebuilt again')
+})
+
+test('on a config sync wrote, a source file no page covers joins the page of its folder, or a new page for a new folder', () => {
+  const repo = repoWithSources()
+  const { run, calls } = fake()
+  cmd(repo, ['sync'], run)
+  write(repo, 'src/c.ts', 'export function k(): number {\n  return 3\n}\n')
+  write(repo, 'lib/d.ts', 'export function m(): number {\n  return 4\n}\n')
+  calls.length = 0
+  const r = cmd(repo, ['sync'], run)
+  assert.equal(r.code, 0, r.text)
+  const config = JSON.parse(fs.readFileSync(path.join(repo, '.rig/wiki.json'), 'utf8'))
+  assert.equal(config.origin, 'sync')
+  assert.deepEqual(config.pages.find((p: { title: string }) => p.title === 'Alpha').paths, ['src/a.ts', 'src/c.ts'])
+  assert.deepEqual(config.pages.find((p: { title: string }) => p.title === 'lib').paths, ['lib/'])
+  const wrote = calls.filter(c => c.role === 'write').map(c => /Page title: (.+)/.exec(c.prompt)?.[1])
+  assert.ok(wrote.includes('Alpha') && wrote.includes('lib'), wrote.join(','))
+  assert.ok(!wrote.includes('Beta'), 'a page nothing touched is not rebuilt')
+})
+
+test('on a config a person wrote, a source file no page covers is a warning and the config is left alone', () => {
+  const { repo, run } = built()
+  const before = fs.readFileSync(path.join(repo, '.rig/wiki.json'), 'utf8')
+  write(repo, 'lib/d.ts', 'export function m(): number {\n  return 4\n}\n')
+  const r = cmd(repo, ['sync'], run)
+  assert.equal(r.code, 0)
+  assert.match(r.text, /warning: 1 source file\(s\) are in no page.*lib\/d\.ts/)
+  assert.equal(fs.readFileSync(path.join(repo, '.rig/wiki.json'), 'utf8'), before)
+})

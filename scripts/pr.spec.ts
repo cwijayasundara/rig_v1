@@ -3,6 +3,7 @@ import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import os from 'node:os'
 import { makeRepo, sdlc, write, gitIn, approvedChange, verified, ARCH_OK, IMPL_OK, approveChart } from './testkit.ts'
 
 let repo: string
@@ -334,4 +335,52 @@ test('a requested harness-tamper waiver row does not clear the frozen-contract r
   assert.match(pr().stderr, /frozen/)
   write(repo, '.rig/waivers.jsonl', JSON.stringify({ ...row, by: 'a person' }) + '\n')
   assert.doesNotMatch(pr().stderr, /frozen/)
+})
+
+// rig_v1_test 2026-11-23: four changes shipped by `S pr` alone and the repo had no wiki, because only a step of the pr skill synced it.
+// A stand-in for `claude -p`: answers the wiki planner, writer and reviewer from the prompt on stdin.
+function fakeClaude(): string {
+  const bin = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rig-claude-')), 'claude')
+  fs.writeFileSync(bin, `#!/usr/bin/env node
+const p = require('node:fs').readFileSync(0, 'utf8')
+const result = p.startsWith('Propose a wiki plan') ? JSON.stringify({ pages: [{ title: 'Core', purpose: 'The core.', paths: ['src/'] }] })
+  : p.startsWith('For each numbered claim') ? JSON.stringify([...p.matchAll(/^(\\d+): /gm)].map(m => ({ line: Number(m[1]), verdict: 'supported' })))
+  : '# Core\\n\\n> The core.\\n\\n- Returns one. [src/a.js#f]\\n'
+console.log(JSON.stringify({ result, total_cost_usd: 0.01 }))
+`, { mode: 0o755 })
+  return bin
+}
+function readyWithSource(): void {
+  approvedChange(repo, 'demo')
+  write(repo, 'src/a.js', 'export function f() {\n  return 1\n}\n')
+  write(repo, 'test/a.test.js', '// B1\n')
+  verified(repo, 'demo')
+}
+const prWith = (env: Record<string, string>, extra: string[] = []) => sdlc(repo, ['pr', 'demo', '--message', 'feat: demo', ...extra], { env: { RIG_WIKI: '', ...env } })
+
+test('pr builds the code wiki itself and the commit carries it', () => {
+  readyWithSource()
+  const r = prWith({ RIG_CLAUDE: fakeClaude() })
+  assert.equal(r.code, 0, r.stderr)
+  assert.match(r.stdout, /Core: written/)
+  const shipped = gitIn(repo, 'show', '--name-only', '--format=', 'HEAD')
+  assert.match(shipped, /^\.rig\/wiki\.json$/m)
+  assert.match(shipped, /^\.rig\/wiki\/core\.md$/m)
+  assert.match(shipped, /^\.rig\/wiki\/index\.md$/m)
+  assert.equal(gitIn(repo, 'status', '--porcelain').trim(), '')
+})
+
+test('pr still ships when the wiki cannot be built, and says so', () => {
+  readyWithSource()
+  const r = prWith({ RIG_CLAUDE: path.join(repo, 'no-such-claude') })
+  assert.equal(r.code, 0, r.stderr)
+  assert.match(r.stdout, /warning: the wiki was not synced/)
+  assert.match(r.stdout, /committed on sdlc\/demo/)
+})
+
+test('pr --no-wiki ships without touching the wiki', () => {
+  readyWithSource()
+  const r = prWith({ RIG_CLAUDE: fakeClaude() }, ['--no-wiki'])
+  assert.equal(r.code, 0, r.stderr)
+  assert.ok(!fs.existsSync(path.join(repo, '.rig/wiki.json')))
 })

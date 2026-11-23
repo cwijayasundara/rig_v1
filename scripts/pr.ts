@@ -23,6 +23,7 @@ import { untestedAcs } from './actrace.ts'
 import { routeReview, recordAdditions } from './carry.ts'
 import { readFreeze } from './testfreeze.ts'
 import { setDraft, draftLine, draftSecrets } from './draft.ts'
+import { wikiSync } from './wiki.ts'
 
 const ghLast = (text: string): string => text.trim().split('\n').at(-1) ?? ''
 const URL_RE = /^https?:\/\//
@@ -130,6 +131,9 @@ export function cmdPr(args: Args): void {
   const wrote = typeof sprint === 'number' && !busy ? [writePlan(sprint, [slug, ...prOpen])] : []
   // Review items and additions are written into the carried files, the backlog and the intent before the commit; the PR carries just those.
   wrote.push(...routeReview(slug).files, ...recordAdditions(slug).files)
+  // The code wiki ships with the change. Synced here, not by a step of the pr skill a run can skip (2026-11-23 rig_v1_test: four changes
+  // shipped by `S pr` alone and the repo had no wiki). Warn-only; `--no-wiki` or RIG_WIKI=off skips it (the specs, a run with no model).
+  if (args.opt['no-wiki'] === undefined && process.env.RIG_WIKI !== 'off') out(wikiSync(ROOT, optString(args, 'wiki-usd') ?? '1'))
   const files = changeFiles(slug, wrote)
   const left = dirtyFiles().filter(isHarnessPath)
   if (left.length) out(`pr ${slug}: left out ${left.length} vendored harness file(s) (${left.slice(0, 3).join(', ')}${left.length > 3 ? ', ...' : ''}); they look like an uncommitted ${skillRef('upgrade')}: commit them on their own branch`)

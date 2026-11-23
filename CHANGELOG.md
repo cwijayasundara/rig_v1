@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **`pr` keeps the code wiki itself.** The wiki sync was a step of the `/rig:pr` skill only, so a change shipped by `sdlc.ts pr` alone, or by a run that skipped the step, left the repo with no `.rig/wiki/` (rig_v1_test, 2026-11-23: two sprints, four changes, no wiki). `sdlc.ts pr` now runs the sync before it commits (warn-only, at most $1; `--wiki-usd <N>`, `--no-wiki`, `RIG_WIKI=off`). The sync also sees new code: a file added under a page's paths makes that page stale, a page `wiki.json` names but that was never built is built, and a source file no page covers joins a page of a `wiki.json` the sync wrote (a warning in one a person wrote). A sync that cannot reach `claude` is a warning, not a crash.
 - **One decision to approve a chart.** `/rig:approve chart-<N>` asks one question, approve or not approved, instead of up to three free-text check questions (a pick of an option label was stored as an answer in the first shop-app run). The hook records only the exact `Approve chart-<N>` option, tied to the page sha; anything else records nothing and the person fixes the chart and approves again. The page's `## Check questions` became `## Look at first` (reading, nothing to answer). CI no longer blocks an approval row for `INCOMPLETE ANSWERS`; rows of older approvals still show their stored answers.
 
 ## 0.11.1

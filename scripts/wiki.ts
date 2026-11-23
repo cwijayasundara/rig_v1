@@ -29,9 +29,11 @@ function reader(root: string): (p: string) => string | null {
 const sourceFiles = (root: string): string[] =>
   (gitIn(root, ['ls-files', '--cached', '--others', '--exclude-standard']) ?? '').split('\n').filter(f => SOURCE_EXT.test(f) && !SKIPPED.test(f))
 
+const covers = (page: { paths?: string[] }, f: string): boolean => !page.paths || page.paths.some(p => (p.endsWith('/') ? f.startsWith(p) : f === p))
+
 function pageSources(root: string, page: WikiPage, files: string[]): Record<string, string> {
   const read = reader(root)
-  const mine = page.paths ? files.filter(f => page.paths!.some(p => (p.endsWith('/') ? f.startsWith(p) : f === p))) : files
+  const mine = files.filter(f => covers(page, f))
   const out: Record<string, string> = {}
   let total = 0
   for (const f of [...mine].sort()) {
@@ -130,7 +132,7 @@ function buildPages(root: string, config: WikiConfig, pages: WikiPage[], args: A
     }
     const slug = slugOf(page.title)
     writeAtomic(path.join(root, DIR, `${slug}.md`), r.text)
-    state.pages[slug] = snapshot(r.text, e.read, commit)
+    state.pages[slug] = { ...snapshot(r.text, e.read, commit), ...(page.paths ? { sources: files.filter(f => covers(page, f)) } : {}) }
     lines.push(`${page.title}: written${r.dropped ? `, ${r.dropped} unsupported claim(s) dropped` : ''}${r.findings.length ? `; ${r.findings[0]!.message}` : ''}`)
   }
   writeAtomic(path.join(root, DIR, 'state.json'), JSON.stringify(state, null, 2) + '\n')
@@ -158,7 +160,14 @@ function cmdBuild(root: string, args: Args, run: Runner): WikiResult {
 
 function staleSlugs(root: string, config: WikiConfig | string = loadConfig(root)): { stale: ReturnType<typeof wikiStatus>; pages: Record<string, string>; orphans: string[] } {
   const { pages, orphans } = loadPages(root, config)
-  return { stale: wikiStatus(loadState(root), pages, reader(root)), pages, orphans }
+  const state = loadState(root), stale = wikiStatus(state, pages, reader(root))
+  // A file added under a built page's paths since its build: the page has not seen it (rig_v1_test 2026-11-23: a later change's new module).
+  const files = typeof config === 'string' ? [] : sourceFiles(root)
+  for (const p of typeof config === 'string' ? [] : config.pages) {
+    const slug = slugOf(p.title), seen = state.pages[slug]?.sources
+    if (p.paths && seen && slug in pages) for (const f of files) if (covers(p, f) && !seen.includes(f)) stale.push({ page: slug, cite: f, why: 'new' })
+  }
+  return { stale, pages, orphans }
 }
 
 function cmdStatus(root: string): WikiResult {
@@ -169,16 +178,18 @@ function cmdStatus(root: string): WikiResult {
   return ok([...warn, ...stale.map(s => `${s.page}: ${s.cite} (${s.why})`), names.size ? `wiki: ${names.size} stale page(s); \`wiki refresh\` rebuilds them` : 'wiki: fresh'].join('\n'))
 }
 
-function cmdRefresh(root: string, args: Args, run: Runner): WikiResult {
+// `unbuilt` (sync) also builds the pages wiki.json names that have no file yet.
+function cmdRefresh(root: string, args: Args, run: Runner, unbuilt = false): WikiResult {
   const config = loadConfig(root)
   if (typeof config === 'string') return bad(config)
-  const { stale } = staleSlugs(root, config)
+  const { stale, pages: have } = staleSlugs(root, config)
   const names = new Set(stale.map(s => s.page))
-  const pages = config.pages.filter(p => names.has(slugOf(p.title)))
+  const pages = config.pages.filter(p => names.has(slugOf(p.title)) || (unbuilt && !(slugOf(p.title) in have)))
   if (!pages.length) return ok('wiki: fresh; nothing to refresh')
   const state = loadState(root)
   return buildPages(root, config, pages, args, run, p => {
     const cited = [...new Set(stale.filter(s => s.page === slugOf(p.title)).map(s => s.cite.split('#')[0]!))]
+    if (!cited.length) return undefined
     // builtAt comes from a committed file: only a plain hex revision is ever handed to git.
     const at = state.pages[slugOf(p.title)]?.builtAt
     const diff = gitIn(root, ['diff', '--stat', at && /^[0-9a-f]{4,40}$/.test(at) ? at : 'HEAD', '--', ...cited])
@@ -190,9 +201,39 @@ function cmdRefresh(root: string, args: Args, run: Runner): WikiResult {
 // greenfield repo gets a wiki once code exists); later runs refresh the stale pages. Warn-only: a failure or an over-budget estimate
 // is printed as a warning and never stops the change from shipping.
 function cmdSync(root: string, args: Args, run: Runner): WikiResult {
+  try { return syncOnce(root, args, run) } catch (e) { return ok(`warning: the wiki was not synced (${e instanceof Error ? e.message : String(e)})`) }
+}
+
+// A source file no page's paths cover would never reach the wiki. A config sync wrote is the harness's own, so the file joins the page
+// that already has a path in its folder, or a new page for a new folder; a config a person wrote is theirs, so it is only named.
+function adopt(root: string): string[] {
+  const file = path.join(root, CONFIG)
+  let raw: { origin?: string; pages: WikiPage[] }
+  try { raw = JSON.parse(fs.readFileSync(file, 'utf8')) } catch { return [] }
+  if (typeof parseWikiConfig(JSON.stringify(raw)) === 'string' || raw.pages.some(p => !p.paths)) return []
+  const loose = sourceFiles(root).filter(f => !raw.pages.some(p => covers(p, f)))
+  if (!loose.length) return []
+  const named = `${loose.slice(0, 5).join(', ')}${loose.length > 5 ? ', ...' : ''}`
+  if (raw.origin !== 'sync') return [`warning: ${loose.length} source file(s) are in no page of ${CONFIG} (${named}): add them to a page's paths`]
+  for (const f of loose) {
+    if (raw.pages.some(p => covers(p, f))) continue
+    const dir = path.posix.dirname(f)
+    const home = raw.pages.find(p => p.paths!.some(x => path.posix.dirname(x.endsWith('/') ? `${x}_` : x) === dir))
+    if (home) home.paths!.push(f)
+    else raw.pages.push({ title: dir === '.' ? 'Top level' : dir, purpose: dir === '.' ? 'The code at the top level of the repo.' : `The code under ${dir}/.`, paths: [dir === '.' ? f : `${dir}/`] })
+  }
+  if (typeof parseWikiConfig(JSON.stringify(raw)) === 'string') return [`warning: ${loose.length} source file(s) are in no page of ${CONFIG} (${named}) and could not be added: edit it`]
+  writeAtomic(file, JSON.stringify(raw, null, 2) + '\n')
+  return [`wiki: ${loose.length} new source file(s) added to ${CONFIG} (${named})`]
+}
+
+function syncOnce(root: string, args: Args, run: Runner): WikiResult {
   if (!sourceFiles(root).length) return ok('wiki: no source files yet; nothing to build')
   const soft = (r: WikiResult): WikiResult => ({ code: 0, text: r.code === 0 ? r.text : `warning: the wiki was not fully synced\n${r.text}` })
-  if (fs.existsSync(path.join(root, CONFIG))) return soft(cmdRefresh(root, args, run))
+  if (fs.existsSync(path.join(root, CONFIG))) {
+    const notes = adopt(root)
+    return ok([...notes, soft(cmdRefresh(root, args, run, true)).text].join('\n'))
+  }
   const planned = cmdInit(root, run)
   if (planned.code !== 0) return soft(planned)
   // Marks the config as built from the repo's own sprints, so the journey still reads the repo as greenfield (journey.ts repoKind).
@@ -236,6 +277,9 @@ export function wikiCommand(root: string, args: Args, run: Runner): WikiResult {
     default: return bad('usage: wiki <init|build [--page <title>] [--max-usd N]|status|verify [--no-review]|refresh [--max-usd N]|sync [--max-usd N]>', 2)
   }
 }
+
+// What `pr` runs before it commits, so the wiki ships with every change whoever drives it. Never throws, never fails.
+export const wikiSync = (root: string, maxUsd: string, run: Runner = claudeRunner()): string => cmdSync(root, { pos: ['sync'], opt: { 'max-usd': maxUsd } }, run).text
 
 export function cmdWiki(args: Args, run: Runner = claudeRunner()): void {
   const r = wikiCommand(ROOT, args, run)

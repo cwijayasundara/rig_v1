@@ -1,11 +1,12 @@
-// The whole harness on a real Python repo, on demand: node tests/e2e/python-journey.mjs [--out DIR] [--keep]
+// The whole harness on a real Python repo, on demand: node tests/e2e/python-journey.mjs [--out DIR] [--keep] [--wiki]
 // Outside npm test (uv, network downloads, about 5 minutes, no model cost). It replays one recorded project through every deterministic
 // step a person's run takes, with the real tools and the repo's own git hooks, and no remote (the solo-developer case):
 //   greenfield: init on a uv scaffold, chart sprint 0, approve, then add-item, get-item and list-items from start to pr and merge;
 //   brownfield: chart sprint 1 (remove-item) on the built app, approve, then remove-item from start to pr and merge.
 // The artefacts a model would write (chart, specs, plans, tests, code) are fixtures under fixtures/python-journey, taken from a live run
 // (2026-11-22/23 rig_v1_test). The person's approvals are played the way scripts/testkit.ts plays them. What this does not cover is
-// the skill text itself: a live model following it is `npm run e2e`.
+// the skill text itself: a live model following it is `npm run e2e`. `--wiki` lets `pr` build the code wiki with the real claude (the one
+// model cost, at most $1 a change) and checks every change ships it; without the flag `pr` runs with --no-wiki and the run stays free.
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -18,6 +19,7 @@ const FIX = path.join(HERE, 'fixtures/python-journey')
 const stamp = new Date().toISOString().replace(/[:.]/g, '-')
 const dir = path.resolve(arg('out', path.join(HERE, 'out', 'python-journey', stamp)))
 const c = new Checks('python journey')
+const WIKI = process.argv.includes('--wiki')
 
 if (spawnSync('uv', ['--version'], { encoding: 'utf8' }).status !== 0) { console.log('SKIP  python journey: uv not found'); process.exit(process.argv.includes('--require') ? 1 : 0) }
 fs.mkdirSync(dir, { recursive: true })
@@ -89,7 +91,8 @@ async function intent(slug, sprint, { expectFail, message, extra }) {
   await step(`${tag} verify passes (sensors, mutation score, hidden cases)`, v, /verify\.json: pass/)
   await c.check(`${tag} every hidden case of the change ran and passed`, () => { const m = /holdout: (\d+)\/(\d+) passed/.exec(v.out); return (m && m[1] === m[2] && Number(m[2]) > 0) || tail(v.out) })
   await c.check(`${tag} mutation-diff ran with the real tool (a score, or no mutable changed line)`, () => { const rows = fs.readFileSync(path.join(change, 'evidence/runs.jsonl'), 'utf8').trim().split('\n').map(l => JSON.parse(l)).filter(r => r.sensor === 'mutation-diff'); const last = rows.at(-1); return (last && last.exit === 0 && /mutation: (?:\d+\/\d+ killed|no mutants on changed lines)/.test(last.tail ?? '')) || `mutation-diff: ${last ? `exit ${last.exit}: ${tail(last.tail ?? '', 1)}` : 'never ran'}` })
-  if (!await step(`${tag} pr ships it on its branch (local only)`, S(['pr', slug, '--message', message]), new RegExp(`committed on sdlc/${slug}`))) return
+  if (!await step(`${tag} pr ships it on its branch (local only)`, S(['pr', slug, ...(WIKI ? [] : ['--no-wiki']), '--message', message]), new RegExp(`committed on sdlc/${slug}`))) return
+  if (WIKI) await c.check(`${tag} its commit carries the code wiki, and the wiki is fresh`, () => { const st = S(['wiki', 'status']).out; return (/^\.rig\/wiki\/index\.md$/m.test(git('ls-files', '.rig/wiki').out) && /wiki: fresh/.test(st)) || tail(st) })
   git('checkout', '-q', 'main')
   await step(`${tag} its branch merges into main`, git('merge', '--no-ff', '-m', `Merge sdlc/${slug}`, `sdlc/${slug}`), /Merge made|Already up to date/)
   await step(`${tag} main passes the whole suite`, run('uv', ['run', 'pytest', '-q']), /\d+ passed/)

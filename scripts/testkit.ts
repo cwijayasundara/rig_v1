@@ -33,7 +33,8 @@ const { NODE_TEST_CONTEXT: _nested, GITHUB_EVENT_PATH: _event, GITHUB_STEP_SUMMA
 
 export function sdlc(repo: string, args: string[], { input, env = {} }: { input?: string; env?: Record<string, string> } = {}) {
   const r = spawnSync('node', ['--disable-warning=ExperimentalWarning', SCRIPT, ...args], {
-    cwd: repo, input, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, env: { ...CLEAN_ENV, CLAUDE_PROJECT_DIR: repo, SDLC_HUMAN: '', ...env },
+    cwd: repo, input, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, // RIG_WIKI off: `pr` would otherwise start the real claude to sync the wiki; a spec that wants the sync sets RIG_WIKI and a fake RIG_CLAUDE.
+    env: { ...CLEAN_ENV, CLAUDE_PROJECT_DIR: repo, SDLC_HUMAN: '', RIG_WIKI: 'off', ...env },
   })
   return { code: r.status, stdout: r.stdout, stderr: r.stderr }
 }

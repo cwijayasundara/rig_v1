@@ -33,7 +33,7 @@ export function scriptedDriver(sb, phase) {
       if (log) fs.writeFileSync(log, '')
       must(sb.sdlc(['verify', phase.slug]), 'verify')
       if (log) fs.copyFileSync(log, `${log}.verify`)
-      must(sb.sdlc(['pr', phase.slug, '--message', phase.commit]), 'pr')
+      must(sb.sdlc(['pr', phase.slug, '--no-wiki', '--message', phase.commit]), 'pr')
     },
   }
 }

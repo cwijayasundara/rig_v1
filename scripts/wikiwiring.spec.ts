@@ -43,10 +43,14 @@ test('a change that only touches .rig/wiki files raises no finding in CI', () =>
   assert.equal(ci.code, 0, ci.stdout + ci.stderr)
 })
 
-test('the pr skill syncs the wiki before it commits, with a budget, and the commit carries the wiki files', () => {
+// rig_v1_test 2026-11-23: the sync was a step of the pr skill only, so changes shipped by `S pr` alone left the repo with no wiki.
+test('pr itself syncs the wiki before it gathers the files to commit, the skill has no sync step, and the commit carries the wiki files', () => {
+  const pr = at('scripts/pr.ts')
+  const sync = pr.search(/wikiSync\(ROOT/)
+  assert.ok(sync > 0 && sync < pr.search(/const files = changeFiles\(slug, wrote\)/), 'the sync must come before the files are gathered')
   const skill = at('skills/pr/SKILL.md')
-  const sync = skill.search(/S wiki sync --max-usd/)
-  assert.ok(sync > 0 && sync < skill.search(/Run `S pr <slug>/), 'wiki sync must come before S pr')
+  assert.doesNotMatch(skill, /run `S wiki sync/)
+  assert.match(skill, /`S pr` \(step 7\) syncs it/)
   const ships = at('scripts/risk.ts') // what a change's PR carries, shared by S pr and S risk
   assert.match(ships, /'\.rig\/wiki\/'/)
   assert.match(ships, /'\.rig\/wiki\.json'/)
