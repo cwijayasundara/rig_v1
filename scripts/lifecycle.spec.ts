@@ -358,3 +358,16 @@ test('intent map: a hand-edited Behaviours section that drifts from the map refu
   write(repo, '.rig/changes/demo/spec.md', SPEC)
   assert.match(String(call(`return L.approvalRefusal('demo')`)), /behaviours-drift/)
 })
+
+test('approve after the PR commit records the approval in a commit of its own; before it, the file waits for the change\'s commits (rig_v1_test 2026-11-24)', () => {
+  planned(); planned('early')
+  write(repo, '.rig/changes/demo/pr.md', '---\nstate: local-only\n---\nfeat: x\n')
+  gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'pr', '--no-verify')
+  const r = sdlc(repo, ['approve', 'demo'], HUMAN)
+  assert.equal(r.code, 0, r.stdout + r.stderr)
+  assert.equal(gitIn(repo, 'status', '--porcelain').trim(), '')
+  assert.match(gitIn(repo, 'log', '-1', '--format=%s'), /chore\(demo\): record the approval/)
+  assert.equal(sdlc(repo, ['approve', 'early'], HUMAN).code, 0)
+  assert.match(gitIn(repo, 'status', '--porcelain'), /changes\/early\//)
+  assert.match(gitIn(repo, 'log', '-1', '--format=%s'), /record the approval/)
+})

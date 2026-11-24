@@ -21,3 +21,5 @@ why: a contract rename that passes locally can silently break consumers in other
 | "Nobody else uses this field" | The sensor greps the consumers. Let it decide. |
 | "Our tests pass" | Your tests don't run in the consumer's repo. |
 | "It's just a rename" | Renames are the most common silent break. |
+
+- Keep every line of a contract file under 160 characters: give a schema property its own lines instead of one long inline map (the size sensor warns on each longer line).

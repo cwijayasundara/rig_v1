@@ -3,7 +3,7 @@
 import { check, freezeFor, behavioursFrom } from './intentmap.ts'
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, SENSORS_PATH, SDLC, CHANGES, read, readJson, exists, isTrunk, trunkName, sha, now, git, defaultBase, frontmatter, skillRef as k, writeAtomic } from './core.ts'
+import { ROOT, SENSORS_PATH, SDLC, CHANGES, read, readJson, exists, isTrunk, trunkName, sha, now, git, defaultBase, frontmatter, skillRef as k, writeAtomic, commitShown, sanctionWrites } from './core.ts'
 import { openQuestions, normPath, globToRegex, planFiles, blastRadius, section, bullets, type Finding } from './model.ts'
 import { parseRegistry, contractGlobs } from './registry.ts'
 import { carriedIds } from './product.ts'
@@ -110,6 +110,9 @@ export function writeApproval(slug: string, by: string): Approval {
   if (exists(file(slug, 'intent-map.md'))) writeAtomic(file(slug, 'freeze.json'), JSON.stringify(freezeFor(read(file(slug, 'intent-map.md'))), null, 2) + '\n')
   const a: Approval = { by, at: now(), hashes: hashes(slug), contracts: freezeRecord() }
   writeAtomic(file(slug, 'approval.json'), JSON.stringify(a, null, 2) + '\n')
+  // Approved after the PR commit, the record has no later commit to ride in: left untracked it dirtied the tree for the next change and for upgrade (rig_v1_test 2026-11-24).
+  const rel = `.rig/changes/${slug}/approval.json`
+  if (exists(file(slug, 'pr.md'))) { sanctionWrites([rel]); git(['add', '--', rel]); commitShown(['-q', '-m', `chore(${slug}): record the approval`, '--', rel]) }
   return a
 }
 

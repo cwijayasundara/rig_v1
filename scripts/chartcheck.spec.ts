@@ -533,3 +533,12 @@ test('a "Must not import" row with no approved layers is a report: nothing enfor
   assert.deepEqual(unenforcedImportRules(arch, true), [])
   assert.deepEqual(unenforcedImportRules(arch.replace('import fastapi or main', 'hold state'), false), [])
 })
+
+test('a "none ..." bullet under ## Findings is no finding; "None of ..." and a real finding still are', () => {
+  const r = (body: string) => parseReview('verdict: pass\n\n## Findings\n\n' + body + '\n\n## Deferred\n')
+  assert.deepEqual(r('- none at critical or high. Conversion check: no weakened and no invented.'), [])
+  assert.deepEqual(r('- None.'), [])
+  assert.deepEqual(r('- No findings'), [])
+  assert.equal(r('- None of the cases checks the 404 body').length, 1)
+  assert.equal(r('- none\n- [severity: high] TC-3 expects the wrong status').length, 1)
+})

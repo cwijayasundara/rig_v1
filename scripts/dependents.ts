@@ -73,22 +73,28 @@ export function repoDependents(changed: string[]): Dependents {
   return dependentsOf(changed, files, f => { try { const p = path.join(ROOT, f); return fs.statSync(p).size > MAX_BYTES ? '' : fs.readFileSync(p, 'utf8') } catch { return '' } })
 }
 
-// `dependents <slug>`: before the plan is written, what already imports the files the spec's blast radius names. A new file has no importer,
-// so a greenfield change prints none; in a repo with code this is the regression set and the files the spec may have missed.
-export function cmdDependents(args: Args): void {
-  const slug = args.pos[0] ? checkSlug(args.pos[0]) : ''
-  if (!slug || !exists(path.join(CHANGES, slug))) return fail('usage: dependents <slug>')
-  const radius = blastRadius(read(path.join(CHANGES, slug, 'spec.md')))
-  if (!radius?.length) return fail(`${slug}: spec.md has no ## Blast radius yet`)
+// What already imports the files the spec's blast radius names, as lines for the plan's author: printed by `dependents <slug>` and by
+// `approve <slug> --check`, which every plan runs (a skill line alone was skipped: rig_v1_test list-items, 2026-11-24). A new file has no
+// importer, so a greenfield change gets no lines; in a repo with code this is the regression set and the files the spec may have missed.
+export function dependentsLines(slug: string): string[] {
+  const radius = blastRadius(read(path.join(CHANGES, slug, 'spec.md'))) ?? []
   const tracked = (gitIn(ROOT, ['ls-files']) ?? '').split('\n').filter(Boolean)
-  const mine = tracked.filter(f => !outsideRadius([{ file: f, via: f }], radius).length)
+  const mine = radius.length ? tracked.filter(f => !outsideRadius([{ file: f, via: f }], radius).length) : []
+  if (!mine.length) return []
   const d = repoDependents(mine), { paths } = parseRegistry(read(path.join(ROOT, SENSORS_JSON))).registry
   const row = (x: { file: string; via: string }): string => `- ${x.file} (via ${x.via})`
   const tests = d.all.filter(x => isTest(x.file, paths)), rest = d.all.filter(x => !isTest(x.file, paths))
-  process.stdout.write([
-    `${slug}: ${mine.length} file(s) of the blast radius exist already; ${d.all.length} file(s) outside it import them, within two hops, by a static search of the import lines.`,
+  return [
+    `dependents: ${mine.length} file(s) of the blast radius exist already; ${d.all.length} file(s) outside it import them, within two hops, by a static search of the import lines.`,
     ...(tests.length ? ['Existing tests that import them, the regression set (name in plan.md ## Tests each one whose expectation this change makes wrong; the others must stay green unedited):', ...tests.map(row)] : []),
     ...(rest.length ? ['Other files that import them (one this change must edit goes into spec.md ## Blast radius; the others must keep working unedited):', ...rest.map(row)] : []),
     ...(d.unsupported.length ? [`Not analysed (a language this search does not read): ${d.unsupported.join(', ')}`] : []),
-    ...(d.limited ? ['The search read only the first 5000 source files.'] : [])].join('\n') + '\n')
+    ...(d.limited ? ['The search read only the first 5000 source files.'] : [])]
+}
+
+export function cmdDependents(args: Args): void {
+  const slug = args.pos[0] ? checkSlug(args.pos[0]) : ''
+  if (!slug || !exists(path.join(CHANGES, slug))) return fail('usage: dependents <slug>')
+  const lines = dependentsLines(slug)
+  process.stdout.write(`${lines.length ? lines.join('\n') : `dependents: no file of ${slug}'s blast radius exists yet, so nothing imports it`}\n`)
 }

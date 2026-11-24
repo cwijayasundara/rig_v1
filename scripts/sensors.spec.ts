@@ -324,3 +324,12 @@ test('a PR that edits the mutation tool\'s config is a test-tamper block; a new 
   assert.equal(hit(fd('setup.cfg', ['max-line-length = 100'], ['max-line-length = 80'])).length, 0)
   assert.equal(hit(fd('pyproject.toml', ['version = "2"'], [])).length, 0)
 })
+
+test('a change\'s own new tests.freeze.jsonl is not a harness-tamper warning at ship or CI; an edit of one the base already had still is (rig_v1_test 2026-11-24)', () => {
+  const o = { before: () => '', after: () => '' }
+  const f = '.rig/changes/demo/tests.freeze.jsonl'
+  assert.deepEqual(harnessTamper([fd(f, ['{}'], [], 'A')], { point: 'ship', ...o }), [])
+  assert.deepEqual(harnessTamper([fd(f, ['{}'], [], 'A')], { point: 'ci', ...o }), [])
+  assert.equal(harnessTamper([fd(f, ['{}'], [], 'M')], { point: 'ci', ...o })[0]?.severity, 'warn')
+  assert.equal(harnessTamper([fd(f, [], ['{}'], 'D')], { point: 'ci', ...o })[0]?.severity, 'block')
+})

@@ -250,6 +250,8 @@ export function harnessTamper(diffs: FileDiff[], o: { point: 'stop' | 'ship' | '
     const dirs = (): Record<string, 'down' | 'up'> => Object.fromEntries(parseRegistry(o.after(SENSORS_JSON)).registry.sensors.flatMap(s => (s.ratchet ? [[s.id, s.ratchet]] : [])))
     const weaker = !compare ? [] : d.file === SENSORS_JSON ? weakensRegistry(o.before(d.file), o.after(d.file)) : d.file === RATCHET_FILE ? weakensRatchets(o.before(d.file), o.after(d.file), dirs()) : weakensRules(o.before(d.file), o.after(d.file))
     const reasons = d.status === 'D' ? [`${d.file} deleted`, ...weaker] : weaker
+    // A change's own new freeze file is its evidence, written by tests-freeze: a re-freeze row raises the risk tier and the hash check guards the tests, so the plain warning on every change was noise.
+    if (o.point !== 'stop' && d.status === 'A' && /^\.rig\/changes\/[^/]+\/tests\.freeze\.jsonl$/.test(d.file)) continue
     if (o.point === 'stop') {
       if (o.toolEdited && !o.toolEdited.has(d.file)) {
         if (d.file === SENSORS_JSON && onlyKnownRedRemoved(o.before(d.file), o.after(d.file))) continue

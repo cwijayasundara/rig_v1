@@ -41,7 +41,7 @@ import { registerContracts, cmdContractsCheck } from './contracts.ts'
 import { cmdMaintain } from './maintain.ts'
 import { cmdReadiness } from './readiness.ts'
 import { cmdAutonomy, initAutonomy } from './autonomy.ts'
-import { cmdRisk, cmdWeight, cmdRouteCheck, cmdModels } from './risk.ts'; import { cmdDependents } from './dependents.ts'
+import { cmdRisk, cmdWeight, cmdRouteCheck, cmdModels } from './risk.ts'; import { cmdDependents, dependentsLines } from './dependents.ts'
 import { cmdClaims } from './claims.ts'
 import { protect } from './protect.ts'; import { cmdAudit } from './audit.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'; import { cmdAppDiff } from './appdiff.ts'; import { cmdInterrogate } from './interrogate.ts'
@@ -191,7 +191,7 @@ function approveCheck(args: Args): void {
   if (!slug || !exists(changeDir(slug))) fail('usage: approve <slug> --check')
   const refusal = approvalRefusal(slug)
   if (refusal) fail(refusal)
-  out([...weakeningLines(slug), `ok: ${slug} can be approved`].join('\n'))
+  out([...dependentsLines(slug), ...weakeningLines(slug), `ok: ${slug} can be approved`].join('\n'))
 }
 
 function cmdApprove(args: Args): void {

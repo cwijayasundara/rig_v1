@@ -238,8 +238,10 @@ export function ledgerProblems(i: { prd: string; ledger: string | null; intents:
 export type ReviewFinding = { n: number; text: string; sha: string; status: 'confirmed' | 'reopened' | 'claimed' | 'open' }
 export type ChartWaiver = { finding: number; text_sha: string; by: string; at: string; reason: string }
 export const SUFFIX = /\s*→\s*(fixed \(confirmed\)|reopened:.*|fixed)\s*$/
+// A reviewer with nothing to report writes it as a bullet ("- none at critical or high. ..."): that is no finding (rig_v1_test chart-1, 2026-11-24).
+const NO_FINDING = /^\s*(?:[-*]|\d+[.)])\s+(?:none|nothing|no findings?)\b(?! of\b)/i
 export function parseReview(text: string): ReviewFinding[] {
-  return section(text.replace(/\r\n/g, '\n'), 'Findings').split('\n').filter(l => /^[-*]\s+\S|^\d+[.)]\s+\S/.test(l)).map((l, i) => {
+  return section(text.replace(/\r\n/g, '\n'), 'Findings').split('\n').filter(l => /^[-*]\s+\S|^\d+[.)]\s+\S/.test(l) && !NO_FINDING.test(l)).map((l, i) => {
     const m = SUFFIX.exec(l)
     const status = !m ? 'open' : m[1] === 'fixed' ? 'claimed' : m[1]!.startsWith('reopened') ? 'reopened' : 'confirmed'
     const text = l.replace(SUFFIX, '').replace(/^\s*(?:[-*]|\d+[.)])\s+/, '').trim()

@@ -154,7 +154,8 @@ function applyUpgrade(args: Args): void {
   if (dirty) fail('the working tree is not clean: commit or stash first, so the upgrade branch holds only the upgrade')
   const undecided = conflicts.filter(rel => !decisions.has(rel))
   if (undecided.length) fail(`decide each conflict with --decide '{"<path>": "mine" | "new" | "later"}'; undecided:\n${undecided.map(rel => `  ${rel}`).join('\n')}`)
-  if (git(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`])) fail(`branch ${branch} already exists: merge or delete it first`)
+  // An earlier upgrade to the same version, already merged here, left its branch behind: it holds nothing this tree lacks, so it is replaced (rig_v1_test 2026-11-24).
+  if (git(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]) && (git(['rev-parse', branch]) === git(['rev-parse', 'HEAD']) || git(['merge-base', '--is-ancestor', branch, 'HEAD']) === null || git(['branch', '-q', '-d', branch]) === null)) fail(`branch ${branch} already exists: merge or delete it first`)
   const previous = git(['branch', '--show-current']) || git(['rev-parse', 'HEAD']) || 'main'
   if (git(['checkout', '-q', '-b', branch]) === null) fail(`could not create branch ${branch}`)
 

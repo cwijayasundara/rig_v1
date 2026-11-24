@@ -468,3 +468,15 @@ test('an install that is otherwise current still gets the missing ignore entries
   assert.match(text, /^learn\/$/m)
   assert.match(text, /^changes\/\*\/pr-outline\.md$/m)
 })
+
+test('apply replaces the branch of an earlier upgrade to the same version once it is merged; an unmerged one still refuses (rig_v1_test 2026-11-24)', () => {
+  const repo = committed()
+  const to = plan(repo).to, branch = `chore/rig-upgrade-${to}`
+  gitIn(repo, 'branch', branch)
+  fs.writeFileSync(path.join(repo, 'later.txt'), 'x\n'); gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'later', '--no-verify')
+  lag(repo, SKILL, 'old\n')
+  const r = sdlc(repo, ['upgrade', '--apply'])
+  assert.equal(r.code, 0, r.stdout + r.stderr)
+  assert.equal(gitIn(repo, 'branch', '--show-current').trim(), branch)
+  assert.notEqual(fs.readFileSync(path.join(repo, SKILL), 'utf8'), 'old\n')
+})
