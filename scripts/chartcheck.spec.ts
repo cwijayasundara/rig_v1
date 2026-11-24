@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import fs from 'node:fs'
 import path from 'node:path'
 import assert from 'node:assert/strict'
-import { designIntents, prdIds, parseIntent, parseCases, traceReport, intentSpecProblems, parkedDecisions, parseAccess, accessProblems, implementationPlanProblems, parseLedger, prdBlocks, ledgerProblems, normalise, parseReview, openFindings, sharedScopeProblems, type Intent, type TestCase } from './chartcheck.ts'
+import { unenforcedImportRules, designIntents, prdIds, parseIntent, parseCases, traceReport, intentSpecProblems, parkedDecisions, parseAccess, accessProblems, implementationPlanProblems, parseLedger, prdBlocks, ledgerProblems, normalise, parseReview, openFindings, sharedScopeProblems, type Intent, type TestCase } from './chartcheck.ts'
 
 const PRD = '---\nsprint: 1\nengineers: 1\n---\n# Sprint 1\n\n### FR-1: add\n### FR-2: remove\n| NFR-1 | fast |\n\nMentioned only in prose: FR-9.\n\n## Open questions\nnone\n'
 const intent = (slug: string, o: { prd?: string; depends?: string; days?: string; kind?: string; behaviours?: string; iface?: string; open?: string } = {}): string =>
@@ -521,4 +521,15 @@ test('sharedScopeProblems blocks a file two parallel intents write, and only rep
   assert.deepEqual(par.map(f => f.severity), ['block', 'block'], 'parallel intents still block once per file')
   assert.deepEqual(sharedScopeProblems([core, one('other', [], ['src/x.py'])], []), [])
   assert.equal(sharedScopeProblems([one('a', [], ['x.py', 'x.py']), one('b', [], ['x.py'])], []).length, 1, 'a file listed twice is one finding')
+})
+
+test('a "Must not import" row with no approved layers is a report: nothing enforces it; approved layers, or no import rule, give none', () => {
+  const arch = '# Architecture\n\n## Containers and modules\n| Module | Responsibility | Must not |\n|---|---|---|\n| main.py | routes | hold logic |\n| store.py | add, get | import fastapi or main |\n\n## Key flows\nx\n'
+  const f = unenforcedImportRules(arch, false)
+  assert.equal(f.length, 1)
+  assert.equal(f[0]!.rule, 'layers-unenforced'); assert.equal(f[0]!.severity, 'report')
+  assert.match(f[0]!.message, /1 module\(s\).*store\.py: import fastapi or main/)
+  assert.doesNotMatch(f[0]!.message, /main\.py: hold logic/)
+  assert.deepEqual(unenforcedImportRules(arch, true), [])
+  assert.deepEqual(unenforcedImportRules(arch.replace('import fastapi or main', 'hold state'), false), [])
 })

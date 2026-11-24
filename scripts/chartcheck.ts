@@ -436,3 +436,13 @@ export function implementationPlanProblems(plan: string, intents: Intent[]): Cha
   }
   return out
 }
+
+// The architecture's "Must not" column is prose: only an approved layers block turns an import rule into a sensor. Until a person approves
+// one, each "must not import" row is checked by nobody (rig_v1_test 2026-11-24: store.py reached the web framework through errors.py).
+export function unenforcedImportRules(arch: string, layersApproved: boolean): ChartFinding[] {
+  if (layersApproved) return []
+  const rows = section(arch, 'Containers and modules').split('\n').filter(l => l.trim().startsWith('|')).map(l => l.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim()))
+  const col = rows[0]?.findIndex(c => /^must not$/i.test(c)) ?? -1
+  const rules = col < 0 ? [] : rows.slice(1).filter(r => /\bimport/i.test(r[col] ?? '')).map(r => `${r[0]}: ${r[col]}`)
+  return rules.length ? [{ rule: 'layers-unenforced', severity: 'report', where: 'architecture', message: `architecture.md gives ${rules.length} module(s) a "Must not import" rule and no layers are approved, so no sensor checks them, directly or through another module (${rules.join('; ')}): the reviewer of each change checks these imports by hand until a person approves layers` }] : []
+}

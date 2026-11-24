@@ -97,3 +97,22 @@ test('at CI a PR adding its own holdout rows for its slug does not prove it', ()
   const r = sdlc(repo, ['check', '--at', 'ci', '--base', 'main', '--slug', 'demo'])
   assert.match(r.stdout, /B1 is proved only by unit tests/)
 })
+
+test('a behaviour a blocking sensor traces is not unproved: the sensor is its proof (rig_v1_test 2026-11-24, B2 [sensor: lint, types])', () => {
+  write(repo, '.rig/sensors.json', registry({ commit: { lint: 'true' }, extra: { gates: { plan: false } } }))
+  gitIn(repo, 'add', '-A'); gitIn(repo, 'commit', '-qm', 'cfg')
+  sdlc(repo, ['new', 'demo'])
+  write(repo, '.rig/changes/demo/intent.md', INTENT)
+  write(repo, '.rig/changes/demo/spec.md', SPEC.replace('(FR-2)', '(NFR-1) [sensor: lint]'))
+  cases(row('TC-1', 'demo', 'B1', 'unit'))
+  journey('names no behaviour')
+  const r = verify()
+  assert.match(r.stdout, /warn: .*(?<![-\w])proof 1\b/) // not red-proof 1
+})
+
+test('PR body names the unproved ids on one line, not one line each', () => {
+  const base = { intent: INTENT, spec: SPEC, plan: '# Plan\n', verify: null, outline: '', review: 'reviewer: a\n', risk: { tier: 0 as const, reasons: [] } }
+  const b = prBody({ ...base, proof: { ids: ['B1', 'B2'], exempt: null } })
+  assert.match(b, /- B1, B2 are proved only by unit tests: no holdout case or approved journey names them/)
+  assert.equal(b.match(/proved only by unit tests/g)?.length, 1)
+})

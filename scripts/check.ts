@@ -34,7 +34,7 @@ type CheckInput = {
   config: Registry
   rules: Rule[]
   slugs: string[]
-  commands: 'fast' | 'full' | 'none'
+  commands: 'fast' | 'full' | 'none' | 'edit'
   budgetMs: number
   before: (file: string) => string
   toolEdited?: Set<string>
@@ -259,7 +259,7 @@ export function runChecks(i: CheckInput): CheckResult {
   // Contracts (spec §6): ship and CI always, commit always, a turn only when it reaches a contract. Validate gates run.
   const c = config.contracts
   if ((i.contracts ?? (i.point === 'ship' || i.point === 'ci')) && (c.validate || c.run)) findings.push(...runContracts(c, i.point === 'stop' ? i.budgetMs : Math.max(i.budgetMs, 600_000)))
-  const at: Cadence = i.commands === 'fast' ? 'turn' : i.point === 'commit' ? 'commit' : 'ci'
+  const at: Cadence = i.commands === 'edit' ? 'edit' : i.commands === 'fast' ? 'turn' : i.point === 'commit' ? 'commit' : 'ci'
   const changed = i.drifted ? null : diffs.filter(d => d.status !== 'D' && !d.binary && isSource(d.file, config.paths) && !isTest(d.file, config.paths)).map(d => ({ file: d.file, lines: d.added.map(l => l.n) }))
   if (i.commands !== 'none') findings.push(...runSensors(config, at, i.point === 'ci' ? null : i.slugs[0] ?? null, i.budgetMs, Boolean(i.ratchet) && i.point !== 'ci', new Set([c.validate, c.run].filter(Boolean).map(normCmd)), i.point === 'ci' ? null : i.ratchetWrite ?? null, changed))
   // Journeys run where the heavier sensors do (verify, ship, CI), never at a commit or a turn.
@@ -475,8 +475,8 @@ export function cmdCheck(args: Args): void {
     if (!person) queueRefusal = risk.tier === 0 ? tierZeroRefusal(live, config, queueWho) : `tier ${risk.tier} and no approval of its head commit`
   }
   const why = humanRows.length || (enforced && refusal !== '') ? independentApproval(config.humanApproval.selfApprovers, Boolean((git(['diff', '--name-only', base ?? 'HEAD', 'HEAD', '--', '.github/workflows']) ?? '').trim()), enforce) : null // before runChecks: the PR's test commands could rewrite the event file or shadow gh
-  const handoff = at === 'commit' && isHandoffCommit(slugs[0], diffs.map(d => d.file), config.paths) // red by design: commands wait for ship and CI
-  const result = runChecks({ point: at, diffs, config, rules, slugs, commands: replaying || handoff ? 'none' : at === 'stop' ? 'fast' : 'full', budgetMs, before, after, base, ratchet: !optString(args, 'config-from') && at !== 'commit', ratchetWrite: optString(args, 'config-from') ? null : at === 'commit' ? 'stage' : 'write', contracts: at === 'commit' ? !replaying : undefined, gates: config.gates, chartRef: at === 'ci' && !config.gates.plan && config.gates.requireChart ? live : undefined })
+  const handoff = at === 'commit' && isHandoffCommit(slugs[0], diffs.map(d => d.file), config.paths)
+  const result = runChecks({ point: at, diffs, config, rules, slugs, commands: replaying ? 'none' : handoff ? 'edit' : at === 'stop' ? 'fast' : 'full', budgetMs, before, after, base, ratchet: !optString(args, 'config-from') && at !== 'commit', ratchetWrite: optString(args, 'config-from') ? null : at === 'commit' ? 'stage' : 'write', contracts: at === 'commit' ? !replaying : undefined, gates: config.gates, chartRef: at === 'ci' && !config.gates.plan && config.gates.requireChart ? live : undefined })
   // At commit, like at push, a sensor out of time warns: CI runs it again, and a hanging tool must not hold git commit hostage.
   if (at === 'commit') for (const f of result.findings) if (f.outOfTime) f.severity = 'warn'
   result.blocks = result.findings.filter(f => f.severity === 'block')

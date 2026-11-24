@@ -1,10 +1,11 @@
 // proof per behaviour (W2 N1): a behaviour must be named by a holdout case or by a current journey, as well as by a test.
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, CHANGES, read, exists, readJson } from './core.ts'
+import { ROOT, CHANGES, SENSORS_JSON, read, exists, readJson } from './core.ts'
 import { showAt } from './diffs.ts'
 import { type Finding } from './model.ts'
-import type { Registry } from './registry.ts'
+import { parseRegistry, type Registry } from './registry.ts'
+import { sensorCites } from './sensorcite.ts'
 import { behaviourIds, missingBehaviours } from './sensors.ts'
 import { parseCases } from './chartcheck.ts'
 import { sprintOf } from './holdout.ts'
@@ -28,7 +29,10 @@ function journeyText(): { any: boolean; text: string } {
 
 // At CI the test plan is the base's: a PR cannot prove its own change with a holdout row it adds. A journey names a behaviour of this change as <slug>#B<n>, like a case orphan.
 export function unproved(slug: string, base: string | null = null): { ids: string[]; exempt: string | null } {
-  const ids = behaviourIds(read(path.join(CHANGES, slug, 'spec.md')), 'Behaviours')
+  // A behaviour a blocking sensor traces ([sensor: lint, types]) has no test to back with a holdout case: the sensor is its proof.
+  const spec = read(path.join(CHANGES, slug, 'spec.md'))
+  const traced = sensorCites(spec, parseRegistry(read(path.join(ROOT, SENSORS_JSON))).registry.sensors).traced
+  const ids = behaviourIds(spec, 'Behaviours').filter(id => !traced.includes(id))
   const sprint = sprintOf(slug)
   const planFile = sprint === null ? '' : path.join(testplanDir(sprint), 'cases.md')
   const cases = base && sprint !== null ? showAt(base, path.relative(ROOT, planFile).split(path.sep).join('/')) ?? '' : exists(planFile) ? read(planFile) : ''

@@ -24,6 +24,7 @@ const specHasBehaviours = (slug: string): boolean => behaviourIds(read(path.join
 
 // The hand-off is red by design (no code yet), so its two commits cannot pass the commit-cadence command sensors (types, unit): a
 // commit holding only a change's tests, their support files and its freeze row skips them; ship and CI run every command on the branch.
+// The edit-cadence sensors (lint) still run on it: a test frozen with a lint error must be re-frozen to fix it, which reads as a weakened test.
 export function isHandoffCommit(slug: string | undefined, files: string[], paths: Registry['paths']): boolean {
   const checker = slug ? formalChecker(slug) : undefined
   return Boolean(slug) && files.length > 0 && files.every(f => f === `.rig/changes/${slug}/tests.freeze.jsonl` || f === checker || frozenKind(f, paths))

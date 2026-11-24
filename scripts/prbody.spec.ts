@@ -1,3 +1,4 @@
+import { defaultRegistry } from './registry.ts'
 // The PR body (proposal 2026-10-25 A1): why in one sentence, the behaviours, blast radius, door, evidence, and the outline the pr skill wrote.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -324,4 +325,16 @@ test('Interrogation: counts under Review first, each reproduced finding is a fla
   const two = prBody({ ...base, risk: { tier: 2, reasons: ['edits a payment path'] } })
   assert.match(two, /Interrogation: not run/); assert.match(two, /tier 2 change: no interrogation recorded/)
   assert.doesNotMatch(prBody({ ...base, risk }), /Interrogation:/)
+})
+
+test('Dependents section: an existing test that imports the change is the regression set, never a dependent outside the blast radius', () => {
+  const deps = { all: [{ file: 'tests/test_add_item.py', via: 'src/cart/main.py' }, { file: 'src/billing/charge.ts', via: 'src/export/csv.ts' }], unsupported: [], limited: false }
+  const paths = { ...defaultRegistry().paths, tests: ['**/test_*.py'] }
+  const b = prBody({ intent, spec, plan, verify, outline: '', review: '', risk, chart: 'chart-1 approved at 0123456789ab', dependents: deps, paths })
+  const sec = /## Dependents \(computed\)\n\n([\s\S]*?)\n\n## Risk/.exec(b)![1]!
+  assert.match(sec, /Existing tests that import the changed code, the regression set \(1\):\n- tests\/test_add_item\.py \(via src\/cart\/main\.py\)/)
+  assert.match(sec, /Not in the spec's blast radius \(1\):\n- src\/billing\/charge\.ts/)
+  assert.match(b, /1 dependent\(s\) outside the spec's blast radius/)
+  const only = prBody({ intent, spec, plan, verify, outline: '', review: '', risk, dependents: { ...deps, all: deps.all.slice(0, 1) }, paths })
+  assert.doesNotMatch(only, /outside the spec's blast radius|Not in the spec's blast radius/)
 })

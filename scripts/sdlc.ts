@@ -41,7 +41,7 @@ import { registerContracts, cmdContractsCheck } from './contracts.ts'
 import { cmdMaintain } from './maintain.ts'
 import { cmdReadiness } from './readiness.ts'
 import { cmdAutonomy, initAutonomy } from './autonomy.ts'
-import { cmdRisk, cmdWeight, cmdRouteCheck, cmdModels } from './risk.ts'
+import { cmdRisk, cmdWeight, cmdRouteCheck, cmdModels } from './risk.ts'; import { cmdDependents } from './dependents.ts'
 import { cmdClaims } from './claims.ts'
 import { protect } from './protect.ts'; import { cmdAudit } from './audit.ts'
 import { cmdApp, draftApps, appStates } from './app.ts'; import { cmdAppDiff } from './appdiff.ts'; import { cmdInterrogate } from './interrogate.ts'
@@ -476,7 +476,7 @@ const COMMANDS: Record<string, (args: Args) => void> = {
   slice: cmdSlice,
   maintain: cmdMaintain,
   readiness: cmdReadiness, autonomy: cmdAutonomy, audit: cmdAudit, interrogate: cmdInterrogate,
-  risk: cmdRisk, whoami: cmdWhoami,
+  risk: cmdRisk, whoami: cmdWhoami, dependents: cmdDependents,
   claims: cmdClaims,
   weight: cmdWeight, models: cmdModels, 'route-check': cmdRouteCheck, 'intent-record': cmdIntentRecord, 'intent-adjudicate': cmdIntentAdjudicate, off: cmdOff, on: cmdOn,
   'intent-recheck': cmdIntentRecheck, 'tests-freeze': cmdTestsFreeze, 'intent-project': cmdIntentProject,

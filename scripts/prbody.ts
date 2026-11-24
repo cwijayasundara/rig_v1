@@ -134,10 +134,13 @@ export function evidenceLinks(origin: string | null, o: { base: string; branch: 
 }
 
 // The computed dependents (pilot §3): what imports the changed files, against what the spec said the change may touch.
-function dependentsNote(d: Dependents, radius: string[]): string {
-  const out = outsideRadius(d.all, radius)
+// An existing test that imports the changed code guards it (the unit sensor runs it): it is listed as the regression set, never as a file the spec missed.
+const strayDeps = (d: Dependents, radius: string[], paths: Paths): Dependents['all'] => outsideRadius(d.all.filter(x => !isTest(x.file, paths)), radius)
+function dependentsNote(d: Dependents, radius: string[], paths: Paths): string {
+  const out = strayDeps(d, radius, paths), tests = d.all.filter(x => isTest(x.file, paths))
   return `## Dependents (computed)\n\n${[
     `${d.all.length} file(s) outside the diff import the changed code, within two hops, by a static search of the import lines.`,
+    tests.length ? `Existing tests that import the changed code, the regression set (${tests.length}):\n${tests.slice(0, 10).map(x => `- ${x.file} (via ${x.via})`).join('\n')}${tests.length > 10 ? `\n- and ${tests.length - 10} more` : ''}` : '',
     out.length ? `Not in the spec's blast radius (${out.length}):\n${out.slice(0, 10).map(x => `- ${x.file} (via ${x.via})`).join('\n')}${out.length > 10 ? `\n- and ${out.length - 10} more` : ''}` : '',
     d.unsupported.length ? `Not analysed (a language this search does not read): ${d.unsupported.join(', ')}` : '',
     d.limited ? 'The search read only the first 5000 source files.' : ''].filter(Boolean).join('\n\n')}`
@@ -145,7 +148,7 @@ function dependentsNote(d: Dependents, radius: string[]): string {
 
 // What a reviewer reads first (pilot §4): the approved revision, the worst consequence, the independent evidence, what is unproven, and what was weakened, waived or amended.
 function reviewFirst(i: PrBodyInput, amended: string[], uncertain: string[]): string {
-  const flags = [...(i.interrogate?.reproduced ?? []).map(f => `reproduced finding ${f}`), ...(i.risk.tier === 2 && !i.interrogate ? ['tier 2 change: no interrogation recorded'] : []), ...(i.dependents && outsideRadius(i.dependents.all, blastRadius(i.spec) ?? []).length ? [`${outsideRadius(i.dependents.all, blastRadius(i.spec) ?? []).length} dependent(s) outside the spec's blast radius (see Dependents)`] : []), ...(i.differential?.unapproved ?? []).map(d => `unapproved difference: ${d}`), ...(i.freeze ?? []).slice(1).map(r => `weakened test: re-frozen, ${clean(r.why)}${r.dropped?.length ? ` (dropped: ${r.dropped.map(clean).join(', ')})` : ''}`), ...(i.waivers ?? []).map(w => `waiver: ${w}`), ...(i.planChanges ?? []).map(c => `plan amendment ${c.replace(/^- /, '')}`), ...amended.map(a => `behaviour amendment: ${a.replace(/^[-*]\s+/, '')}`)]
+  const flags = [...(i.interrogate?.reproduced ?? []).map(f => `reproduced finding ${f}`), ...(i.risk.tier === 2 && !i.interrogate ? ['tier 2 change: no interrogation recorded'] : []), ...(i.dependents && strayDeps(i.dependents, blastRadius(i.spec) ?? [], i.paths ?? defaultRegistry().paths).length ? [`${strayDeps(i.dependents, blastRadius(i.spec) ?? [], i.paths ?? defaultRegistry().paths).length} dependent(s) outside the spec's blast radius (see Dependents)`] : []), ...(i.differential?.unapproved ?? []).map(d => `unapproved difference: ${d}`), ...(i.freeze ?? []).slice(1).map(r => `weakened test: re-frozen, ${clean(r.why)}${r.dropped?.length ? ` (dropped: ${r.dropped.map(clean).join(', ')})` : ''}`), ...(i.waivers ?? []).map(w => `waiver: ${w}`), ...(i.planChanges ?? []).map(c => `plan amendment ${c.replace(/^- /, '')}`), ...amended.map(a => `behaviour amendment: ${a.replace(/^[-*]\s+/, '')}`)]
   const holdout = i.verify?.holdout ? `${i.verify.holdout.passed}/${i.verify.holdout.total} hidden acceptance cases pass` : 'no hidden acceptance case ran'
   return `## Review first\n\n${[
     `Approved intent: ${i.chart}`,
@@ -170,7 +173,7 @@ export function prBody(i: PrBodyInput): string {
   // Only the latest verify's runs: an older run of a check it did not re-run is not evidence about this tree.
   const from = i.verify?.from, runs = (i.runs ?? []).filter(r => !from || r.at >= from)
   const blocked = (i.agents ?? []).filter(a => a.status === 'BLOCKED'), concerns = (i.agents ?? []).filter(a => a.status === 'DONE_WITH_CONCERNS')
-  const would = [...(!i.review.trim() ? ['no review.md'] : /^reviewer:\s*none\b/.test(i.review) ? [`No agent reviewed this change (tier ${i.risk.tier}): the sensors and the tests are the evidence.`] : missed), ...concerns.map(a => `- ${a.agent} (${a.model ?? 'unknown model'}): ${a.note}`), ...(i.proof?.ids ?? []).map(id => `- ${id} is proved only by unit tests: no holdout case or approved journey names it`), ...(i.proof?.exempt ? [`- proof: exempt, ${i.proof.exempt}`] : [])]
+  const would = [...(!i.review.trim() ? ['no review.md'] : /^reviewer:\s*none\b/.test(i.review) ? [`No agent reviewed this change (tier ${i.risk.tier}): the sensors and the tests are the evidence.`] : missed), ...concerns.map(a => `- ${a.agent} (${a.model ?? 'unknown model'}): ${a.note}`), ...(i.proof?.ids.length ? [`- ${i.proof.ids.join(', ')} ${i.proof.ids.length === 1 ? 'is' : 'are'} proved only by unit tests: no holdout case or approved journey names ${i.proof.ids.length === 1 ? 'it' : 'them'}`] : []), ...(i.proof?.exempt ? [`- proof: exempt, ${i.proof.exempt}`] : [])]
   const parts = [
     blocked.length || i.draft !== undefined ? `> Draft: blocked. ${blocked.map(a => a.note).filter(Boolean).join('; ') || i.draft || 'no reason given'}` : '',
     i.chart !== undefined ? reviewFirst(i, amended, would) : '',
@@ -179,7 +182,7 @@ export function prBody(i: PrBodyInput): string {
     amended.length ? `## Amendments after approval\n\n${amended.join('\n')}` : '',
     i.planChanges ? `## Plan changes after build\n\n${i.planChanges.join('\n') || 'none'}` : '',
     `## Blast radius\n\n${radius.length ? radius.join('\n') : 'none recorded'}\n\nDoor: ${door(i.plan)}`,
-    i.dependents ? dependentsNote(i.dependents, blastRadius(i.spec) ?? []) : '',
+    i.dependents ? dependentsNote(i.dependents, blastRadius(i.spec) ?? [], i.paths ?? defaultRegistry().paths) : '',
     `## Risk\n\n${i.risk.reasons.length ? `Tier ${i.risk.tier}\n\n${i.risk.reasons.map(r => `- ${r}`).join('\n')}` : 'Tier 0: none of the signals'}`,
     `## How to revert\n\n${revert(i.plan)}`,
     `## What the checks would miss\n\n${would.join('\n') || 'nothing the reviewer named'}`,

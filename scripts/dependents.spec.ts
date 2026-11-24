@@ -2,6 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { importsOf, dependentsOf, outsideRadius } from './dependents.ts'
+import { makeRepo, sdlc, write, gitIn } from './testkit.ts'
 
 const run = (changed: string[], tree: Record<string, string>) => dependentsOf(changed, Object.keys(tree), f => tree[f] ?? '')
 
@@ -35,4 +36,20 @@ test('a changed file in a language this search does not read is named as not ana
 test('outsideRadius keeps dependents the spec did not list: a path, a directory and a glob each cover theirs', () => {
   const deps = [{ file: 'src/a.ts', via: 'x' }, { file: 'lib/b.ts', via: 'x' }, { file: 'web/c.ts', via: 'x' }, { file: 'api/d.ts', via: 'x' }]
   assert.deepEqual(outsideRadius(deps, ['src/a.ts', 'lib/', 'web/**']).map(d => d.file), ['api/d.ts'])
+})
+
+test('dependents <slug>: the existing tests and other files that import the spec\'s blast radius, before the plan is written; all-new files have none', () => {
+  const r = makeRepo()
+  sdlc(r, ['init'])
+  write(r, 'src/cart/store.py', 'X = 1\n'); write(r, 'src/cart/main.py', 'from cart.store import X\n'); write(r, 'tests/test_store.py', 'from cart.store import X\n')
+  gitIn(r, 'add', '-A'); gitIn(r, 'commit', '-qm', 'base', '--no-verify')
+  sdlc(r, ['new', 'demo'])
+  write(r, '.rig/changes/demo/spec.md', '# Spec\n\n## Behaviours\n- B1: x\n\n## Blast radius\nsrc/cart/store.py\nsrc/cart/new.py\n')
+  const out = sdlc(r, ['dependents', 'demo'])
+  assert.equal(out.code, 0, out.stdout + out.stderr)
+  assert.match(out.stdout, /1 file\(s\) of the blast radius exist already; 2 file\(s\) outside it import them/)
+  assert.match(out.stdout, /regression set[^\n]*\n- tests\/test_store\.py \(via src\/cart\/store\.py\)/)
+  assert.match(out.stdout, /Other files that import them[^\n]*\n- src\/cart\/main\.py \(via src\/cart\/store\.py\)/)
+  write(r, '.rig/changes/demo/spec.md', '# Spec\n\n## Blast radius\nsrc/cart/new.py\n')
+  assert.match(sdlc(r, ['dependents', 'demo']).stdout, /0 file\(s\) of the blast radius exist already; 0 file\(s\) outside it import them/)
 })

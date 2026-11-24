@@ -13,8 +13,9 @@ import { parseRegistry } from './registry.ts'
 import { caseId } from './holdout.ts'
 import { PRODUCT, stripGenerated, carriedIds, ARCH_REL, archPath, prdPath, intentsDir, testplanDir, holdoutDir, approvalPath, approvalMdPath, sprintDir, sprintsOnDisk, intentRel, planPath, implPlanPath, sprintRel, ledgerPath, coveragePath, waiversPath, reviewPath, sourcePath, conversionPath, conversionReviewPath, writeProductIgnore } from './product.ts'
 import { contractProblems } from './contracts.ts'
+import { layerState } from './arch.ts'
 import { holdoutRouteProblems } from './holdoutroutes.ts'
-import { designIntents, sharedScopeProblems, architectureProblems, implementationPlanProblems, accessProblems, parseAccess, parseIntent, parseCases, requiredHoldouts, parkedDecisions, prdIds, traceReport, ledgerProblems, parseLedger, parentOf, parseReview, openFindings, type ReviewFinding, type ChartWaiver, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
+import { unenforcedImportRules, designIntents, sharedScopeProblems, architectureProblems, implementationPlanProblems, accessProblems, parseAccess, parseIntent, parseCases, requiredHoldouts, parkedDecisions, prdIds, traceReport, ledgerProblems, parseLedger, parentOf, parseReview, openFindings, type ReviewFinding, type ChartWaiver, uncomment, escapes, type Intent, type ChartFinding } from './chartcheck.ts'
 
 const SHARED_DIRS = ['adr'].map(d => `${toPosix(path.relative(ROOT, path.join(PRODUCT, d)))}/`)
 // The `by` of a seal the agent wrote: the chart PR's independent review is the decision, not a person at the terminal.
@@ -247,6 +248,7 @@ export function chartFindings(n: number, withCases: boolean): ChartFinding[] {
   }
   const arch = uncomment(read(archPath))
   found.push(...architectureProblems(arch, read(prdPath(n)), n, walk(path.join(PRODUCT, 'adr')).flatMap(f => /^(\d+)-/.exec(path.basename(f))?.[1] ?? [])))
+  found.push(...unenforcedImportRules(arch, layerState().state === 'approved' || layerState().state === 'drifted'))
   found.push(...accessProblems(parseAccess(arch), allIntents().map(i => i.slug), cases, intentsOf(n).map(i => i.slug)))
   for (const q of openQuestions(arch)) found.push({ rule: 'open-question', severity: 'block', where: 'architecture', message: `architecture.md has an open question: ${q}` })
   for (const l of section(arch, 'Concerns').split('\n').map(x => x.replace(/^\s*[-*]\s*/, '').trim()).filter(x => x && !/^none\.?$/i.test(x) && !/^\[x\]/i.test(x) && !/\(resolved\)/i.test(x))) found.push({ rule: 'concern', severity: 'block', where: 'architecture', message: `unresolved concern: ${l}` })

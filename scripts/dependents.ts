@@ -3,8 +3,9 @@
 // what the change can reach. TypeScript, JavaScript and Python are read; a changed file in another language is named as not analysed, never "none".
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT, gitIn } from './core.ts'
-import { matchesAny } from './model.ts'
+import { ROOT, CHANGES, SENSORS_JSON, gitIn, read, exists, fail, checkSlug, type Args } from './core.ts'
+import { matchesAny, isTest, blastRadius } from './model.ts'
+import { parseRegistry } from './registry.ts'
 
 const JS = /\.(?:ts|tsx|js|jsx|mjs|cjs)$/, PY = /\.py$/
 const OTHER = /\.(?:go|java|kt|cs|rs|rb|php|c|cpp|h|swift)$/
@@ -70,4 +71,24 @@ export const outsideRadius = (deps: Dependents['all'], radius: string[]): Depend
 export function repoDependents(changed: string[]): Dependents {
   const files = (gitIn(ROOT, ['ls-files']) ?? '').split('\n').filter(Boolean)
   return dependentsOf(changed, files, f => { try { const p = path.join(ROOT, f); return fs.statSync(p).size > MAX_BYTES ? '' : fs.readFileSync(p, 'utf8') } catch { return '' } })
+}
+
+// `dependents <slug>`: before the plan is written, what already imports the files the spec's blast radius names. A new file has no importer,
+// so a greenfield change prints none; in a repo with code this is the regression set and the files the spec may have missed.
+export function cmdDependents(args: Args): void {
+  const slug = args.pos[0] ? checkSlug(args.pos[0]) : ''
+  if (!slug || !exists(path.join(CHANGES, slug))) return fail('usage: dependents <slug>')
+  const radius = blastRadius(read(path.join(CHANGES, slug, 'spec.md')))
+  if (!radius?.length) return fail(`${slug}: spec.md has no ## Blast radius yet`)
+  const tracked = (gitIn(ROOT, ['ls-files']) ?? '').split('\n').filter(Boolean)
+  const mine = tracked.filter(f => !outsideRadius([{ file: f, via: f }], radius).length)
+  const d = repoDependents(mine), { paths } = parseRegistry(read(path.join(ROOT, SENSORS_JSON))).registry
+  const row = (x: { file: string; via: string }): string => `- ${x.file} (via ${x.via})`
+  const tests = d.all.filter(x => isTest(x.file, paths)), rest = d.all.filter(x => !isTest(x.file, paths))
+  process.stdout.write([
+    `${slug}: ${mine.length} file(s) of the blast radius exist already; ${d.all.length} file(s) outside it import them, within two hops, by a static search of the import lines.`,
+    ...(tests.length ? ['Existing tests that import them, the regression set (name in plan.md ## Tests each one whose expectation this change makes wrong; the others must stay green unedited):', ...tests.map(row)] : []),
+    ...(rest.length ? ['Other files that import them (one this change must edit goes into spec.md ## Blast radius; the others must keep working unedited):', ...rest.map(row)] : []),
+    ...(d.unsupported.length ? [`Not analysed (a language this search does not read): ${d.unsupported.join(', ')}`] : []),
+    ...(d.limited ? ['The search read only the first 5000 source files.'] : [])].join('\n') + '\n')
 }
