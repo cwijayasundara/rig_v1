@@ -3,7 +3,7 @@
 # The workflow file itself is judged from the PR's copy (pull_request), so protect it with CODEOWNERS plus "Require review from Code Owners".
 # The checker and its config come from the BASE branch, so a PR cannot loosen the rules it is judged by.
 # ai-review runs on every PR from this repository (fork PRs have no secrets, so it is skipped there and a person reviews): a clean-context code review and a
-# security review, each briefed from the BASE branch, failing on a critical or high item under ## Findings (## Pre-existing never fails it). Make "ai-review"
+# security review (once per PR: a later push or label change reuses a passing review of the commit before it, a failed one is reviewed again), each briefed from the BASE branch, failing on a critical or high item under ## Findings (## Pre-existing never fails it). Make "ai-review"
 # a required status check too. rig-check prints each PR's risk tier; with risk.enforce in the base .rig/sensors.json it requires one approval from someone
 # other than the author on every PR, except a tier-0 PR by a trusted author at autonomy rung 3 while the revert breaker holds (humanApproval.everyTier true removes that exception: every PR needs a person). risk.hardCap true makes a diff over risk.maxLines a block at ship and CI; only a live size waiver lifts it. `init --protect --create` makes the branch protection real (one approving review, code owners, admins included). Two reviewers for tier 2 or risky paths is a branch-protection or ruleset setting (with CODEOWNERS), never this workflow.
 # With risk.enforce or humanApproval.everyTier on, the approving review must also answer the PR body's three check questions (lines `Q1:`, `Q2:`, `Q3:`, 10+ characters each), and a PR labelled `rig-hold` (set and lifted only by the auditor through `sdlc.ts audit`, read by rig-check through gh; an unreadable label list blocks) is held. On the lead-override path the self-approving lead answers in a COMMENTED review of the head commit (`Q1:`..`Q3:` lines), since GitHub does not let an author approve their own PR. Each person's latest non-comment review is the one that counts.
@@ -20,7 +20,7 @@ permissions:
   pull-requests: read # lets CI verify an independent approving review when a PR adds approval or waiver rows
   actions: read # lets CI read this run's ai-review and lead-override jobs
   checks: read # lets the tier-0 path confirm ai-review passed on the head commit
-# A newer push supersedes the run in progress: one review per head commit, never a queue of paid reviews of stale code.
+# A newer push supersedes the run in progress (a cancelled review is not a pass, so the next run reviews): never a queue of paid reviews of stale code.
 concurrency:
   group: rig-check-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -38,7 +38,23 @@ jobs:
         with:
           node-version: '22.18'
       - run: npm install -g @anthropic-ai/claude-code
+      - name: Reuse an earlier passing review
+        id: once
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ACTION: ${{ github.event.action }}
+          BEFORE: ${{ github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # one review per PR: opened and reopened always review; a push or a label change reuses the review that passed on the commit before it
+          # (the push's `before`, or the head for a label). Any other state (failed, cancelled, missing, unreadable) reviews again, so a fix after a failed review is reviewed.
+          sha="$HEAD"; [ "$ACTION" = synchronize ] && sha="$BEFORE"
+          case "$ACTION" in synchronize|labeled|unlabeled) ;; *) echo "skip=false" >> "$GITHUB_OUTPUT"; exit 0 ;; esac
+          ok=$(gh api "repos/$REPO/commits/$sha/check-runs?check_name=ai-review&per_page=100" --jq '[.check_runs[] | select(.conclusion == "success")] | length' 2>/dev/null || echo 0)
+          if [ "${ok:-0}" -gt 0 ] 2>/dev/null; then echo "skip=true" >> "$GITHUB_OUTPUT"; echo "::notice::ai-review passed on ${sha:0:7}: not reviewing again (one review per PR)"; else echo "skip=false" >> "$GITHUB_OUTPUT"; fi
       - name: Review the diff with a clean context
+        if: ${{ steps.once.outputs.skip != 'true' }}
         env:
           BASE: ${{ github.base_ref }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -55,6 +71,7 @@ jobs:
 
           Security is reviewed separately: skip it. The change to review is the diff in $RUNNER_TEMP/change.diff. Review only what this diff adds or changes; read another file only to understand a changed line, and never review code the diff does not change. Answer in exactly this shape: a line 'verdict: pass | changes-needed', then '## Findings' with '- [severity: critical|high|medium] path:line: problem → fix' lines, then '## Pre-existing' with '- path:line: problem → fix' lines. Report a finding only with the file, line and the input where it goes wrong; a line the diff did not add or change goes under ## Pre-existing. Pre-existing items never change the verdict: it is changes-needed only when ## Findings has an item." | tee "$RUNNER_TEMP/review.md"
       - name: Review the diff for security
+        if: ${{ steps.once.outputs.skip != 'true' }}
         env:
           BASE: ${{ github.base_ref }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -68,7 +85,10 @@ jobs:
           The change to review is the diff in $RUNNER_TEMP/change.diff. Review only what this diff adds or changes; read another file only to understand a changed line, and never review code the diff does not change. Answer in exactly this shape: a line 'verdict: pass | changes-needed', then '## Findings' with '- [severity: critical|high|medium] path:line: problem → fix' lines, then '## Pre-existing' with '- path:line: problem → fix' lines. Report a finding only with the file, line and the input where it goes wrong; a line the diff did not add or change goes under ## Pre-existing. Pre-existing items never change the verdict: it is changes-needed only when ## Findings has an item." | tee "$RUNNER_TEMP/security.md"
       - name: Gate on both reviews
         if: ${{ !cancelled() }}
+        env:
+          SKIP: ${{ steps.once.outputs.skip }}
         run: |
+          if [ "$SKIP" = true ]; then echo "reviewed once already: nothing to gate"; exit 0; fi
           # only a critical or high item under ## Findings fails the job: ## Pre-existing stood before this change, and a medium finding is for the person
           gate() {
             if [ ! -s "$1" ] || ! grep -qE '^verdict: ' "$1"; then echo "::error::the $2 gave no verdict line (did claude run? check CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY)"; return 1; fi

@@ -159,3 +159,10 @@ test('the fix wave records behaviour changes in amendments.md and never edits th
 test('a fixed finding leaves ## Deferred, so review.md never lists one issue as fixed and deferred', () => {
   assert.match(pr(), /delete the `## Deferred` line for the same issue/)
 })
+
+test('review runs once: /rig:pr forbids /ship after the PR opens and points to /steward', () => {
+  const t = pr()
+  assert.match(t, /never `\/ship` once the PR is open/)
+  assert.match(t, /Meanwhile: \/steward <PR URL>[^\n]*no review/)
+  assert.match(repoText('templates/REVIEW.md'), /## After the PR opens \(steward\)[\s\S]*never weakens a test/)
+})

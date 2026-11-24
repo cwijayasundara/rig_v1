@@ -56,3 +56,7 @@ test('a chart waiver file is as protected from the model as a chart approval', (
   assert.match(fs.readFileSync(path.join(ROOT, 'templates/managed-settings.json'), 'utf8'), /"Edit\(\.\/\.rig\/product\/sprints\/\*\*\/waivers\.json\)"/)
 })
 
+
+test('managed settings turn /ship off so the one review stays in /rig:pr', () => {
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(ROOT, 'templates/managed-settings.json'), 'utf8')).skillOverrides, { 'ship-local': 'off' })
+})

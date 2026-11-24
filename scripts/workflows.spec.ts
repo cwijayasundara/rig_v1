@@ -4,6 +4,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import os from 'node:os'
+import { spawnSync } from 'node:child_process'
 import { parse } from 'yaml'
 import { workflowFindings, hasSecret, type Workflow } from './testkit.ts'
 
@@ -113,4 +115,27 @@ test('CI runs the dashboard mod tests: hooks/dashboard.test.ts has a test:mod sc
   const pkg = JSON.parse(read('package.json')) as { scripts: Record<string, string> }
   assert.equal(pkg.scripts['test:mod'], 'claude plugin test .')
   assert.match(read('.github/workflows/ci.yml'), /run: npm run test:mod/)
+})
+
+// One review per PR: ai-review reuses a passing review of the commit before a push (or of the head for a label change); anything else reviews again.
+test('ai-review reviews once per PR: the reuse step skips both reviews and the gate, and fails open to a review', { skip: process.platform === 'win32' }, () => {
+  const w = parse(read('templates/rig-check.yml')) as Workflow
+  const steps = (w.jobs as Record<string, { steps: { id?: string; name?: string; if?: string; run?: string }[] }>)['ai-review']!.steps
+  const once = steps.find(s => s.id === 'once')!
+  for (const n of ['Review the diff with a clean context', 'Review the diff for security']) assert.match(steps.find(s => s.name === n)!.if ?? '', /steps\.once\.outputs\.skip != 'true'/, n)
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'once-'))
+  fs.writeFileSync(path.join(dir, 'gh'), '#!/bin/sh\necho "$@" >> "$GH_LOG"\n[ "$GH_FAIL" = 1 ] && exit 1\necho "$GH_COUNT"\n', { mode: 0o755 })
+  const run = (env: Record<string, string>): { skip: string; asked: string } => {
+    const out = path.join(dir, 'out'), log = path.join(dir, 'log'); fs.rmSync(out, { force: true }); fs.rmSync(log, { force: true })
+    spawnSync('bash', ['-c', once.run!], { env: { PATH: dir + ':' + process.env.PATH, GITHUB_OUTPUT: out, GH_LOG: log, REPO: 'o/r', BEFORE: 'beforesha', HEAD: 'headsha', ...env } })
+    return { skip: fs.readFileSync(out, 'utf8').trim(), asked: fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '' }
+  }
+  assert.equal(run({ ACTION: 'opened', GH_COUNT: '1' }).skip, 'skip=false', 'opened always reviews')
+  assert.equal(run({ ACTION: 'reopened', GH_COUNT: '1' }).skip, 'skip=false')
+  const push = run({ ACTION: 'synchronize', GH_COUNT: '1' })
+  assert.equal(push.skip, 'skip=true'); assert.match(push.asked, /commits\/beforesha\/check-runs/, 'a push asks about the commit before it')
+  assert.match(run({ ACTION: 'labeled', GH_COUNT: '2' }).asked, /commits\/headsha\/check-runs/, 'a label change asks about the head')
+  assert.equal(run({ ACTION: 'synchronize', GH_COUNT: '0' }).skip, 'skip=false', 'no passing review before: review')
+  assert.equal(run({ ACTION: 'synchronize', GH_FAIL: '1' }).skip, 'skip=false', 'an unreadable answer reviews')
+  assert.match(steps.find(s => s.name === 'Gate on both reviews')!.run ?? '', /SKIP" = true \]; then[^\n]*exit 0/)
 })

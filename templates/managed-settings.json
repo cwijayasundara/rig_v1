@@ -45,6 +45,7 @@
       { "matcher": "Bash", "hooks": [ { "type": "command", "command": "/etc/claude-code/gates/production-gate.sh", "timeout": 10 } ] }
     ]
   },
+  "skillOverrides": { "ship-local": "off" },
   "disableSideloadFlags": true,
   "allowManagedMcpServersOnly": true,
   "extraKnownMarketplaces": { "rig": { "source": { "source": "github", "repo": "example-corp/rig" } } },
