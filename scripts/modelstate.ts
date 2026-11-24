@@ -30,9 +30,13 @@ function update(file: string, fn: (s: ModelState) => boolean): void {
 // The newest launch of each agent that has a model (resolved, else requested): what the dashboard shows.
 export function latestAgents(file: string): { agent: string; model: string; at: string }[] {
   const by = new Map<string, { agent: string; model: string; at: string }>()
-  for (const l of readModelState(file).launches) if (l && (l.resolved ?? l.requested)) by.set(l.agent, { agent: l.agent, model: (l.resolved ?? l.requested) as string, at: l.at })
+  for (const l of readModelState(file).launches) if (l && modelOf(l)) by.set(l.agent, { agent: l.agent, model: modelOf(l)!, at: l.at })
   return [...by.values()]
 }
+
+const modelOf = (l: Launch): string | null => l.resolved ?? l.requested ?? null
+// The model one launch ran on (resolved, else requested), by the tool-use id the agent records carry; null when state has no such launch.
+export const launchModel = (file: string, id: string): string | null => { const l = readModelState(file).launches.find(x => x.id === id); return l ? modelOf(l) : null }
 
 export function recordSessionModel(file: string, session: string, model: string, source: string, at: string): void {
   if (!model.trim()) return

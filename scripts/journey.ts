@@ -2,7 +2,7 @@
 // files only. The outer loop is a sprint (init, PRD, chart with its test plan, one approval, build); the inner loop is one change.
 // `show` says which loops a person should see: a greenfield repo has both, a brownfield repo is entered through the outer loop.
 import path from 'node:path'
-import { ROOT, SENSORS_PATH, SDLC, CHANGES, exists, readJson, skillRef } from './core.ts'
+import { ROOT, SENSORS_PATH, SDLC, MODEL_STATE, CHANGES, exists, readJson, skillRef } from './core.ts'
 import { activeSlug, awaitingReview, changeType, isShipped, nextStep, status, type Status } from './lifecycle.ts'
 import { latestAgents } from './modelstate.ts'
 import { readAutonomy } from './autonomy.ts'
@@ -87,7 +87,7 @@ export function journey(i: { gates: { plan: boolean }; tree: string | null }): J
     return shipped === slugs.length ? { command: exists(path.join(ROOT, hint(n + 1))) ? `${k('chart')} ${n + 1} @${hint(n + 1)}` : `add the PRD at ${hint(n + 1)}, then ${k('chart')} ${n + 1} @${hint(n + 1)}`, by: 'person', why: `sprint ${n} is shipped` } : { command: 'a change in flight must ship first', by: 'person', why: 'the remaining intents wait on their dependencies' }
   })()
   const next: Journey['next'] = act && st ? { command: nextStep(act, st), by: st === 'approve' || st === 'review' ? 'person' : 'model', why: `change ${act}` } : outerNext
-  return { agents: latestAgents(path.join(SDLC, 'state', 'model.json')), initialised, kind, show, sprint: initialised ? n : null, outer, inner: act && st ? { slug: act, type: changeType(act), steps: innerSteps(st, i.gates.plan, act, exists(path.join(CHANGES, act, 'review.md'))) } : null, next, ready, rung: readAutonomy().rung, queue }
+  return { agents: latestAgents(MODEL_STATE), initialised, kind, show, sprint: initialised ? n : null, outer, inner: act && st ? { slug: act, type: changeType(act), steps: innerSteps(st, i.gates.plan, act, exists(path.join(CHANGES, act, 'review.md'))) } : null, next, ready, rung: readAutonomy().rung, queue }
 }
 
 // The steps whose detail is drawn on the rail: the intent count and the build count.

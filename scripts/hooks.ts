@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import {
-  ROOT, SDLC, SENSORS_JSON, SENSORS_PATH, BUDGET_MS, IS_VENDORED, skillRef, now, exists, read, out, fail, frontmatter,
+  ROOT, SDLC, MODEL_STATE, SENSORS_JSON, SENSORS_PATH, BUDGET_MS, IS_VENDORED, skillRef, now, exists, read, out, fail, frontmatter,
   managedSettings, scanSecrets, UNRESOLVED, readUnresolved, relPosix, sha, readGate, updateGate, writeAtomic, type Args, type HookInput, type GateSummary,
 } from './core.ts'
 import { admitLaunch, recordDone, EXEMPT } from './agents.ts'
@@ -30,7 +30,6 @@ import { queueNext } from './queue.ts'
 import { readAutonomy } from './autonomy.ts'
 import { recordSessionModel, recordLaunch, recordResolved, sessionModel, readModelState, modelRoleFindings, transcriptModel, transcriptContext } from './modelstate.ts'
 
-const MODEL_STATE = path.join(SDLC, 'state', 'model.json')
 
 // The policy for this session's model (spec §3.3).
 function modeNow(registry: Registry, input: HookInput): { mode: Mode; model: string | null } {

@@ -33,6 +33,8 @@ const RAN_NOTHING = [
 ]
 // A runner that prints "running N tests" once per target (unit, integration, doc-tests): nothing ran only when no target ran any.
 const perTargetRanNothing = (tail: string): boolean => /\brunning 0 tests\b/i.test(tail) && !/\brunning [1-9]\d* tests?\b/i.test(tail)
+// A check that exits 0 after printing one of these did not look at the code here (stack packs: no layers config, no Semgrep, nothing to audit): evidence must not call it a pass.
+export const NOT_RUN_HERE = /\b(?:not enforced here|does not run here|could not scan here|nothing to audit)\b/
 export const ranNothing = (tail: string): boolean => RAN_NOTHING.some(re => re.test(tail)) || perTargetRanNothing(tail)
 
 export const SUPPRESSIONS: RegExp[] = [

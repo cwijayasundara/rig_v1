@@ -9,7 +9,7 @@ import path from 'node:path'
 const skill = (s: string): string => fs.readFileSync(path.resolve(import.meta.dirname, '..', 'skills', s, 'SKILL.md'), 'utf8')
 
 test('start continues into plan in the same turn, and plan stops only for the approval', () => {
-  assert.match(skill('start'), /continue with `\/rig:plan <slug>` in this turn/i)
+  assert.match(skill('start'), /call the Skill tool: skill `rig:plan`, args `<slug>`, in this turn/)
   assert.doesNotMatch(skill('start'), /End with `Next: \/rig:plan/)
   assert.match(skill('plan'), /Next: \/rig:approve <slug> \(a person\), then \/rig:build <slug>/)
 })
@@ -18,14 +18,19 @@ test('by default nothing between a charted intent and its PR waits for a person'
   const s = skill('start'), p = skill('plan'), t = skill('test')
   assert.match(s, /\*\*`asks: none`\*\*[^\n]*overrides step 2 for a charted intent: no `AskUserQuestion` or `superpowers:brainstorming`/)
   assert.match(s, /decide each `settled: no` reason yourself[^\n]*`\(proposed at start\)`; the PR lists them/)
-  assert.match(p, /Status `build` \(the default[^\n]*do not stop; run `S plan-check <slug> --commit`[^\n]*continue with `\/rig:build <slug>` in this turn/)
+  assert.match(p, /Status `build` \(the default[^\n]*do not stop; run `S plan-check <slug> --commit`[^\n]*call the Skill tool: skill `rig:build`, args `<slug>`, in this turn/)
   assert.match(p, /Status `approve` \(`gates\.plan: true`\): never approve yourself/)
   assert.match(t, /S waive --request holdout[^\n]*never end with options for the person/)
 })
 
 test('build continues into test, and test into pr, in the same turn', () => {
-  assert.match(skill('build'), /continue with `\/rig:test <slug>` (?:in )?this turn/i)
-  assert.match(skill('test'), /continue with `\/rig:pr <slug>` in this turn/i)
+  assert.match(skill('build'), /call the Skill tool: skill `rig:test`, args `<slug>`, in this turn/)
+  assert.match(skill('test'), /call the Skill tool: skill `rig:pr`, args `<slug>`, in this turn/)
+})
+
+// A slash command is something a person types: a skill that chains must say it calls the Skill tool and be allowed to (rig_v1_test 2026-11-24: start stopped with "Next, /rig:plan. I haven't run it").
+test('every skill that runs on into the next lists the Skill tool', () => {
+  for (const s of ['start', 'plan', 'build', 'test']) assert.match(skill(s).split('\n').find(l => l.startsWith('allowed-tools:')) ?? '', /\bSkill\b/, s)
 })
 
 test('pr fixes every review finding without asking, re-verifies with the script and commits review.md once, in the one PR commit', () => {

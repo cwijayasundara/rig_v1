@@ -133,6 +133,17 @@ test('a failed push on the first pr leaves no pr.md or commit, so a rerun still 
   assert.match(pr().stderr, /pushed sdlc\/demo but gh pr create|gh pr create/)
 })
 
+test('the Agents list names the model state resolved for a launch whose record has none, and "unknown model" otherwise', () => {
+  shipReady()
+  const row = (id: string): string => JSON.stringify({ kind: 'launch', id, agent: 'rig-evaluator', model: null, at: 't' }) + '\n'
+  write(repo, '.rig/changes/demo/evidence/agents.jsonl', row('known') + row('lost'))
+  write(repo, '.rig/state/model.json', JSON.stringify({ sessions: {}, launches: [{ session: 's', id: 'known', agent: 'rig-evaluator', requested: null, resolved: 'claude-opus-5-5', at: 't' }] }))
+  assert.equal(pr().code, 0)
+  const body = fs.readFileSync(path.join(repo, '.rig/changes/demo/pr-body.md'), 'utf8')
+  assert.match(body, /- rig-evaluator on claude-opus-5-5: no report/)
+  assert.match(body, /- rig-evaluator on unknown model: no report/)
+})
+
 test('the PR body is built from the change files, kept apart from the pr.md state file, and ships in the commit', () => {
   shipReady()
   write(repo, '.rig/changes/demo/pr-outline.md', '## Change outline\n\nsrc only\n')

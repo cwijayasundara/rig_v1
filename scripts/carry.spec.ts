@@ -164,6 +164,19 @@ test('reviewItems: the file is the token with a slash, else one that exists; pla
   assert.deepEqual(r.map(i => [i.section, i.text]), [['Deferred', 'src/a.py: x'], ['Deferred', 'y'], ['Unverifiable', 'z']])
 })
 
+test('reviewItems: a Findings bullet left open is an item, a fixed one is not', () => {
+  const r = reviewItems('## Findings\n- [severity: medium] src/a.py:3: x → fix: y; left open for a person\n- src/b.py:1: z → fixed (confirmed)\n## Deferred\nnone\n')
+  assert.equal(r.length, 1)
+  assert.equal(r[0]!.section, 'Findings')
+  assert.equal(r[0]!.file, 'src/a.py')
+})
+
+test('an open Findings bullet reaches the backlog once, however often carry runs', () => {
+  shipStore('## Findings\n- src/other.md: left open for a person → fix: decide\n')
+  assert.equal(sdlc(repo, ['carry', 'store']).code, 0)
+  assert.equal((rd('.rig/product/backlog.md').match(/left open for a person/g) ?? []).length, 1)
+})
+
 test('recording an addition keeps the intent hash when the file has no trailing newline or ends with a blank line', () => {
   shipStore(REVIEW, B9)
   const f = `${SP}/intents/store.md`, lib = path.resolve(import.meta.dirname, 'carry.ts'), prod = path.resolve(import.meta.dirname, 'product.ts'), pristine = rd(f)

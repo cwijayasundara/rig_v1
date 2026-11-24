@@ -42,6 +42,7 @@ export const CHANGES = path.join(SDLC, 'changes')
 // sensors.json: repo-relative posix form (messages, diff paths, joined to ROOT) and absolute.
 export const SENSORS_JSON = '.rig/sensors.json'
 export const AUTONOMY_JSON = '.rig/autonomy.json'
+export const MODEL_STATE = path.join(SDLC, 'state', 'model.json')
 export const SENSORS_PATH = path.join(SDLC, 'sensors.json')
 // Time budget in ms per check cadence.
 export const BUDGET_MS = { edit: 60_000, stop: 60_000, commit: 600_000, ship: 1_800_000, ci: 1_800_000 } as const

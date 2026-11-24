@@ -5,7 +5,7 @@ import { defaultRegistry, type Paths } from './registry.ts'
 import { clean, ROOT, SENSORS_JSON, read } from './core.ts'
 import type { Risk } from './risk.ts'
 import type { RunRow } from './runs.ts'
-import { behaviourIds, missingBehaviours } from './sensors.ts'
+import { behaviourIds, missingBehaviours, NOT_RUN_HERE } from './sensors.ts'
 import { sensorCites } from './sensorcite.ts'
 import { parseRegistry, type RegistrySensor } from './registry.ts'
 import path from 'node:path'
@@ -64,7 +64,7 @@ function headChecks(runs: RunRow[]): string {
   const last = new Map<string, RunRow>()
   for (const r of runs) if (r.source === 'ship' && !r.cwd && !r.expectFail) last.set(r.sensor ?? r.cmd, r)
   if (!last.size) return ''
-  const line = (name: string, r: RunRow): string => { const end = (r.tail.split('\n').map(plain).filter(Boolean).at(-1) ?? '').slice(0, 120); return `- ${name.length > 60 ? `${name.slice(0, 57)}...` : name}: ${r.exit === 0 ? 'pass' : `fail (exit ${r.exit})`}${end ? `, ${span(end)}` : ''}` }
+  const line = (name: string, r: RunRow): string => { const end = (r.tail.split('\n').map(plain).filter(Boolean).at(-1) ?? '').slice(0, 120); return `- ${name.length > 60 ? `${name.slice(0, 57)}...` : name}: ${r.exit === 0 ? (NOT_RUN_HERE.test(r.tail) ? 'not run here' : 'pass') : `fail (exit ${r.exit})`}${end ? `, ${span(end)}` : ''}` }
   return `Checks on the head tree (the latest verify's run of each):\n\n${[...last].map(([n, r]) => line(n, r)).join('\n')}`
 }
 
@@ -148,7 +148,7 @@ function dependentsNote(d: Dependents, radius: string[], paths: Paths): string {
 
 // What a reviewer reads first (pilot §4): the approved revision, the worst consequence, the independent evidence, what is unproven, and what was weakened, waived or amended.
 function reviewFirst(i: PrBodyInput, amended: string[], uncertain: string[]): string {
-  const flags = [...(i.interrogate?.reproduced ?? []).map(f => `reproduced finding ${f}`), ...(i.risk.tier === 2 && !i.interrogate ? ['tier 2 change: no interrogation recorded'] : []), ...(i.dependents && strayDeps(i.dependents, blastRadius(i.spec) ?? [], i.paths ?? defaultRegistry().paths).length ? [`${strayDeps(i.dependents, blastRadius(i.spec) ?? [], i.paths ?? defaultRegistry().paths).length} dependent(s) outside the spec's blast radius (see Dependents)`] : []), ...(i.differential?.unapproved ?? []).map(d => `unapproved difference: ${d}`), ...(i.freeze ?? []).slice(1).map(r => `weakened test: re-frozen, ${clean(r.why)}${r.dropped?.length ? ` (dropped: ${r.dropped.map(clean).join(', ')})` : ''}`), ...(i.waivers ?? []).map(w => `waiver: ${w}`), ...(i.planChanges ?? []).map(c => `plan amendment ${c.replace(/^- /, '')}`), ...amended.map(a => `behaviour amendment: ${a.replace(/^[-*]\s+/, '')}`)]
+  const flags = [...(i.interrogate?.reproduced ?? []).map(f => `reproduced finding ${f}`), ...(i.risk.tier === 2 && !i.interrogate ? ['tier 2 change: no interrogation recorded'] : []), ...(i.dependents && strayDeps(i.dependents, blastRadius(i.spec) ?? [], i.paths ?? defaultRegistry().paths).length ? [`${strayDeps(i.dependents, blastRadius(i.spec) ?? [], i.paths ?? defaultRegistry().paths).length} dependent(s) outside the spec's blast radius (see Dependents)`] : []), ...(i.differential?.unapproved ?? []).map(d => `unapproved difference: ${d}`), ...(i.freeze ?? []).slice(1).map(r => (r.dropped?.length ? `weakened test: re-frozen, ${clean(r.why)} (dropped: ${r.dropped.map(clean).join(', ')})` : `re-frozen: ${clean(r.why)}`)), ...(i.waivers ?? []).map(w => `waiver: ${w}`), ...(i.planChanges ?? []).map(c => `plan amendment ${c.replace(/^- /, '')}`), ...amended.map(a => `behaviour amendment: ${a.replace(/^[-*]\s+/, '')}`)]
   const holdout = i.verify?.holdout ? `${i.verify.holdout.passed}/${i.verify.holdout.total} hidden acceptance cases pass` : 'no hidden acceptance case ran'
   return `## Review first\n\n${[
     `Approved intent: ${i.chart}`,

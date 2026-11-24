@@ -2,7 +2,7 @@
 name: build
 description: Build a planned change test-first - one failing test per behaviour, then the code - on its own branch.
 argument-hint: '[<slug>]'
-allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Bash(git checkout*), Bash(git status*), Bash(git diff*), Read, Grep, Glob, Write, Edit, Agent
+allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Bash(git checkout*), Bash(git status*), Bash(git diff*), Read, Grep, Glob, Write, Edit, Agent, Skill
 ---
 # Build a change
 
@@ -22,7 +22,7 @@ allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_R
 4. For an operation that can raise, check each step after the commit point (rename, replace, commit, send): it must not report failure once the change is in place, or the code says why.
 5. The hooks run the sensors after each edit and each turn. Fix what they report; when a finding survives your fix, write in one sentence the premise it rested on and check it before the next. Never weaken a test, sensor or contract file.
 6. For a large plan, run one foreground `general-purpose` agent on the `build` model per independent group of files, each with a brief of at most 60 lines: the behaviours, the files and the test command.
-7. Hidden acceptance cases run in `/rig:test`; a failure names a case id and its requirement: fix the code against it. The hook hiding them is a guardrail; CI, which runs every case from the base branch, is the check.
+7. Hidden acceptance cases run in `/rig:test`; a failure names a case id and its requirement: fix the code against it. CI, not the hook hiding them, is the check: it runs every case from the base branch.
 8. An agent that ends `status: BLOCKED`, or a launch denied for the launch budget, gives `S pr <slug> --draft "<why>" --message "<type(scope): summary>"` and no retry.
 9. Tests use the stand-in the architecture's `## Integrations` row names; a test needing a live service is marked and skips without credentials.
-10. When every behaviour has a passing test, continue with `/rig:test <slug>` this turn.
+10. With every behaviour passing, call the Skill tool: skill `rig:test`, args `<slug>`, in this turn.

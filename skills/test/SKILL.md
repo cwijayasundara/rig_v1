@@ -2,7 +2,7 @@
 name: test
 description: Verify a built change - every commit and ci sensor, the contracts and the change's own checks - and record verify.json.
 argument-hint: '[<slug>]'
-allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Read, Grep, Glob, Write, Edit
+allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_ROOT}/scripts/sdlc.ts *), Read, Grep, Glob, Write, Edit, Skill
 ---
 # Verify a change
 
@@ -18,4 +18,4 @@ allowed-tools: Bash(node --disable-warning=ExperimentalWarning ${CLAUDE_PLUGIN_R
 2. On failure, fix the code, never a test, sensor or contract, and run verify again. A `mutation-diff` failure lists survivors as `file:line mutator`: it goes back to the test writer (`/rig:build` step a) with that list, then `S tests-freeze <slug> --why "<reason>"`; the implementer never edits a frozen test to kill a mutant. When a finding survives a fix, write in one sentence the premise that fix rested on and check it against the output before the next. If it fails twice, request a waiver with S waive --request <sensor> <file> <reason>, naming that sentence, and continue to /rig:pr: the PR's approval grants it. So does a holdout case (`S waive --request holdout * <reason>`); never end with options for the person. For plan-gate, harness-tamper, contracts and secrets there is no request: stop and show the finding to the person, who runs `/rig:waive`.
    A test for a test-plan case whose Data column names a file loads that file from the sprint's `testplan/data/`, unchanged, never a copy: a test that inlines the data instead is a failure to fix.
 3. When `S risk <slug>` says a person must approve, interrogate: commit, then launch two foreground `general-purpose` agents on the `evaluate` and `security` models (`S models <slug>`), each briefed (intent, behaviours, test command; at most 40 lines) to break the change and prove each finding with `S interrogate record <slug> --adversary <model> --title "<finding>" --breaks <B-number or AC id> -- <command that exits non-zero while the bug is present>`; no fixes. Run `S interrogate verify <slug>`; the implementer (`/rig:build` step c) fixes each reproduced finding with a test; commit and verify again.
-4. On pass, continue with `/rig:pr <slug>` in this turn.
+4. On pass, call the Skill tool: skill `rig:pr`, args `<slug>`, in this turn.

@@ -117,6 +117,13 @@ test('evidence lists the latest head-tree run of each check by sensor id, never 
   assert.doesNotMatch(e, /base ok|1 failed/)
 })
 
+test('a check that exited 0 after saying it did not run here is "not run here", never "pass"', () => {
+  const e = evidence([run({ sensor: 'layers', tail: 'layers: not enforced here (no approved layers config)' }), run({ sensor: 'sast', tail: 'sast: Semgrep does not run here (missing or broken), so CI scans this change' }), run({ sensor: 'lint', tail: 'All checks passed! Nothing to run here is skipped' })])
+  assert.match(e, /- layers: not run here, /)
+  assert.match(e, /- sast: not run here, /)
+  assert.match(e, /- lint: pass, /)
+})
+
 test("only the latest verify's runs count: a check it did not re-run is not shown from an earlier verify", () => {
   const b = prBody({ intent, spec, plan, verify: { ...verify, from: '2026-10-29T10:00:00.000Z' }, outline: '', review: '', risk, runs: [run({ at: '2026-10-28T09:00:00.000Z', sensor: 'lint', exit: 1, tail: 'old lint failure' }), run({ at: '2026-10-29T10:00:01.000Z', sensor: 'unit', tail: '12 passed' })] })
   assert.match(b, /- unit: pass/)
@@ -254,6 +261,13 @@ test('plan amendments after build are listed under their own heading, and none s
   assert.match(prBody({ ...base, planChanges: ['- abc1234 plan(demo): spec and plan'] }), /## Plan changes after build\n\n- abc1234 plan\(demo\): spec and plan/)
   assert.match(prBody({ ...base, planChanges: [] }), /## Plan changes after build\n\nnone/)
   assert.doesNotMatch(prBody(base), /Plan changes after build/)
+})
+
+test('a re-freeze that dropped no test is a re-freeze, not a weakened test', () => {
+  const frozen = [{ commit: 'abcdef1234', why: 'hand-off' }, { commit: 'bcdef12345', why: 'import order fixed by ruff' }] as never
+  const b = prBody({ intent, spec, plan, verify, outline: '', review: 'reviewer: none\n', risk, chart: 'chart-1 approved at 0123456789ab', freeze: frozen })
+  assert.match(b, /- re-frozen: import order fixed by ruff/)
+  assert.doesNotMatch(b, /weakened test/)
 })
 
 test('Review first leads the body: revision, worst consequence, independent evidence, uncertainty, and flags for weakened tests, waivers and amendments', () => {

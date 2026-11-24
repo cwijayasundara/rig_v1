@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { loadPacks, parsePack, detectStacks, packRegistry, PACKS_DIR } from './stackpacks.ts'
 import { adaptPack } from './stackadapt.ts'
+import { NOT_RUN_HERE } from './sensors.ts'
 
 const STACKS = ['node', 'angular', 'python', 'go', 'rust', 'java-maven', 'java-gradle', 'dotnet']
 
@@ -131,6 +132,20 @@ test('a layers command guarded by a generated config says so when it enforces no
     if (!/^if \[ -f \.rig\/gen\//.test(cmd)) continue
     assert.match(cmd, /; else echo 'layers: not enforced here[^']*'; fi$/, `${p.stack} layers passes silently without its config: ${cmd}`)
   }
+})
+
+// The PR evidence reads these as "not run here" through NOT_RUN_HERE: every pack's skip echo of layers, sast and audit must match it.
+test('every skip echo of the layers, sast and audit commands is a NOT_RUN_HERE text', () => {
+  let seen = 0
+  for (const p of loadPacks(PACKS_DIR).packs) for (const s of packRegistry(p).sensors.filter(x => ['layers', 'sast', 'audit'].includes(x.id))) {
+    for (const m of (s.cmd ?? '').matchAll(/echo (?:'([^']*)'|\\?"([^"\\]*)\\?")/g)) {
+      const text = m[1] ?? m[2] ?? ''
+      if (/does not run in CI/.test(text)) continue // exits 1 in CI: a failure, not a skip
+      seen++
+      assert.match(text, NOT_RUN_HERE, `${p.stack} ${s.id}: ${text}`)
+    }
+  }
+  assert.ok(seen >= 10, 'the packs were read')
 })
 
 // pip-audit with no argument audits the machine's site-packages, not the project (shop_app 2026-10-27: unrelated local packages in the evidence).

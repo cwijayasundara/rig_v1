@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { readModelState, recordSessionModel, recordLaunch, recordResolved, transcriptModel, transcriptContext, pinnedModel, sessionModel, modelRoleFindings, latestAgents } from './modelstate.ts'
+import { readModelState, recordSessionModel, recordLaunch, recordResolved, transcriptModel, transcriptContext, pinnedModel, sessionModel, modelRoleFindings, latestAgents, launchModel } from './modelstate.ts'
 import { defaultRegistry } from './registry.ts'
 import { pathToFileURL } from 'node:url'
 
@@ -102,6 +102,15 @@ test('parallel launch records are all kept', async () => {
   })
   await Promise.all([run('a'), run('b'), run('c')])
   assert.equal(readModelState(state).launches.length, 45)
+})
+
+test('launchModel gives the resolved model of a launch id, else the requested one, else null', () => {
+  const state = path.join(tmp(), 'state', 'model.json')
+  recordLaunch(state, { session: 's', id: 'a', agent: 'rig-evaluator', requested: null, resolved: 'claude-opus-5-5', at: 't' })
+  recordLaunch(state, { session: 's', id: 'b', agent: 'general-purpose', requested: 'sonnet', resolved: null, at: 't' })
+  assert.equal(launchModel(state, 'a'), 'claude-opus-5-5')
+  assert.equal(launchModel(state, 'b'), 'sonnet')
+  assert.equal(launchModel(state, 'zzz'), null)
 })
 
 test('latestAgents keeps the newest resolved launch per agent and tolerates a missing file', () => {
