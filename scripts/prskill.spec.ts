@@ -160,6 +160,25 @@ test('a fixed finding leaves ## Deferred, so review.md never lists one issue as 
   assert.match(pr(), /delete the `## Deferred` line for the same issue/)
 })
 
+test('the /steward handoff quotes what S pr prints and the queue never moves a watched checkout', () => {
+  const step = pr().slice(pr().indexOf('\n10. '))
+  assert.match(step, /`S pr`'s `watch:` lines/)
+  assert.match(step, /new worktree's when watching/)
+})
+
+test('the steward skill carries the rules a local /steward reads, and stays out of the menu and the model', () => {
+  const s = repoText('templates/steward.md')
+  assert.match(s, /^---\nname: steward\n[\s\S]*?\nuser-invocable: false\ndisable-model-invocation: true\n---\n/)
+  assert.match(s, /Never run `\/ship`/)
+  assert.match(s, /Never weaken a test, a sensor or a contract/)
+  assert.match(s, /--no-verify/)
+  assert.match(s, /git hooks do not run/, 'the watch pushes with hooks off')
+  assert.match(s, /\.rig\/bin\/sdlc\.ts verify <slug>/)
+  assert.match(s, /amendments\.md/)
+  assert.match(s, /plan\.md does not list/)
+  assert.match(repoText('templates/REVIEW.md'), /\.claude\/skills\/steward\/SKILL\.md/)
+})
+
 test('review runs once: /rig:pr forbids /ship after the PR opens and points to /steward', () => {
   const t = pr()
   assert.match(t, /never `\/ship` once the PR is open/)

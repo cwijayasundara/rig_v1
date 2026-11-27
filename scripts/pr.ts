@@ -156,4 +156,8 @@ export function cmdPr(args: Args): void {
   const url = openPr(slug, branch, title, draft)
   if (!url) fail(`pushed ${branch} but gh pr create printed no PR url: run ${retry}`)
   out(`pr ${slug}: ${url}${draft ? ' (draft)' : ''}`)
+  // What a person needs before typing /steward (a draft is blocked, so there is nothing to watch yet).
+  if (!draft) out([`watch: \`/steward ${url}\` ends if this checkout leaves the branch: start the next change in another clone or worktree`,
+    'watch: switch to auto mode first, or it stops at every prompt',
+    'watch: run it only where you trust everyone who can merge; with auto-merge on, a watch fix can merge the PR'].join('\n'))
 }

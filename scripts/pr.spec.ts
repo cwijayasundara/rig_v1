@@ -289,6 +289,23 @@ test('pr --draft with a stale verify.json runs gh pr create --draft; without it 
   assert.match(fs.readFileSync(path.join(repo, '.rig/changes/demo/pr-body.md'), 'utf8'), /^> Draft: blocked\. budget spent/)
 })
 
+test('pr with a PR prints what a /steward watch needs: auto mode, its own checkout, trust and auto-merge; a draft prints none', () => {
+  approvedChange(repo, 'demo')
+  write(repo, 'test/a.test.js', '// B1\n')
+  verified(repo, 'demo')
+  const { env } = fakeGh()
+  const r = sdlc(repo, ['pr', 'demo', '--no-wiki', '--message', 'feat: demo'], { env })
+  assert.equal(r.code, 0, r.stderr)
+  const watch = r.stdout.split('\n').filter(l => l.startsWith('watch: ')).join('\n')
+  assert.match(watch, /\/steward https:\/\/example\.com\/pr\/1/)
+  assert.match(watch, /auto mode/)
+  assert.match(watch, /another clone or worktree/)
+  assert.match(watch, /everyone who can merge/)
+  assert.match(watch, /auto-merge/)
+  const d = sdlc(repo, ['pr', 'demo', '--draft', 'x', '--no-wiki', '--message', 'feat: demo'], { env })
+  assert.doesNotMatch(d.stdout, /^watch: /m)
+})
+
 const blockedRow = (at: string): string => [{ kind: 'launch', id: 'a', agent: 'x', model: 'haiku', at }, { kind: 'done', id: 'a', status: 'BLOCKED', note: 'no API key', tokens: null, toolUses: null, ms: null }].map(r => JSON.stringify(r)).join('\n') + '\n'
 
 test('a BLOCKED agent row makes pr fail until --draft; --draft still keeps the plan-approval refusal', () => {

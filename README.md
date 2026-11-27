@@ -348,7 +348,8 @@ The harness lives in each repo it runs on, so a repo never depends on the plugin
    - the commands to `.claude/commands/rig/`, typed as `/rig:<name>` (see **Command names** below);
    - agents to `.claude/agents/rig-*`;
    - hooks and [`templates/settings.json`](templates/settings.json) merged into `.claude/settings.json` (Sonnet main thread, Opus advisor off, Sonnet general subagents (`CLAUDE_CODE_SUBAGENT_MODEL`), subagents kept in the foreground, `ENABLE_STOP_REVIEW=0`);
-   - scripts to `.rig/bin`.
+   - scripts to `.rig/bin`;
+   - house rules for a `/steward` watch to `.claude/skills/steward/SKILL.md` (yours to edit; never overwritten).
 
    It also wires the git hooks. On your yes, and only when the repo has a remote, it adds `.github/workflows/rig-check.yml` and `REVIEW.md`.
 3. **Commit** `README.md`, `.rig/`, `.claude/` and `CLAUDE.md`. Anyone who clones the repo, and any cloud session, then runs the harness with no install. A teammate who never opens Claude Code runs `node .rig/bin/sdlc.ts hooks install` once. To opt out of the git hooks, run `hooks uninstall`, which sets `rig.githooks = off`.

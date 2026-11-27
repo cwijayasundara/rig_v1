@@ -21,6 +21,7 @@ Read by the managed GitHub Code Review service, by the clean-context reviewer in
 - Naming, comments, small duplication, style a linter does not catch.
 
 ## After the PR opens (steward)
+- A local `/steward` watch does not read this file: its rules are in `.claude/skills/steward/SKILL.md`. Keep the two in step.
 - The review ran once, before the PR (`/rig:pr`). CI's `ai-review` reviews the PR once: a later push reuses a passing review. Never run `/ship` or `/code-review` on the PR; a person types `/steward <PR URL>` to keep it green.
 - The steward fixes failing checks, merge conflicts and reviewer comments only. It never weakens a test, a sensor or a contract, never uses `--no-verify`, and leaves a comment that needs a design change or a file plan.md does not list for a person.
 - A steward fix that changes a behaviour spec.md describes is added to `amendments.md`. Every push needs a fresh approval, so a person approves after the steward stops.

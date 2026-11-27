@@ -133,6 +133,13 @@ export function mergeProjectFiles(written: string[], profile: Profile = 'full', 
   routeReadme(written, profile)
   routePrdDocs(written)
   if (dashboard) writeMarketplace(written)
+  writeStewardSkill(written)
+}
+
+// The house rules a local /steward watch and PR Steward read (they do not read REVIEW.md alike): the team's file once it is there.
+const STEWARD = '.claude/skills/steward/SKILL.md'
+function writeStewardSkill(written: string[]): void {
+  if (!fs.existsSync(path.join(ROOT, STEWARD))) writeFile(STEWARD, read(path.join(PLUGIN_ROOT, 'templates', 'steward.md')), written)
 }
 
 const README_TEMPLATE = 'readme-rig.md'
@@ -344,6 +351,7 @@ function finishInstall(workflows: boolean, profile: Profile, standalone: boolean
   }
   writeFile('.claude/settings.json', JSON.stringify(merged, null, 2) + '\n', written)
   lines.push('merged templates/settings.json into .claude/settings.json (existing values kept)')
+  writeStewardSkill(written) // a plugin-only install too: its /rig:pr suggests /steward
   if (workflows) {
     for (const [from, to] of [['rig-check.yml', '.github/workflows/rig-check.yml'], ['rig-maintain.yml', '.github/workflows/rig-maintain.yml'], ['rig-approved.yml', '.github/workflows/rig-approved.yml'], ['REVIEW.md', 'REVIEW.md']] as const) {
       if (profile === 'core' && from === 'rig-maintain.yml') continue // Maintain is off in core

@@ -42,7 +42,7 @@ test('vendor --standalone writes project commands (.claude/commands/rig), agents
     assert.doesNotMatch(text, /\/rig-(app|approve|arch|autonomy|build|chart|init|learn|plan|pr|rule|start|test|testplan|upgrade|waive|wiki)\b/, `${path.relative(repo, f)}: a command is typed /rig:<name>`)
   }
   assert.ok(fs.existsSync(path.join(repo, '.rig/templates/rig-check.yml')), 'templates copied')
-  assert.equal(fs.existsSync(path.join(repo, '.claude/skills')), false, 'no .claude/skills/rig-* folder: those register as /rig-<name>')
+  assert.deepEqual(fs.readdirSync(path.join(repo, '.claude/skills')), ['steward'], 'no .claude/skills/rig-* folder: those register as /rig-<name>')
   const settings = JSON.parse(fs.readFileSync(path.join(repo, '.claude/settings.json'), 'utf8'))
   assert.equal(settings.model, 'claude-sonnet-5-5', 'other settings kept')
   const stop = JSON.stringify(settings.hooks.Stop)
@@ -329,6 +329,22 @@ test('init --full turns superpowers on, even where an older template left it off
   assert.equal(settings.enabledPlugins['x@mine'], false, 'other plugin choices are kept')
 })
 
+test('init and a re-vendor write the steward skill, and never over the team\'s own', () => {
+  const rel = '.claude/skills/steward/SKILL.md'
+  const template = fs.readFileSync(path.join(import.meta.dirname, '..', 'templates', 'steward.md'), 'utf8')
+  for (const mode of ['--full', '--plugin']) {
+    const repo = makeRepo()
+    assert.equal(sdlc(repo, ['init', mode]).code, 0)
+    assert.equal(fs.readFileSync(path.join(repo, rel), 'utf8'), template, mode)
+  }
+  const repo = makeRepo()
+  assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
+  assert.equal(fs.readFileSync(path.join(repo, rel), 'utf8'), template, 'a repo installed earlier gets it on re-vendor')
+  write(repo, rel, 'ours\n')
+  sdlc(repo, ['init', '--full'])
+  assert.equal(fs.readFileSync(path.join(repo, rel), 'utf8'), 'ours\n')
+})
+
 test('init --full --workflows writes the CI files and never overwrites an existing one', () => {
   const repo = makeRepo()
   write(repo, 'REVIEW.md', 'mine\n')
@@ -518,7 +534,7 @@ test('vendor --standalone writes .claude/commands/rig/<name>.md, no .claude/skil
   sdlc(repo, ['init'])
   assert.equal(sdlc(repo, ['vendor', '--standalone']).code, 0)
   assert.ok(fs.existsSync(path.join(repo, '.claude/commands/rig/start.md')))
-  assert.deepEqual(walk(path.join(repo, '.claude/skills')).filter(f => f.includes('/rig-')), [])
+  assert.deepEqual(walk(path.join(repo, '.claude/skills')).filter(f => path.relative(repo, f).includes('/rig-')), [])
   const files = [...walk(path.join(repo, '.claude')), ...walk(path.join(repo, '.rig/templates')), ...walk(path.join(repo, '.rig/mod'))]
   for (const f of files) assert.doesNotMatch(fs.readFileSync(f, 'utf8'), SKILL_NAMES_RE, `${path.relative(repo, f)} names /rig-<skill>`)
   for (const f of walk(path.join(repo, '.claude/commands/rig'))) assert.doesNotMatch(fs.readFileSync(f, 'utf8'), /^name:/m, `${path.relative(repo, f)} has a name: line`)
